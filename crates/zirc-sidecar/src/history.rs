@@ -845,6 +845,8 @@ mod tests {
             worktree: None,
             branch: None,
             part: None,
+            base: None,
+            committed: Vec::new(),
         });
         add(&path, "m5", "#team", 50 * SECOND, "alice-mbp", &status);
         add_direct(&path, "d1", 60 * SECOND, "alice", "bob", "lunch?");

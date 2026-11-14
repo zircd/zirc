@@ -7,6 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
+use zirc_core::ipc::Built;
 use zirc_proto::Event;
 
 use super::{Daemon, WATCHER_SESSION, worktree_name};
@@ -17,8 +18,53 @@ const UPDATE_EVERY: Duration = Duration::from_secs(15);
 /// Where a set is on this machine: its worktree's name and branch.
 type Place = (Option<String>, Option<String>);
 
-/// What each place's set is: whose it is and its paths.
-type Sets = BTreeMap<Place, (String, BTreeSet<String>)>;
+/// What a machine says of one place's set: a [`Event::Working`] but for where it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct Said {
+    /// Whose it is.
+    session: String,
+    /// The paths with uncommitted changes.
+    paths: BTreeSet<String>,
+    /// What its work is built on.
+    base: Option<String>,
+    /// The paths its own commits change, beyond `paths`.
+    committed: BTreeSet<String>,
+}
+
+impl Said {
+    /// The event that says it of the set at `place`, as part `part`.
+    pub(super) fn event(self, (worktree, branch): Place, continued: bool, part: [u32; 2]) -> Event {
+        Event::Working {
+            paths: self.paths.into_iter().collect(),
+            continued,
+            worktree,
+            branch,
+            part: Some(part),
+            base: self.base,
+            committed: self.committed.into_iter().collect(),
+        }
+    }
+
+    /// Whose it is.
+    pub(super) fn session(&self) -> &str {
+        &self.session
+    }
+
+    /// It as `zirc who` and `zirc sessions` have it of the machine `nick`, on `branch`:
+    /// `None` when what it's built on isn't known.
+    pub(super) fn built(self, nick: &str, branch: Option<String>) -> Option<Built> {
+        Some(Built {
+            nick: nick.to_owned(),
+            session: (self.session != WATCHER_SESSION).then_some(self.session),
+            branch,
+            base: self.base?,
+            changed: self.paths.union(&self.committed).cloned().collect(),
+        })
+    }
+}
+
+/// What each place's set is.
+type Sets = BTreeMap<Place, Said>;
 
 /// What each channel was last told of this machine's sets, and which channels are due.
 #[derive(Debug, Default)]
@@ -41,34 +87,53 @@ impl WorktreeUpdates {
     }
 }
 
-/// The places whose sets differ between `told` and `now`, with what each is now: no paths
-/// for one that's gone.
-fn changes(told: &Sets, now: &Sets) -> Vec<(Place, String, BTreeSet<String>)> {
+/// The places whose sets differ between `told` and `now`, with what each is now: nothing
+/// but whose it was for one that's gone.
+fn changes(told: &Sets, now: &Sets) -> Vec<(Place, Said)> {
     let mut changes: Vec<_> = now
         .iter()
         .filter(|(place, set)| told.get(*place) != Some(*set))
-        .map(|(place, (session, paths))| (place.clone(), session.clone(), paths.clone()))
+        .map(|(place, set)| (place.clone(), set.clone()))
         .collect();
     changes.extend(
         told.iter()
             .filter(|(place, _)| !now.contains_key(*place))
-            .map(|(place, (session, _))| (place.clone(), session.clone(), BTreeSet::new())),
+            .map(|(place, set)| {
+                let gone = Said {
+                    session: set.session.clone(),
+                    ..Said::default()
+                };
+                (place.clone(), gone)
+            }),
     );
     changes
 }
 
 impl Daemon {
+    /// What this machine says of its sets in `channel` now, a worktree at a time: those
+    /// with uncommitted changes or commits of their own.
+    pub(super) fn sets_said(&self, channel: &str) -> Vec<(Place, Said)> {
+        self.repos
+            .iter()
+            .filter(|(_, watched)| watched.channel == channel)
+            .flat_map(|(root, watched)| {
+                watched.sets().into_iter().map(|set| {
+                    let said = Said {
+                        session: set.session.unwrap_or(WATCHER_SESSION).to_owned(),
+                        paths: set.paths,
+                        base: set.base,
+                        committed: set.committed,
+                    };
+                    ((worktree_name(root), set.branch), said)
+                })
+            })
+            .filter(|(_, said)| !said.paths.is_empty() || !said.committed.is_empty())
+            .collect()
+    }
+
     /// This machine's sets in `channel` as they are now, by place.
     pub(super) fn sets_now(&self, channel: &str) -> Sets {
-        self.local(channel)
-            .into_iter()
-            .filter(|(_, _, paths)| !paths.is_empty())
-            .map(|(worktree, session, paths)| {
-                let place = (worktree_name(&worktree.path), worktree.branch);
-                let session = session.unwrap_or_else(|| WATCHER_SESSION.to_owned());
-                (place, (session, paths))
-            })
-            .collect()
+        self.sets_said(channel).into_iter().collect()
     }
 
     /// Notes that `channel` was just told this machine's sets whole.
@@ -95,15 +160,9 @@ impl Daemon {
             let sets = self.sets_now(&channel);
             let events: Vec<(String, Event)> = changes(told, &sets)
                 .into_iter()
-                .map(|((worktree, branch), session, paths)| {
-                    let event = Event::Working {
-                        paths: paths.into_iter().collect(),
-                        continued: false,
-                        worktree,
-                        branch,
-                        part: Some(zirc_proto::ALONE),
-                    };
-                    (session, event)
+                .map(|(place, said)| {
+                    let session = said.session().to_owned();
+                    (session, said.event(place, false, zirc_proto::ALONE))
                 })
                 .collect();
             if events.is_empty() {
@@ -136,8 +195,12 @@ mod tests {
             .iter()
             .map(|(worktree, session, paths)| {
                 let place = (Some((*worktree).to_owned()), Some(format!("{worktree}-b")));
-                let paths = paths.iter().map(|&path| path.to_owned()).collect();
-                (place, ((*session).to_owned(), paths))
+                let said = Said {
+                    session: (*session).to_owned(),
+                    paths: paths.iter().map(|&path| path.to_owned()).collect(),
+                    ..Said::default()
+                };
+                (place, said)
             })
             .collect()
     }
@@ -151,19 +214,32 @@ mod tests {
             ("two", "cc-2", &["b.rs", "d.rs"]),
         ]);
         let place = |name: &str| (Some(name.to_owned()), Some(format!("{name}-b")));
-        let paths = |paths: &[&str]| paths.iter().map(|&p| p.to_owned()).collect();
+        let said = |session: &str, paths: &[&str]| Said {
+            session: session.to_owned(),
+            paths: paths.iter().map(|&p| p.to_owned()).collect(),
+            ..Said::default()
+        };
         assert_eq!(
             changes(&told, &now),
             vec![
-                (place("three"), "cc-3".to_owned(), paths(&["c.rs"])),
-                (place("two"), "cc-2".to_owned(), paths(&["b.rs", "d.rs"])),
+                (place("three"), said("cc-3", &["c.rs"])),
+                (place("two"), said("cc-2", &["b.rs", "d.rs"])),
             ]
         );
         let gone = sets(&[("one", "cc-1", &["a.rs"])]);
         assert_eq!(
             changes(&told, &gone),
-            vec![(place("two"), "cc-2".to_owned(), BTreeSet::new())]
+            vec![(place("two"), said("cc-2", &[]))]
         );
         assert!(changes(&told, &told).is_empty());
+        // A worktree that committed its work, or was rebased, is said again.
+        let mut rebased = told.clone();
+        let two = rebased.get_mut(&place("two")).unwrap();
+        two.base = Some("b".repeat(40));
+        two.committed = ["e.rs".to_owned()].into();
+        assert_eq!(
+            changes(&told, &rebased),
+            vec![(place("two"), rebased[&place("two")].clone())]
+        );
     }
 }

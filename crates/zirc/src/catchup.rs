@@ -656,6 +656,8 @@ mod tests {
             worktree: None,
             branch: None,
             part: None,
+            base: None,
+            committed: Vec::new(),
         })));
     }
 }

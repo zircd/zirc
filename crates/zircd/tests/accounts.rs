@@ -1032,6 +1032,8 @@ async fn its_own_posts_coming_back_are_not_another_machines_work() {
             worktree: None,
             branch: Some("main".into()),
             part: Some([1, 1]),
+            base: None,
+            committed: Vec::new(),
         },
     );
     tokio::time::sleep(Duration::from_millis(300)).await;

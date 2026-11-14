@@ -404,6 +404,10 @@ struct Set<'a> {
     /// The session whose work it is, if known.
     session: Option<&'a str>,
     paths: BTreeSet<String>,
+    /// What its work is built on ([`git::Snapshot::base`]).
+    base: Option<String>,
+    /// The paths its own commits change beyond `paths` ([`git::Snapshot::committed`]).
+    committed: BTreeSet<String>,
 }
 
 impl Watched {
@@ -418,6 +422,8 @@ impl Watched {
             branch: self.snapshot.branch.clone(),
             session: self.sessions.latest(),
             paths: self.snapshot.dirty.clone(),
+            base: self.snapshot.base.clone(),
+            committed: self.snapshot.committed.clone(),
         }]
     }
 

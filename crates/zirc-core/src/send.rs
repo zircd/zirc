@@ -196,7 +196,9 @@ enum Smaller {
 /// The shortest text worth keeping before giving up on cutting it further.
 const SHORTEST: usize = 16;
 
-fn smaller(sender: &Message, event: Event) -> Smaller {
+/// A working set made smaller: its paths and committed paths halved as one list, the paths
+/// first, or its one path shortened.
+fn smaller_working(event: Event) -> Smaller {
     match event {
         Event::Working {
             paths,
@@ -204,8 +206,13 @@ fn smaller(sender: &Message, event: Event) -> Smaller {
             worktree,
             branch,
             part,
-        } if paths.len() > 1 => {
-            let (first, second) = paths.split_at(paths.len() / 2);
+            base,
+            committed,
+        } if paths.len() + committed.len() > 1 => {
+            let half = paths.len().midpoint(committed.len());
+            let (first, second) = paths.split_at(half.min(paths.len()));
+            let (first_committed, second_committed) =
+                committed.split_at(half.saturating_sub(paths.len()));
             Smaller::Split(vec![
                 Event::Working {
                     paths: first.to_vec(),
@@ -213,6 +220,8 @@ fn smaller(sender: &Message, event: Event) -> Smaller {
                     worktree: worktree.clone(),
                     branch: branch.clone(),
                     part,
+                    base: base.clone(),
+                    committed: first_committed.to_vec(),
                 },
                 Event::Working {
                     paths: second.to_vec(),
@@ -220,6 +229,8 @@ fn smaller(sender: &Message, event: Event) -> Smaller {
                     worktree,
                     branch,
                     part,
+                    base,
+                    committed: second_committed.to_vec(),
                 },
             ])
         }
@@ -232,17 +243,34 @@ fn smaller(sender: &Message, event: Event) -> Smaller {
             worktree,
             branch,
             part,
-        } if paths.len() == 1 && paths[0].trim_end_matches('/').contains('/') => {
-            let path = paths[0].trim_end_matches('/');
-            paths[0] = format!("{}/", &path[..path.rfind('/').unwrap_or_default()]);
+            base,
+            mut committed,
+        } if paths
+            .iter()
+            .chain(&committed)
+            .any(|path| path.trim_end_matches('/').contains('/')) =>
+        {
+            for path in paths.iter_mut().chain(&mut committed) {
+                let whole = path.trim_end_matches('/');
+                *path = format!("{}/", &whole[..whole.rfind('/').unwrap_or_default()]);
+            }
             Smaller::Shorter(Event::Working {
                 paths,
                 continued,
                 worktree,
                 branch,
                 part,
+                base,
+                committed,
             })
         }
+        _ => Smaller::Nothing,
+    }
+}
+
+fn smaller(sender: &Message, event: Event) -> Smaller {
+    match event {
+        working @ Event::Working { .. } => smaller_working(working),
         Event::Text { body } if body.chars().count() > 1 => {
             let (first, second) = halves(&body);
             Smaller::Split(vec![
@@ -581,6 +609,8 @@ mod tests {
                 worktree: None,
                 branch: None,
                 part: None,
+                base: None,
+                committed: Vec::new(),
             },
         );
         assert!(bodies.len() > 1);
@@ -601,6 +631,43 @@ mod tests {
     }
 
     #[test]
+    fn splits_a_working_sets_committed_paths_with_its_base_on_every_part() {
+        let paths: Vec<String> = (0..3).map(|i| format!("src/dirty_{i}.rs")).collect();
+        let committed: Vec<String> = (0..40).map(|i| format!("src/module_{i}/file.rs")).collect();
+        let events = decoded(&encode(
+            "cc-1",
+            Event::Working {
+                paths: paths.clone(),
+                continued: false,
+                worktree: Some("one".into()),
+                branch: Some("login".into()),
+                part: None,
+                base: Some("b".repeat(40)),
+                committed: committed.clone(),
+            },
+        ));
+        assert!(events.len() > 1);
+        let (mut all_paths, mut all_committed) = (Vec::new(), Vec::new());
+        for (i, event) in events.into_iter().enumerate() {
+            let Event::Working {
+                paths,
+                continued,
+                base,
+                committed,
+                ..
+            } = event
+            else {
+                panic!("not a working set")
+            };
+            assert_eq!(continued, i > 0);
+            assert_eq!(base, Some("b".repeat(40)));
+            all_paths.extend(paths);
+            all_committed.extend(committed);
+        }
+        assert_eq!((all_paths, all_committed), (paths, committed));
+    }
+
+    #[test]
     fn shortens_a_path_too_long_for_a_line_to_its_directory() {
         let long = format!(
             "apps/android/app/src/main/{}/Screen.kt",
@@ -614,6 +681,8 @@ mod tests {
                 worktree: Some("wizardly-bell-f60983".into()),
                 branch: Some("android-polish".into()),
                 part: Some([2, 3]),
+                base: None,
+                committed: Vec::new(),
             },
         );
         let events = decoded(&bodies);

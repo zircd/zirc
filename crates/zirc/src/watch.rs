@@ -674,6 +674,8 @@ mod tests {
                     worktree: None,
                     branch: None,
                     part: None,
+                    base: None,
+                    committed: Vec::new(),
                 },
             ),
             ..said.clone()
@@ -736,6 +738,8 @@ mod tests {
             worktree: None,
             branch: None,
             part: None,
+            base: None,
+            committed: Vec::new(),
         });
         assert!(is_noise(&Heard::Message(working)));
         let text = delivery(Event::Text { body: "hi".into() });

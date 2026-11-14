@@ -104,6 +104,8 @@ async fn chats_with_history_events_and_mentions() {
             worktree: None,
             branch: None,
             part: Some([1, 1]),
+            base: None,
+            committed: Vec::new(),
         },
     );
     alice

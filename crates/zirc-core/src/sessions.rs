@@ -130,6 +130,13 @@ pub struct Session {
     /// The branch it works on, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
+    /// The commit of the default branch its work is built on, by its full id, when its
+    /// machine says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+    /// The paths its work changes since `base`, committed or not.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changed: Vec<String>,
     /// Its latest landing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub landing: Option<Landing>,
@@ -151,6 +158,8 @@ impl Session {
             task: None,
             intent: None,
             branch: None,
+            base: None,
+            changed: Vec::new(),
             landing: None,
             waiting: None,
             heard: None,
@@ -281,6 +290,16 @@ fn at_work(channels: &[ChannelPresence]) -> BTreeMap<String, Session> {
                 }
             }
         }
+        for built in &channel.built {
+            if let Some(name) = &built.session {
+                let session = on(&mut sessions, name, &built.nick, here);
+                if built.branch.is_some() {
+                    session.branch.clone_from(&built.branch);
+                }
+                session.base = Some(built.base.clone());
+                session.changed.clone_from(&built.changed);
+            }
+        }
     }
     sessions
 }
@@ -399,7 +418,7 @@ pub async fn fetch(socket: &Path, org: Option<&str>, now: u64) -> Result<Vec<Ses
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::presence::{Claim, Intent, Member};
+    use crate::presence::{Built, Claim, Intent, Member};
     use zirc_proto::Message;
 
     const NOW: u64 = 1_793_618_707;
@@ -541,6 +560,13 @@ mod tests {
                 expires: Some(NOW + 600),
             }],
             landings: Vec::new(),
+            built: vec![Built {
+                nick: "mattias-matt".into(),
+                session: Some("cc-1".into()),
+                branch: Some("login".into()),
+                base: "b".repeat(40),
+                changed: vec!["src/lib.rs".into(), "src/login.rs".into()],
+            }],
         }];
         let queued = Event::Custom {
             kind: LANDING_KIND.into(),
@@ -562,6 +588,10 @@ mod tests {
         let names: Vec<&str> = sessions.iter().map(|s| s.name.as_str()).collect();
         // Most lately heard first; cc-3, quiet for a day and doing nothing, left out.
         assert_eq!(names, ["cc-2", "cc-1"]);
+        // What its machine says its work is built on and changes, for whoever reads the JSON.
+        assert_eq!(sessions[1].base.as_deref(), Some("b".repeat(40).as_str()));
+        assert_eq!(sessions[1].changed, ["src/lib.rs", "src/login.rs"]);
+        assert_eq!((&sessions[0].base, sessions[0].changed.len()), (&None, 0));
         assert_eq!(
             sessions[1].lines(NOW),
             [

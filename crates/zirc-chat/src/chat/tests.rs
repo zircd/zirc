@@ -137,6 +137,8 @@ fn working(session: &str, paths: &[&str]) -> Message {
             worktree: None,
             branch: None,
             part: Some([1, 1]),
+            base: None,
+            committed: Vec::new(),
         },
     )
 }
@@ -782,6 +784,8 @@ fn two_worktrees(nick: &str, one: &[&str], two: &[&str]) -> [String; 2] {
                 worktree: Some(worktree.into()),
                 branch: Some(worktree.into()),
                 part: Some(part),
+                base: None,
+                committed: Vec::new(),
             },
         )
     };
@@ -1032,6 +1036,8 @@ fn knows_a_machines_worktrees_apart() {
                 worktree: Some(worktree.into()),
                 branch: Some(branch.into()),
                 part: Some(part),
+                base: None,
+                committed: Vec::new(),
             },
         )
     };

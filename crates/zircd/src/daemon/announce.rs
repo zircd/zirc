@@ -52,6 +52,11 @@ impl Daemon {
                     );
                 }
                 members.sort_by(|a, b| (&a.nick, &a.worktree).cmp(&(&b.nick, &b.worktree)));
+                let mut built = self.presence.built(channel);
+                if let Some(nick) = &nick {
+                    let here = self.sets_said(channel).into_iter();
+                    built.extend(here.filter_map(|((_, branch), said)| said.built(nick, branch)));
+                }
                 ChannelPresence {
                     channel: channel.clone(),
                     org: None,
@@ -59,6 +64,7 @@ impl Daemon {
                     claims: self.presence.claims(channel),
                     intents: self.presence.intents(channel, now()),
                     landings: self.presence.landings(channel),
+                    built,
                 }
             })
             .collect();
@@ -159,19 +165,12 @@ impl Daemon {
     /// there last. `now` is when it's said, from which the next waits [`Daemon::announce_every`].
     pub(super) fn announce(&mut self, channel: &str, again: bool, now: Instant) {
         let mut sets: Vec<(String, Event)> = self
-            .local(channel)
+            .sets_said(channel)
             .into_iter()
-            .filter(|(_, _, paths)| !paths.is_empty())
-            .map(|(worktree, session, paths)| {
-                let event = Event::Working {
-                    paths: paths.into_iter().collect(),
-                    continued: true,
-                    worktree: worktree_name(&worktree.path),
-                    branch: worktree.branch,
-                    // Room for the real numbers, which are known once the parts are.
-                    part: Some([PART_ROOM, PART_ROOM]),
-                };
-                (session.unwrap_or_else(|| WATCHER_SESSION.to_owned()), event)
+            .map(|(place, said)| {
+                let session = said.session().to_owned();
+                // Room for the real numbers, which are known once the parts are.
+                (session, said.event(place, true, [PART_ROOM, PART_ROOM]))
             })
             .collect();
         if sets.is_empty() {
@@ -181,6 +180,8 @@ impl Daemon {
                 worktree: None,
                 branch: None,
                 part: Some([1, 1]),
+                base: None,
+                committed: Vec::new(),
             };
             sets.push((WATCHER_SESSION.to_owned(), nothing));
         }

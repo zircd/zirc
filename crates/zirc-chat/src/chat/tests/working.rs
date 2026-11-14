@@ -110,6 +110,8 @@ fn keeps_a_machines_worktrees_apart() {
             worktree: Some(worktree.into()),
             branch: Some(branch.into()),
             part: Some(part),
+            base: None,
+            committed: Vec::new(),
         };
         feed(&mut chat, &[&zirc("beta", &Message::new(session, event))]);
     }

@@ -185,6 +185,19 @@ pub enum Event {
         /// [`ALONE`] for one worktree's set said alone.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         part: Option<[u32; 2]>,
+        /// The commit the worktree's work is built on: the newest commit of the remote's
+        /// default branch that it has, by its full id. With it, anyone who knows what landed
+        /// since can tell whether the work is behind a landing. Left out without a remote
+        /// default branch, and by machines that predate it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base: Option<String>,
+        /// The paths the worktree's own commits since `base` change, beyond `paths`: with
+        /// `paths`, all its work changes. A worktree with commits of its own and nothing
+        /// uncommitted is said with these alone, which readers that predate them take as a
+        /// worktree with no changes.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[ts(as = "Option<Vec<String>>", optional)]
+        committed: Vec<String>,
     },
     /// A new commit.
     Commit {
@@ -1371,6 +1384,8 @@ mod tests {
             worktree: None,
             branch: None,
             part: None,
+            base: None,
+            committed: Vec::new(),
         }));
         assert!(!live(&custom(ci::LANDING_KIND)));
         assert!(!live(&Event::Text { body: "hi".into() }));
@@ -1535,6 +1550,8 @@ mod tests {
             worktree: None,
             branch: None,
             part: None,
+            base: None,
+            committed: Vec::new(),
         };
         for event in [commit, working] {
             assert!(event.is_machine());
@@ -1696,6 +1713,8 @@ mod tests {
                 worktree: None,
                 branch: None,
                 part: None,
+                base: None,
+                committed: Vec::new(),
             },
         );
         assert!(matches!(encode(&message), Err(Error::TooLong(_))));
@@ -1709,6 +1728,8 @@ mod tests {
             worktree: None,
             branch: None,
             part: None,
+            base: None,
+            committed: Vec::new(),
         };
         assert_eq!(working(0).human_text(), "has no uncommitted changes");
         assert_eq!(working(2).human_text(), "working on f1, f2");
@@ -1725,6 +1746,8 @@ mod tests {
                 worktree: None,
                 branch: None,
                 part: None,
+                base: None,
+                committed: Vec::new(),
             },
         );
         let json = serde_json::to_string(&message).unwrap();
@@ -1745,6 +1768,8 @@ mod tests {
                 worktree: None,
                 branch: None,
                 part: None,
+                base: None,
+                committed: Vec::new(),
             }
         );
     }

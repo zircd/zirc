@@ -89,6 +89,8 @@ async fn carries_zirc_messages_between_clients() {
             worktree: Some("api".into()),
             branch: Some("login".into()),
             part: Some([1, 1]),
+            base: None,
+            committed: Vec::new(),
         },
     );
     let mut tagged = Line::new("TAGMSG", ["#api"]);

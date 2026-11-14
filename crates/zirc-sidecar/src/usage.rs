@@ -356,6 +356,8 @@ mod tests {
             worktree: None,
             branch: None,
             part: None,
+            base: None,
+            committed: Vec::new(),
         });
         // A person, from the desktop app: a plain message, and a multiline one.
         add(&path, "m1", "#team", at(60), "alice", "morning");

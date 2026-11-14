@@ -830,6 +830,7 @@ mod tests {
                 paths: (1..=8).map(|i| format!("f{i}")).collect(),
                 at: 0,
             }],
+            built: Vec::new(),
         }];
         assert_eq!(
             who_text(&channels, 0),
@@ -859,6 +860,7 @@ mod tests {
                 expires: None,
             }],
             landings: Vec::new(),
+            built: Vec::new(),
         }];
         let text = who_text(&channels, 0);
         // The channel, that nobody has changes, the heading, and the intent whole on one.

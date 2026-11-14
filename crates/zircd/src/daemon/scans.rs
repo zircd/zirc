@@ -44,7 +44,7 @@ enum Found {
     /// It looks halfway removed ([`git::half_removed`]), and its last scan wasn't held.
     HalfRemoved,
     /// The repository as it is now, and what changed, in order.
-    Changed(git::Snapshot, Vec<Changed>),
+    Changed(Box<git::Snapshot>, Vec<Changed>),
 }
 
 /// One change a scan found, as the daemon says it.
@@ -70,7 +70,7 @@ async fn read(root: &Path, before: Before) -> Result<Scan> {
                 Changed::Events(events(root, change, web, &before.default_branch).await)
             });
         }
-        Found::Changed(after, changed)
+        Found::Changed(Box::new(after), changed)
     };
     Ok(Scan {
         before: before.snapshot,
@@ -252,7 +252,7 @@ impl Daemon {
                 again(watched);
                 return;
             }
-            Found::Changed(after, changes) => (after, changes),
+            Found::Changed(after, changes) => (*after, changes),
         };
         watched.held = false;
         tracing::debug!("scanned {}: {} changes", root.display(), changes.len());

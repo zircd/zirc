@@ -253,6 +253,20 @@
               "minItems": 2,
               "maxItems": 2,
               "description": "Which part of the set this is and how many there are, counting from 1, or\n[`ALONE`] for one worktree's set said alone."
+            },
+            "base": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The commit the worktree's work is built on: the newest commit of the remote's\ndefault branch that it has, by its full id. With it, anyone who knows what landed\nsince can tell whether the work is behind a landing. Left out without a remote\ndefault branch, and by machines that predate it."
+            },
+            "committed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The paths the worktree's own commits since `base` change, beyond `paths`: with\n`paths`, all its work changes. A worktree with commits of its own and nothing\nuncommitted is said with these alone, which readers that predate them take as a\nworktree with no changes."
             }
           },
           "required": [
@@ -947,6 +961,13 @@
             "$ref": "#/$defs/Landing"
           },
           "description": "The latest pushes to the default branch, newest first."
+        },
+        "built": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Built"
+          },
+          "description": "What each worktree's work is built on and changes, for those whose machines say."
         }
       },
       "required": [
@@ -1204,6 +1225,46 @@
         "at"
       ],
       "description": "A push to a repository's default branch: work that's landed."
+    },
+    "Built": {
+      "type": "object",
+      "properties": {
+        "nick": {
+          "type": "string",
+          "description": "The machine's nick."
+        },
+        "session": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The session working there, when known."
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The branch checked out there, when known."
+        },
+        "base": {
+          "type": "string",
+          "description": "The commit of the default branch its work is built on, by its full id."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The paths its work changes since `base`, committed or not, sorted."
+        }
+      },
+      "required": [
+        "nick",
+        "base",
+        "changed"
+      ],
+      "description": "What a worktree's work is built on and all it changes, as its machine says: enough to\ntell, of something that landed, whether the work is behind it and depends on it."
     },
     "Stack": {
       "type": "object",

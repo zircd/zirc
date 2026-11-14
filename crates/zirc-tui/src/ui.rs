@@ -3506,6 +3506,8 @@ mod tests {
                             worktree: Some(name.into()),
                             branch: Some(name.into()),
                             part: Some([part, 2]),
+                            base: None,
+                            committed: Vec::new(),
                         },
                     );
                     message.name = Some(name.into());
@@ -3929,6 +3931,8 @@ mod tests {
             task: Some("the login bug".into()),
             intent: None,
             branch: Some("login".into()),
+            base: None,
+            changed: Vec::new(),
             landing: Some(Landing::Queued {
                 branch: "login".into(),
                 build: Some(12),

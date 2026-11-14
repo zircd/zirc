@@ -285,6 +285,8 @@ mod tests {
             worktree: None,
             branch: None,
             part: None,
+            base: None,
+            committed: Vec::new(),
         });
         assert_eq!(working.headline, "has uncommitted changes in 1 file");
         assert_eq!(working.paths, ["a.rs"]);
@@ -294,6 +296,8 @@ mod tests {
             worktree: Some("api-hooks".into()),
             branch: Some("retry-hooks".into()),
             part: Some([2, 2]),
+            base: None,
+            committed: Vec::new(),
         });
         assert_eq!(
             part.headline,

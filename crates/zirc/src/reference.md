@@ -366,6 +366,9 @@ zirc.dev has turned them on for the organisation. An integration (`zirc-` and it
 CI posts through `zirc.dev/ci`) starts a run as a person does, by naming the nick in its
 event's text: `@flake_bot run test=//web:unit`.
 
-**Sessions and tasks.** `zirc sessions --json` lists what each session is doing, `zirc task
+**Sessions and tasks.** `zirc sessions --json` lists what each session is doing, with the
+commit of the default branch its work is built on (`base`, a full id) and the paths it
+changes since, committed or not (`changed`), so a script can tell which sessions are behind
+something that landed. `zirc task
 --session <s>` prints the id of its current task (for a landing script), and `zirc wakes`
 shows how often this machine's watches woke and were acted on.

@@ -148,6 +148,74 @@ async fn announces_commits_any_tool_makes_and_forgets_removed_worktrees() {
 }
 
 #[tokio::test]
+async fn others_see_what_a_worktrees_work_is_built_on_once_its_committed() {
+    let ergo = require_ergo!();
+    let (solo, _main, _main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
+    let beta = Machine::start(&ergo, "beta").await;
+    let clone = clone();
+    beta.request(Request::RepoAdd {
+        path: clone.path().to_owned(),
+        session: None,
+    })
+    .await;
+    beta.eventually(
+        |status| status.channels.iter().any(|c| c == "#api"),
+        "joining",
+    )
+    .await;
+
+    // The clone has no remote to fetch from: its default branch is where the worktree began.
+    git(
+        &login_root,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    let fork = std::process::Command::new("git")
+        .args(["merge-base", "HEAD", "origin/main"])
+        .current_dir(&login_root)
+        .output()
+        .unwrap();
+    let fork = String::from_utf8(fork.stdout).unwrap().trim().to_owned();
+    assert_eq!(fork.len(), 40, "the worktree left origin/main somewhere");
+    // Committed, with one more change not yet: nothing of the commit's is uncommitted, so
+    // only what the machine says of its commits tells others of login.rs.
+    std::fs::write(login_root.join("login.rs"), "fn login() {}\n").unwrap();
+    git(&login_root, &["add", "."]);
+    git(&login_root, &["commit", "--quiet", "-m", "Add login"]);
+    std::fs::write(login_root.join("logout.rs"), "fn logout() {}\n").unwrap();
+    let want = (
+        Some("login".to_owned()),
+        Some("cc-login".to_owned()),
+        fork,
+        vec!["login.rs".to_owned(), "logout.rs".to_owned()],
+    );
+    // As the other machine has it, and as the worktree's own machine does.
+    for (machine, who) in [(&beta, "beta"), (&solo, "solo")] {
+        tokio::time::timeout(WAIT, async {
+            loop {
+                let Response::Who { channels } = machine.request(Request::Who).await else {
+                    panic!("not a who")
+                };
+                let built: Vec<_> = channels
+                    .into_iter()
+                    .flat_map(|channel| channel.built)
+                    .filter(|built| {
+                        built.nick == "solo" && built.branch.as_deref() == Some("login")
+                    })
+                    .map(|built| (built.branch, built.session, built.base, built.changed))
+                    .collect();
+                if built == [want.clone()] {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("{who} seeing what solo's login worktree is built on"));
+    }
+    drop(solo);
+}
+
+#[tokio::test]
 async fn others_see_each_worktrees_changes_by_branch() {
     let ergo = require_ergo!();
     let (solo, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;

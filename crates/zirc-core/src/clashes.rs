@@ -245,6 +245,7 @@ mod tests {
                 },
             ],
             landings: Vec::new(),
+            built: Vec::new(),
         };
         let mine = vec!["src/daemon.rs".to_owned(), "src/lib.rs".to_owned()];
         let found = clashes(&channel, "cc-1", &mine, 100);

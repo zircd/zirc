@@ -28,6 +28,12 @@ pub struct Snapshot {
     /// Of the `dirty` paths, those missing from the working tree: deleted, or not yet
     /// written.
     pub missing: BTreeSet<String>,
+    /// The commit the work here is built on: the newest commit of the remote's default
+    /// branch that HEAD has ([`fork`]). `None` without commits or a remote default branch.
+    pub base: Option<String>,
+    /// The paths HEAD's own commits since `base` change, beyond the `dirty` ones: none once
+    /// those commits are all on the default branch, as after a landing.
+    pub committed: BTreeSet<String>,
 }
 
 /// How many paths at least a scan must newly find changed, nearly all of them missing from
@@ -53,7 +59,9 @@ pub fn half_removed(before: &Snapshot, after: &Snapshot) -> bool {
 /// What happened between two snapshots.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
-    /// The set of paths with uncommitted changes is different: this is all of it now.
+    /// The set of paths with uncommitted changes is different, or what the work is built on
+    /// or has committed is ([`Snapshot::base`], [`Snapshot::committed`]): these are all the
+    /// paths with uncommitted changes now.
     Working(BTreeSet<String>),
     /// HEAD moved, by commits, checkouts, pulls or resets: HEAD's reflog tells which.
     HeadMoved {
@@ -78,7 +86,9 @@ pub enum Change {
 pub fn diff(before: &Snapshot, after: &Snapshot) -> Vec<Change> {
     let mut changes = Vec::new();
 
-    if after.dirty != before.dirty {
+    if (&after.dirty, &after.base, &after.committed)
+        != (&before.dirty, &before.base, &before.committed)
+    {
         changes.push(Change::Working(after.dirty.clone()));
     }
 
@@ -352,6 +362,7 @@ pub async fn snapshot(root: &Path) -> Result<Snapshot> {
         .filter(|path| !root.join(path).exists())
         .cloned()
         .collect();
+    let (base, committed) = built_on(root, head.as_deref(), &dirty).await;
     Ok(Snapshot {
         branch,
         head,
@@ -359,7 +370,39 @@ pub async fn snapshot(root: &Path) -> Result<Snapshot> {
         branches,
         dirty,
         missing,
+        base,
+        committed,
     })
+}
+
+/// What the work at `root`, whose HEAD is `head`, is built on, and the paths its own
+/// commits since change beyond the `dirty` ones ([`Snapshot::base`],
+/// [`Snapshot::committed`]).
+async fn built_on(
+    root: &Path,
+    head: Option<&str>,
+    dirty: &BTreeSet<String>,
+) -> (Option<String>, BTreeSet<String>) {
+    let Some(head) = head else {
+        return (None, BTreeSet::new());
+    };
+    let default = format!("origin/{}", default_branch(root).await);
+    let Some(base) = merge_base(root, head, &default).await else {
+        return (None, BTreeSet::new());
+    };
+    if base == head {
+        return (Some(base), BTreeSet::new());
+    }
+    // Commits that landed under other ids, as a landing's rebase gives them, aren't this
+    // worktree's own any more.
+    if all_in(root, &default).await {
+        return (Some(base), BTreeSet::new());
+    }
+    let committed = changed_between(root, &base, head)
+        .await
+        .map(|paths| paths.difference(dirty).cloned().collect())
+        .unwrap_or_default();
+    (Some(base), committed)
 }
 
 /// Of the `dirty` paths, those that differ from the remote's default branch too: the rest
@@ -1247,6 +1290,64 @@ mod own_tests {
     }
 
     #[tokio::test]
+    async fn a_snapshot_says_what_the_work_is_built_on_and_has_committed() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        run(&root, &["init", "--quiet", "--initial-branch=main"]);
+        std::fs::write(root.join("a.rs"), "a\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "--quiet", "-m", "a"]);
+        // No remote default branch: nothing it's built on.
+        let alone = snapshot(&root).await.unwrap();
+        assert_eq!((alone.base, alone.committed), (None, BTreeSet::new()));
+        // On the default branch's head: built on it, with nothing of its own.
+        run(&root, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        let fork = snapshot(&root).await.unwrap().head;
+        run(&root, &["checkout", "--quiet", "-b", "mine"]);
+        let fresh = snapshot(&root).await.unwrap();
+        assert_eq!((&fresh.base, fresh.committed.len()), (&fork, 0));
+        // Its own commit, and an uncommitted change: the commit's paths beyond that one.
+        std::fs::write(root.join("b.rs"), "b\n").unwrap();
+        std::fs::write(root.join("c.rs"), "c\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "--quiet", "-m", "b and c"]);
+        std::fs::write(root.join("c.rs"), "c, changed\n").unwrap();
+        let before = snapshot(&root).await.unwrap();
+        assert_eq!(before.base, fork);
+        assert_eq!(before.dirty, ["c.rs".to_owned()].into());
+        assert_eq!(before.committed, ["b.rs".to_owned()].into());
+        // The default branch moving on leaves what it's built on where it was.
+        run(&root, &["checkout", "--quiet", "--", "c.rs"]);
+        run(&root, &["checkout", "--quiet", "--detach", "origin/main"]);
+        std::fs::write(root.join("d.rs"), "d\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "--quiet", "-m", "d"]);
+        run(&root, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        run(&root, &["checkout", "--quiet", "mine"]);
+        let behind = snapshot(&root).await.unwrap();
+        assert_eq!(behind.base, fork);
+        assert_eq!(
+            behind.committed,
+            ["b.rs".to_owned(), "c.rs".to_owned()].into()
+        );
+        // Rebased onto it: built on the new head, which is a change to say.
+        run(&root, &["rebase", "--quiet", "origin/main"]);
+        let rebased = snapshot(&root).await.unwrap();
+        assert_ne!(rebased.base, fork);
+        assert_eq!(rebased.committed, behind.committed);
+        assert!(matches!(
+            diff(&behind, &rebased).as_slice(),
+            [Change::Working(_), Change::HeadMoved { .. }]
+        ));
+        // Landed, under another id as a landing's rebase gives it: nothing of its own left.
+        run(&root, &["checkout", "--quiet", "--detach", "origin/main"]);
+        run(&root, &["cherry-pick", "mine"]);
+        run(&root, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        run(&root, &["checkout", "--quiet", "mine"]);
+        assert!(snapshot(&root).await.unwrap().committed.is_empty());
+    }
+
+    #[tokio::test]
     async fn own_paths_leave_out_what_a_checkout_left_behind_as_its_branch_moved_on() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
@@ -1403,7 +1504,7 @@ mod tests {
             remotes: BTreeMap::new(),
             branches: BTreeSet::new(),
             dirty: dirty.iter().map(|&path| path.to_owned()).collect(),
-            missing: BTreeSet::new(),
+            ..Snapshot::default()
         }
     }
 

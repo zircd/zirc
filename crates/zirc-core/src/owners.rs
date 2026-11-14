@@ -237,6 +237,7 @@ mod tests {
                 expires: None,
             }],
             landings: Vec::new(),
+            built: Vec::new(),
         };
         let history = [
             commit("mini", "cc-2", Some("chat"), &["crates/chat/src/lib.rs"]),

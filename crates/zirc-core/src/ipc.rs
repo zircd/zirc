@@ -25,7 +25,7 @@ use zirc_proto::PROGRAM;
 use zirc_proto::request::{Answer, Request as DecisionRequest};
 
 pub use crate::presence::{
-    Claim, Conflict, Intent, Landing, LocalOverlap, Member, Overlap, Why, Worktree,
+    Built, Claim, Conflict, Intent, Landing, LocalOverlap, Member, Overlap, Why, Worktree,
 };
 
 /// The version of the socket protocol this crate speaks. See the module's documentation.
@@ -874,6 +874,9 @@ pub struct ChannelPresence {
     /// The latest pushes to the default branch, newest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub landings: Vec<Landing>,
+    /// What each worktree's work is built on and changes, for those whose machines say.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub built: Vec<Built>,
 }
 
 /// A message someone sent to a channel: a zirc one, or plain text a person typed in an IRC

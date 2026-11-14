@@ -129,6 +129,29 @@ pub struct Place {
     pub branch: Option<String>,
     /// The session working there.
     pub session: Option<String>,
+    /// The commit its work is built on, when its machine says
+    /// ([`Event::Working`]'s `base`).
+    pub base: Option<String>,
+    /// The paths its own commits change beyond the uncommitted ones, when its machine says.
+    pub committed: BTreeSet<String>,
+}
+
+/// What a worktree's work is built on and all it changes, as its machine says: enough to
+/// tell, of something that landed, whether the work is behind it and depends on it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Built {
+    /// The machine's nick.
+    pub nick: String,
+    /// The session working there, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// The branch checked out there, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// The commit of the default branch its work is built on, by its full id.
+    pub base: String,
+    /// The paths its work changes since `base`, committed or not, sorted.
+    pub changed: Vec<String>,
 }
 
 /// A machine's working sets, by worktree name and branch. A `None` worktree is the machine as a whole.
@@ -355,12 +378,16 @@ impl Presence {
                 worktree,
                 branch,
                 part,
+                base,
+                committed,
                 ..
             } => {
                 let place = Place {
                     worktree: worktree.clone(),
                     branch: branch.clone(),
                     session: (session != zirc_proto::NO_SESSION).then(|| session.clone()),
+                    base: base.clone(),
+                    committed: committed.iter().cloned().collect(),
                 };
                 self.working_part(channel, nick, place, paths.clone(), *part);
             }
@@ -469,9 +496,12 @@ impl Presence {
         }
         let key = (place.worktree.clone(), place.branch.clone());
         let (known, set) = sets.entry(key).or_default();
+        // A set split over several parts has its committed paths split over them too.
+        let mut place = place;
+        place.committed.append(&mut known.committed);
         *known = place;
         set.extend(paths);
-        sets.retain(|_, (_, paths)| !paths.is_empty());
+        sets.retain(|_, (place, paths)| !paths.is_empty() || !place.committed.is_empty());
         if sets.is_empty() {
             members.remove(nick);
         }
@@ -484,7 +514,7 @@ impl Presence {
         let members = self.working.entry(channel.to_owned()).or_default();
         let sets = members.entry(nick.to_owned()).or_default();
         let key = (place.worktree.clone(), place.branch.clone());
-        if paths.is_empty() {
+        if paths.is_empty() && place.committed.is_empty() {
             sets.remove(&key);
         } else {
             sets.insert(key, (place, paths.into_iter().collect()));
@@ -698,7 +728,10 @@ impl Presence {
             .into_iter()
             .flatten()
             .flat_map(|(nick, sets)| {
-                sets.values().map(|(place, paths)| Member {
+                // A worktree with commits of its own and nothing uncommitted is known for
+                // what it's built on ([`Presence::built`]), and isn't a member.
+                let changing = sets.values().filter(|(_, paths)| !paths.is_empty());
+                changing.map(|(place, paths)| Member {
                     nick: nick.clone(),
                     worktree: None,
                     name: place.worktree.clone(),
@@ -717,6 +750,28 @@ impl Presence {
                         .as_deref()
                         .and_then(|session| self.avatar_of(nick, session)),
                     paths: paths.iter().cloned().collect(),
+                })
+            })
+            .collect()
+    }
+
+    /// What each worktree's work in `channel` is built on and changes, for those whose
+    /// machines say.
+    #[must_use]
+    pub fn built(&self, channel: &str) -> Vec<Built> {
+        self.working
+            .get(channel)
+            .into_iter()
+            .flatten()
+            .flat_map(|(nick, sets)| {
+                sets.values().filter_map(|(place, paths)| {
+                    Some(Built {
+                        nick: nick.clone(),
+                        session: place.session.clone(),
+                        branch: place.branch.clone(),
+                        base: place.base.clone()?,
+                        changed: paths.union(&place.committed).cloned().collect(),
+                    })
                 })
             })
             .collect()
@@ -955,6 +1010,7 @@ mod tests {
             worktree: Some(worktree.into()),
             branch: Some(format!("{worktree}-b")),
             session: Some(format!("cc-{worktree}")),
+            ..Place::default()
         };
         presence.working_at("#api", "beta", at("one"), paths(&["a.rs"]), false);
         presence.working_at("#api", "beta", at("two"), paths(&["b.rs"]), true);
@@ -967,6 +1023,8 @@ mod tests {
                     worktree: Some(worktree.into()),
                     branch: Some(format!("{worktree}-b")),
                     part: Some(zirc_proto::ALONE),
+                    base: None,
+                    committed: Vec::new(),
                 },
             )
         };
@@ -984,6 +1042,32 @@ mod tests {
         // Committed: that worktree's set is gone, the others stay.
         presence.apply("#api", "beta", &alone(vec![], "one"), 12, None);
         assert_eq!(shown(&presence), [paths(&["d.rs"]), paths(&["c.rs"])]);
+        // Committed, by a machine that says what its work is built on: no member, as
+        // nothing's uncommitted, but known for its base and what it changes.
+        let committed = Message::new(
+            "cc-two",
+            Event::Working {
+                paths: vec![],
+                continued: false,
+                worktree: Some("two".into()),
+                branch: Some("two-b".into()),
+                part: Some(zirc_proto::ALONE),
+                base: Some("b".repeat(40)),
+                committed: paths(&["c.rs"]),
+            },
+        );
+        presence.apply("#api", "beta", &committed, 13, None);
+        assert_eq!(shown(&presence), [paths(&["d.rs"])]);
+        assert_eq!(
+            presence.built("#api"),
+            [Built {
+                nick: "beta".into(),
+                session: Some("cc-two".into()),
+                branch: Some("two-b".into()),
+                base: "b".repeat(40),
+                changed: paths(&["c.rs"]),
+            }]
+        );
     }
 
     #[test]
@@ -993,6 +1077,7 @@ mod tests {
             worktree: Some(worktree.into()),
             branch: Some(branch.into()),
             session: Some(format!("cc-{worktree}")),
+            ..Place::default()
         };
         presence.working_at("#api", "beta", at("one", "login"), paths(&["a.rs"]), false);
         presence.working_at("#api", "beta", at("two", "logout"), paths(&["b.rs"]), true);
@@ -1035,6 +1120,7 @@ mod tests {
             worktree: Some("api".into()),
             branch: Some(branch.into()),
             session: session.map(Into::into),
+            ..Place::default()
         };
         let one = at("login", Some("cc-one"));
         let two = at("logout", Some("cc-two"));
@@ -1321,6 +1407,8 @@ mod tests {
                 worktree: Some(worktree.into()),
                 branch: Some(format!("{worktree}-branch")),
                 part: Some(part),
+                base: None,
+                committed: Vec::new(),
             },
         )
     }
@@ -1469,6 +1557,8 @@ mod tagmsg_tests {
                 worktree: Some("one".into()),
                 branch: Some("b".into()),
                 part: Some([1, 1]),
+                base: None,
+                committed: Vec::new(),
             },
         )
     }
