@@ -7081,6 +7081,26 @@ fn a_cards_live_updates_fold_into_it_quietly_and_only_the_latest_is_kept() {
     );
 }
 
+#[test]
+fn a_cards_live_updates_are_never_a_conversations_preview() {
+    // A running landing's steps come every few seconds: were each the preview, it would
+    // change all the time, and between landings when several run.
+    let mut chat = chat();
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #api",
+            &posted(&stepped("running", 0, false)),
+            ":alice!u@h PRIVMSG #api :lunch?",
+        ],
+    );
+    let preview = |chat: &Chat| chat.preview("#api").unwrap().text;
+    let before = preview(&chat);
+    assert_eq!(before, "alice: lunch?");
+    feed(&mut chat, &[&posted(&stepped("running", 40, true))]);
+    assert_eq!(preview(&chat), before);
+}
+
 fn says(session: &str, name: &str, body: &str) -> Message {
     let mut message = Message::new(session, Event::Text { body: body.into() });
     message.name = Some(name.into());

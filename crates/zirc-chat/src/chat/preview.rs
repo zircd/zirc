@@ -81,10 +81,13 @@ impl Chat {
     }
 }
 
-/// Whether `entry` is something someone said: a message, action, notice or zirc post.
+/// Whether `entry` is something someone said: a message, action, notice or zirc post. Never
+/// a card's live update, which only redraws its card: a running landing's steps come every
+/// few seconds, and the preview would change with each, between landings when several run.
 fn said(entry: &Entry) -> bool {
     !entry.from.is_empty()
         && !entry.is_session_card()
+        && entry.live_card().is_none()
         && matches!(
             entry.kind,
             EntryKind::Message(_)
