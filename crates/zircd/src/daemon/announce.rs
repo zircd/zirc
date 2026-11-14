@@ -266,6 +266,7 @@ impl Daemon {
         let alerts = overlaps
             .into_iter()
             .filter_map(|mut overlap| {
+                self.predictions.note(&overlap);
                 let escalated = self.told.local_news(&mut overlap, self.clock.now())?;
                 Some((Response::LocalOverlap(overlap), escalated))
             })

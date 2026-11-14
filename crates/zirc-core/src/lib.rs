@@ -15,6 +15,7 @@ pub mod editor;
 /// Emoji, for pickers and the composer: zirc-chat's, which the browser shares.
 pub use zirc_chat::emoji;
 pub mod filter;
+pub mod fit;
 pub mod generated;
 pub mod gotchas;
 pub mod guest;

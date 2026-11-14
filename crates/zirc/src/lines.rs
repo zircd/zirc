@@ -168,10 +168,17 @@ pub(crate) fn one_line(text: &str) -> String {
         .collect()
 }
 
+/// An intent's line ends with how it meets the session's work, where zircd says: `#api
+/// alpha/cc-1: about to change web: … — different files: they change …; you change …`.
 pub(crate) fn line(delivery: &Delivery) -> String {
     let channel = channel_in(&delivery.channel, delivery.org.as_deref());
+    let fit = delivery
+        .fit
+        .as_ref()
+        .map(|fit| format!(" — {}", fit.text()))
+        .unwrap_or_default();
     format!(
-        "{channel} {}{}",
+        "{channel} {}{fit}{}",
         said(delivery),
         id_of(delivery.id.as_deref())
     )

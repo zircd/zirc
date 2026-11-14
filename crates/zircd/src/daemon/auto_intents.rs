@@ -158,12 +158,31 @@ impl AutoIntents {
     }
 }
 
-/// zircd's intent for `session` on `branch`, changing `dirs`, lasting `lasts` seconds from
-/// `now`.
-fn auto_intent(branch: Option<&str>, dirs: Vec<String>, now: u64, lasts: u64) -> Event {
+/// zircd's intent for `session` on `branch`, changing `files` in `dirs`, lasting `lasts`
+/// seconds from `now`. Its words name the files, so whoever reads it in a list or an app
+/// sees which, not just where; its paths stay the directories, to warn of what comes next
+/// there.
+fn auto_intent(
+    branch: Option<&str>,
+    files: &BTreeSet<String>,
+    dirs: Vec<String>,
+    now: u64,
+    lasts: u64,
+) -> Event {
+    const SHOWN: usize = 3;
+    let files: Vec<&str> = files
+        .iter()
+        .filter(|path| !zirc_core::hunks::is_lockfile(path))
+        .map(String::as_str)
+        .collect();
+    let what = match files.len() {
+        0 => "files here".to_owned(),
+        n if n <= SHOWN => files.join(", "),
+        n => format!("{} and {} more", files[..SHOWN].join(", "), n - SHOWN),
+    };
     let summary = match branch {
-        Some(branch) => format!("changing files here on {branch} (said by zircd)"),
-        None => "changing files here (said by zircd)".to_owned(),
+        Some(branch) => format!("changing {what} on {branch} (said by zircd)"),
+        None => format!("changing {what} (said by zircd)"),
     };
     Event::Intent {
         summary,
@@ -220,7 +239,7 @@ impl Daemon {
             if !renews {
                 self.tell_gotchas(&repo_channel, &gotchas_room, &session, &dirs);
             }
-            let intent = auto_intent(branch.as_deref(), dirs, now, LASTS);
+            let intent = auto_intent(branch.as_deref(), &paths, dirs, now, LASTS);
             let event = if renews {
                 zirc_proto::renewal(&intent).unwrap_or(intent)
             } else {
@@ -248,9 +267,10 @@ impl Daemon {
                         .find(|set| set.session == Some(session))
                         .and_then(|set| set.branch);
                     let dirs = dirs.iter().cloned().collect();
+                    let files = watched.paths_of(session);
                     Some((
                         session.to_owned(),
-                        auto_intent(branch.as_deref(), dirs, now, left),
+                        auto_intent(branch.as_deref(), &files, dirs, now, left),
                     ))
                 })
             })

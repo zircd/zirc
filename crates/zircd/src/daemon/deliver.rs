@@ -16,7 +16,7 @@ use zirc_proto::{Event, Message};
 use super::{
     Daemon, MISSED, MISSED_FOR, Said, WATCHER_SESSION, Watched, answered_concerns, channel_of,
     direct_concerns, from_guest, in_repo, landings, lands_under, later, mentions, now, routine,
-    wakes, with_why,
+    wakes,
 };
 
 impl Daemon {
@@ -80,11 +80,18 @@ impl Daemon {
             self.heard_now(&session, response);
         }
         self.awaits_heard(response);
-        let mut reasons = reasons.into_iter();
+        let dressed: Vec<Response> = self
+            .watchers
+            .iter()
+            .zip(&reasons)
+            .map(|(watcher, why)| self.dressed(response, *why, watcher.session.as_deref()))
+            .collect();
+        let mut reasons = reasons.into_iter().zip(dressed);
         // A watcher that can't keep up misses messages rather than stalling the daemon;
         // one that hung up is dropped.
         self.watchers.retain(|watcher| {
-            let why = reasons.next().flatten();
+            let (why, dressed) = reasons.next().unzip();
+            let why = why.flatten();
             if why.is_some()
                 && let Some(earlier) = watcher
                     .session
@@ -103,7 +110,9 @@ impl Daemon {
                 return !watcher.heard.is_closed();
             }
             !matches!(
-                watcher.heard.try_send(with_why(response.clone(), why)),
+                watcher
+                    .heard
+                    .try_send(dressed.unwrap_or_else(|| response.clone())),
                 Err(mpsc::error::TrySendError::Closed(_))
             )
         });
@@ -147,10 +156,11 @@ impl Daemon {
                 continue;
             }
             let earlier = self.take_later(&session);
+            let dressed = self.dressed(response, Some(why), Some(&session));
             let missed = self.missed.entry(session).or_default();
             missed.extend(earlier.into_iter().map(|response| (now, response)));
             missed.retain(|(at, _)| now.duration_since(*at) < MISSED_FOR);
-            missed.push_back((now, with_why(response.clone(), Some(why))));
+            missed.push_back((now, dressed));
             while missed.len() > MISSED {
                 missed.pop_front();
             }

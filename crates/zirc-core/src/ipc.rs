@@ -923,6 +923,10 @@ pub struct Delivery {
     /// this machine can tell from [`Delivery::account`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decided: Option<Box<crate::decisions::Provenance>>,
+    /// For another session's intent ([`Why::Intent`]): how it meets the watching session's
+    /// work, file by file, as zircd can tell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fit: Option<Box<crate::fit::Fit>>,
 }
 
 impl Delivery {
@@ -947,6 +951,7 @@ impl Delivery {
             hosted_by: None,
             client_of: None,
             decided: None,
+            fit: None,
         }
     }
 }

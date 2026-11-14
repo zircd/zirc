@@ -206,6 +206,7 @@ mod tests {
             hosted_by: None,
             client_of: None,
             decided: None,
+            fit: None,
         }
     }
 

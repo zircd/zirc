@@ -1380,6 +1380,17 @@
             }
           ],
           "description": "For a decision ([`zirc_proto::decision`]): how sure it is the decider's own word, as\nthis machine can tell from [`Delivery::account`]."
+        },
+        "fit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For another session's intent ([`Why::Intent`]): how it meets the watching session's\nwork, file by file, as zircd can tell."
         }
       },
       "required": [
@@ -1654,6 +1665,78 @@
         }
       ],
       "description": "Who sent a decision, as far as the server says."
+    },
+    "Fit": {
+      "type": "object",
+      "properties": {
+        "theirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The files the intending session has changed under the intent's paths, sorted."
+        },
+        "mine": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The files the hearing session has changed under them, sorted."
+        },
+        "shared": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/Shared2"
+          },
+          "description": "Of the files both change, how."
+        },
+        "named": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The hearing session's files the intent names themselves, not by a directory."
+        }
+      },
+      "description": "How an intent meets the work of the session hearing it."
+    },
+    "Shared2": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "same-lines": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "uint32",
+                  "minimum": 0
+                },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          },
+          "required": [
+            "same-lines"
+          ],
+          "additionalProperties": false,
+          "description": "On the same or neighbouring lines, these of their merge base: likely to conflict."
+        },
+        {
+          "type": "string",
+          "const": "apart",
+          "description": "In different parts: likely to merge."
+        },
+        {
+          "type": "string",
+          "const": "unknown",
+          "description": "Which lines isn't known, as with another machine's."
+        }
+      ],
+      "description": "How two sessions both change one file."
     },
     "DecisionRequest": {
       "type": "object",

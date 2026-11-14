@@ -507,3 +507,58 @@ async fn on_one_machine_an_automatic_intent_said_again_wakes_another_session_onc
     let heard = until_marker(&mut watching, |heard| says(heard, "marker")).await;
     assert_eq!(intent_wakes(&heard), Vec::<String>::new());
 }
+
+#[tokio::test]
+async fn an_intent_says_how_it_meets_the_work_of_the_session_it_wakes() {
+    let ergo = require_ergo!();
+    let machine = Machine::start(&ergo, "alpha").await;
+    let (theirs, mine) = (clone(), clone());
+    for (clone, session) in [(&theirs, "cc-a"), (&mine, "cc-b")] {
+        machine
+            .request(Request::RepoAdd {
+                path: clone.path().to_owned(),
+                session: Some(session.into()),
+            })
+            .await;
+    }
+    machine
+        .eventually(
+            |status| status.channels.iter().any(|c| c == "#api"),
+            "joining",
+        )
+        .await;
+    let edit = |clone: &tempfile::TempDir, path: &str| {
+        let file = clone.path().join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, "export {}\n").unwrap();
+    };
+    edit(&mine, "web/login.ts");
+    until_who(
+        &machine,
+        |channels| {
+            channels.iter().any(|c| {
+                c.members
+                    .iter()
+                    .any(|m| m.session.as_deref() == Some("cc-b") && !m.paths.is_empty())
+            })
+        },
+        "cc-b's changes",
+    )
+    .await;
+    let mut watching = machine.watch(Some("cc-b")).await;
+
+    // cc-a changes another file in web/: its automatic intent for web/ wakes cc-b, saying
+    // whose files are whose, and that they're different ones.
+    edit(&theirs, "web/cart.ts");
+
+    let delivery = next_intent(&mut watching).await;
+    assert_eq!(delivery.why, Some(Why::Intent));
+    let fit = delivery.fit.expect("the intent's fit");
+    assert_eq!(fit.theirs, ["web/cart.ts"]);
+    assert_eq!(fit.mine, ["web/login.ts"]);
+    assert_eq!(fit.verdict(), zirc_core::fit::Verdict::DifferentFiles);
+    let Event::Intent { summary, .. } = &delivery.message.event else {
+        unreachable!()
+    };
+    assert!(summary.starts_with("changing web/cart.ts"), "{summary}");
+}

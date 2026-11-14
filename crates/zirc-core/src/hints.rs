@@ -27,6 +27,10 @@ pub mod kind {
     pub const CONFLICT_AHEAD: &str = "conflict-ahead";
     /// Another session is about to change files you're changing.
     pub const INTENT: &str = "intent";
+    /// The same, in other files or other parts of yours, as zircd can tell: nothing to agree.
+    pub const INTENT_ELSEWHERE: &str = "intent.elsewhere";
+    /// The same, in lines of yours, or files of yours whose lines zircd can't tell.
+    pub const INTENT_SAME_LINES: &str = "intent.same-lines";
     /// A push under files you're changing.
     pub const PUSH: &str = "push";
     /// Another session's commit in files you're changing.
@@ -84,11 +88,13 @@ pub mod kind {
     pub const REACTION_OTHER: &str = "reaction.other";
 
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 30] = [
+    pub const ALL: [&str; 32] = [
         OVERLAP,
         OVERLAP_SAME_LINES,
         CONFLICT_AHEAD,
         INTENT,
+        INTENT_ELSEWHERE,
+        INTENT_SAME_LINES,
         PUSH,
         COMMIT,
         POST,
@@ -431,7 +437,7 @@ pub fn seen(heard: &Heard, watching: Option<&str>) -> Option<Seen> {
                 fields.insert("session", session);
             }
             fields.insert("who", delivery.from.clone());
-            let kind = message_kind(&delivery.message.event, delivery.why, watching, &mut fields)?;
+            let kind = message_kind(delivery, watching, &mut fields)?;
             // Only the decider's own account, or their own terminal, makes it theirs to
             // follow: what an agent relays, or anyone else says they decided, is a claim.
             let own = matches!(
@@ -483,13 +489,15 @@ fn reaction_kind(
     }
 }
 
-/// The kind of a message's `event`, heard for `why`, with its fields added to `fields`.
+/// The kind of `delivery`'s event, heard for its reason, with its fields added to `fields`.
+/// An intent's kind is by how it meets the session's work, its fit, where zircd says.
 fn message_kind(
-    event: &Event,
-    why: Option<Why>,
+    delivery: &crate::ipc::Delivery,
     session: Option<&str>,
     fields: &mut BTreeMap<&'static str, String>,
 ) -> Option<&'static str> {
+    let (event, why) = (&delivery.message.event, delivery.why);
+    let fit = delivery.fit.as_deref();
     if why == Some(Why::Decision) {
         return Some(kind::DECISION);
     }
@@ -508,7 +516,11 @@ fn message_kind(
     match event {
         Event::Intent { paths, .. } => {
             fields.insert("paths", paths_field(paths));
-            Some(kind::INTENT)
+            Some(match fit.map(crate::fit::Fit::verdict) {
+                None => kind::INTENT,
+                Some(verdict) if verdict.asks() => kind::INTENT_SAME_LINES,
+                Some(_) => kind::INTENT_ELSEWHERE,
+            })
         }
         Event::Push { branch, paths, .. } => {
             fields.insert("branch", branch.clone());

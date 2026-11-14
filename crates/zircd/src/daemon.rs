@@ -35,6 +35,7 @@ pub(crate) mod breaker;
 mod broadcast;
 mod busy;
 mod deliver;
+mod fit;
 mod gotchas;
 mod holds;
 mod incoming;
@@ -597,6 +598,8 @@ pub struct Daemon {
     replay: replay::Replay,
     /// The overlaps told lately, so one that comes again unchanged isn't told again.
     told: Told,
+    /// What Git last said of the lines worktrees here both change, for intents' fits.
+    predictions: fit::Predictions,
     /// The ids of the messages heard lately.
     heard: Heard,
     /// The server's history batches open now: their lines are never news.
@@ -771,6 +774,7 @@ impl Daemon {
             missed: BTreeMap::new(),
             replay: replay::Replay::default(),
             told: Told::default(),
+            predictions: fit::Predictions::default(),
             heard: Heard::default(),
             batches: batches::Batches::default(),
             problem: None,

@@ -179,6 +179,7 @@ impl Daemon {
     /// session ends, and leaves its channels.
     pub(super) fn gone(&mut self, root: &Path) {
         self.warned.forget(root);
+        self.predictions.forget(root);
         let Some(watched) = self.repos.remove(root) else {
             return;
         };
