@@ -747,10 +747,11 @@ impl<'a> Layout<'a> {
             .chat
             .trail_more(&line.key, landing.updates.len(), landing.folds_steps());
         let steps = more.is_none_or(|more| more.open || more.steps.is_none());
-        let mut blocks = link_blocks(landing.rich_steps(steps), &landing.links());
+        let blocks = link_blocks(landing.rich_steps(steps), &landing.links());
         let clock = |at| self.clock(at);
-        blocks.extend(super::trail_block(landing.trail(more.as_ref()), &clock));
+        let trail = super::trail_stubs(landing.trail(more.as_ref()), &clock);
         line.rich = self.chat.flat(self.chat.drawn(blocks));
+        line.rich.extend(self.chat.flat_trail(trail));
         line.more = more.map(|more| {
             let whose = line
                 .speaker
@@ -1921,6 +1922,12 @@ mod tests {
             rich_text(card)
         );
         assert!(!rich_text(card).contains("09:02"));
+        // Its trail last, a stub an update, which every app draws with a tear before it.
+        let Some(RichBlock::Trail { stubs }) = card.rich.last() else {
+            panic!("the trail comes last: {:?}", card.rich.last());
+        };
+        assert_eq!(stubs.len(), 3);
+        assert!(stubs[0].spans[0].bold && stubs[0].spans[0].text == "09:04");
         let more = card.more.as_ref().expect("its earlier updates fold away");
         assert_eq!(
             (more.label.as_str(), more.hidden, more.open),

@@ -77,6 +77,25 @@ pub enum RichBlock {
         /// Its items.
         items: Vec<RichItem>,
     },
+    /// A card's updates under it, oldest first, after its other blocks: each a ticket stub
+    /// still attached to the card, with a perforated tear across before it, a dashed line
+    /// with a half-circle notch cut into the card's edge at each end (the user's choice, 14
+    /// Nov 2026). Every app draws it so.
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    Trail {
+        /// Its stubs, one an update.
+        stubs: Vec<RichStub>,
+    },
+}
+
+/// A stub of a [`RichBlock::Trail`]: one of a card's updates, `14:02 running → failed`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct RichStub {
+    /// Its runs of text: its time, bold, then what it did.
+    pub spans: Vec<RichSpan>,
 }
 
 /// An item of a [`RichBlock::Items`].
@@ -133,6 +152,10 @@ impl RichBlock {
                         Self::each_span(&item.blocks, each);
                     }
                 }
+                Self::Trail { stubs } => stubs
+                    .iter()
+                    .flat_map(|stub| &stub.spans)
+                    .for_each(&mut *each),
                 Self::Code { .. } | Self::Rule => {}
             }
         }
@@ -528,6 +551,21 @@ impl Chat {
             );
         }
         out
+    }
+
+    /// A card's trail as apps draw it, a [`RichBlock::Trail`]: each of `stubs` an update's
+    /// words ([`super::trail_stubs`]). `None` for none.
+    #[must_use]
+    pub fn flat_trail(&self, stubs: Vec<Vec<Span>>) -> Option<RichBlock> {
+        let reader = self.reader();
+        (!stubs.is_empty()).then(|| RichBlock::Trail {
+            stubs: stubs
+                .into_iter()
+                .map(|spans| RichStub {
+                    spans: reader.spans(spans),
+                })
+                .collect(),
+        })
     }
 
     fn reader(&self) -> Reader<'_> {

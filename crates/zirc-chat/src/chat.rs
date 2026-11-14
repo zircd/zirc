@@ -132,7 +132,7 @@ pub use finder::{
 pub use finding::{Finding, SEARCH_SETTLE_MS};
 pub use flat::{
     CodeLine, CodeToken, Highlighter, RichBlock, RichCell, RichItem, RichRow, RichSpan,
-    RichSpanKind, TASK_MARKERS, highlighted_lines,
+    RichSpanKind, RichStub, TASK_MARKERS, highlighted_lines,
 };
 pub use forge::{branch_link, commit_link, link_blocks, link_words};
 pub use group::{GROUP_PREFIX, is_group};
@@ -208,7 +208,7 @@ pub use typing::{EVERY as TYPING_EVERY, SESSION_TAG, TYPING_TAG, Typist, typing_
 pub use view::{
     EVENT_MARK, Icon, Item, LANDING_KIND, Landing, Membership, Outcome, Parts, Pointer,
     RECONNECT_GAP, SenderKind, Stage, UPDATES_SHOWN, Update, ZIRC_LABEL, actor, app_label,
-    day_label, is_system, people_only, sender_kind, shows_sent_from, trail_block,
+    day_label, is_system, people_only, sender_kind, shows_sent_from, trail_stubs,
 };
 pub use words::{
     ACTIVITY, ACTIVITY_HINT, ADVANCED, ASKING_ZIRC_DEV, ATTACH, BACK, BACK_TO_RESULTS,

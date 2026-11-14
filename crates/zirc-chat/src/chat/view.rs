@@ -1256,33 +1256,30 @@ impl Pointer<'_> {
     }
 }
 
-/// `updates` as a card's trail shows them, `clock` putting times in words: a list, each
-/// its time in bold then what it did. `None` for none.
+/// `updates` as a card's trail shows them, `clock` putting times in words: each a stub's
+/// words, its time in bold then what it did, which [`super::Chat::flat_trail`] makes the
+/// card's [`super::RichBlock::Trail`].
 #[must_use]
-pub fn trail_block(
+pub fn trail_stubs(
     updates: &[Update],
     clock: &dyn Fn(DateTime<Utc>) -> String,
-) -> Option<super::Block> {
-    (!updates.is_empty()).then(|| super::Block::List {
-        start: None,
-        items: updates
-            .iter()
-            .map(|update| super::ListItem {
-                task: None,
-                blocks: vec![super::Block::Paragraph(vec![
-                    super::Span {
-                        text: clock(update.time),
-                        bold: true,
-                        ..super::Span::default()
-                    },
-                    super::Span {
-                        text: format!(" {}", update.what()),
-                        ..super::Span::default()
-                    },
-                ])],
-            })
-            .collect(),
-    })
+) -> Vec<Vec<super::Span>> {
+    updates
+        .iter()
+        .map(|update| {
+            vec![
+                super::Span {
+                    text: clock(update.time),
+                    bold: true,
+                    ..super::Span::default()
+                },
+                super::Span {
+                    text: format!(" {}", update.what()),
+                    ..super::Span::default()
+                },
+            ]
+        })
+        .collect()
 }
 
 /// An integration's post's row ([`SenderKind::Integration`]): CI saying how a landing or a
