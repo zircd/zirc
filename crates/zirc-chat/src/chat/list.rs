@@ -695,6 +695,11 @@ pub struct ChannelGroup {
 /// [`DirectRow::folded`].
 pub const ROOM_QUIET_AFTER: chrono::TimeDelta = chrono::TimeDelta::hours(1);
 
+/// How long after something was last said in a room under its channel it counts as an
+/// active thread, as Discord archives a quiet thread after a day by default: see
+/// [`Chat::is_quiet_thread`].
+pub const THREAD_ACTIVE_FOR: chrono::TimeDelta = chrono::TimeDelta::hours(24);
+
 /// What a direct-message row is with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -856,6 +861,17 @@ impl Chat {
             && !recent
             && !self.is_starred(name)
             && !self.selected().name.eq_ignore_ascii_case(name)
+    }
+
+    /// Whether the room called `name`, under its channel, is a quiet thread: nothing unread
+    /// in it, nothing said in it for [`THREAD_ACTIVE_FOR`], and it isn't the conversation
+    /// shown. A phone lists only the others under their channel ([`super::ListRow::quiet`]).
+    #[must_use]
+    pub fn is_quiet_thread(&self, name: &str) -> bool {
+        let recent = self
+            .last_said(name)
+            .is_some_and(|at| (self.clock)() - at < THREAD_ACTIVE_FOR);
+        !self.is_unread(name) && !recent && !self.selected().name.eq_ignore_ascii_case(name)
     }
 
     /// The threads of the channel called `channel`, newest first: the rooms under it we know,

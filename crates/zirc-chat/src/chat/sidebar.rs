@@ -148,6 +148,11 @@ pub struct ListRow {
     pub unanswered: bool,
     /// For a guest's, that it's closed: under the Closed fold.
     pub closed: bool,
+    /// For a room under its channel, that it's quiet ([`super::Chat::is_quiet_thread`]):
+    /// nothing unread nor said in it for [`super::THREAD_ACTIVE_FOR`], and not shown. A
+    /// phone leaves it off its list, in its channel's sheet alone, as Discord lists only
+    /// active threads (Android, from 14 Nov 2026, the user's choice).
+    pub quiet: bool,
 }
 
 /// How many as a row counts it.
@@ -187,6 +192,7 @@ impl ListRow {
             mine: false,
             unanswered: false,
             closed: false,
+            quiet: false,
         }
     }
 
@@ -565,6 +571,7 @@ impl Chat {
                 .map(|preview| ago_short(preview.at, (self.clock)())),
             preview: preview.map(|preview| preview.text),
             latest_ms: self.last_said(name).map(|at| at.timestamp_millis()),
+            quiet: depth > 0 && self.is_quiet_thread(name),
             ..ListRow::new(kind, part, title)
         }
         .counting(self.badge(name))

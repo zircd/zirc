@@ -4136,6 +4136,47 @@ fn says_the_person_is_typing_every_few_seconds_and_when_they_clear_it() {
 }
 
 #[test]
+fn marks_a_thread_quiet_after_a_day_with_nothing_unread_or_shown() {
+    let mut chat = Scene::in_api();
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #web",
+            ":me!u@h JOIN #web/fresh",
+            ":me!u@h JOIN #web/old",
+            ":me!u@h JOIN #web/unread",
+            ":me!u@h JOIN #web/silent",
+            ":me!u@h JOIN #web/shown",
+            "@time=2026-10-30T11:00:00.000Z :me!u@h PRIVMSG #web/fresh :today",
+            "@time=2026-10-27T11:00:00.000Z :me!u@h PRIVMSG #web/old :days ago",
+            "@time=2026-10-27T11:00:00.000Z :bob!u@h PRIVMSG #web/unread :days ago",
+            "@time=2026-10-27T11:00:00.000Z :me!u@h PRIVMSG #web/shown :days ago",
+        ],
+    );
+    let at = chat.position("#web/shown").unwrap();
+    let _ = chat.select(at);
+    let quiet: Vec<(String, bool)> = chat
+        .sidebar_list(&ListOptions::default())
+        .into_iter()
+        .filter(|row| row.kind == ListKind::Room)
+        .map(|row| (row.name, row.quiet))
+        .collect();
+    let of = |name: &str| quiet.iter().find(|(n, _)| n == name).map(|(_, q)| *q);
+    assert_eq!(of("#web/fresh"), Some(false), "{quiet:?}");
+    assert_eq!(of("#web/unread"), Some(false), "{quiet:?}");
+    assert_eq!(of("#web/shown"), Some(false), "{quiet:?}");
+    assert_eq!(of("#web/old"), Some(true), "{quiet:?}");
+    assert_eq!(of("#web/silent"), Some(true), "{quiet:?}");
+    // A channel's own row is never quiet: only what's under it is.
+    assert!(
+        chat.sidebar_list(&ListOptions::default())
+            .iter()
+            .filter(|row| row.kind != ListKind::Room)
+            .all(|row| !row.quiet)
+    );
+}
+
+#[test]
 fn lists_every_thread_plainly_quiet_ones_too() {
     let mut chat = Scene::in_api();
     feed(
