@@ -354,6 +354,71 @@ async fn a_landing_a_session_waits_on_wakes_it() {
     );
 }
 
+/// Waiting on a build, as //ops:land does: how its steps stand while it runs, its start and
+/// each step's live update (ops/land.sh's step), wakes nobody; how it ends does.
+#[tokio::test]
+async fn a_landings_steps_never_wake_a_session_waiting_on_it() {
+    let ergo = require_ergo!();
+    let [(alpha, alpha_clone), _] = two_machines(&ergo).await;
+    alpha
+        .request(Request::RepoAdd {
+            path: alpha_clone.path().to_owned(),
+            session: Some("cc-1".into()),
+        })
+        .await;
+    alpha
+        .request(Request::Join {
+            repo: alpha_clone.path().to_owned(),
+            topic: "landings".into(),
+            org: false,
+            session: Some("cc-1".into()),
+        })
+        .await;
+    alpha
+        .eventually(
+            |status| status.channels.iter().any(|c| c == "#api/landings"),
+            "joining #api/landings",
+        )
+        .await;
+    let mut cc1 = alpha.watch(Some("cc-1")).await;
+    let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#api/landings").await;
+    let next_landing = async |watching: &mut Watching| loop {
+        let delivery = next(watching).await;
+        if let Event::Custom { text, .. } = delivery.message.event {
+            return (text, delivery.why);
+        }
+    };
+    alpha.request(wait_for("cc-1", &["1302"])).await;
+    let says = |text: &str, state: &str, level: Option<zirc_proto::Level>| {
+        let steps = serde_json::json!([{ "name": "Build and test", "state": "running" }]);
+        let mut message = zirc_proto::Message::new(
+            "ci",
+            Event::Custom {
+                kind: "x-zirc/landing".into(),
+                data: serde_json::json!({ "build": "1302", "state": state, "steps": steps }),
+                text: text.into(),
+            },
+        );
+        message.level = level;
+        let line = zirc_proto::encode_up_to(&message, 4096).unwrap();
+        ci.privmsg("#api/landings", &line).unwrap();
+    };
+    for (text, level) in [
+        ("build 1302 started", None),
+        ("build 1302: Build and test", Some(zirc_proto::Level::Debug)),
+    ] {
+        says(text, "running", level);
+        assert_eq!(next_landing(&mut cc1).await, (text.into(), None), "{text}");
+    }
+    let failed = "cc-4: build 1302 failed: //web:unit";
+    says(failed, "failed", None);
+    assert_eq!(
+        next_landing(&mut cc1).await,
+        (failed.into(), Some(Why::Awaited))
+    );
+}
+
 #[tokio::test]
 async fn a_landings_line_is_news_only_to_the_session_it_names() {
     let ergo = require_ergo!();

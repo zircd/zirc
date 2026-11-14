@@ -498,9 +498,11 @@ impl Daemon {
         {
             return ControlFlow::Break(Some(Why::StateChanged));
         }
-        // CI on a landing the session waits on, however routine for others.
+        // CI on a landing the session waits on, however routine for others; but not how its
+        // steps stand while it runs (ops/land.sh's step), which needs no one.
         if let Event::Custom { kind, text, data } = &delivery.message.event
             && kind == LANDING_KIND
+            && !under_way(&delivery.message, data)
             && let Some(session) = session
             && let Some(why) = self.awaits.concerns(
                 session,
@@ -683,4 +685,12 @@ impl Daemon {
             .get(&worktree.path)
             .is_some_and(|watched| watched.is_of(session))
     }
+}
+
+/// Whether a landing's event, `message` with its `data`, only says how its steps stand while
+/// it runs: a live update ([`Message::is_live`]), or its start, running with its steps. A
+/// wait on the landing is for how it ends.
+fn under_way(message: &Message, data: &serde_json::Value) -> bool {
+    let data = zirc_proto::ci::Data::of(data);
+    message.is_live() || (data.state.as_deref() == Some("running") && !data.steps.is_empty())
 }
