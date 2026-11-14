@@ -42,8 +42,8 @@ side by side, as a hosted server's pod does:
   how long and large it is, and the first time each is asked for it makes the poster
   (`/m/<id>?w=640`) and the copy people play (`?r=720`), which the server answers 202 for
   meanwhile, reading the original and putting what it makes through links the server signs.
-  Without it, video is shared as a file. Its image (`//deploy/media-worker:image_push_public`)
-  is built with Debian's ffmpeg, for amd64 machines.
+  Without it, video is shared as a file. Its image is built with Debian's ffmpeg, for amd64
+  machines.
 - TLS, `--tls` (`ZIRC_TLS`):
   - `acme`, the default: a certificate from Let's Encrypt for `--host`, answered over HTTP on
     port 80, renewed a month before it runs out, which Ergo and the HTTPS side read again
