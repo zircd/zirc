@@ -1,0 +1,59 @@
+load("@rules_rust//rust:defs.bzl", "rust_lint_config")
+load("@rules_rust_wasm_bindgen//:defs.bzl", "rust_wasm_bindgen_toolchain")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load(":platforms.bzl", "PLATFORMS")
+
+[
+    config_setting(
+        name = platform,
+        constraint_values = [
+            "@platforms//os:" + os,
+            "@platforms//cpu:" + cpu,
+        ],
+        visibility = ["//visibility:public"],
+    )
+    for platform, (os, cpu) in PLATFORMS.items()
+]
+
+# zirc's crates' lints: Cargo.toml's [workspace.lints] (as bazel/lints.bzl says them for the
+# apps, tools and services) and more: docs on everything public, unsafe code forbidden. rules_rust
+# can't read Cargo's table, so this is its sanctioned copy: change them together.
+rust_lint_config(
+    name = "lints",
+    clippy = {"pedantic": "warn"},
+    rustc = {
+        "missing_docs": "warn",
+        "unsafe_code": "forbid",
+    },
+    visibility = ["//visibility:public"],
+)
+
+# What runs a test inside zirc-sandbox (sandbox.bzl).
+exports_files([
+    "brand.bzl",
+    "sandbox_test.sh",
+])
+
+# Patches to modules published.MODULE.bazel overrides.
+exports_files(glob(["*.patch"]))
+
+# The wasm-bindgen CLI for the machine running the build, wasm-bindgen's own release at the
+# crate's version (MODULE.bazel), in place of rules_rust_wasm_bindgen's older one.
+sh_binary(
+    name = "wasm_bindgen_cli",
+    srcs = select({
+        ":" + platform: ["@wasm_bindgen_cli_{}//:wasm-bindgen".format(platform.replace("-", "_"))]
+        for platform in PLATFORMS
+    }),
+)
+
+rust_wasm_bindgen_toolchain(
+    name = "wasm_bindgen_toolchain_impl",
+    wasm_bindgen_cli = ":wasm_bindgen_cli",
+)
+
+toolchain(
+    name = "wasm_bindgen_toolchain",
+    toolchain = ":wasm_bindgen_toolchain_impl",
+    toolchain_type = "@rules_rust_wasm_bindgen//:toolchain_type",
+)

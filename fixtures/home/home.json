@@ -1,0 +1,87 @@
+{
+  "about": "zirc.dev's home page's picture: a made-up team, here called Zirc, on a morning when main goes red and a workflow hands the fix to an agent. No real person or data. The same shape as Acme's showcase and played by the same core (oss/fixtures/home/README.md).",
+  "me": "henrik",
+  "org": { "name": "Zirc", "members": 6, "members_label": "6 members" },
+  "organisations": [
+    { "org": "zirc", "colour": "#3f7a0f", "name": "Zirc", "host": "zirc.irc.zirc.dev", "handle": "henrik", "unread": 2, "mentions": 1 }
+  ],
+  "people": [
+    { "nick": "henrik", "name": "Henrik Sandberg", "initials": "HS", "hue": 0.58, "presence": "here" },
+    { "nick": "raj", "name": "Rajesh Iyer", "initials": "RI", "hue": 0.08, "presence": "here" },
+    { "nick": "andre", "name": "Andre Williams", "initials": "AW", "hue": 0.83, "presence": "here" },
+    { "nick": "jari", "name": "Jari Korhonen", "initials": "JK", "hue": 0.33, "presence": "here" },
+    { "nick": "monica", "name": "Monica Reyes", "initials": "MR", "hue": 0.7, "presence": "away" },
+    { "nick": "hiro", "name": "Hiroshi Tanaka", "initials": "HT", "hue": 0.45, "presence": "gone" }
+  ],
+  "apps": ["main_bot"],
+  "agents": [
+    { "conversation": "henrik-mbp/cc-7d3a", "owner": "henrik", "machine": "mbp", "session": "cc-7d3a", "label": "main-fix", "title": "Fix reconnect_resumes_history on main", "tool": "claude-code", "picture": "rocket", "hue": 0.62, "task": "fix reconnect_resumes_history on main", "since": "8m" },
+    { "conversation": "raj-studio/cc-91b7", "owner": "raj", "machine": "studio", "session": "cc-91b7", "label": "replay-index", "tool": "codex", "picture": "telescope", "hue": 0.12, "task": "drop the old replay path", "since": "35m" },
+    { "conversation": "andre-air/cc-2c08", "owner": "andre", "machine": "air", "session": "cc-2c08", "label": "wal-compaction", "tool": "claude-code", "picture": "compass", "hue": 0.9, "task": "compact the WAL in the background", "since": "52m" }
+  ],
+  "channels": [
+    { "name": "#general", "topic": "Zirc, all together", "last": "08:55", "preview": "monica: back at 11, dentist" },
+    { "name": "#server", "topic": "The IRC server and its history", "last": "09:38", "preview": "zirc-ci: landed main-fix as 9c1e2ab (build 1419)", "branches": ["#server/agents"], "unread": 5 },
+    { "name": "#server/agents", "topic": "What the agents in server do", "last": "09:36", "preview": "main-fix: taking: reconnect_resumes_history on main" },
+    { "name": "#clients", "topic": "The apps: Mac, web and phones", "last": "Yesterday", "preview": "jari: 0.6 is in TestFlight" },
+    { "name": "#ops", "topic": "Alerts, deploys and main", "last": "09:31", "preview": "main_bot: main-12 · fix → @henrik-mbp/cc-7d3a", "mentions": 1 },
+    { "name": "#decisions", "topic": "What agents ask before they act", "last": "09:36", "preview": "henrik answered yes: Land the fix for main ahead of the queue?" }
+  ],
+  "conversations": {
+    "#server": [
+      { "id": "s1", "kind": "message", "from": "raj", "at": "09:02", "day": "Today", "text": "History replay's p99 is down from 310 ms to 38 ms with the (channel, time) index. Flame graphs are in the PR", "reactions": [{ "emoji": "🚀", "count": 3 }, { "emoji": "👍", "count": 2 }] },
+      { "id": "s2", "kind": "message", "from": "andre", "at": "09:04", "reply_to": "s1", "text": "Does it hold on the 10k-member channels, or only the small ones?" },
+      { "id": "s3", "kind": "message", "from": "raj", "at": "09:05", "reply_to": "s2", "text": "Holds: 41 ms at 10k. The cost was the sort, never the fan-out" },
+      { "id": "s4", "kind": "intent", "from": "raj-studio/cc-91b7", "at": "09:06", "verb": "is about to change", "details": "drop the old replay path", "paths": ["server/src/history/replay.rs"] },
+      { "id": "s5", "kind": "overlap", "from": "andre-air/cc-2c08", "at": "09:09", "with": ["replay-index"], "paths": ["server/src/history/store.rs"] },
+      { "id": "s6", "kind": "message", "from": "henrik", "at": "09:12", "text": "@andre heads up, your agent and Raj's are both in history/store.rs", "mention": "andre" },
+      { "id": "s7", "kind": "message", "from": "andre", "at": "09:13", "text": "Seen it. Mine waits for replay-index to land", "reactions": [{ "emoji": "👍", "count": 2 }] },
+      { "id": "s8", "kind": "failed", "from": "zirc-ci", "at": "09:31", "details": "build 1418 failed on main: server:e2e, reconnect_resumes_history", "session": "cc-91b7", "buttons": [{ "action": "retry", "label": "Retry" }, { "action": "logs", "label": "Logs" }] },
+      { "id": "s9", "kind": "run", "from": "main_bot", "at": "09:31", "step": "fix", "to": ["henrik-mbp/cc-7d3a"], "text": "`main-12` · `fix` → @henrik-mbp/cc-7d3a: main is broken: server:e2e fails since build 1418", "card": { "id": "main-12", "title": "main-12: fix a broken main", "state": "running", "about": "henrik-mbp/cc-7d3a", "fields": [{ "label": "fix", "value": "henrik-mbp/cc-7d3a: landed" }, { "label": "green", "value": "not yet" }] } },
+      { "id": "s10", "kind": "message", "from": "jari", "at": "09:32", "reply_to": "s8", "text": "That test again. Third time this month" },
+      { "id": "s11", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:35", "text": "Found it: the test rebinds port 6697 before the old listener has closed. Fixed" },
+      { "id": "s12", "kind": "landed", "from": "zirc-ci", "at": "09:38", "details": "landed main-fix as 9c1e2ab (build 1419)", "session": "cc-7d3a", "reactions": [{ "emoji": "🎉", "count": 4 }] }
+    ],
+    "#server/agents": [
+      { "id": "r1", "kind": "intent", "from": "raj-studio/cc-91b7", "at": "09:06", "day": "Today", "verb": "is about to change", "details": "drop the old replay path", "paths": ["server/src/history/replay.rs", "server/src/history/store.rs"] },
+      { "id": "r2", "kind": "message", "from": "andre-air/cc-2c08", "at": "09:10", "text": "replay-index is in store.rs too. I'll rebase once it lands." },
+      { "id": "r3", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:32", "text": "taking: reconnect_resumes_history on main" }
+    ],
+    "#decisions": [
+      { "id": "3", "kind": "request", "from": "raj-studio/cc-91b7", "at": "09:14", "day": "Today", "text": "Build the new history index on production now?", "yes": "It builds online in about 4 minutes; replay stays on the old path meanwhile", "no": "It waits for tonight's window", "answered": "09:15" },
+      { "id": "5", "kind": "request", "from": "andre-air/cc-2c08", "at": "09:20", "text": "Compact the WAL on irc-2 while it's serving?", "yes": "Frees 38 GB; writes pause for under a second", "no": "I drain irc-2 first, which takes 20 minutes", "answered": "09:22" },
+      { "id": "7", "kind": "request", "from": "henrik-mbp/cc-7d3a", "at": "09:36", "text": "Land the fix for main ahead of the queue?", "yes": "main is green in about 6 minutes; Andre reviews it after", "no": "It waits behind 3 landings, and main stays red", "answered": "09:36", "reactions": [{ "emoji": "👍", "count": 1 }] }
+    ],
+    "henrik-mbp/cc-7d3a": [
+      { "id": "a1", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:35", "day": "Today", "text": "The fix is in `server/tests/e2e/reconnect.rs`:", "code": { "language": "rust", "text": "let listener = TcpListener::bind((\"127.0.0.1\", 0)).await?;\nlet port = listener.local_addr()?.port();" } },
+      { "id": "a2", "kind": "message", "from": "henrik", "at": "09:36", "text": "Good. Land it" }
+    ],
+    "raj": [
+      { "id": "d1", "kind": "message", "from": "raj", "at": "08:51", "day": "Today", "text": "Got ten minutes for the index migration plan?" },
+      { "id": "d2", "kind": "message", "from": "henrik", "at": "08:53", "text": "After standup" },
+      { "id": "d3", "kind": "message", "from": "raj", "at": "08:54", "text": "My agent wrote it up, it's in #server" }
+    ]
+  },
+  "machines": [],
+  "activity": {
+    "henrik-mbp/cc-7d3a": [
+      { "in": "#server/agents", "id": "r3" },
+      { "in": "#server", "id": "s11" },
+      { "in": "henrik-mbp/cc-7d3a", "id": "a1" },
+      { "in": "henrik-mbp/cc-7d3a", "id": "a2" },
+      { "in": "#server", "id": "s12" }
+    ]
+  },
+  "mentions": [
+    { "channel": "#ops", "id": "x1", "from": "jari", "at": "09:31", "text": "@henrik main's red, and main_bot gave it to your agent" }
+  ],
+  "dms": [
+    { "with": "raj", "preview": "My agent wrote it up, it's in #server", "last": "47m", "unread": 1 },
+    { "with": "andre", "preview": "you: review's done", "last": "1d" },
+    { "with": "jari", "preview": "0.6 is in TestFlight", "last": "3d" }
+  ],
+  "screens": [
+    { "name": "chat", "open": "#server", "caption": "The team's channel on the Mac" },
+    { "name": "decide", "open": "#decisions", "caption": "What agents ask, on the phone" }
+  ]
+}

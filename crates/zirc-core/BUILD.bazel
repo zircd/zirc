@@ -1,0 +1,53 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@zirc_version//:version.bzl", "VERSION")
+load("//bazel:rust.bzl", "zirc_rust_library")
+
+zirc_rust_library(
+    name = "zirc-core",
+    # zirc's default hints (hints.rs).
+    compile_data = ["src/hints/defaults.toml"],
+    ergo = True,
+    # tests/generated_up_to_date.rs compares these with what zirc_core::generated makes.
+    test_data = [
+        "//generated",
+        "//generated:schema.json",
+    ],
+    test_env = {"ZIRC_GENERATED_SCHEMA": "$(rootpath //generated:schema.json)"},
+)
+
+# Writes the generated schema and types under generated/:
+#   bazel run //crates/zirc-core:generated_types
+rust_binary(
+    name = "generated_types",
+    srcs = ["bin/generated_types.rs"],
+    lint_config = "//bazel:lints",
+    version = VERSION,
+    deps = [":zirc-core"],
+)
+
+# Makes zirc's PostHog dashboards in the project, replacing the ones it made before:
+#   POSTHOG_PROJECT_ID=… POSTHOG_PERSONAL_API_KEY=… bazel run //crates/zirc-core:posthog_dashboards
+rust_binary(
+    name = "posthog_dashboards",
+    srcs = ["bin/posthog_dashboards.rs"],
+    lint_config = "//bazel:lints",
+    version = VERSION,
+    deps = [
+        ":zirc-core",
+        "@crates//:tokio",
+    ],
+)
+
+# Signs a release's checksums with zirc's release key, read on stdin, as
+# //release:publish-zirc does, or makes a new key; see bin/release_sign.rs.
+rust_binary(
+    name = "release_sign",
+    srcs = ["bin/release_sign.rs"],
+    lint_config = "//bazel:lints",
+    version = VERSION,
+    visibility = [
+        "//release:__pkg__",
+        "//release:__pkg__",
+    ],
+    deps = [":zirc-core"],
+)

@@ -1,0 +1,157 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@zirc_version//:version.bzl", "VERSION")
+load("//bazel:rust.bzl", "zirc_rust_library")
+
+package(default_visibility = ["//visibility:public"])
+
+zirc_rust_library(
+    name = "zirc-theme",
+    compile_data = [
+        "tokens.json",
+        "zirc-theme.css",
+        ":fonts",
+    ] + glob([
+        "art/android/**",
+        "art/avatars/*.svg",
+        "art/icons/*.icns",
+        "art/icons/ios/*.png",
+    ]),
+)
+
+# The web stylesheet, generated from tokens.json and checked in so apps that take the crate
+# as a git dependency have it; a unit test fails when it's out of date. Rewrite it with:
+#   bazel run //crates/zirc-theme:css > crates/zirc-theme/zirc-theme.css
+rust_binary(
+    name = "css",
+    srcs = ["bin/css.rs"],
+    lint_config = "//bazel:lints",
+    version = VERSION,
+    deps = [":zirc-theme"],
+)
+
+exports_files([
+    "tokens.json",
+    "zirc-theme.css",
+    "art/apple-touch-icon.png",
+    "art/favicon.svg",
+])
+
+# JetBrains Mono, under the SIL Open Font License (fonts/OFL.txt): variable TTFs, static
+# ones a file per weight for GPUI's desktop app, and WOFF2s for the web. Inter 4.1, the UI's
+# typeface, under the same licence (fonts/Inter-OFL.txt): static TTFs and WOFF2s alike.
+filegroup(
+    name = "fonts",
+    srcs = glob(["fonts/*"]),
+)
+
+# The wordmark, a braided hash and zirc, and the icons drawn from its mark, that braid set
+# in a cut stone, made from tokens.json and
+# checked in under art/; zirc-theme-art's test fails when it's out of date. Rewrite it with:
+#   bazel run //crates/zirc-theme-art
+filegroup(
+    name = "art",
+    srcs = glob(["art/**"]),
+)
+
+# The wordmark, its name as outlines: art/wordmark-<mode>.svg.
+filegroup(
+    name = "wordmark",
+    srcs = glob(["art/wordmark-*.svg"]),
+)
+
+# App icons, 16 to 1024 px: art/icons/zirc-<mode>-<size>.png on a square ground, and for
+# macOS, on Apple's template, art/icons/macos/zirc-<variant>-<size>.png and
+# art/icons/zirc-<variant>.icns, the variant dark, light or tinted; and for iOS and Google
+# Play's listing, which cut it to their own shape, the stone to every edge, without an alpha
+# channel: art/icons/ios/zirc-1024.png and art/icons/play/zirc-512.png.
+filegroup(
+    name = "app_icons",
+    srcs = glob(["art/icons/**"]),
+)
+
+# Android's launcher icon, a res/ tree per mode, art/android/<mode>/mipmap-*/, and its
+# VectorDrawables, art/android/drawable{,-night}/: the notification icon and the wordmark.
+# zirc_theme::android::RES holds the dark icon and the drawables as bytes.
+filegroup(
+    name = "android_icons",
+    srcs = glob(["art/android/**"]),
+)
+
+# art/favicon.svg, which follows prefers-color-scheme, art/favicon.ico (16, 32, 48) and
+# art/apple-touch-icon.png (180).
+filegroup(
+    name = "favicons",
+    srcs = [
+        "art/apple-touch-icon.png",
+        "art/favicon.ico",
+        "art/favicon.svg",
+    ],
+)
+
+# 1200 by 630: art/social-card-<mode>.svg with {title} to fill in, and a PNG without one.
+filegroup(
+    name = "social_cards",
+    srcs = glob(["art/social-card-*"]),
+)
+
+# The agent avatar gallery's pictures, art/avatars/png/<id>-<size>.png, white on nothing,
+# for apps to draw on a session's colour: the phones take the 64 and 128 px ones.
+filegroup(
+    name = "agent_avatars_phone",
+    srcs = glob([
+        "art/avatars/png/*-64.png",
+        "art/avatars/png/*-128.png",
+    ]),
+)
+
+# The agent avatars' gallery, art/avatars/<id>.svg: white line drawings an app draws on a
+# session's colour, by the id an agent session picks (zirc-proto's AGENT_AVATARS).
+filegroup(
+    name = "avatars",
+    srcs = glob(["art/avatars/*.svg"]),
+)
+
+# A web page's stylesheet and the fonts it names relative to itself, and nothing else.
+filegroup(
+    name = "stylesheet",
+    srcs = [
+        "fonts/Inter-OFL.txt",
+        "fonts/OFL.txt",
+        "zirc-theme.css",
+    ] + glob(["fonts/*.woff2"]),
+)
+
+# The web fonts alone, for a site that serves them to other sites' stylesheets (zirc.dev's
+# /fonts, which git.zirc.dev's theme names).
+filegroup(
+    name = "web_fonts",
+    srcs = [
+        "fonts/Inter-OFL.txt",
+        "fonts/OFL.txt",
+    ] + glob(["fonts/*.woff2"]),
+)
+
+# A website's art: favicons, the wordmark, and the social cards as PNGs.
+filegroup(
+    name = "site_art",
+    srcs = [
+        "art/social-card-dark.png",
+        "art/social-card-light.png",
+        ":favicons",
+        ":wordmark",
+    ],
+)
+
+# What a web page needs: the stylesheet, the fonts it names relative to itself, favicons,
+# the wordmark and the social cards.
+filegroup(
+    name = "web",
+    srcs = [
+        "fonts/Inter-OFL.txt",
+        "fonts/OFL.txt",
+        "zirc-theme.css",
+        ":favicons",
+        ":social_cards",
+        ":wordmark",
+    ] + glob(["fonts/*.woff2"]),
+)

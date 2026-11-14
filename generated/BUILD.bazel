@@ -1,0 +1,21 @@
+# Files generated from zirc-proto and zirc-core by
+# `bazel run //crates/zirc-core:generated_types`, which zirc-core's generated_up_to_date
+# test checks: schema.json, the JSON Schema of the socket protocol and the envelope, and
+# telemetry/, the analytics events' types for the website and anything else.
+exports_files(["schema.json"])
+
+# The analytics events' TypeScript, for servers that send them, such as zirc.dev's.
+exports_files(
+    ["telemetry/telemetry.ts"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "generated",
+    srcs = [
+        "schema.json",
+        "telemetry/schema.json",
+        "telemetry/telemetry.ts",
+    ],
+    visibility = ["//crates/zirc-core:__pkg__"],
+)

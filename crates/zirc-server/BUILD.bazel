@@ -1,0 +1,89 @@
+load("@rules_oci//oci:defs.bzl", "oci_image", "oci_image_index", "oci_load", "oci_push")
+load("@tar.bzl", "tar")
+load("@zirc_version//:version.bzl", "VERSION")
+load("//bazel:release.bzl", "release_binary")
+load("//bazel:rust.bzl", "zirc_rust_binary")
+
+zirc_rust_binary(
+    name = "zirc-server",
+    ergo = True,
+)
+
+# The container image a self-hosted server runs (compose.yaml), for both architectures a
+# server may have: zirc-server, the pinned Ergo release and its default.yaml, on
+# distroless/cc as its nonroot user, who owns /data, where everything is kept. Load the one
+# for this machine into Docker with bazel run //crates/zirc-server:image_load_<arch>.
+[
+    (
+        release_binary(
+            name = "binary_" + arch,
+            src = ":zirc-server",
+            platform = "linux_" + arch,
+        ),
+        tar(
+            name = "layer_" + arch,
+            srcs = [
+                ":binary_" + arch,
+                "@ergo_linux_{}//:ergo".format(ergo),
+                "@ergo_linux_{}//:default.yaml".format(ergo),
+            ],
+            mtree = [
+                "usr/local/bin/zirc-server uid=0 gid=0 mode=0755 type=file time=0 content=$(execpath :binary_{})".format(arch),
+                "usr/local/bin/ergo uid=0 gid=0 mode=0755 type=file time=0 content=$(execpath @ergo_linux_{}//:ergo)".format(ergo),
+                "usr/local/share/ergo/default.yaml uid=0 gid=0 mode=0644 type=file time=0 content=$(execpath @ergo_linux_{}//:default.yaml)".format(ergo),
+                # distroless's nonroot user.
+                "data uid=65532 gid=65532 mode=0700 type=dir time=0",
+            ],
+        ),
+        oci_image(
+            name = "image_" + arch,
+            base = "@distroless_cc_linux_" + base,
+            entrypoint = ["/usr/local/bin/zirc-server"],
+            cmd = ["run"],
+            # The side imgproxy and the media worker reach the server at, on compose's network.
+            env = {
+                "ZIRC_DATA": "/data",
+                "ZIRC_BESIDE_LISTEN": "0.0.0.0:8090",
+            },
+            exposed_ports = [
+                "80/tcp",
+                "6667/tcp",
+                "6697/tcp",
+            ],
+            volumes = ["/data"],
+            tars = [":layer_" + arch],
+            # For whoever runs it from their own registry, as zirc's cluster does.
+            visibility = ["//visibility:public"],
+        ),
+        oci_load(
+            name = "image_load_" + arch,
+            image = ":image_" + arch,
+            repo_tags = ["zirc-server:dev"],
+        ),
+    )
+    for arch, ergo, base in [
+        ("amd64", "x86_64", "amd64"),
+        ("arm64", "arm64", "arm64_v8"),
+    ]
+]
+
+oci_image_index(
+    name = "image",
+    images = [
+        ":image_amd64",
+        ":image_arm64",
+    ],
+)
+
+# Pushes the image, for both architectures, to GitHub's registry as this version and as
+# latest, which compose.yaml runs: bazel run --config=release //crates/zirc-server:image_push,
+# signed in to ghcr.io as someone who may write the zircd organisation's packages.
+oci_push(
+    name = "image_push",
+    image = ":image",
+    remote_tags = [
+        VERSION,
+        "latest",
+    ],
+    repository = "ghcr.io/zircd/zirc-server",
+)

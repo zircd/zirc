@@ -1,0 +1,8 @@
+# zirc's open-source half: everything under oss/ builds from oss/ and external repositories
+# alone, never from the private code beside it (//ops:oss_boundary checks).
+
+exports_files([
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "clippy.toml",
+])

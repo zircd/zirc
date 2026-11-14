@@ -1,0 +1,12 @@
+--- a/toolchain/zig-wrapper.zig
++++ b/toolchain/zig-wrapper.zig
+@@ -270,6 +270,9 @@
+     // This is needed because zig c++ doesn't handle the -u flag correctly
+     // (it tries to open the symbol name as a file instead of passing it to the linker)
+     while (argv_it.next()) |arg| {
++        // Rust's aarch64 Linux targets ask the linker for the Cortex-A53 erratum 843419
++        // workaround, which zig's linker driver refuses as unsupported: leave it out.
++        if (mem.eql(u8, arg, "-Wl,--fix-cortex-a53-843419")) continue;
+         if (mem.eql(u8, arg, "-u")) {
+             // Get the next argument (the symbol name)
+             if (argv_it.next()) |symbol| {

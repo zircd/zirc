@@ -1,0 +1,120 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("@zirc_version//:version.bzl", "VERSION")
+load("//bazel:platforms.bzl", "PLATFORMS")
+load(":dist.bzl", "every_platform")
+
+exports_files(["install.sh"])
+
+# This machine's release archive and its checksum:
+#   bazel build --config=release //release:dist
+[
+    genrule(
+        name = "dist_" + platform.replace("-", "_"),
+        srcs = [
+            "//crates/zirc",
+            "//crates/zircd",
+            # The binaries a release has (crates/zirc-core/src/update.rs BINARIES: change
+            # both, and install.sh).
+            "//crates/zirc-remote",
+            "//:LICENSE-APACHE",
+            "//:LICENSE-MIT",
+        ],
+        outs = [
+            "zirc-{}-{}.tar.gz".format(VERSION, platform),
+            "zirc-{}-{}.tar.gz.sha256".format(VERSION, platform),
+        ],
+        cmd = "$(execpath package.sh) $(OUTS) $(execpath //crates/zirc) $(execpath //crates/zircd) $(execpath //crates/zirc-remote) -- $(execpath //:LICENSE-APACHE) $(execpath //:LICENSE-MIT)",
+        target_compatible_with = ["//bazel:" + platform],
+        tools = ["package.sh"],
+    )
+    for platform in PLATFORMS
+]
+
+alias(
+    name = "dist",
+    actual = select({
+        "//bazel:" + platform: ":dist_" + platform.replace("-", "_")
+        for platform in PLATFORMS
+    }),
+)
+
+# Every platform's, built here: Xcode's toolchain for macOS, Zig's for Linux.
+every_platform(
+    name = "dists",
+    # //release:publish-zirc publishes them.
+    visibility = ["//release:__pkg__"],
+    dist = ":dist",
+    # Built only when asked for: it builds every platform.
+    tags = ["manual"],
+)
+
+# install.sh against a local copy of a release made from this checkout.
+sh_test(
+    name = "install_test",
+    srcs = ["install_test.sh"],
+    args = [
+        "$(rootpath install.sh)",
+        "$(rootpaths :dist)",
+    ],
+    data = [
+        ":dist",
+        "install.sh",
+    ],
+)
+
+# zirc update and zircd updating themselves, from a release made from this checkout to
+# fake newer ones, signed with a test key, as installed by install.sh.
+sh_test(
+    name = "update_test",
+    srcs = ["update_test.sh"],
+    args = [
+        "$(rootpath install.sh)",
+        "$(rootpath //crates/zirc-core:release_sign)",
+        "$(rootpaths :dist)",
+    ],
+    data = [
+        ":dist",
+        "//crates/zirc-core:release_sign",
+        "install.sh",
+    ],
+)
+
+# package.sh's archives carry no extended attributes (macOS's tar adds them), which GNU tar
+# warns about on Linux.
+sh_test(
+    name = "package_test",
+    srcs = ["package_test.sh"],
+    args = [
+        "$(rootpath package.sh)",
+        "$(rootpaths :dist)",
+    ],
+    data = [
+        ":dist",
+        "package.sh",
+    ],
+)
+
+SCRIPTS = [
+    "install.sh",
+    "install_test.sh",
+    "package.sh",
+    "package_test.sh",
+    "shellcheck_test.sh",
+    "update_test.sh",
+]
+
+sh_test(
+    name = "shellcheck_test",
+    srcs = ["shellcheck_test.sh"],
+    args = ["$(rootpath :shellcheck)"] + ["$(rootpath {})".format(script) for script in SCRIPTS],
+    data = [":shellcheck"] + SCRIPTS,
+)
+
+alias(
+    name = "shellcheck",
+    actual = select({
+        "//bazel:" + platform: "@shellcheck_{}//:shellcheck".format(platform.replace("-", "_"))
+        for platform in PLATFORMS
+    }),
+)

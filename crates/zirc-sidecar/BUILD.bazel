@@ -1,0 +1,9 @@
+load("//bazel:rust.bzl", "zirc_rust_binary")
+
+zirc_rust_binary(
+    name = "zirc-sidecar",
+    # A workflow's connection is tested against a real Ergo (src/workflows/connection.rs).
+    ergo = True,
+    # The demo's script (src/demo.rs): what the live demo plays.
+    compile_data = ["//fixtures/acme:showcase.json"],
+)

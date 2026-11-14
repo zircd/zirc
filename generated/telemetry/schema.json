@@ -1,0 +1,921 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "zirc analytics events",
+  "description": "Generated from zirc-proto and zirc-core by `bazel run //crates/zirc-core:generated_types`. Don't edit: change the Rust types and generate this again.",
+  "$ref": "#/$defs/Event",
+  "$defs": {
+    "AppOpened": {
+      "type": "object",
+      "description": "[`Event::AppOpened`]: the app is in the [`Context`]."
+    },
+    "CommandRun": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "The command's name only, such as `watch` or `repo add`: never its arguments."
+        },
+        "agent": {
+          "type": "boolean",
+          "description": "Whether it ran with `--session`, as an agent's commands do."
+        }
+      },
+      "required": [
+        "command",
+        "agent"
+      ],
+      "description": "[`Event::CommandRun`]."
+    },
+    "FeatureUsed": {
+      "type": "object",
+      "properties": {
+        "feature": {
+          "$ref": "#/$defs/Feature",
+          "description": "Which."
+        }
+      },
+      "required": [
+        "feature"
+      ],
+      "description": "[`Event::FeatureUsed`]."
+    },
+    "Feature": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "dm",
+          "description": "A direct message, to one person or a group."
+        },
+        {
+          "type": "string",
+          "const": "reaction",
+          "description": "A reaction to a message."
+        },
+        {
+          "type": "string",
+          "const": "file",
+          "description": "A file shared in a conversation."
+        },
+        {
+          "type": "string",
+          "const": "search",
+          "description": "A search of the conversations."
+        },
+        {
+          "type": "string",
+          "const": "agent_dm",
+          "description": "A direct message with an agent session."
+        },
+        {
+          "type": "string",
+          "const": "topic_join",
+          "description": "Joining a channel or topic."
+        }
+      ],
+      "description": "A feature of the apps, for [`Event::FeatureUsed`]."
+    },
+    "ConnectionFailed": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "$ref": "#/$defs/Failure",
+          "description": "Why."
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "description": "[`Event::ConnectionFailed`]."
+    },
+    "Failure": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "network",
+          "description": "The network: no route, refused, reset or a name that doesn't resolve."
+        },
+        {
+          "type": "string",
+          "const": "tls",
+          "description": "TLS couldn't be set up."
+        },
+        {
+          "type": "string",
+          "const": "timeout",
+          "description": "It took too long."
+        },
+        {
+          "type": "string",
+          "const": "closed",
+          "description": "The server closed the connection while registering."
+        },
+        {
+          "type": "string",
+          "const": "password",
+          "description": "The server refused the server password."
+        },
+        {
+          "type": "string",
+          "const": "sasl",
+          "description": "The server refused the account."
+        },
+        {
+          "type": "string",
+          "const": "nick",
+          "description": "No acceptable nick was free."
+        },
+        {
+          "type": "string",
+          "const": "other",
+          "description": "Anything else."
+        }
+      ],
+      "description": "Why connecting failed, as a class rather than the error's text, which can name hosts."
+    },
+    "UpdateOffered": {
+      "type": "object",
+      "properties": {
+        "to": {
+          "type": "string",
+          "description": "The newer release's version."
+        }
+      },
+      "required": [
+        "to"
+      ],
+      "description": "[`Event::UpdateOffered`]."
+    },
+    "UpdateInstalled": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "The version it replaced."
+        },
+        "to": {
+          "type": "string",
+          "description": "The version installed."
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "description": "[`Event::UpdateInstalled`]."
+    },
+    "OrgDaily": {
+      "type": "object",
+      "properties": {
+        "organisation": {
+          "type": "string",
+          "description": "The organisation's opaque id, never its name."
+        },
+        "day": {
+          "type": "string",
+          "description": "The day counted, `YYYY-MM-DD` in UTC."
+        },
+        "plan": {
+          "type": "string",
+          "description": "Its plan: `trial`, `paid`, `internal` or `none`."
+        },
+        "environment": {
+          "$ref": "#/$defs/Environment",
+          "description": "Where its server runs."
+        },
+        "accounts_people": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "People's accounts."
+        },
+        "accounts_agents": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Machines' accounts, whose sessions are agents."
+        },
+        "active_day_people": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "People who were active that day: posted, or had a client connected."
+        },
+        "active_day_agents": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Agents' machines active that day."
+        },
+        "active_week_people": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "People active in the week to that day."
+        },
+        "active_week_agents": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Agents' machines active in that week."
+        },
+        "connected_people": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "People connected when it was counted."
+        },
+        "connected_agents": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Agents' machines connected then."
+        },
+        "sessions_people": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "People's connected sessions then."
+        },
+        "sessions_agents": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Agents' connected sessions then."
+        },
+        "messages_day_people": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Channel messages people posted that day."
+        },
+        "messages_day_agents": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Channel messages agents posted that day."
+        }
+      },
+      "required": [
+        "organisation",
+        "day",
+        "plan",
+        "environment",
+        "accounts_people",
+        "accounts_agents",
+        "active_day_people",
+        "active_day_agents",
+        "active_week_people",
+        "active_week_agents",
+        "connected_people",
+        "connected_agents",
+        "sessions_people",
+        "sessions_agents",
+        "messages_day_people",
+        "messages_day_agents"
+      ],
+      "description": "[`Event::OrgDaily`]: one organisation's day, counted by the controller from its server.\nPeople and agents are counted apart throughout: an agent's account is its machine's."
+    },
+    "Environment": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "production",
+          "description": "zirc.dev's own."
+        },
+        {
+          "type": "string",
+          "const": "staging",
+          "description": "Staging's, for trying changes."
+        },
+        {
+          "type": "string",
+          "const": "none",
+          "description": "One that doesn't say."
+        }
+      ],
+      "description": "Where an organisation's server runs, for [`Event::OrgDaily`]: the dashboards count\nproduction's only."
+    },
+    "SignedUp": {
+      "type": "object",
+      "description": "[`Event::SignedUp`]: who is in its `distinct_id`."
+    },
+    "OrganisationCreated": {
+      "type": "object",
+      "properties": {
+        "organisation_id": {
+          "type": "string",
+          "description": "The organisation's opaque id."
+        }
+      },
+      "required": [
+        "organisation_id"
+      ],
+      "description": "[`Event::OrganisationCreated`]."
+    },
+    "TrialStarted": {
+      "type": "object",
+      "properties": {
+        "organisation_id": {
+          "type": "string",
+          "description": "The organisation's opaque id."
+        },
+        "trial_days": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many days the trial lasts."
+        }
+      },
+      "required": [
+        "organisation_id",
+        "trial_days"
+      ],
+      "description": "[`Event::TrialStarted`]."
+    },
+    "FirstMessage": {
+      "type": "object",
+      "properties": {
+        "organisation_id": {
+          "type": "string",
+          "description": "The organisation's opaque id."
+        },
+        "by_agent": {
+          "type": "boolean",
+          "description": "Whether an agent posted it rather than a person."
+        }
+      },
+      "required": [
+        "organisation_id",
+        "by_agent"
+      ],
+      "description": "[`Event::FirstMessage`]."
+    },
+    "InviteSent": {
+      "type": "object",
+      "properties": {
+        "organisation_id": {
+          "type": "string",
+          "description": "The organisation's opaque id."
+        }
+      },
+      "required": [
+        "organisation_id"
+      ],
+      "description": "[`Event::InviteSent`]."
+    },
+    "MemberJoined": {
+      "type": "object",
+      "properties": {
+        "organisation_id": {
+          "type": "string",
+          "description": "The organisation's opaque id."
+        }
+      },
+      "required": [
+        "organisation_id"
+      ],
+      "description": "[`Event::MemberJoined`]."
+    },
+    "IntentPosted": {
+      "type": "object",
+      "description": "[`Event::IntentPosted`]: counted only, never its paths or summary."
+    },
+    "OverlapNotified": {
+      "type": "object",
+      "properties": {
+        "local": {
+          "type": "boolean",
+          "description": "Whether it's between two worktrees on this machine, rather than with another machine."
+        },
+        "kind": {
+          "$ref": "#/$defs/OverlapKind",
+          "description": "What the overlap amounts to: the worst of its paths."
+        },
+        "woke": {
+          "type": "boolean",
+          "description": "Whether it woke the sessions it concerns. One that changes different parts of the\nfiles isn't news to a session, so it doesn't."
+        },
+        "escalated": {
+          "type": "boolean",
+          "description": "Whether it follows an earlier one that said the two changed different parts of a\nfile, and now they change the same lines: an overlap that turned into a clash."
+        }
+      },
+      "required": [
+        "local",
+        "kind",
+        "woke",
+        "escalated"
+      ],
+      "description": "[`Event::OverlapNotified`]: counted only, never the paths or who."
+    },
+    "OverlapKind": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "same_lines",
+          "description": "Both change the same or neighbouring lines of a file: likely to conflict."
+        },
+        {
+          "type": "string",
+          "const": "apart",
+          "description": "Both change files, but in different parts: likely to merge."
+        },
+        {
+          "type": "string",
+          "const": "path",
+          "description": "Both change a file, and which parts isn't known, as with another machine."
+        },
+        {
+          "type": "string",
+          "const": "lockfile",
+          "description": "Only a lockfile, which the second to land regenerates."
+        }
+      ],
+      "description": "What an overlap amounts to, as far as zircd can tell."
+    },
+    "ConflictAheadNotified": {
+      "type": "object",
+      "description": "[`Event::ConflictAheadNotified`]: counted only, never the paths, lines or branch."
+    },
+    "Billing": {
+      "type": "object",
+      "properties": {
+        "organisation_id": {
+          "type": "string",
+          "description": "The organisation's opaque id."
+        },
+        "plan": {
+          "type": "string",
+          "description": "What it subscribes to, by the plan's name on zirc.dev, such as `team`."
+        },
+        "seats": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "Its people, whom a plan priced by the seat charges for."
+        }
+      },
+      "required": [
+        "organisation_id",
+        "plan",
+        "seats"
+      ],
+      "description": "[`Event::CheckoutOpened`], [`Event::SubscriptionStarted`] and\n[`Event::SubscriptionCancelled`]: an organisation's subscription."
+    },
+    "Client": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "tui",
+          "description": "The terminal client, `zirc tui`."
+        },
+        {
+          "type": "string",
+          "const": "cli",
+          "description": "The `zirc` command line."
+        },
+        {
+          "type": "string",
+          "const": "zircd",
+          "description": "The per-machine daemon."
+        },
+        {
+          "type": "string",
+          "const": "desktop",
+          "description": "The desktop app."
+        },
+        {
+          "type": "string",
+          "const": "android",
+          "description": "The Android app."
+        },
+        {
+          "type": "string",
+          "const": "ios",
+          "description": "The iOS app."
+        },
+        {
+          "type": "string",
+          "const": "web",
+          "description": "The website and web client."
+        }
+      ],
+      "description": "Which of zirc's programs sent an event."
+    },
+    "Os": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "macos",
+          "description": "macOS."
+        },
+        {
+          "type": "string",
+          "const": "linux",
+          "description": "Linux."
+        },
+        {
+          "type": "string",
+          "const": "windows",
+          "description": "Windows."
+        },
+        {
+          "type": "string",
+          "const": "android",
+          "description": "Android."
+        },
+        {
+          "type": "string",
+          "const": "ios",
+          "description": "iOS."
+        },
+        {
+          "type": "string",
+          "const": "other",
+          "description": "Anything else."
+        }
+      ],
+      "description": "The operating system an app runs on."
+    },
+    "Context": {
+      "type": "object",
+      "properties": {
+        "client": {
+          "$ref": "#/$defs/Client",
+          "description": "The app."
+        },
+        "version": {
+          "type": "string",
+          "description": "Its version, such as `0.1.14`."
+        },
+        "os": {
+          "$ref": "#/$defs/Os",
+          "description": "The operating system it runs on."
+        },
+        "dev": {
+          "type": "boolean",
+          "description": "Whether it's a development build, a test's or a developer's, rather than a release:\nthe dashboards leave these out."
+        },
+        "internal": {
+          "type": "boolean",
+          "description": "Whether it's an install of zirc's own CI, tests or team, marked so with\n`ZIRC_TELEMETRY_INTERNAL=1`: the dashboards leave these out too.",
+          "default": false
+        }
+      },
+      "required": [
+        "client",
+        "version",
+        "os",
+        "dev"
+      ],
+      "description": "What every app event says about the app that sent it, among its properties."
+    },
+    "Event": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "app_opened"
+            },
+            "properties": {
+              "$ref": "#/$defs/AppOpened"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "An app started: the TUI, the desktop or a phone app opened, or zircd started.",
+          "title": "App_openedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "command_run"
+            },
+            "properties": {
+              "$ref": "#/$defs/CommandRun"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "A `zirc` command ran.",
+          "title": "Command_runEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "feature_used"
+            },
+            "properties": {
+              "$ref": "#/$defs/FeatureUsed"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "Someone used one of the apps' features.",
+          "title": "Feature_usedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "connection_failed"
+            },
+            "properties": {
+              "$ref": "#/$defs/ConnectionFailed"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "Connecting to the server failed, the first time since it last worked.",
+          "title": "Connection_failedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "update_offered"
+            },
+            "properties": {
+              "$ref": "#/$defs/UpdateOffered"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "A newer release was found.",
+          "title": "Update_offeredEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "update_installed"
+            },
+            "properties": {
+              "$ref": "#/$defs/UpdateInstalled"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "A newer release was installed.",
+          "title": "Update_installedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "org_daily"
+            },
+            "properties": {
+              "$ref": "#/$defs/OrgDaily"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "The controller's daily summary of an organisation, sent with `organisation:<its id>`\nas `distinct_id`, the organisation as its group, and no person profile.",
+          "title": "Org_dailyEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "signed_up"
+            },
+            "properties": {
+              "$ref": "#/$defs/SignedUp"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "Someone signed up on zirc.dev, sent by the server with the new account's opaque id as\n`distinct_id`.",
+          "title": "Signed_upEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "organisation_created"
+            },
+            "properties": {
+              "$ref": "#/$defs/OrganisationCreated"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "An organisation was created, sent by zirc.dev's server with its creator's account's\nopaque id as `distinct_id`, and the organisation as its group, whose properties say how\nits creator first came to zirc.dev: the referring site's domain and the campaign tags.",
+          "title": "Organisation_createdEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "trial_started"
+            },
+            "properties": {
+              "$ref": "#/$defs/TrialStarted"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "An organisation's trial started, sent by zirc.dev's server as\n[`Event::OrganisationCreated`] is.",
+          "title": "Trial_startedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "first_message"
+            },
+            "properties": {
+              "$ref": "#/$defs/FirstMessage"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "The first message was posted in an organisation, sent by the controller as\n[`Event::OrgDaily`] is, at the time it was posted.",
+          "title": "First_messageEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "invite_sent"
+            },
+            "properties": {
+              "$ref": "#/$defs/InviteSent"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "Someone was invited to an organisation, sent by zirc.dev's server with the inviter's\naccount's opaque id as `distinct_id`, and the organisation as its group.",
+          "title": "Invite_sentEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "member_joined"
+            },
+            "properties": {
+              "$ref": "#/$defs/MemberJoined"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "Someone joined an organisation by accepting an invite, sent by zirc.dev's server as\n[`Event::InviteSent`] is, for the account that joined.",
+          "title": "Member_joinedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "intent_posted"
+            },
+            "properties": {
+              "$ref": "#/$defs/IntentPosted"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "An agent said what it's about to change, with `zirc intend`: sent by zircd, with its\norganisation as its group.",
+          "title": "Intent_postedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "overlap_notified"
+            },
+            "properties": {
+              "$ref": "#/$defs/OverlapNotified"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "zircd told an agent that someone else is changing the files it's changing.",
+          "title": "Overlap_notifiedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "conflict_ahead_notified"
+            },
+            "properties": {
+              "$ref": "#/$defs/ConflictAheadNotified"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "zircd told an agent that someone's push changes the same lines it's changing.",
+          "title": "Conflict_ahead_notifiedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "checkout_opened"
+            },
+            "properties": {
+              "$ref": "#/$defs/Billing"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "An organisation's owner opened Stripe's checkout to subscribe, sent by zirc.dev's\nserver as [`Event::InviteSent`] is.",
+          "title": "Checkout_openedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "subscription_started"
+            },
+            "properties": {
+              "$ref": "#/$defs/Billing"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "An organisation subscribed, sent from Stripe's webhook by zirc.dev's server with\n`organisation:<its id>` as `distinct_id`, the organisation as its group.",
+          "title": "Subscription_startedEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "subscription_cancelled"
+            },
+            "properties": {
+              "$ref": "#/$defs/Billing"
+            }
+          },
+          "required": [
+            "event",
+            "properties"
+          ],
+          "description": "An organisation's subscription ended, sent as [`Event::SubscriptionStarted`] is.",
+          "title": "Subscription_cancelledEvent"
+        }
+      ],
+      "description": "An analytics event. App events are sent with the install's random id as `distinct_id`,\nor the account's opaque id once the install is linked to it; server events say which id\nthey're sent with."
+    }
+  }
+}

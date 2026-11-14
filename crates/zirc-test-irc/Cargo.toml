@@ -1,0 +1,16 @@
+[package]
+name = "zirc-test-irc"
+description = "People's IRC clients on a test Ergo, for zirc's integration tests."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tokio.workspace = true
+zirc-irc.workspace = true
+zirc-test-ergo.workspace = true

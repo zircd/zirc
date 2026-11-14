@@ -1,0 +1,78 @@
+# A zirc server of your own (README.md), linked to your organisation on zirc.dev: people,
+# invites and signing in stay at zirc.dev, and what they say and share stays here.
+#
+# Make the organisation at zirc.dev "on my own server", with this machine's host name; it
+# gives a join token. Point the host name at this machine, open ports 80, 443 and 6697, set
+# the three values below, then:
+#
+#   docker compose up -d
+#
+# On its first start the server joins the organisation, and you invite people at zirc.dev.
+#
+# Behind a proxy that ends TLS itself: set ZIRC_TLS to "off", have the proxy send 6697 to the
+# container's 6667 and 443 to its 8080, ZIRC_PROXY_PROTOCOL to "true" if the proxy sends a
+# PROXY header, and ZIRC_PUBLIC_IRC_PORT to the proxy's IRC port if it isn't 6697.
+services:
+  zirc:
+    image: ghcr.io/zircd/zirc-server:latest
+    restart: unless-stopped
+    environment:
+      # The host name people connect to; Let's Encrypt's certificate is for it.
+      ZIRC_HOST: irc.example.com
+      # Where Let's Encrypt writes about the certificate, such as before it runs out.
+      ZIRC_ACME_EMAIL: you@example.com
+      # The join token zirc.dev gave when you made the organisation; used once.
+      ZIRC_JOIN_TOKEN: paste-it-here
+      # imgproxy, below, which resizes the images people share for the screens showing them.
+      ZIRC_IMGPROXY: http://imgproxy:8080
+      # The media worker, below, which makes videos' posters and the copies people play.
+      # Without it, video is shared as a file to download.
+      ZIRC_MEDIA_WORKER: http://media-worker:8080
+      # Files are kept in the data volume. To keep them in an S3 bucket of your own instead
+      # (any S3-compatible service), set these, with a key that may read, write, list and
+      # delete in that bucket alone:
+      # ZIRC_S3_BUCKET: acme-zirc-files
+      # ZIRC_S3_ENDPOINT: https://s3.eu-west-2.amazonaws.com
+      # ZIRC_S3_REGION: eu-west-2
+      # AWS_ACCESS_KEY_ID: ...
+      # AWS_SECRET_ACCESS_KEY: ...
+    ports:
+      # Let's Encrypt's challenge, as it gets and renews the certificate; else to HTTPS.
+      - "80:80"
+      # zirc.dev manages the server here, and apps read history and files from it.
+      - "443:443"
+      # IRC over TLS, for every app and machine.
+      - "6697:6697"
+    volumes:
+      # Everything the server keeps: accounts, history, files, its secrets and certificate.
+      - zirc-data:/data
+
+  # Resizes images for the server alone, which nothing else reaches: it reads each from a
+  # link the server signed, which lasts minutes, and leaves out its metadata, location
+  # included. The version is the one zirc.dev runs (MODULE.bazel's imgproxy): a change goes
+  # in both.
+  imgproxy:
+    image: darthsim/imgproxy:v3.31.4
+    restart: unless-stopped
+    environment:
+      IMGPROXY_MAX_RESULT_DIMENSION: "2048"
+      IMGPROXY_MAX_SRC_RESOLUTION: "50"
+      IMGPROXY_MAX_SRC_FILE_SIZE: "104857600"
+      IMGPROXY_MAX_ANIMATION_FRAMES: "200"
+      IMGPROXY_STRIP_METADATA: "true"
+      IMGPROXY_KEEP_COPYRIGHT: "false"
+      # The server is on compose's own network.
+      IMGPROXY_ALLOW_PRIVATE_SOURCE_ADDRESSES: "true"
+
+  # Reads videos people share, and makes their posters and the copies people play, for the
+  # server alone, as zirc.dev's does: from a link to the original the server signed, putting
+  # what it makes to another, without the original's metadata. For amd64 machines.
+  media-worker:
+    image: ghcr.io/zircd/zirc-media-worker:latest
+    restart: unless-stopped
+    environment:
+      # One video at a time.
+      ZIRC_MEDIA_WORKER_AT_ONCE: "1"
+
+volumes:
+  zirc-data:

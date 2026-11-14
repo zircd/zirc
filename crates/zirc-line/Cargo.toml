@@ -1,0 +1,18 @@
+[package]
+name = "zirc-line"
+description = "IRC lines, parsed and written, IRCv3 draft/multiline batches, and registration: no I/O, so it builds for wasm too."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+zirc-test-ergo.workspace = true

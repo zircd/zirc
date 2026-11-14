@@ -1,0 +1,55 @@
+# The paths under oss/ that are published: what runs on a customer's machine or server (the
+# CLI, zircd, the terminal client, zirc-remote, the sidecar), what those are built from, and
+# what it takes to build and test them. The apps, the web client and the rest of oss/ are
+# not, for now. One path a line, a directory with everything in it or a single file.
+#
+# Nothing listed may depend on anything that isn't, in Bazel or Cargo: ops/oss_boundary.sh
+# checks it in every landing, so the public repository always builds from these alone. To
+# publish more, add its path here, and whatever the check then says it needs.
+#
+# The public repository has these without oss/ in front (crates/zirc), and its root files
+# from oss/public: ops/oss_export.py writes it, and ops/oss_export_test.sh builds it.
+
+BUILD.bazel
+LICENSE-APACHE
+LICENSE-MIT
+README.md
+clippy.toml
+published.txt
+docs/remote.md
+docs/using.md
+
+# How the crates are built, the pinned Ergo their tests start, and what they include.
+bazel
+dev/ergo
+fixtures/acme
+fixtures/home
+generated
+
+# The protocol and what every program shares.
+crates/zirc-proto
+crates/zirc-line
+crates/zirc-irc
+crates/zirc-chat
+crates/zirc-core
+crates/zirc-theme
+crates/zirc-workflows
+
+# On a person's machine.
+crates/zirc
+crates/zircd
+crates/zirc-tui
+crates/zirc-remote
+
+# Beside the server's Ergo, and a server of your own.
+crates/zirc-sidecar
+crates/zirc-server
+# Videos' posters and web-playable copies, on a server of your own as on zirc.dev.
+crates/zirc-media-worker
+
+# Their tests' Ergo, and the IRC clients on it.
+crates/zirc-test-ergo
+crates/zirc-test-irc
+
+# The installer, and how a release is packaged.
+release

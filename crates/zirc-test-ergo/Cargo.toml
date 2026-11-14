@@ -1,0 +1,24 @@
+[package]
+name = "zirc-test-ergo"
+description = "A throwaway Ergo server for zirc's integration tests."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64.workspace = true
+ring.workspace = true
+# What `serve` stages for tests in other languages (src/stage.rs): zirc's events, framed
+# and cut into multiline batches by the crates that own those.
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+zirc-line.workspace = true
+zirc-proto.workspace = true
+# Ergo's config without its listeners, as a self-hosted server writes it.
+zirc-sidecar.workspace = true

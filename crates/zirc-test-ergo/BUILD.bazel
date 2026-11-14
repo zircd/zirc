@@ -1,0 +1,40 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@zirc_version//:version.bzl", "VERSION")
+load("//bazel:rust.bzl", "ERGO_DATA", "ERGO_ENV", "zirc_rust_library")
+
+zirc_rust_library(
+    name = "zirc-test-ergo",
+    # What it stages is sent through a real server (tests/stage.rs).
+    ergo = True,
+)
+
+# The apps' end-to-end path for a driver in shell (src/scenario.rs, src/control.rs).
+exports_files(
+    ["e2e.sh"],
+    visibility = ["//oss/apps:__subpackages__"],
+)
+
+# A throwaway Ergo for the web client's Playwright tests (//oss/web:e2e) and the Android
+# app's emulator run (//oss/apps/android:e2e), which read its addresses from its output and
+# ask it for the IRC lines that say a zirc event (src/stage.rs); the Android run also asks
+# it for a zirc.dev to sign in through (src/signin.rs). With ZIRC_SERVE_CONTROL it also
+# plays the apps' end-to-end path over HTTP (src/control.rs), as the desktop app's, the
+# Mac app's and the iPhone app's tests ask (//oss/apps/desktop:e2e, //oss/apps/mac:e2e,
+# //oss/apps/ios:e2e_test).
+# Run it with ZIRC_ERGO and ZIRC_ERGO_CONFIG set.
+rust_binary(
+    name = "serve",
+    srcs = ["bin/serve.rs"],
+    data = ERGO_DATA,
+    env = ERGO_ENV,
+    lint_config = "//bazel:lints",
+    version = VERSION,
+    visibility = [
+        "//oss/apps/android:__pkg__",
+        "//oss/apps/desktop:__pkg__",
+        "//oss/apps/ios:__pkg__",
+        "//oss/apps/mac:__pkg__",
+        "//oss/web:__pkg__",
+    ],
+    deps = [":zirc-test-ergo"],
+)

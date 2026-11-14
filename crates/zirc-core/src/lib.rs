@@ -1,0 +1,50 @@
+//! zirc's shared logic, used by the daemon, the CLI and the apps alike.
+
+pub mod account;
+pub mod account_keys;
+pub mod account_text;
+pub mod admin;
+pub mod agents;
+pub mod cards;
+pub mod channels;
+pub mod clashes;
+pub mod connection;
+pub mod decisions;
+pub mod device_key;
+pub mod editor;
+/// Emoji, for pickers and the composer: zirc-chat's, which the browser shares.
+pub use zirc_chat::emoji;
+pub mod filter;
+pub mod generated;
+pub mod gotchas;
+pub mod guest;
+pub mod hints;
+pub mod history;
+pub mod hunks;
+pub mod intent_scope;
+pub mod ipc;
+pub mod leases;
+pub mod login;
+pub mod machine;
+pub mod media;
+pub mod notes;
+pub mod owners;
+pub mod paths;
+pub mod project;
+pub mod reports;
+pub mod search;
+pub mod secrets;
+pub mod send;
+pub mod sessions;
+pub mod settings;
+pub mod signin;
+pub mod signout;
+pub mod states;
+pub mod team;
+pub mod telemetry;
+pub mod time;
+pub mod update;
+pub mod waits;
+pub mod which_org;
+
+pub use zirc_chat::{chat, clock, command, link_ask, names, orgs, presence, trim, utf16};

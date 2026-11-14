@@ -1,0 +1,15 @@
+load("//bazel:platforms.bzl", "PLATFORMS")
+
+# Each platform zirc is released for, as a Bazel platform to build for: what
+# //release:publish builds every release for, from this one machine.
+[
+    platform(
+        name = name,
+        constraint_values = [
+            "@platforms//os:" + os,
+            "@platforms//cpu:" + cpu,
+        ],
+        visibility = ["//visibility:public"],
+    )
+    for name, (os, cpu) in PLATFORMS.items()
+]

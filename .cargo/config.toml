@@ -1,0 +1,4 @@
+# Programs Cargo runs, by `cargo test` and `cargo run`, are tests and development, not usage:
+# they send no analytics (zirc_core::telemetry). Bazel's tests are kept out in .bazelrc.
+[env]
+ZIRC_TELEMETRY = "0"

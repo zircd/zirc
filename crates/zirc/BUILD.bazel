@@ -1,0 +1,31 @@
+load("//bazel:rust.bzl", "zirc_rust_binary")
+
+zirc_rust_binary(
+    name = "zirc",
+    ergo = True,
+    # Its unit tests take under 10s; each file in tests/ starts Ergo, and takes 35s at most
+    # with the Mac's load over 100: medium.
+    test_size = "small",
+    test_data = [
+        "//crates/zircd",
+        "//fixtures/home:terminals.json",
+    ],
+    test_env = {
+        # `zirc daemon start` in the integration tests starts this zircd.
+        "ZIRC_ZIRCD": "$(rootpath //crates/zircd)",
+        # What zirc.dev's terminals show, which tests/terminals.rs makes (fixtures/acme).
+        "ZIRC_TERMINALS": "$(rootpath //fixtures/home:terminals.json)",
+    },
+)
+
+# What zirc login, zirc ci token, zirc request and zirc skill install print, which zirc.dev's home page shows
+# as it would on a Mac (web/src/lib/setup-terminals.ts); its test checks them against these.
+exports_files(
+    [
+        "src/ci.rs",
+        "src/decide.rs",
+        "src/setup.rs",
+        "src/skill.rs",
+    ],
+    visibility = ["//web:__pkg__"],
+)

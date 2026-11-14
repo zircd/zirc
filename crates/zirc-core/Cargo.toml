@@ -1,0 +1,51 @@
+[package]
+name = "zirc-core"
+description = "zirc's shared logic: the daemon's socket protocol, channels, presence, sending events, the apps' chat, sign-in, secrets and updates."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Writes the generated schema and types: bazel run //crates/zirc-core:generated_types
+[[bin]]
+name = "generated_types"
+path = "bin/generated_types.rs"
+
+# Makes zirc's PostHog dashboards: bazel run //crates/zirc-core:posthog_dashboards
+[[bin]]
+name = "posthog_dashboards"
+path = "bin/posthog_dashboards.rs"
+
+# Signs a release's checksums: bazel run //crates/zirc-core:release_sign -- sign <file>...
+[[bin]]
+name = "release_sign"
+path = "bin/release_sign.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono.workspace = true
+jaq-core.workspace = true
+jaq-json.workspace = true
+jaq-std.workspace = true
+keyring.workspace = true
+reqwest.workspace = true
+ring.workspace = true
+rustls.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tracing.workspace = true
+ts-rs.workspace = true
+zirc-chat.workspace = true
+zirc-irc.workspace = true
+zirc-proto.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+zirc-test-ergo.workspace = true

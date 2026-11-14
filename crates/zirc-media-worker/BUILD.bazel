@@ -1,0 +1,8 @@
+load("//bazel:rust.bzl", "zirc_rust_binary")
+
+# Its container image is zirc's own deployment's (//deploy/media-worker:image), built from
+# Debian's ffmpeg, which the published tree doesn't fetch.
+zirc_rust_binary(
+    name = "zirc-media-worker",
+    test_size = "small",
+)

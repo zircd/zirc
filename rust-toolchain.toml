@@ -1,0 +1,5 @@
+# Cargo's toolchain: GPUI needs Zed's. Keep in step with rust-version in Cargo.toml.
+[toolchain]
+channel = "1.98"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

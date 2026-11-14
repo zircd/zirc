@@ -1,0 +1,24 @@
+[package]
+name = "zirc-proto"
+description = "zirc's events and the envelope they travel in over IRC."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Prints the web app's TypeScript types: bazel run //crates/zirc-proto:typescript
+[[bin]]
+name = "typescript"
+path = "bin/typescript.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+base64.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ts-rs.workspace = true

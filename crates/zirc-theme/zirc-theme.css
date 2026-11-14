@@ -1,0 +1,330 @@
+/* zirc's theme, generated from tokens.json by zirc-theme: don't edit it here.
+   Rewrite it with: bazel run //crates/zirc-theme:css > oss/crates/zirc-theme/zirc-theme.css
+   JetBrains Mono is under the SIL Open Font License: fonts/OFL.txt; Inter, too:
+   fonts/Inter-OFL.txt. */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono-Bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/JetBrainsMono-Italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/Inter-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/Inter-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/Inter-SemiBold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/Inter-Bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/Inter-Italic.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light dark;
+  --zirc-font: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --zirc-font-mono: var(--zirc-font);
+  --zirc-font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --zirc-label-tracking: 0.12em;
+  --zirc-radius: 0px;
+  --zirc-avatar-saturation: 55%;
+  --zirc-avatar-lightness: 45%;
+  --zirc-font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --zirc-state-hover: 0.06;
+  --zirc-state-pressed: 0.1;
+  --zirc-text-title-size: 24px;
+  --zirc-text-title-line: 30px;
+  --zirc-text-title-weight: 700;
+  --zirc-text-header-size: 20px;
+  --zirc-text-header-line: 26px;
+  --zirc-text-header-weight: 700;
+  --zirc-text-list-title-size: 17px;
+  --zirc-text-list-title-line: 22px;
+  --zirc-text-list-title-weight: 600;
+  --zirc-text-body-phone-size: 15px;
+  --zirc-text-body-phone-line: 21px;
+  --zirc-text-body-phone-weight: 400;
+  --zirc-text-body-desktop-size: 14px;
+  --zirc-text-body-desktop-line: 21px;
+  --zirc-text-body-desktop-weight: 400;
+  --zirc-text-secondary-size: 13px;
+  --zirc-text-secondary-line: 18px;
+  --zirc-text-secondary-weight: 400;
+  --zirc-text-caption-size: 12px;
+  --zirc-text-caption-line: 16px;
+  --zirc-text-caption-weight: 400;
+  --zirc-text-section-label-size: 12px;
+  --zirc-text-section-label-line: 16px;
+  --zirc-text-section-label-weight: 600;
+  --zirc-text-tag-size: 11px;
+  --zirc-text-tag-line: 14px;
+  --zirc-text-tag-weight: 700;
+  --zirc-space-1: 4px;
+  --zirc-space-2: 8px;
+  --zirc-space-3: 12px;
+  --zirc-space-4: 16px;
+  --zirc-space-5: 20px;
+  --zirc-space-6: 24px;
+  --zirc-space-7: 32px;
+  --zirc-radius-code: 0px;
+  --zirc-radius-tag: 4px;
+  --zirc-radius-control: 6px;
+  --zirc-radius-card: 10px;
+  --zirc-radius-sheet: 16px;
+  --zirc-radius-app-avatar: 8px;
+  --zirc-radius-full: 9999px;
+  --zirc-avatar-quote: 16px;
+  --zirc-avatar-active-now: 22px;
+  --zirc-avatar-desktop-list: 28px;
+  --zirc-avatar-members: 32px;
+  --zirc-avatar-phone-list: 36px;
+  --zirc-avatar-desktop-message: 36px;
+  --zirc-avatar-phone-message: 40px;
+  --zirc-avatar-profile: 80px;
+  --zirc-presence-dot: 0.3;
+  --zirc-presence-ring: 2px;
+  --zirc-motion-fast: 120ms;
+  --zirc-motion-medium: 200ms;
+  --zirc-motion-slow: 300ms;
+  --zirc-easing: cubic-bezier(0.2, 0, 0, 1);
+  --zirc-button-height: 34px;
+  --zirc-button-radius: 6px;
+  --zirc-button-weight: 600;
+  --zirc-button-filled-ground: var(--zirc-signal);
+  --zirc-button-filled-text: var(--zirc-on-signal);
+  --zirc-button-filled-border: transparent;
+  --zirc-button-tonal-ground: var(--zirc-tonal-ground);
+  --zirc-button-tonal-text: var(--zirc-tonal-text);
+  --zirc-button-tonal-border: transparent;
+  --zirc-button-outline-ground: var(--zirc-surface-raised);
+  --zirc-button-outline-text: var(--zirc-body);
+  --zirc-button-outline-border: var(--zirc-rule);
+  --zirc-button-ghost-ground: transparent;
+  --zirc-button-ghost-text: var(--zirc-body);
+  --zirc-button-ghost-border: transparent;
+  --zirc-ground: #F6F7F9;
+  --zirc-panel: #FFFFFF;
+  --zirc-text: #12161C;
+  --zirc-body: #2F3743;
+  --zirc-muted: #5B6573;
+  --zirc-rule: #E1E5EB;
+  --zirc-rule-strong: #BCC4CE;
+  --zirc-signal: #0B63C7;
+  --zirc-on-signal: #FFFFFF;
+  --zirc-channel: #0B63C7;
+  --zirc-ok: #128246;
+  --zirc-warning: #8A5300;
+  --zirc-error: #B3261E;
+  --zirc-code-ground: #EEF1F5;
+  --zirc-mention-ground: #FFF4DD;
+  --zirc-pill-ground: #E3ECFB;
+  --zirc-syntax-keyword: #7A3EB1;
+  --zirc-syntax-string: #1F6E3A;
+  --zirc-syntax-comment: #5B6573;
+  --zirc-syntax-number: #9A4A00;
+  --zirc-syntax-type: #0E6464;
+  --zirc-syntax-function: #0B63C7;
+  --zirc-syntax-added: #0F7340;
+  --zirc-syntax-removed: #B3261E;
+  --zirc-surface-ground: #E9ECF0;
+  --zirc-surface-sidebar: #F2F4F7;
+  --zirc-surface-chat: #FFFFFF;
+  --zirc-surface-raised: #FFFFFF;
+  --zirc-surface-overlay: #FFFFFF;
+  --zirc-selected: #DCE6F7;
+  --zirc-badge: #D93036;
+  --zirc-on-badge: #FFFFFF;
+  --zirc-mention-chip-ground: #DCE6F7;
+  --zirc-mention-chip-text: #0B52A3;
+  --zirc-mention-edge: #C98A00;
+  --zirc-presence-here: #1E9E57;
+  --zirc-presence-away: #A86F00;
+  --zirc-presence-busy: #D93036;
+  --zirc-reaction-mine-ground: #E6ECF7;
+  --zirc-reaction-mine-border: #9DB8E8;
+  --zirc-reaction-mine-text: #0B52A3;
+  --zirc-tonal-ground: #E6ECF7;
+  --zirc-tonal-text: #0B52A3;
+  --zirc-elevation-e1: 0 2px 8px rgba(18, 22, 28, 0.1);
+  --zirc-elevation-e2: 0 8px 24px rgba(18, 22, 28, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --zirc-ground: #0E1116;
+    --zirc-panel: #141922;
+    --zirc-text: #E6EAF0;
+    --zirc-body: #C2C9D3;
+    --zirc-muted: #8C96A5;
+    --zirc-rule: #222A36;
+    --zirc-rule-strong: #36415A;
+    --zirc-signal: #7AA7FF;
+    --zirc-on-signal: #0E1116;
+    --zirc-channel: #9CC0FF;
+    --zirc-ok: #5FD08A;
+    --zirc-warning: #F2B84B;
+    --zirc-error: #FF8A7A;
+    --zirc-code-ground: #1A2030;
+    --zirc-mention-ground: #2A2414;
+    --zirc-pill-ground: #1C2A45;
+    --zirc-syntax-keyword: #C9A2F2;
+    --zirc-syntax-string: #9AD8A2;
+    --zirc-syntax-comment: #8C96A5;
+    --zirc-syntax-number: #F2B07A;
+    --zirc-syntax-type: #7FD1C8;
+    --zirc-syntax-function: #8AB4FF;
+    --zirc-syntax-added: #5FD08A;
+    --zirc-syntax-removed: #FF8A7A;
+    --zirc-surface-ground: #0B0E13;
+    --zirc-surface-sidebar: #11151C;
+    --zirc-surface-chat: #161B23;
+    --zirc-surface-raised: #1D2430;
+    --zirc-surface-overlay: #242C3A;
+    --zirc-selected: #23345A;
+    --zirc-badge: #D93036;
+    --zirc-on-badge: #FFFFFF;
+    --zirc-mention-chip-ground: #2B3A5C;
+    --zirc-mention-chip-text: #B9D0FF;
+    --zirc-mention-edge: #F2B84B;
+    --zirc-presence-here: #3FB66B;
+    --zirc-presence-away: #F2B84B;
+    --zirc-presence-busy: #E5484D;
+    --zirc-reaction-mine-ground: #23345A;
+    --zirc-reaction-mine-border: #4A6FB8;
+    --zirc-reaction-mine-text: #DCE7FF;
+    --zirc-tonal-ground: #2A3342;
+    --zirc-tonal-text: #E6EAF0;
+    --zirc-elevation-e1: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --zirc-elevation-e2: 0 8px 24px rgba(0, 0, 0, 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --zirc-ground: #0E1116;
+  --zirc-panel: #141922;
+  --zirc-text: #E6EAF0;
+  --zirc-body: #C2C9D3;
+  --zirc-muted: #8C96A5;
+  --zirc-rule: #222A36;
+  --zirc-rule-strong: #36415A;
+  --zirc-signal: #7AA7FF;
+  --zirc-on-signal: #0E1116;
+  --zirc-channel: #9CC0FF;
+  --zirc-ok: #5FD08A;
+  --zirc-warning: #F2B84B;
+  --zirc-error: #FF8A7A;
+  --zirc-code-ground: #1A2030;
+  --zirc-mention-ground: #2A2414;
+  --zirc-pill-ground: #1C2A45;
+  --zirc-syntax-keyword: #C9A2F2;
+  --zirc-syntax-string: #9AD8A2;
+  --zirc-syntax-comment: #8C96A5;
+  --zirc-syntax-number: #F2B07A;
+  --zirc-syntax-type: #7FD1C8;
+  --zirc-syntax-function: #8AB4FF;
+  --zirc-syntax-added: #5FD08A;
+  --zirc-syntax-removed: #FF8A7A;
+  --zirc-surface-ground: #0B0E13;
+  --zirc-surface-sidebar: #11151C;
+  --zirc-surface-chat: #161B23;
+  --zirc-surface-raised: #1D2430;
+  --zirc-surface-overlay: #242C3A;
+  --zirc-selected: #23345A;
+  --zirc-badge: #D93036;
+  --zirc-on-badge: #FFFFFF;
+  --zirc-mention-chip-ground: #2B3A5C;
+  --zirc-mention-chip-text: #B9D0FF;
+  --zirc-mention-edge: #F2B84B;
+  --zirc-presence-here: #3FB66B;
+  --zirc-presence-away: #F2B84B;
+  --zirc-presence-busy: #E5484D;
+  --zirc-reaction-mine-ground: #23345A;
+  --zirc-reaction-mine-border: #4A6FB8;
+  --zirc-reaction-mine-text: #DCE7FF;
+  --zirc-tonal-ground: #2A3342;
+  --zirc-tonal-text: #E6EAF0;
+  --zirc-elevation-e1: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --zirc-elevation-e2: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+.zirc-label {
+  text-transform: uppercase;
+  letter-spacing: var(--zirc-label-tracking);
+}
+
+.zirc-section-label {
+  text-transform: none;
+}
+
+.zirc-tag {
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --zirc-motion-fast: 0ms;
+    --zirc-motion-medium: 0ms;
+    --zirc-motion-slow: 0ms;
+  }
+}

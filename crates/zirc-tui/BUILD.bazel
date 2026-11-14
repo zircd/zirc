@@ -1,0 +1,13 @@
+load("//bazel:rust.bzl", "zirc_rust_library")
+
+zirc_rust_library(
+    name = "zirc-tui",
+    ergo = True,
+)
+
+# The user-facing source the words guard reads (//crates/zirc-app:zirc-app_words_guard_test).
+filegroup(
+    name = "shell_sources",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//crates/zirc-app:__pkg__"],
+)

@@ -1,0 +1,4422 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "zirc",
+  "description": "Generated from zirc-proto and zirc-core by `bazel run //crates/zirc-core:generated_types`. Don't edit: change the Rust types and generate this again.",
+  "x-protocol": 1,
+  "x-version": 1,
+  "anyOf": [
+    {
+      "$ref": "#/$defs/Request"
+    },
+    {
+      "$ref": "#/$defs/Response"
+    },
+    {
+      "$ref": "#/$defs/Message"
+    }
+  ],
+  "$defs": {
+    "Target": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "repo"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "The repository's channel, where every session working on it is.",
+          "title": "RepoTarget"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "default"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "Where a post goes when it doesn't say ([`crate::team`]): the repository's agents\nchannel, `#<repo>/agents`, unless the team names another room, or the repository's\nchannel for a post that's for a person. Anywhere but a post, the repository's channel.",
+          "title": "DefaultTarget"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "branch"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "The channel of the branch checked out, which only a branch that's been pushed has.",
+          "title": "BranchTarget"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "org"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "The organisation's channel, `#general`.",
+          "title": "OrgTarget"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "topic"
+            },
+            "name": {
+              "type": "string",
+              "description": "The topic."
+            },
+            "org": {
+              "type": "boolean",
+              "description": "Whether it's the organisation's topic rather than the repository's."
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "org"
+          ],
+          "description": "A topic channel, which must have been joined.",
+          "title": "TopicTarget"
+        }
+      ],
+      "description": "Which channel a post goes to."
+    },
+    "Level": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "ok",
+          "description": "Fine: what a state is when nobody has said otherwise."
+        },
+        {
+          "type": "string",
+          "const": "warning",
+          "description": "Worth knowing before relying on it, such as a flaky check."
+        },
+        {
+          "type": "string",
+          "const": "broken",
+          "description": "Broken: work that relies on it will fail until it's fixed."
+        }
+      ],
+      "description": "How it stands."
+    },
+    "DecisionAnswer": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "yes",
+          "description": "👍 ✅ 🙌"
+        },
+        {
+          "type": "string",
+          "const": "no",
+          "description": "👎 ❌"
+        },
+        {
+          "type": "string",
+          "const": "more",
+          "description": "❓ 🤔 👀: tell me more."
+        }
+      ],
+      "description": "An answer."
+    },
+    "Queries": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "off",
+          "description": "No one: queries are dropped."
+        },
+        {
+          "type": "string",
+          "const": "mine",
+          "description": "The owner's own: this machine's other sessions, the owner, and the owner's other\nmachines, told by the account the server says sent the query."
+        },
+        {
+          "type": "string",
+          "const": "anyone",
+          "description": "Anyone signed in to an account on the server. [`ANYONE_WARNING`] says why it's risky."
+        }
+      ],
+      "description": "Who may query this machine's agents."
+    },
+    "Event": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "intent"
+            },
+            "summary": {
+              "type": "string",
+              "description": "One line, as a person would say it."
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Paths or directories it expects to touch, relative to the repository root."
+            },
+            "expires": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "When it ends unless renewed, in seconds since the Unix epoch, by the sender's\nclock. One without lasts until its session is done."
+            },
+            "lasts": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "How many seconds it lasts from when it was sent: from the message's server time,\nwhich works for replayed messages and other clocks alike. Readers prefer it to\n`expires`, which stays for readers that predate it."
+            }
+          },
+          "required": [
+            "type",
+            "summary",
+            "paths"
+          ],
+          "description": "What a session is about to work on, sent before it starts editing so that others\nchanging the same paths hear of it while it's cheap to avoid. A session's intent\nreplaces its previous one, and ends when it expires or the session posts `done:` or\n`dropped:`.",
+          "title": "IntentEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "working"
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The paths."
+            },
+            "continued": {
+              "type": "boolean",
+              "description": "Whether this adds to the previous message's paths rather than replacing them."
+            },
+            "worktree": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The name of the worktree's directory the paths are in; never its full path."
+            },
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The branch checked out in that worktree, unless its HEAD is detached."
+            },
+            "part": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "Which part of the set this is and how many there are, counting from 1, or\n[`ALONE`] for one worktree's set said alone."
+            }
+          },
+          "required": [
+            "type",
+            "paths"
+          ],
+          "description": "Every path a machine has uncommitted changes in, relative to the repository root,\nsent whenever the set changes and when someone joins. A set too long for one line is\nsplit: the first part replaces what the receiver knew, and the parts after it are\nmarked `continued` and add to it.\n\nA machine with several worktrees sends one part per worktree with changes, each\nnaming its worktree and branch, and the message's session is the one working there.\nA reader that ignores `worktree` and `branch` still gets the machine's whole set. A\nmachine whose worktrees are all clean sends one part with no paths.\n\nEach part also says which it is of how many, so a reader that gets only some of\nthem, as a history replay cut short can give it, can tell and keep what it had.\n\nBetween whole sets, a machine says a worktree's changed set alone, numbered [`ALONE`]:\nit replaces that worktree's set and no other.",
+          "title": "WorkingEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "commit"
+            },
+            "branch": {
+              "type": "string",
+              "description": "The branch it was made on."
+            },
+            "sha": {
+              "type": "string",
+              "description": "The commit's full id."
+            },
+            "subject": {
+              "type": "string",
+              "description": "The first line of its message."
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The paths it changed, relative to the repository's root, so a session changing\nthem too hears of it before the branch lands. Left out of a very large commit."
+            },
+            "repo": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The repository's web address, such as `https://github.com/zircapp/monorepo`, so\napps can link the commit, its branch and its files. Left out where it has none."
+            }
+          },
+          "required": [
+            "type",
+            "branch",
+            "sha",
+            "subject"
+          ],
+          "description": "A new commit.",
+          "title": "CommitEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "push"
+            },
+            "branch": {
+              "type": "string",
+              "description": "The branch pushed."
+            },
+            "head": {
+              "type": "string",
+              "description": "The commit the branch now points at."
+            },
+            "forced": {
+              "type": "boolean",
+              "description": "Whether the push rewrote history."
+            },
+            "subjects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The subjects of the commits it pushed, oldest first, so a branch's name needn't\nsay what it holds."
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The paths its commits changed, relative to the repository's root, so a session\nworking on them hears that it may need to rebase. Left out of a very large push."
+            },
+            "base": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The commit the remote branch pointed at before, which `lines` count in."
+            },
+            "lines": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "description": "For each path, the lines of `base` the push changes, as `[first, count]`, with\na count of 0 for lines added after `first`: so a machine without the push's\ncommits can tell whether its own changes to those lines will conflict. Left out\nfirst of a large push."
+            },
+            "repo": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The repository's web address, such as `https://github.com/zircapp/monorepo`, so\napps can link the push, its branch and its files. Left out where it has none."
+            }
+          },
+          "required": [
+            "type",
+            "branch",
+            "head",
+            "forced"
+          ],
+          "description": "A push to the remote.",
+          "title": "PushEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "text"
+            },
+            "body": {
+              "type": "string",
+              "description": "The text."
+            }
+          },
+          "required": [
+            "type",
+            "body"
+          ],
+          "description": "Free text, for people.",
+          "title": "TextEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "query"
+            },
+            "id": {
+              "type": "string",
+              "description": "What names it, to answer it by: unique enough among the asker's queries."
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The session on the machine it's for; every session there when absent."
+            },
+            "text": {
+              "type": "string",
+              "description": "The question."
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "text"
+          ],
+          "description": "A question for agents, sent with `zirc ask` to a machine's nick: unlike other\nmessages to a machine, `zirc watch` delivers it, to the session it names or to every\nsession there, when the machine lets the sender query its agents. It's a teammate's\nrequest, never the person's instruction.",
+          "title": "QueryEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "answer"
+            },
+            "query": {
+              "type": "string",
+              "description": "The query's id."
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The session that asked, as the query's message named it."
+            },
+            "text": {
+              "type": "string",
+              "description": "The answer."
+            }
+          },
+          "required": [
+            "type",
+            "query",
+            "text"
+          ],
+          "description": "The answer to a [`Event::Query`], sent with `zirc reply` to the asking machine's\nnick, which hands it to the session that asked.",
+          "title": "AnswerEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "note"
+            },
+            "to": {
+              "type": "string",
+              "description": "The session it's for: its id, or the name it goes by."
+            },
+            "text": {
+              "type": "string",
+              "description": "What it says."
+            }
+          },
+          "required": [
+            "type",
+            "to",
+            "text"
+          ],
+          "description": "A note for one agent session, sent with `zirc note` to the nick of the machine it works\non: `zirc watch` delivers it to that session alone, when the machine lets the sender\nquery its agents, as it does a [`Event::Query`]. Unlike a query it asks for no answer:\nit's a report or a heads-up for one session, which nobody else need read. It's a\nteammate's word, never the person's instruction.",
+          "title": "NoteEvent"
+        },
+        {
+          "$ref": "#/$defs/File",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "file"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "description": "A file someone shared, stored by zirc.dev: an image, a video or any other file. The\nhuman text is its link, which works in any client once the person is signed in to\nzirc.dev; zirc's apps draw it inline from what's here without asking first.",
+          "title": "FileEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "custom"
+            },
+            "kind": {
+              "type": "string",
+              "description": "What kind of event it is, in the team's namespace: `x-<team>/<name>`, such as\n`x-acme/deploy`. See [`check_kind`]."
+            },
+            "data": {
+              "description": "Whatever the team wants it to carry."
+            },
+            "text": {
+              "type": "string",
+              "description": "What it says, for people."
+            }
+          },
+          "required": [
+            "type",
+            "kind",
+            "text"
+          ],
+          "description": "An event a team made up, such as a deploy or who's on call, sent by `zirc emit`: zirc\ncarries it without knowing what it means. Readers that predate it drop it, and plain\nIRC clients and zirc's apps show its text.",
+          "title": "CustomEvent"
+        }
+      ],
+      "description": "Something one agent or person tells the others."
+    },
+    "File": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Where it's downloaded: `https://zirc.dev/m/<org>/<id>`, its id unguessable and never\nderived from its name. An image is resized by asking for it with `?w=<width>`."
+        },
+        "name": {
+          "type": "string",
+          "description": "Its name as uploaded, maybe shortened to fit the line."
+        },
+        "mime": {
+          "type": "string",
+          "description": "Its media type, from its bytes rather than its name, such as `image/webp`."
+        },
+        "size": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "Its size in bytes."
+        },
+        "width": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "An image's or video's width in pixels."
+        },
+        "height": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "An image's or video's height in pixels."
+        },
+        "duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "description": "A video's length in milliseconds."
+        }
+      },
+      "required": [
+        "url",
+        "name",
+        "mime",
+        "size"
+      ],
+      "description": "A file shared in chat: what [`Event::File`] carries."
+    },
+    "StateWait": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Its name, such as `master`."
+        },
+        "repo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The channel of the repository it's in, such as `#monorepo`: any repository's when\nabsent."
+        },
+        "level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Level"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How it stands as the session asks: a state said at any other level wakes it. Absent\nwhen it was never said, so the first said wakes it."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "description": "A state a session waits on changing ([`Request::WaitFor`]), such as `master` while it's\nbroken ([`zirc_proto::state`])."
+    },
+    "OrgStatus": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The organisation."
+        },
+        "connected": {
+          "type": "boolean",
+          "description": "Whether its connection is up."
+        },
+        "server": {
+          "type": "string",
+          "description": "Its server, as `host:port`."
+        },
+        "nick": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The nick on its server, while connected."
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The channels joined there, sorted."
+        },
+        "problem": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why zircd isn't connecting to it, when it's stopped trying."
+        },
+        "guest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "When it's a guest's terminal: the public channel it's a guest of, as [`Status::guest`]."
+        }
+      },
+      "required": [
+        "name",
+        "connected",
+        "server",
+        "channels"
+      ],
+      "description": "One organisation's connection, in [`Status::orgs`]."
+    },
+    "BreakerState": {
+      "type": "object",
+      "properties": {
+        "window_minutes": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "The window wakes are counted over, in minutes."
+        },
+        "per_session": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0,
+          "description": "The most wakes of one session in the window."
+        },
+        "machine": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0,
+          "description": "The most wakes of all this machine's sessions in the window."
+        },
+        "wakes": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0,
+          "description": "The wakes let through in the window."
+        },
+        "paused_machine": {
+          "type": "boolean",
+          "description": "Whether no session wakes, the machine's limit being reached.",
+          "default": false
+        },
+        "paused_sessions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The sessions that don't wake, each having reached its own limit."
+        },
+        "held": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0,
+          "description": "How many wakes were held since it last paused any.",
+          "default": 0
+        },
+        "top": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "What woke sessions most in the window, most first, as `mention from cc-1 ×5`."
+        }
+      },
+      "required": [
+        "window_minutes",
+        "per_session",
+        "machine",
+        "wakes"
+      ],
+      "description": "zircd's circuit breaker on wakes: how many it let through lately, its limits, and whether\nit's holding them, past a limit, as notes for each session's next wake."
+    },
+    "Status": {
+      "type": "object",
+      "properties": {
+        "connected": {
+          "type": "boolean",
+          "description": "Whether the IRC connection is up."
+        },
+        "server": {
+          "type": "string",
+          "description": "The server, as `host:port`."
+        },
+        "nick": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The nick on the server, while connected."
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The channels joined, sorted."
+        },
+        "problem": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why zircd isn't connecting, when it's stopped trying until something changes, such\nas [`REVOKED`]."
+        },
+        "watching": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": "The sessions with a watch running, sorted, `None` for a watch without one: what\n`zirc watch` started, and whether it's still there."
+        },
+        "protocol": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "The socket protocol zircd speaks, [`PROTOCOL`]; 0 from a zircd that predates\nversions, which speaks version 1.",
+          "default": 0
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "zircd's version. zircds from before 0.1.11 don't say."
+        },
+        "orgs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OrgStatus"
+          },
+          "description": "Each organisation's connection, when this machine is signed in to several: the\nfields above are then the first's."
+        },
+        "breaker": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BreakerState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The circuit breaker on wakes, from a zircd that has one."
+        },
+        "guest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "When the connection is a guest's terminal: the public channel it's a guest of, as\n`zirc login` names it, such as `acme/web` ([`crate::guest::of`])."
+        },
+        "busy_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "description": "The longest zircd was busy with one thing in the last minute or two, in milliseconds:\nhow long a command can have waited for it. From a zircd that measures it."
+        }
+      },
+      "required": [
+        "connected",
+        "server",
+        "channels"
+      ],
+      "description": "The daemon's state."
+    },
+    "Repo": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The root of its working tree."
+        },
+        "channel": {
+          "type": "string",
+          "description": "The channel its work goes to."
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RepoSession"
+          },
+          "description": "Every session added with it, the last one added last."
+        },
+        "org": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The organisation it belongs to, whose server alone hears about it. zircds from\nbefore several organisations don't say."
+        },
+        "shared": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Shared"
+          },
+          "description": "Sessions registered here in the last day that another worktree, still there, had\nregistered: two sessions under one name, which `zirc` warns of (decided 8 Nov\n2026: a warning, never a refusal). zircds from before it don't say."
+        }
+      },
+      "required": [
+        "path",
+        "channel"
+      ],
+      "description": "A watched repository."
+    },
+    "RepoSession": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "description": "The session."
+        }
+      },
+      "required": [
+        "session"
+      ],
+      "description": "A session working in a watched repository."
+    },
+    "Shared": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "description": "The session."
+        },
+        "with": {
+          "type": "string",
+          "description": "The other worktree's root."
+        },
+        "at": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "When, in seconds since the Unix epoch."
+        }
+      },
+      "required": [
+        "session",
+        "with",
+        "at"
+      ],
+      "description": "A session one worktree registered that another, still there, had registered before it."
+    },
+    "ChannelPresence": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "description": "The channel."
+        },
+        "org": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The organisation whose channel it is, when this machine is signed in to several."
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Member"
+          },
+          "description": "Each machine with uncommitted changes, by nick."
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Claim"
+          },
+          "description": "What sessions have said they're taking on, oldest first."
+        },
+        "intents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Intent"
+          },
+          "description": "What sessions have said they're about to touch, and haven't finished or let expire."
+        },
+        "landings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Landing"
+          },
+          "description": "The latest pushes to the default branch, newest first."
+        }
+      },
+      "required": [
+        "channel",
+        "members"
+      ],
+      "description": "The working sets in one channel."
+    },
+    "Member": {
+      "type": "object",
+      "properties": {
+        "nick": {
+          "type": "string",
+          "description": "Its nick."
+        },
+        "worktree": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Worktree"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For this machine, which of its worktrees."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The name of the worktree's directory, when known: a better label than a branch\nnamed by a tool, such as `mg-branch-39`."
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The branch the paths are changed on, when known."
+        },
+        "session": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The session working there, when known."
+        },
+        "session_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "What that session's called, when it says ([`Message::name`])."
+        },
+        "session_tool": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The agent tool that session runs in, when it says ([`Message::tool`])."
+        },
+        "session_avatar": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The picture that session goes by, when it says ([`Message::avatar`])."
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The paths it has uncommitted changes in, sorted."
+        }
+      },
+      "required": [
+        "nick",
+        "paths"
+      ],
+      "description": "One worktree's working set in a channel, or a whole machine's when it doesn't say which\nworktree its paths are in, as zircds before 0.2 don't."
+    },
+    "Worktree": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Its root."
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The branch checked out, unless HEAD is detached."
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "description": "A working tree on this machine, and the branch checked out in it."
+    },
+    "Claim": {
+      "type": "object",
+      "properties": {
+        "nick": {
+          "type": "string",
+          "description": "The machine's nick."
+        },
+        "session": {
+          "type": "string",
+          "description": "The session that posted it."
+        },
+        "session_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "What that session's called, when it says ([`Message::name`])."
+        },
+        "session_tool": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The agent tool that session runs in, when it says ([`Message::tool`])."
+        },
+        "session_avatar": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The picture that session goes by, when it says ([`Message::avatar`])."
+        },
+        "task": {
+          "type": "string",
+          "description": "What it's taking on, as it said it."
+        },
+        "since": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "When it said so, in seconds since the Unix epoch."
+        }
+      },
+      "required": [
+        "nick",
+        "session",
+        "task",
+        "since"
+      ],
+      "description": "What a session said it's taking on, with `zirc post \"taking: …\"`, until it posts\n`done: …` or `dropped: …` or leaves."
+    },
+    "Intent": {
+      "type": "object",
+      "properties": {
+        "nick": {
+          "type": "string",
+          "description": "The machine's nick."
+        },
+        "session": {
+          "type": "string",
+          "description": "The session that sent it."
+        },
+        "session_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "What that session's called, when it says ([`Message::name`])."
+        },
+        "session_tool": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The agent tool that session runs in, when it says ([`Message::tool`])."
+        },
+        "session_avatar": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The picture that session goes by, when it says ([`Message::avatar`])."
+        },
+        "summary": {
+          "type": "string",
+          "description": "What it's about to do, as it said it."
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The paths or directories it expects to touch."
+        },
+        "expires": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "description": "When it ends, in seconds since the Unix epoch, if it does on its own."
+        }
+      },
+      "required": [
+        "nick",
+        "session",
+        "summary",
+        "paths"
+      ],
+      "description": "What a session said it's about to touch, with `zirc intend`, until it expires, the\nsession posts `done: …` or `dropped: …`, or its machine leaves."
+    },
+    "Landing": {
+      "type": "object",
+      "properties": {
+        "nick": {
+          "type": "string",
+          "description": "The nick of the machine that pushed."
+        },
+        "session": {
+          "type": "string",
+          "description": "The session that pushed it."
+        },
+        "branch": {
+          "type": "string",
+          "description": "The branch pushed, the default one."
+        },
+        "subjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The subjects of the commits it pushed, oldest first."
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The paths they changed, when the push said."
+        },
+        "at": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "When it was heard, in seconds since the Unix epoch."
+        }
+      },
+      "required": [
+        "nick",
+        "session",
+        "branch",
+        "at"
+      ],
+      "description": "A push to a repository's default branch: work that's landed."
+    },
+    "Stack": {
+      "type": "object",
+      "properties": {
+        "branch": {
+          "type": "string",
+          "description": "The branch."
+        },
+        "tip": {
+          "type": "string",
+          "description": "Its head as the session built on it: what a rebase leaves behind."
+        },
+        "landed": {
+          "type": "boolean",
+          "description": "Whether CI said it landed."
+        },
+        "moved": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its head since, when a push moved it from `tip`."
+        }
+      },
+      "required": [
+        "branch",
+        "tip"
+      ],
+      "description": "A branch a session's branch is stacked on ([`Request::Stack`])."
+    },
+    "Delivery": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "description": "The channel it was sent to."
+        },
+        "from": {
+          "type": "string",
+          "description": "The nick it came from: the sending machine, or the person."
+        },
+        "message": {
+          "$ref": "#/$defs/Message",
+          "description": "The message."
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The server's id for it (`IRCv3`'s `msgid`), which [`Request::Trim`] names. This\nmachine's own posts, which the server doesn't echo back, come without one: find\ntheirs with [`Request::Read`]."
+        },
+        "time": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "When the server says it was sent, in RFC 3339, when it says."
+        },
+        "why": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Why"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why it concerns the watching session, if it does."
+        },
+        "reply": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The id of the message it replies to (`IRCv3`'s `+draft/reply`), if it's a reply."
+        },
+        "org": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The organisation whose server it came from, while watching on a machine signed in\nto several."
+        },
+        "account": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The account the server says sent it (`account-tag`), when it says."
+        },
+        "hosted_by": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Whose machine the server says sent it, by its host (`machine/<owner>`,\n[`crate::agents::host_owner`]): None for a person."
+        },
+        "client_of": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Whose own client the server says sent it, by its host (`client/<person>`,\n[`zirc_proto::names::client_host`]): a person signed in themself under another name,\nas in an IRC client, whose word it is as their own account's is. None otherwise."
+        },
+        "decided": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Provenance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a decision ([`zirc_proto::decision`]): how sure it is the decider's own word, as\nthis machine can tell from [`Delivery::account`]."
+        }
+      },
+      "required": [
+        "channel",
+        "from",
+        "message"
+      ],
+      "description": "A message someone sent to a channel: a zirc one, or plain text a person typed in an IRC\nclient, which arrives as a text event with an empty session."
+    },
+    "Message": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "The format version, [`VERSION`] when written by this crate."
+        },
+        "session": {
+          "type": "string",
+          "description": "The agent session or person on the sending machine. The machine itself is the\nIRC nick the message arrives from."
+        },
+        "event": {
+          "$ref": "#/$defs/Event",
+          "description": "What happened."
+        },
+        "app": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "For one of zirc's own integrations, the short name apps show for it in place of a\ngeneric app badge, such as `deploy`: see [`app_label`]. Without it, apps show its\nsession's."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "What people call its session, such as `zirc-chat` or `guests-web`, which apps show\nin place of an id like `cc-598aa1`: see [`session_name`]. Without it, they show the\nsession."
+        },
+        "tool": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The agent tool its session runs in, such as `claude-code` or `codex`, so apps can\nshow its icon: see [`session_tool`]. Without it, the session is a person's or\nruns in a tool zirc doesn't know."
+        },
+        "avatar": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The picture its session picked from [`AGENT_AVATARS`], by id, such as `rocket`, which\napps show in place of the tool's icon. Without it, they show the tool's."
+        },
+        "everyone": {
+          "type": "boolean",
+          "description": "Whether it's for every session hearing it, as `zirc post --everyone` says: an agent's\nbroadcast. Never its text: `@everyone` written in it, as in a quote or a code block,\nis only text."
+        },
+        "level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EventLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What it asks of whoever reads it, as its sender says: see [`Level`]. Without it, the\nlevel its kind and data say ([`Message::level`])."
+        },
+        "task": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The task its session is on, so a task's posts, intents, commits and landing can be\ntold apart from the rest: the id zircd gives a session when it posts `taking:`\n([`task_id`]), kept until it posts `done:` or `dropped:` ([`says_finished`]). Only\nan id, never what the task is."
+        }
+      },
+      "required": [
+        "v",
+        "session",
+        "event"
+      ],
+      "description": "An [`Event`] with who sent it."
+    },
+    "EventLevel": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "debug",
+          "description": "State that machines need and no person needs to read, such as what a machine is\nchanging, its commits and pushes, or a check that passed as it does every time."
+        },
+        {
+          "type": "string",
+          "const": "info",
+          "description": "Something started or finished: worth seeing, needs no one. A session's post, a\nlanding, a deploy."
+        },
+        {
+          "type": "string",
+          "const": "warn",
+          "description": "Something may need someone soon: one session or owner should look. An overlap, a\nconflict ahead, a check that didn't run."
+        },
+        {
+          "type": "string",
+          "const": "error",
+          "description": "Something needs someone now: a build failed, a deploy failed, an alert is firing."
+        }
+      ],
+      "description": "What a line asks of whoever reads it, not how big the change is: the sender says it, so\nnothing has to guess it from the wording. Apps show a room's lines at or above the level a\nperson picks for it; zircd wakes a session for a line by its level and by how the line\nconcerns the session. Ordered from least to most."
+    },
+    "Why": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "overlap",
+          "description": "Someone else is changing paths the session has changed too."
+        },
+        {
+          "type": "string",
+          "const": "direct",
+          "description": "A message to this machine, or to the session."
+        },
+        {
+          "type": "string",
+          "const": "mention",
+          "description": "A post that names this machine or the session."
+        },
+        {
+          "type": "string",
+          "const": "paths",
+          "description": "A post or claim that names paths the session has changed."
+        },
+        {
+          "type": "string",
+          "const": "intent",
+          "description": "Someone is about to touch paths the session has changed or is about to touch."
+        },
+        {
+          "type": "string",
+          "const": "conflict",
+          "description": "A push changes the same lines as the session's worktree: one of them will have to\nresolve a conflict."
+        },
+        {
+          "type": "string",
+          "const": "topic",
+          "description": "A post in a topic channel this machine joined, or the branch channel the session\nworks in."
+        },
+        {
+          "type": "string",
+          "const": "landing",
+          "description": "A push to the default branch, or to the session's branch, that changed paths the\nsession has changed: it may need to rebase."
+        },
+        {
+          "type": "string",
+          "const": "channel",
+          "description": "Said in a channel the watch was asked to print all of (`zirc watch --channel`)."
+        },
+        {
+          "type": "string",
+          "const": "decision",
+          "description": "A decision a person made (`x-zirc/decision`), which every session hears."
+        },
+        {
+          "type": "string",
+          "const": "reacted",
+          "description": "A reaction to one of the session's own messages."
+        },
+        {
+          "type": "string",
+          "const": "awaited",
+          "description": "CI saying how a landing went that the session said it waits on: another session's,\na build or a branch (`zirc wait-for`)."
+        },
+        {
+          "type": "string",
+          "const": "branch-landed",
+          "description": "CI saying a branch landed that zircd had told the session was changing its files, by\nan overlap, a push or a commit: the session should update onto it."
+        },
+        {
+          "type": "string",
+          "const": "state-changed",
+          "description": "A state the session waits on (`zirc wait-for --state`), such as master, said at a\nlevel other than the one it stood at: broken, or fine again."
+        },
+        {
+          "type": "string",
+          "const": "reaction-awaited",
+          "description": "The machine's person gave a reaction the session waits for (`zirc wait-for\n--reaction`), such as 👀, to a message it hadn't woken the session for yet."
+        },
+        {
+          "type": "string",
+          "const": "other",
+          "description": "A reason a newer zircd gives that this zirc doesn't know: it still concerns the\nsession."
+        }
+      ],
+      "description": "Why something heard concerns the session watching. Whatever doesn't is still sent, without\na reason, for whoever wants everything (`zirc watch --all`, `--json`)."
+    },
+    "Provenance": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "own"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "Sent from the decider's own account: their own words, as the server says.",
+          "title": "OwnProvenance"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "terminal"
+            },
+            "machine": {
+              "type": "string",
+              "description": "The machine's account."
+            }
+          },
+          "required": [
+            "kind",
+            "machine"
+          ],
+          "description": "Sent from a terminal on one of the decider's machines, as its zircd says: as sure as\nthat machine is.",
+          "title": "TerminalProvenance"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "relayed"
+            },
+            "machine": {
+              "type": "string",
+              "description": "The machine's account."
+            },
+            "session": {
+              "type": "string",
+              "description": "The session."
+            }
+          },
+          "required": [
+            "kind",
+            "machine",
+            "session"
+          ],
+          "description": "Relayed by an agent session on one of the decider's machines: what that session says\nthey told it. Ask them before acting on it for anything costly or hard to undo.",
+          "title": "RelayedProvenance"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unverified"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "From no account, or one that isn't the decider's or one of their machines': someone\nelse's say-so, which decides nothing.",
+          "title": "UnverifiedProvenance"
+        }
+      ],
+      "description": "Who sent a decision, as far as the server says."
+    },
+    "DecisionRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Its id, unique to the requesting machine: `<machine>/<n>`."
+        },
+        "question": {
+          "type": "string",
+          "description": "The question, one line."
+        },
+        "yes": {
+          "type": "string",
+          "description": "What a yes does."
+        },
+        "no": {
+          "type": "string",
+          "description": "What a no does."
+        },
+        "recommend": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionAnswer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The answer the session recommends, shown first."
+        },
+        "irreversible": {
+          "type": "boolean",
+          "description": "Whether acting on a yes can't be undone: then a yes waits a while, which a no stops."
+        },
+        "session": {
+          "type": "string",
+          "description": "The session asking."
+        },
+        "by": {
+          "type": "string",
+          "description": "Whose word it needs: the requesting machine's owner, by their handle, whose account\nalone can answer."
+        },
+        "state": {
+          "$ref": "#/$defs/DecisionRequestState",
+          "description": "Where it stands.",
+          "default": {
+            "state": "open"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "question",
+        "yes",
+        "no",
+        "session",
+        "by"
+      ],
+      "description": "What the person is asked, by whom, and what each answer does."
+    },
+    "DecisionRequestState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "open"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "description": "Waiting for an answer.",
+          "title": "OpenDecisionRequestState"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "held"
+            },
+            "emoji": {
+              "type": "string",
+              "description": "The reaction that gave it."
+            },
+            "at": {
+              "type": "string",
+              "description": "When, in RFC 3339."
+            },
+            "until": {
+              "type": "string",
+              "description": "When it counts, in RFC 3339."
+            }
+          },
+          "required": [
+            "state",
+            "emoji",
+            "at",
+            "until"
+          ],
+          "description": "A yes to an irreversible request, given `at` with `emoji`, which counts `until`\n(both RFC 3339) unless a 👎, or taking the 👍 back, stops it first.",
+          "title": "HeldDecisionRequestState"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "answered"
+            },
+            "answer": {
+              "$ref": "#/$defs/DecisionAnswer",
+              "description": "The answer."
+            },
+            "emoji": {
+              "type": "string",
+              "description": "The reaction that gave it: none when it was taken as recommended."
+            },
+            "at": {
+              "type": "string",
+              "description": "When, in RFC 3339."
+            },
+            "recommended": {
+              "type": "boolean",
+              "description": "Whether nobody gave it: the session's recommendation, taken at once as the\nperson's machine is set to ([`Request::recommend`]). Their reaction on the\nrequest still says otherwise, whenever it comes."
+            }
+          },
+          "required": [
+            "state",
+            "answer",
+            "emoji",
+            "at"
+          ],
+          "description": "Answered, `at` (RFC 3339), with `emoji`.",
+          "title": "AnsweredDecisionRequestState"
+        }
+      ],
+      "description": "Where a request stands."
+    },
+    "Answered": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/DecisionRequest",
+          "description": "The request, as it now stands."
+        },
+        "answer": {
+          "$ref": "#/$defs/DecisionAnswer",
+          "description": "The answer."
+        },
+        "by": {
+          "type": "string",
+          "description": "Who gave it: the owner's account."
+        },
+        "emoji": {
+          "type": "string",
+          "description": "The reaction that gave it."
+        },
+        "at": {
+          "type": "string",
+          "description": "When, in RFC 3339."
+        },
+        "msgid": {
+          "type": "string",
+          "description": "The id of the request's message."
+        },
+        "org": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The organisation whose server it came from, while watching on a machine signed in\nto several."
+        },
+        "why": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Why"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why it concerns the watching session: the session asked."
+        }
+      },
+      "required": [
+        "request",
+        "answer",
+        "by",
+        "emoji",
+        "at",
+        "msgid"
+      ],
+      "description": "This machine's owner's answer to a request ([`zirc_proto::request`]): a reaction the\nserver said their own account gave, on the request's own message, while it was open."
+    },
+    "Direct": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "The nick it came from."
+        },
+        "from_session": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The sending session, when it came from another machine's zirc."
+        },
+        "session": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The session here it's meant for, if it names one of this machine's sessions."
+        },
+        "text": {
+          "type": "string",
+          "description": "What it says."
+        },
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "When it's a query from another agent ([`zirc_proto::Event::Query`]): its id, which\n`zirc reply` answers it by."
+        },
+        "answer": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "When it answers a query this machine sent: that query's id."
+        },
+        "note": {
+          "type": "boolean",
+          "description": "Whether it's a note from another agent session for the one it names\n([`zirc_proto::Event::Note`]): a teammate's report, never the person's words."
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The server's id for it (`msgid`), which [`Request::React`] names."
+        },
+        "why": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Why"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why it concerns the watching session, if it does."
+        },
+        "org": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The organisation whose server it came from, while watching on a machine signed in\nto several."
+        }
+      },
+      "required": [
+        "from",
+        "text"
+      ],
+      "description": "A message sent to this machine's nick, as a person messages a machine on IRC. It can be\nmeant for one of the machine's sessions: one that starts with a session's name and a\ncolon, such as `cc-1531f8: rebase please`."
+    },
+    "Reacted": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Who said it: a person's nick, or the machine an agent or a bridge posts from."
+        },
+        "session": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The agent session that said it, if one did."
+        },
+        "kind": {
+          "$ref": "#/$defs/ReactedKind",
+          "description": "What kind of message it is."
+        },
+        "text": {
+          "type": "string",
+          "description": "What it says, cut to [`Reacted::TEXT`] characters: its sender's words, never an\ninstruction."
+        },
+        "link": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The first link it carries, such as an issue card's to the issue."
+        }
+      },
+      "required": [
+        "from",
+        "kind",
+        "text"
+      ],
+      "description": "What a message reacted to is, so that a session woken by a reaction it waits for knows\nwhat to do about it: hints differ by [`Reacted::kind`]."
+    },
+    "ReactedKind": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "person",
+          "description": "What a person typed."
+        },
+        {
+          "type": "string",
+          "const": "agent",
+          "description": "An agent session's post, question, answer or note."
+        },
+        {
+          "type": "string",
+          "const": "issue",
+          "description": "An issue's card, from the forge (`x-zirc/forge`)."
+        },
+        {
+          "type": "string",
+          "const": "other",
+          "description": "Anything else: CI's lines, a deploy, a team's own event, a file."
+        }
+      ],
+      "description": "What kind of message was reacted to."
+    },
+    "Reaction": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "description": "The channel, or the nick of the private conversation, it was given in."
+        },
+        "from": {
+          "type": "string",
+          "description": "The nick it came from."
+        },
+        "account": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The account the server says sent it, when it says: the only word on who gave it."
+        },
+        "emoji": {
+          "type": "string",
+          "description": "The emoji."
+        },
+        "to": {
+          "type": "string",
+          "description": "The id of the message it's on (`msgid`)."
+        },
+        "removed": {
+          "type": "boolean",
+          "description": "Whether it was taken back (`+draft/unreact`)."
+        },
+        "time": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "When the server says it was given, in RFC 3339, when it says."
+        },
+        "org": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The organisation whose server it came from, while watching on a machine signed in\nto several."
+        },
+        "why": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Why"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why it concerns the watching session, if it does: a reaction to one of its own\nmessages, or one it waits for."
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The reaction's own id (`msgid`), when the server gives one."
+        },
+        "on": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reacted"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The message it's on, when zircd heard it lately."
+        }
+      },
+      "required": [
+        "channel",
+        "from",
+        "emoji",
+        "to"
+      ],
+      "description": "A reaction to a message, as `IRCv3`'s `+draft/react` and `+draft/unreact` carry it: who\ngave it, as the server says (`account-tag`) and by nick, which emoji, and to which\nmessage. Only [`Reaction::account`] says whose it is: a nick can be anyone's, on a server\nthat lets people connect without an account."
+    },
+    "LocalSession": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "description": "The session's id."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its short handle."
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its full title."
+        },
+        "link": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Where its owner opens it."
+        }
+      },
+      "required": [
+        "session"
+      ],
+      "description": "A session on this machine as its owner knows it: what it's called, and where to open\nit. Never sent to the chat server."
+    },
+    "WakeCount": {
+      "type": "object",
+      "properties": {
+        "day": {
+          "type": "string",
+          "description": "The day, `2026-11-05`, in UTC."
+        },
+        "why": {
+          "$ref": "#/$defs/Why",
+          "description": "Why the watches woke."
+        },
+        "automatic": {
+          "type": "boolean",
+          "description": "For [`Why::Intent`]: the intent was one zircd said for a session by itself, not one\na session said."
+        },
+        "woke": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "How many times."
+        },
+        "acted": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "How many of those the session acted on."
+        }
+      },
+      "required": [
+        "day",
+        "why",
+        "woke",
+        "acted"
+      ],
+      "description": "How often sessions' watches woke on one day for one reason, and how often the session\nthen acted within [`WAKE_ACTED_SECS`]: posted, committed, pushed, or asked zircd to do\nsomething. Kept on the machine, never sent anywhere."
+    },
+    "Overlap": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "description": "The channel both work in."
+        },
+        "nick": {
+          "type": "string",
+          "description": "The other machine's nick."
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The paths both have changed, sorted."
+        },
+        "why": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Why"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why it concerns the watching session, if it does."
+        }
+      },
+      "required": [
+        "channel",
+        "nick",
+        "paths"
+      ],
+      "description": "Paths someone else has uncommitted changes in that one also has."
+    },
+    "LocalOverlap": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "description": "The channel both worktrees' repository works in."
+        },
+        "worktrees": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Worktree"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "The two worktrees, sorted by path, then branch."
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The paths both have changed, sorted."
+        },
+        "same_lines": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "description": "Of those, the ones both change on the same or neighbouring lines, with those lines\nof their merge base: likely to conflict."
+        },
+        "apart": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Of those, the ones both change in different parts: likely to merge."
+        },
+        "why": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Why"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why it concerns the watching session, if it does."
+        }
+      },
+      "required": [
+        "channel",
+        "worktrees",
+        "paths"
+      ],
+      "description": "Paths two worktrees on this machine both have uncommitted changes in: two sessions\nstepping on each other."
+    },
+    "Conflict": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "description": "The channel the push was announced in."
+        },
+        "nick": {
+          "type": "string",
+          "description": "The nick of the machine that pushed."
+        },
+        "branch": {
+          "type": "string",
+          "description": "The branch pushed."
+        },
+        "worktree": {
+          "$ref": "#/$defs/Worktree",
+          "description": "The worktree whose changes it clashes with."
+        },
+        "same_lines": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "description": "The paths both change on the same or neighbouring lines, with those lines of their\nmerge base."
+        },
+        "why": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Why"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why it concerns the watching session, if it does."
+        }
+      },
+      "required": [
+        "channel",
+        "nick",
+        "branch",
+        "worktree",
+        "same_lines"
+      ],
+      "description": "A push of someone else's changing the same lines as a worktree on this machine: what\nwill conflict when one is merged with the other."
+    },
+    "Lease": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Its name."
+        },
+        "holder": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Holder"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Who holds it, if anyone does: the first of [`Lease::holders`], for readers from\nbefore a lease had [`slots`]."
+        },
+        "holders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Holder"
+          },
+          "description": "Everyone holding it, at most [`slots`] of them, the one holding it longest first."
+        },
+        "waiting": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Holder"
+          },
+          "description": "Who's waiting for it, next first."
+        },
+        "held": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Held"
+          },
+          "description": "This machine's sessions whose requests it holds back until it has room, as its\n`config.toml` says (`[leases.<name>]`): they've not asked the others yet."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "description": "A lease as it is: who holds it and who's waiting."
+    },
+    "Holder": {
+      "type": "object",
+      "properties": {
+        "nick": {
+          "type": "string",
+          "description": "Its machine, by nick."
+        },
+        "session": {
+          "type": "string",
+          "description": "The session."
+        },
+        "until": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "When it holds the lease until, or when waiting, until when it'd hold it if its turn\ncame now: in seconds since the Unix epoch."
+        },
+        "mine": {
+          "type": "boolean",
+          "description": "Whether it's this machine's.",
+          "default": false
+        }
+      },
+      "required": [
+        "nick",
+        "session",
+        "until"
+      ],
+      "description": "A session holding or waiting for a lease."
+    },
+    "Held": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string",
+          "description": "The session."
+        },
+        "why": {
+          "type": "string",
+          "description": "Why, such as `load 52 is over 40`."
+        }
+      },
+      "required": [
+        "session",
+        "why"
+      ],
+      "description": "A session's request this machine holds back until it has room for the lease."
+    },
+    "State": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "info",
+          "description": "Nothing good or bad, as when a card doesn't say."
+        },
+        {
+          "type": "string",
+          "const": "pending",
+          "description": "Waiting to start."
+        },
+        {
+          "type": "string",
+          "const": "running",
+          "description": "Under way."
+        },
+        {
+          "type": "string",
+          "const": "passed",
+          "description": "Done, and it went well."
+        },
+        {
+          "type": "string",
+          "const": "failed",
+          "description": "Done, and it didn't."
+        },
+        {
+          "type": "string",
+          "const": "cancelled",
+          "description": "Stopped before it was done."
+        },
+        {
+          "type": "string",
+          "const": "warning",
+          "description": "Needs a look."
+        }
+      ],
+      "description": "A card's colour and icon."
+    },
+    "Field": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "At most 24 characters."
+        },
+        "value": {
+          "type": "string",
+          "description": "At most 120 characters, in zirc-chat's Markdown, so it can be a link."
+        }
+      },
+      "required": [
+        "label",
+        "value"
+      ],
+      "description": "A label and its value."
+    },
+    "Link": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "At most 24 characters."
+        },
+        "url": {
+          "type": "string",
+          "description": "An `https://` address, at most 300 characters."
+        }
+      },
+      "required": [
+        "label",
+        "url"
+      ],
+      "description": "A link under the fields."
+    },
+    "Action": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The integration's own name for it: 1–32 of lowercase letters, digits, `_` and `-`,\nunique in the card."
+        },
+        "label": {
+          "type": "string",
+          "description": "At most 24 characters."
+        },
+        "who": {
+          "$ref": "#/$defs/Who",
+          "description": "Who apps show it to; [`Who::Members`] when it doesn't say."
+        },
+        "confirm": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "What apps ask before sending it, at most 120 characters."
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "description": "A button. Pressing it reaches the integration that posted the card, which decides\nwhether the person may."
+    },
+    "Who": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "members",
+          "description": "The organisation's members, as when a button doesn't say."
+        },
+        {
+          "type": "string",
+          "const": "anyone",
+          "description": "Anyone in the channel, guests included."
+        },
+        {
+          "type": "string",
+          "const": "about",
+          "description": "The person the card is about: the owner of its `about` session, or that nick."
+        },
+        {
+          "type": "string",
+          "const": "admins",
+          "description": "The organisation's owners and admins."
+        },
+        {
+          "type": "string",
+          "const": "owners",
+          "description": "The organisation's owners."
+        }
+      ],
+      "description": "Who may press a button, as apps show it: the integration decides."
+    },
+    "CiFailed": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "The Bazel target, such as `//web:e2e`."
+        },
+        "results": {
+          "type": "string",
+          "description": "Where its result in this build is, on zirc.dev/test-results."
+        }
+      },
+      "required": [
+        "target",
+        "results"
+      ],
+      "description": "A target that failed in a landing's build."
+    },
+    "Request": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "status"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "The connection, nick and channels.",
+          "title": "StatusRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "repo-add"
+            },
+            "path": {
+              "type": "string",
+              "description": "Anywhere inside the repository."
+            },
+            "session": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The agent session or person working in it, which signs its commits and pushes;\n`watcher` when unset."
+            }
+          },
+          "required": [
+            "op",
+            "path"
+          ],
+          "description": "Start watching the repository containing `path`, or, if it's watched already, add\na session working in it.",
+          "title": "RepoAddRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "repo-remove"
+            },
+            "path": {
+              "type": "string",
+              "description": "Anywhere inside the repository."
+            },
+            "session": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The session to take out, leaving the repository watched for the rest."
+            }
+          },
+          "required": [
+            "op",
+            "path"
+          ],
+          "description": "Stop watching the repository containing `path`, or with `session`, only take that\nsession out of it.",
+          "title": "RepoRemoveRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "repo-list"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "The repositories being watched.",
+          "title": "RepoListRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "post"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside a watched repository."
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's saying it: an agent session, or a person."
+            },
+            "text": {
+              "type": "string",
+              "description": "The text."
+            },
+            "to": {
+              "$ref": "#/$defs/Target",
+              "description": "Which of the repository's channels.",
+              "default": {
+                "kind": "repo"
+              }
+            },
+            "app": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The short name apps show for an integration posting it, in place of a generic app\nbadge: see [`zirc_proto::app_label`]."
+            },
+            "everyone": {
+              "type": "boolean",
+              "description": "A broadcast, for every session hearing it ([`zirc_proto::Message::everyone`])."
+            },
+            "force": {
+              "type": "boolean",
+              "description": "Post it to the repository's channel even though an agent session says it and it\nisn't for a person: `zirc post --force`. Left out when false, so an older zircd\nstill understands it."
+            },
+            "reply": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The id of the message it replies to (`+draft/reply`), whole or by a start of it as\n`zirc watch` shows it: it then goes where that message was said, whatever `to`\nsays. Left out when absent, so an older zircd still understands a post without one."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "text"
+          ],
+          "description": "Say something in a channel of the repository containing `repo`.",
+          "title": "PostRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "dm"
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's saying it: an agent session."
+            },
+            "text": {
+              "type": "string",
+              "description": "The text."
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Whom to: a person's nick or account. This machine's owner when absent."
+            }
+          },
+          "required": [
+            "op",
+            "session",
+            "text"
+          ],
+          "description": "Say something to one person alone, as a direct message from `session`: to `to`, or\nwithout it to this machine's owner, which is how an agent answers the person whose\nmachine it's on.",
+          "title": "DmRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "note"
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's writing: an agent session."
+            },
+            "to": {
+              "type": "string",
+              "description": "The session it's for: `<session>`, its name, or `<machine>/<session>`."
+            },
+            "text": {
+              "type": "string",
+              "description": "What it says."
+            }
+          },
+          "required": [
+            "op",
+            "session",
+            "to",
+            "text"
+          ],
+          "description": "Leave a note for one agent session, as `session` ([`zirc_proto::Event::Note`]): the\none `to` names, by its id or the name it goes by, or as `<machine>/<session>`,\nwherever it works. Its watch alone hears it, if its machine lets this one query it\n([`crate::agents`]). Answered with [`Response::Noted`].",
+          "title": "NoteRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "ask"
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's asking: an agent session."
+            },
+            "to": {
+              "type": "string",
+              "description": "Whom: `<machine>`, `<machine>/<session>` or a person's nick."
+            },
+            "text": {
+              "type": "string",
+              "description": "The question."
+            }
+          },
+          "required": [
+            "op",
+            "session",
+            "to",
+            "text"
+          ],
+          "description": "Ask agents something, as `session` ([`zirc_proto::Event::Query`]): those of the\nmachine `to` names, `<machine>/<session>` for one of them, or a person's nick for\nthose of each of their machines here. Their watches hear it if their machine lets\nthis one query it ([`crate::agents`]). Answered with [`Response::Asked`].",
+          "title": "AskRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "decide"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside a watched repository."
+            },
+            "session": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The session relaying it."
+            },
+            "quote": {
+              "type": "string",
+              "description": "The owner's words, verbatim."
+            },
+            "about": {
+              "type": "string",
+              "description": "What it covers."
+            },
+            "link": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Where to read more."
+            },
+            "for": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The sessions and branches it's for, whose watches it wakes."
+            },
+            "replaces": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The server's id of the earlier decision it takes the place of."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "quote",
+            "about"
+          ],
+          "description": "Record a decision this machine's owner made ([`zirc_proto::decision`]): in the\norganisation's `#ops` and the channel of the repository containing `repo`. With\n`session`, the agent session it was said to relays it; without, the person is at a\nterminal here, as only `zirc decide` run by a person says. Answered with\n[`Response::Decided`].",
+          "title": "DecideRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "set-state"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside a watched repository."
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's saying it: an agent session, a person, or a script."
+            },
+            "name": {
+              "type": "string",
+              "description": "What it's the state of, such as `master`."
+            },
+            "level": {
+              "$ref": "#/$defs/Level",
+              "description": "How it stands."
+            },
+            "why": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Why, in a few words."
+            },
+            "owner": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Who's on it, whose watch it wakes."
+            },
+            "link": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Where to read more."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "name",
+            "level"
+          ],
+          "description": "Say how something in the repository containing `repo` stands now\n([`zirc_proto::state`]), such as its default branch broken and who's fixing it: in\nthe organisation's `#ops`, where `zirc state` reads it. Answered with\n[`Response::Channel`].",
+          "title": "SetStateRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "ask-owner"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session asking."
+            },
+            "question": {
+              "type": "string",
+              "description": "The question, one line."
+            },
+            "yes": {
+              "type": "string",
+              "description": "What a yes does."
+            },
+            "no": {
+              "type": "string",
+              "description": "What a no does."
+            },
+            "recommend": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecisionAnswer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The answer the session recommends."
+            },
+            "irreversible": {
+              "type": "boolean",
+              "description": "Whether acting on a yes can't be undone."
+            }
+          },
+          "required": [
+            "op",
+            "session",
+            "question",
+            "yes",
+            "no"
+          ],
+          "description": "Ask this machine's owner `question` in `#decisions` ([`zirc_proto::request`]), to\nanswer with a reaction: answered with [`Response::Requested`], and their answer, once\nthey give it, comes to `session`'s watch as [`Response::Answered`].",
+          "title": "AskOwnerRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "reply"
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's answering: an agent session."
+            },
+            "query": {
+              "type": "string",
+              "description": "The query's id, as the watch said it."
+            },
+            "text": {
+              "type": "string",
+              "description": "The answer."
+            }
+          },
+          "required": [
+            "op",
+            "session",
+            "query",
+            "text"
+          ],
+          "description": "Answer the query `query`, heard while watching, as `session`.",
+          "title": "ReplyRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "queries"
+            },
+            "set": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Queries"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The new setting."
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "Who may query this machine's agents, set to `set` if given. Answered with\n[`Response::Queries`].",
+          "title": "QueriesRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "emit"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside a watched repository."
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's sending it: an agent session, a person, or a script."
+            },
+            "kind": {
+              "type": "string",
+              "description": "Its kind, such as `x-acme/deploy`: see [`zirc_proto::check_kind`]."
+            },
+            "data": {
+              "description": "What it carries, if anything."
+            },
+            "text": {
+              "type": "string",
+              "description": "What it says, for people."
+            },
+            "to": {
+              "$ref": "#/$defs/Target",
+              "description": "Which of the repository's channels.",
+              "default": {
+                "kind": "repo"
+              }
+            },
+            "app": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The short name apps show for an integration posting it, in place of a generic app\nbadge: see [`zirc_proto::app_label`]."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "kind",
+            "text"
+          ],
+          "description": "Send a team's own kind of event to a channel of the repository containing `repo`,\nas [`zirc_proto::Event::Custom`].",
+          "title": "EmitRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "workflow"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside a watched repository."
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's sending it: an agent session or a person."
+            },
+            "channel": {
+              "type": "string",
+              "description": "Where: `#workflows`, or the workflow's channel."
+            },
+            "event": {
+              "$ref": "#/$defs/Event",
+              "description": "What."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "channel",
+            "event"
+          ],
+          "description": "Send something for the organisation's workflows ([`zirc_proto::workflow`]) to\n`channel`, in the organisation of the repository containing `repo`: a workflow's file\nto `#workflows`, what a worker did with a step ([`zirc_proto::run::StepAction`]), or\nwords to a workflow's nick, as [`zirc_proto::Event::Text`].",
+          "title": "WorkflowRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "intend"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside a watched repository."
+            },
+            "session": {
+              "type": "string",
+              "description": "The session about to start."
+            },
+            "summary": {
+              "type": "string",
+              "description": "What it's about to do, in a line."
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The paths or directories it expects to touch: absolute, or relative to `repo`."
+            },
+            "seconds": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0,
+              "description": "How many seconds until it ends unless renewed."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "summary",
+            "paths",
+            "seconds"
+          ],
+          "description": "Tell the repository's channel what the session is about to touch.",
+          "title": "IntendRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "react"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Where it's asked, which names the repository and so the organisation."
+            },
+            "session": {
+              "type": "string",
+              "description": "The session reacting."
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The message's id, or the start of one, as `zirc watch` shows it."
+            },
+            "last": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Instead, the latest message heard from this nick or session."
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Where `message` was said, a channel or a nick, for one zircd hasn't heard lately,\nsuch as from `zirc search`."
+            },
+            "emoji": {
+              "type": "string",
+              "description": "The emoji."
+            },
+            "remove": {
+              "type": "boolean",
+              "description": "Take the reaction back rather than give it.",
+              "default": false
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "emoji"
+          ],
+          "description": "React to a message with an emoji, as people's apps do (`IRCv3`'s `+draft/react`),\nfrom `session`: the message `message` names, or the latest from `last`.",
+          "title": "ReactRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "typing"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Where the command runs, which names the organisation on a machine signed in to\nseveral."
+            },
+            "session": {
+              "type": "string",
+              "description": "The session that's typing."
+            },
+            "to": {
+              "type": "string",
+              "description": "A person's nick or a channel."
+            },
+            "seconds": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0,
+              "description": "How many seconds at most."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "to",
+            "seconds"
+          ],
+          "description": "Show `to` that the session is typing, as people's apps do, until it says something\nthere or `seconds` pass: never stored, never shown by `zirc watch`.",
+          "title": "TypingRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "join"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside a watched repository, which names the repository's topics."
+            },
+            "topic": {
+              "type": "string",
+              "description": "The topic."
+            },
+            "org": {
+              "type": "boolean",
+              "description": "Whether it's the organisation's topic rather than the repository's."
+            },
+            "session": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The session joining, whose watch then hears the topic's posts; without one,\nthe machine joins, and only watchers that aren't a session hear them."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "topic",
+            "org"
+          ],
+          "description": "Join a topic channel: `#<repo>/<topic>`, or `#<topic>` across the organisation.",
+          "title": "JoinRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "name"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session."
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its name, made plain by [`zirc_proto::session_name`]."
+            },
+            "tool": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The agent tool it runs in, made plain by [`zirc_proto::session_tool`]."
+            },
+            "avatar": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The picture it goes by: one of [`zirc_proto::AGENT_AVATARS`], or refused."
+            },
+            "title": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its full title, as the agent tool shows it: sent to the session's channels as a\n[`zirc_proto::session::SessionCard`]."
+            },
+            "link": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Where its owner opens it, such as a `claude://` link: kept on this machine, and\nonly ever given over this socket ([`Request::LocalSessions`])."
+            }
+          },
+          "required": [
+            "op",
+            "session"
+          ],
+          "description": "Name `session`, as apps show it in place of its id, say which agent tool it runs in,\nor pick its picture: zircd puts them on what the session sends from now on\n([`zirc_proto::Message::name`], [`zirc_proto::Message::tool`],\n[`zirc_proto::Message::avatar`]), and keeps them\nacross restarts. Without a name, a session goes by the branch it named first, if\nit did. What's left out stays as it was.",
+          "title": "NameRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "role"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session."
+            },
+            "role": {
+              "type": "string",
+              "description": "The role, as [`zirc_proto::workflow::check_role`] takes it."
+            },
+            "join": {
+              "type": "boolean",
+              "description": "Joining it, or leaving it."
+            }
+          },
+          "required": [
+            "op",
+            "session",
+            "role",
+            "join"
+          ],
+          "description": "Join or leave one of the workflows' roles ([`zirc_proto::workflow::Who::Role`]) as\n`session`: the machine says each live session's roles with the list of them\n([`zirc_proto::session::Live`]), so a workflow gives a role's steps to its members.\nA session's roles end with its `done:` or `dropped:`, or once it's no longer live.\nAnswered with [`Response::Roles`].",
+          "title": "RoleRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "local-sessions"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "This machine's named sessions, with their titles and links, for its owner's apps:\nanswered with [`Response::LocalSessions`].",
+          "title": "LocalSessionsRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "leave"
+            },
+            "repo": {
+              "type": "string",
+              "description": "As for [`Request::Join`]."
+            },
+            "topic": {
+              "type": "string",
+              "description": "As for [`Request::Join`]."
+            },
+            "org": {
+              "type": "boolean",
+              "description": "As for [`Request::Join`]."
+            },
+            "session": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The session leaving: the channel is left once no session or person is in it.\nWithout one, the machine leaves it, whoever joined."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "topic",
+            "org"
+          ],
+          "description": "Leave a topic channel joined with [`Request::Join`].",
+          "title": "LeaveRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "who"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "Who is working on what in the channels joined, this machine included.",
+          "title": "WhoRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "read"
+            },
+            "target": {
+              "type": "string",
+              "description": "The channel, or the nick of a private conversation with this machine."
+            },
+            "limit": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0,
+              "description": "How many, at most: the newest."
+            },
+            "since": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "The oldest moment, in seconds since the Unix epoch, inclusive."
+            },
+            "until": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "The newest moment, in seconds since the Unix epoch, exclusive."
+            }
+          },
+          "required": [
+            "op",
+            "target",
+            "limit"
+          ],
+          "description": "The latest messages in a channel or a private conversation, from the server's\nhistory, each with the id [`Request::Trim`] names, between `since` and `until` when\ngiven, read back a page at a time ([`crate::history`]). Answered with\n[`Response::Messages`].",
+          "title": "ReadRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "conversations"
+            },
+            "seconds": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0,
+              "description": "How far back."
+            }
+          },
+          "required": [
+            "op",
+            "seconds"
+          ],
+          "description": "The private conversations with this machine that had messages in the last `seconds`,\nas the server keeps them: [`Response::Conversations`].",
+          "title": "ConversationsRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "trim"
+            },
+            "target": {
+              "type": "string",
+              "description": "The channel, or the nick of the private conversation, it was sent to."
+            },
+            "id": {
+              "type": "string",
+              "description": "The message's id, as [`Delivery::id`] and [`Response::Messages`] give it."
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Why, which the server passes on to those it tells."
+            }
+          },
+          "required": [
+            "op",
+            "target",
+            "id"
+          ],
+          "description": "Remove one message from the server's history ([`crate::trim`]), waiting until the\nserver has or says why not: [`Response::Done`], or an error saying why. The server\nallows it for messages this machine's account sent, and for any in a channel it's an\noperator of.",
+          "title": "TrimRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "watch"
+            },
+            "session": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The session watching: an agent session working here, or none for the machine's\nperson."
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "Stream every zirc message from the channels being watched, and overlaps with this\nmachine's own uncommitted changes as they appear, each with why it concerns\n`session`, if it does.",
+          "title": "WatchRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "wakes"
+            },
+            "days": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0,
+              "description": "How many days back, today included.",
+              "default": 7
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "How this machine's sessions' watches woke over the last `days` days, and how often\nthe session acted soon after: answered with [`Response::Wakes`]. Counts only.",
+          "title": "WakesRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "wakes-resume"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "Let wakes through again at once, the circuit breaker on them being open, and count\nafresh: answered with [`Response::Wakes`].",
+          "title": "WakesResumeRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "task"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session."
+            },
+            "landing": {
+              "type": "boolean",
+              "description": "For a landing (`//ops:land`), which claims the task: the one the session is on,\nelse the one it finished last, if in the last [`LANDING_CLAIMS`] seconds and no\nlanding claimed it yet, since sessions often post `done:` before they land. A task\nan intent started, with no `taking:`, ends with its landing."
+            }
+          },
+          "required": [
+            "op",
+            "session"
+          ],
+          "description": "The task `session` is on, the id zircd gave it when it posted `taking:` or, on none,\nstated an intent ([`zirc_proto::Message::task`]): answered with [`Response::Task`].",
+          "title": "TaskRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "wait-for"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session waiting."
+            },
+            "on": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "What it waits on."
+            },
+            "states": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/StateWait"
+              },
+              "description": "The states it waits on changing."
+            },
+            "reactions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The reactions it waits for, such as 👀: the machine's person giving one to a\nmessage wakes the session ([`Why::ReactionAwaited`]), once a message, however\noften it's given. Each lasts a day from when it was said or last woke the session."
+            },
+            "drop": {
+              "type": "boolean",
+              "description": "Stop waiting for `reactions`, rather than start."
+            }
+          },
+          "required": [
+            "op",
+            "session"
+          ],
+          "description": "Note that `session` waits on each of `on`, another session, a branch or a build by its\nnumber, so CI's landing line naming it wakes the session ([`Why::Awaited`]) until it\nlands, fails or conflicts, or for three hours; and on each of `states` changing, so\nthe first state said of it at another level wakes it ([`Why::StateChanged`]), once.\nWith nothing in either, it says what the session waits on. Answered with\n[`Response::Awaits`].",
+          "title": "WaitForRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "stack"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session whose branch is stacked."
+            },
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The branch it's stacked on."
+            },
+            "tip": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "That branch's head as the session built on it."
+            },
+            "drop": {
+              "type": "boolean",
+              "description": "Forget the stack on `branch` instead."
+            }
+          },
+          "required": [
+            "op",
+            "session"
+          ],
+          "description": "Note that `session`'s branch is stacked on `branch`, another session's not yet\nlanded, whose head was `tip` as the session built on it: CI's line saying it landed\nwakes the session ([`Why::BranchLanded`]), as does a push that moves it\n([`Why::Landing`]), and the stack is kept, with `tip`, for the rebase onto the default\nbranch that follows. With `drop`, forget the stack on `branch`; with no `branch`, only\nsay the session's stacks. Answered with [`Response::Stacks`].",
+          "title": "StackRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "stop"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "Stop zircd, after answering.",
+          "title": "StopRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "restart"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "Start zircd again from its binary, after answering, as after an update: watches are\ntold [`RESTARTING`] and watch again once it's back.",
+          "title": "RestartRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "lease"
+            },
+            "name": {
+              "type": "string",
+              "description": "The lease, such as `emulator`."
+            },
+            "session": {
+              "type": "string",
+              "description": "The session asking."
+            },
+            "seconds": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "How long to hold it once it's theirs: [`crate::leases::DEFAULT_SECONDS`] unless\nsaid, at most [`crate::leases::MAX_SECONDS`]."
+            },
+            "pid": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0,
+              "description": "The asking `zirc` command's process id: zircd gives the lease back once nothing\nheavy has run for a while under whoever ran it, such as the session's agent."
+            },
+            "wait": {
+              "type": "boolean",
+              "description": "Whether the asking command waits until the lease is the session's (`zirc lease\n--wait`): while `pid` runs, it says so itself, so the session's watch isn't told."
+            }
+          },
+          "required": [
+            "op",
+            "name",
+            "session"
+          ],
+          "description": "Ask for the lease `name` for `session` ([`crate::leases`]), or, holding it, hold it\nfor `seconds` from now: while others wait, no further than [`crate::leases::renewal`]\nallows, past which it's asked for again behind them. Answered with\n[`Response::Leases`] holding that lease.",
+          "title": "LeaseRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "lease-release"
+            },
+            "name": {
+              "type": "string",
+              "description": "The lease."
+            },
+            "session": {
+              "type": "string",
+              "description": "The session holding or waiting for it."
+            }
+          },
+          "required": [
+            "op",
+            "name",
+            "session"
+          ],
+          "description": "Give back the lease `name`, or stop waiting for it, as `session`. Answered with\n[`Response::Leases`] holding that lease.",
+          "title": "LeaseReleaseRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "leases"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "Every lease held or waited for. Answered with [`Response::Leases`].",
+          "title": "LeasesRequest"
+        }
+      ],
+      "description": "What a client asks zircd."
+    },
+    "Response": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Status",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "status"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "The answer to [`Request::Status`].",
+          "title": "StatusResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "repos"
+            },
+            "repos": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Repo"
+              },
+              "description": "The repositories being watched, sorted by path."
+            }
+          },
+          "required": [
+            "kind",
+            "repos"
+          ],
+          "description": "The answer to [`Request::RepoList`], and to adding or removing one.",
+          "title": "ReposResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "done"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "Done, with nothing to say.",
+          "title": "DoneResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "channel"
+            },
+            "channel": {
+              "type": "string",
+              "description": "Its name."
+            },
+            "link": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The post's own link, which opens it in every app\n([`zirc_proto::link::conversation_link`]), once the server's echo gave its id."
+            }
+          },
+          "required": [
+            "kind",
+            "channel"
+          ],
+          "description": "The channel a post, join or leave was about.",
+          "title": "ChannelResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "who"
+            },
+            "channels": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ChannelPresence"
+              },
+              "description": "Each joined channel's working sets, sorted by channel."
+            }
+          },
+          "required": [
+            "kind",
+            "channels"
+          ],
+          "description": "The answer to [`Request::Who`].",
+          "title": "WhoResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "stacks"
+            },
+            "stacks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Stack"
+              },
+              "description": "The branches it's stacked on, oldest first."
+            }
+          },
+          "required": [
+            "kind",
+            "stacks"
+          ],
+          "description": "A session's stacks: the answer to [`Request::Stack`].",
+          "title": "StacksResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "awaits"
+            },
+            "on": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Sessions, branches and builds by their number."
+            }
+          },
+          "required": [
+            "kind",
+            "on"
+          ],
+          "description": "What a session waits on: the answer to [`Request::WaitFor`].",
+          "title": "AwaitsResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "messages"
+            },
+            "messages": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Delivery"
+              },
+              "description": "The messages, oldest first."
+            }
+          },
+          "required": [
+            "kind",
+            "messages"
+          ],
+          "description": "The answer to [`Request::Read`].",
+          "title": "MessagesResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "conversations"
+            },
+            "targets": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The nicks of the people and machines each conversation is with."
+            }
+          },
+          "required": [
+            "kind",
+            "targets"
+          ],
+          "description": "The answer to [`Request::Conversations`].",
+          "title": "ConversationsResponse"
+        },
+        {
+          "$ref": "#/$defs/Delivery",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "delivery"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "One message, while watching.",
+          "title": "DeliveryResponse"
+        },
+        {
+          "$ref": "#/$defs/Answered",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "answered"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "While watching: this machine's owner answered a session's request.",
+          "title": "AnsweredResponse"
+        },
+        {
+          "$ref": "#/$defs/Direct",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "direct"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "While watching: a message sent to this machine's nick rather than to a channel.",
+          "title": "DirectResponse"
+        },
+        {
+          "$ref": "#/$defs/Reaction",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "reaction"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "While watching: someone reacted to a message, or took a reaction back.",
+          "title": "ReactionResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "roles"
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Its roles, sorted."
+            }
+          },
+          "required": [
+            "kind",
+            "roles"
+          ],
+          "description": "The answer to [`Request::Role`]: the session's roles now.",
+          "title": "RolesResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "local-sessions"
+            },
+            "sessions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/LocalSession"
+              },
+              "description": "Each session given a name, a title or a link here."
+            }
+          },
+          "required": [
+            "kind",
+            "sessions"
+          ],
+          "description": "The answer to [`Request::LocalSessions`], by session.",
+          "title": "LocalSessionsResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "wakes"
+            },
+            "counts": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/WakeCount"
+              },
+              "description": "A count for each day and reason a watch woke."
+            },
+            "breaker": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/BreakerState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The circuit breaker on wakes, from a zircd that has one."
+            }
+          },
+          "required": [
+            "kind",
+            "counts"
+          ],
+          "description": "The answer to [`Request::Wakes`], oldest day first.",
+          "title": "WakesResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "task"
+            },
+            "task": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The task's id, while the session is on one."
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "The answer to [`Request::Task`].",
+          "title": "TaskResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "requested"
+            },
+            "id": {
+              "type": "string",
+              "description": "The request's id, which its answer names."
+            },
+            "channel": {
+              "type": "string",
+              "description": "Where it was asked."
+            },
+            "taken": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DecisionAnswer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The answer taken at once, the session's own recommendation, on a machine set to\ntake them (`accept_recommended`): the session acts on it now, and hears on its\nwatch if its person later says otherwise."
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "channel"
+          ],
+          "description": "The answer to [`Request::AskOwner`].",
+          "title": "RequestedResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "decided"
+            },
+            "channels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The channels it was posted to."
+            }
+          },
+          "required": [
+            "kind",
+            "channels"
+          ],
+          "description": "The answer to [`Request::Decide`].",
+          "title": "DecidedResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "noted"
+            },
+            "to": {
+              "type": "string",
+              "description": "Where it went: `<machine>/<session>`."
+            }
+          },
+          "required": [
+            "kind",
+            "to"
+          ],
+          "description": "The answer to [`Request::Note`], and to a [`Request::Post`] addressed to one agent\nsession, which goes to it as a note.",
+          "title": "NotedResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "asked"
+            },
+            "id": {
+              "type": "string",
+              "description": "The query's id, which its answers name."
+            },
+            "to": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The machines it went to: this one's own nick among them when it was for its\nown sessions."
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "to"
+          ],
+          "description": "The answer to [`Request::Ask`].",
+          "title": "AskedResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "queries"
+            },
+            "queries": {
+              "$ref": "#/$defs/Queries",
+              "description": "Who may query this machine's agents."
+            }
+          },
+          "required": [
+            "kind",
+            "queries"
+          ],
+          "description": "The answer to [`Request::Queries`].",
+          "title": "QueriesResponse"
+        },
+        {
+          "$ref": "#/$defs/Overlap",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "overlap"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "While watching: someone else started changing paths this machine has changed too.",
+          "title": "OverlapResponse"
+        },
+        {
+          "$ref": "#/$defs/LocalOverlap",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "local-overlap"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "While watching: two worktrees on this machine started changing the same paths.",
+          "title": "LocalOverlapResponse"
+        },
+        {
+          "$ref": "#/$defs/Conflict",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "conflict"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "While watching: a push changes the same lines as a worktree on this machine.",
+          "title": "ConflictResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "leases"
+            },
+            "leases": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Lease"
+              },
+              "description": "The leases, by name."
+            }
+          },
+          "required": [
+            "kind",
+            "leases"
+          ],
+          "description": "The answer to [`Request::Lease`], [`Request::LeaseRelease`] and [`Request::Leases`].",
+          "title": "LeasesResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "error"
+            },
+            "message": {
+              "type": "string",
+              "description": "Why, for a person to read."
+            }
+          },
+          "required": [
+            "kind",
+            "message"
+          ],
+          "description": "The request failed.",
+          "title": "ErrorResponse"
+        }
+      ],
+      "description": "What zircd answers."
+    },
+    "Card": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique within its sender: a later card with the same id from the same nick replaces\nit. 1–64 of letters, digits and `._:/-`, such as `monorepo/889`."
+        },
+        "title": {
+          "type": "string",
+          "description": "One line, at most 80 characters."
+        },
+        "state": {
+          "$ref": "#/$defs/State",
+          "description": "Its colour and icon; [`State::Info`] when it doesn't say."
+        },
+        "about": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The agent session or nick it concerns, such as the session a landing is for. A\n[`Who::About`] button is for its owner."
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Field"
+          },
+          "description": "At most 8, shown as label and value."
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Link"
+          },
+          "description": "At most 4, shown under the fields."
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Action"
+          },
+          "description": "At most 3 buttons."
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "One line under it all, such as who pressed what and how it went, or an error."
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "description": "A card: see the module."
+    },
+    "CiData": {
+      "type": "object",
+      "properties": {
+        "landing": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The landing's id, `<pipeline>/<build>`."
+        },
+        "pipeline": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "CI's pipeline, such as `monorepo`."
+        },
+        "build": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The build's number."
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The branch landing."
+        },
+        "subject": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "What the landing is about: its head commit's subject, which apps show as its headline."
+        },
+        "session": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The session that queued it, whom the text names."
+        },
+        "repo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The repository's web address."
+        },
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The full id of the commit the text names."
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The build's page."
+        },
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "How it stands: `pending`, `running`, `passed`, `failed`, `cancelled` or `warning`."
+        },
+        "failed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CiFailed"
+          },
+          "description": "The targets that failed, each with where its result is."
+        },
+        "task": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The task the landing finishes or is part of ([`crate::Message::task`]), when its\nsession was on one."
+        },
+        "reverts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Full ids of the commits on the default branch the landing undoes, from its commits'\n`Reverts:` trailers."
+        },
+        "fixes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "What the landing repairs, from its commits' `Fixes:` trailers: full ids of commits on\nthe default branch, or CI builds as `build N`."
+        }
+      },
+      "description": "What a landing's or deploy's event carries (`ops/say.sh`), each field left out when CI\ndoesn't know it. Every event of one landing's build has the same [`Data::landing`], so the\napps show them as one landing that updates."
+    }
+  }
+}

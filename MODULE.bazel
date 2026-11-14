@@ -1,0 +1,25 @@
+"""zirc: what runs on your own machines and servers. The CLI, zircd, the terminal client,
+zirc-remote and the sidecar beside a server's Ergo."""
+
+module(name = "zirc")
+
+# The toolchains, zirc's version and the pinned tools: bazel/published.MODULE.bazel, which
+# zirc's own repository builds from too.
+include("//bazel:published.MODULE.bazel")
+
+# The crates Cargo.toml and Cargo.lock declare. Cargo.toml stays the one place they're
+# declared.
+crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+crate.from_cargo(
+    name = "crates",
+    cargo_lockfile = "//:Cargo.lock",
+    manifests = ["//:Cargo.toml"],
+    supported_platform_triples = [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+        "wasm32-unknown-unknown",
+    ],
+)
+use_repo(crate, "crates")

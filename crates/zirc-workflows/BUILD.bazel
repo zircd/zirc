@@ -1,0 +1,5 @@
+load("//bazel:rust.bzl", "zirc_rust_library")
+
+zirc_rust_library(
+    name = "zirc-workflows",
+)

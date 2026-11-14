@@ -1,0 +1,4 @@
+# Names that docs may write without backticks. ".." keeps clippy's defaults. zirc's environment
+# variables are here for the commands' doc comments, which are their --help, where backticks
+# would print.
+doc-valid-idents = ["IRCv3", "JetBrains", "ZIRC_HOME", "ZIRC_SESSION", ".."]

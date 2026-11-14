@@ -1,0 +1,23 @@
+[package]
+name = "zirc-chat"
+description = "An IRC chat session as zirc's apps show it, and who's working on what: no I/O, so it builds for wasm too."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono.workspace = true
+emojis.workspace = true
+pulldown-cmark.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+syntect.workspace = true
+ts-rs.workspace = true
+zirc-line.workspace = true
+zirc-proto.workspace = true

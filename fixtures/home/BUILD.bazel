@@ -1,0 +1,45 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+# The team in zirc.dev's home page's picture (README.md): the same shape as Acme's showcase
+# (//fixtures/acme), played by the same core.
+exports_files(
+    ["home.json"],
+    visibility = [
+        # The Mac app's harness and the iPhone's screenshot host show it for the home page's
+        # shots (web/art/home-shots.sh).
+        "//oss/apps/ios:__subpackages__",
+        "//oss/apps/mac:__pkg__",
+        # zirc-app's tests stage it (src/showcase.rs).
+        "//crates/zirc-app:__pkg__",
+    ],
+)
+
+# Everything home.json names is in it, by Acme's checker.
+sh_test(
+    name = "home_test",
+    size = "small",
+    srcs = ["check.sh"],
+    args = ["$(rootpath home.json)"],
+    data = [
+        "home.json",
+        "//fixtures/acme:check.py",
+    ],
+)
+
+# The team's morning as zirc and zircd print it, for zirc.dev's <Terminal>.
+exports_files(
+    ["terminals.json"],
+    visibility = [
+        # zirc_terminals_test makes it, and fails when it's out of date.
+        "//crates/zirc:__pkg__",
+        # zirc.dev's docs and home page show it.
+        "//web:__pkg__",
+    ],
+)
+
+# terminals.json, brought up to date: what zirc_terminals_test printed this run.
+sh_binary(
+    name = "terminals",
+    srcs = ["terminals.sh"],
+)

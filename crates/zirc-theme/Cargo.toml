@@ -1,0 +1,22 @@
+[package]
+name = "zirc-theme"
+description = "zirc's look, declared once in tokens.json: colours for dark and light, type, and the JetBrains Mono font files."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+# The fonts and the CSS ship with the crate, for apps that take it as a git dependency.
+include = ["src", "bin", "fonts", "art", "tokens.json", "zirc-theme.css", "Cargo.toml"]
+
+# Prints the web stylesheet: bazel run //crates/zirc-theme:css > crates/zirc-theme/zirc-theme.css
+[[bin]]
+name = "css"
+path = "bin/css.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

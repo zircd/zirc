@@ -1,0 +1,28 @@
+// Made by zirc-theme-art: each file of Android's res/, by its path there, and the
+// file beside this one it comes from. Don't edit it.
+&[
+    ("drawable-night/zirc_wordmark.xml", include_bytes!("drawable-night/zirc_wordmark.xml")),
+    ("drawable/ic_notification.xml", include_bytes!("drawable/ic_notification.xml")),
+    ("drawable/zirc_wordmark.xml", include_bytes!("drawable/zirc_wordmark.xml")),
+    ("mipmap-anydpi-v26/ic_launcher.xml", include_bytes!("dark/mipmap-anydpi-v26/ic_launcher.xml")),
+    ("mipmap-hdpi/ic_launcher.png", include_bytes!("dark/mipmap-hdpi/ic_launcher.png")),
+    ("mipmap-hdpi/ic_launcher_background.png", include_bytes!("dark/mipmap-hdpi/ic_launcher_background.png")),
+    ("mipmap-hdpi/ic_launcher_foreground.png", include_bytes!("dark/mipmap-hdpi/ic_launcher_foreground.png")),
+    ("mipmap-hdpi/ic_launcher_monochrome.png", include_bytes!("dark/mipmap-hdpi/ic_launcher_monochrome.png")),
+    ("mipmap-mdpi/ic_launcher.png", include_bytes!("dark/mipmap-mdpi/ic_launcher.png")),
+    ("mipmap-mdpi/ic_launcher_background.png", include_bytes!("dark/mipmap-mdpi/ic_launcher_background.png")),
+    ("mipmap-mdpi/ic_launcher_foreground.png", include_bytes!("dark/mipmap-mdpi/ic_launcher_foreground.png")),
+    ("mipmap-mdpi/ic_launcher_monochrome.png", include_bytes!("dark/mipmap-mdpi/ic_launcher_monochrome.png")),
+    ("mipmap-xhdpi/ic_launcher.png", include_bytes!("dark/mipmap-xhdpi/ic_launcher.png")),
+    ("mipmap-xhdpi/ic_launcher_background.png", include_bytes!("dark/mipmap-xhdpi/ic_launcher_background.png")),
+    ("mipmap-xhdpi/ic_launcher_foreground.png", include_bytes!("dark/mipmap-xhdpi/ic_launcher_foreground.png")),
+    ("mipmap-xhdpi/ic_launcher_monochrome.png", include_bytes!("dark/mipmap-xhdpi/ic_launcher_monochrome.png")),
+    ("mipmap-xxhdpi/ic_launcher.png", include_bytes!("dark/mipmap-xxhdpi/ic_launcher.png")),
+    ("mipmap-xxhdpi/ic_launcher_background.png", include_bytes!("dark/mipmap-xxhdpi/ic_launcher_background.png")),
+    ("mipmap-xxhdpi/ic_launcher_foreground.png", include_bytes!("dark/mipmap-xxhdpi/ic_launcher_foreground.png")),
+    ("mipmap-xxhdpi/ic_launcher_monochrome.png", include_bytes!("dark/mipmap-xxhdpi/ic_launcher_monochrome.png")),
+    ("mipmap-xxxhdpi/ic_launcher.png", include_bytes!("dark/mipmap-xxxhdpi/ic_launcher.png")),
+    ("mipmap-xxxhdpi/ic_launcher_background.png", include_bytes!("dark/mipmap-xxxhdpi/ic_launcher_background.png")),
+    ("mipmap-xxxhdpi/ic_launcher_foreground.png", include_bytes!("dark/mipmap-xxxhdpi/ic_launcher_foreground.png")),
+    ("mipmap-xxxhdpi/ic_launcher_monochrome.png", include_bytes!("dark/mipmap-xxxhdpi/ic_launcher_monochrome.png")),
+]

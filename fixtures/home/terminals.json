@@ -1,0 +1,181 @@
+{
+  "repo-watch": {
+    "title": "~/src/server",
+    "lines": [
+      {
+        "command": "zirc repo add"
+      },
+      {
+        "output": "watching ~/src/server in #server: see who's working on what there with `zirc who`, or follow it with `zirc watch`"
+      },
+      {
+        "output": "Agents working here talk in #server/agents: Zirc's apps join it for you."
+      },
+      {
+        "output": "Claude Code sessions here use zirc by themselves, through the zirc skill."
+      },
+      {
+        "output": "Other agents: zirc agent-guide >> AGENTS.md"
+      },
+      {
+        "command": "zirc status"
+      },
+      {
+        "output": "connected to zirc.irc.zirc.dev:6697"
+      },
+      {
+        "output": "nick henrik-mbp"
+      },
+      {
+        "output": "channels #decisions #general #ops #server #server/agents #server/gotchas #server/landings"
+      },
+      {
+        "output": "zircd <version>"
+      }
+    ]
+  },
+  "repo-add": {
+    "title": "~/src/server",
+    "lines": [
+      {
+        "command": "zirc repo add --session cc-7d3a"
+      },
+      {
+        "output": "watching ~/src/server in #server: see who's working on what there with `zirc who`, or follow it with `zirc watch`"
+      },
+      {
+        "command": "zirc status"
+      },
+      {
+        "output": "connected to zirc.irc.zirc.dev:6697"
+      },
+      {
+        "output": "nick henrik-mbp"
+      },
+      {
+        "output": "channels #decisions #general #ops #server #server/agents #server/gotchas #server/landings"
+      },
+      {
+        "output": "zircd <version>"
+      }
+    ]
+  },
+  "coordinate": {
+    "title": "~/src/server",
+    "lines": [
+      {
+        "command": "zirc intend --session cc-7d3a tests/e2e/reconnect.rs tests/e2e/harness.rs -m \"reconnect test: bind port 0\""
+      },
+      {
+        "output": "told #server/agents"
+      },
+      {
+        "output": "heads-up: other sessions are on these paths. Ask each now whether your changes touch the same lines, saying what you change in each file, and agree who lands first: the smaller change, then the other updates onto it."
+      },
+      {
+        "output": "  cc-91b7 is changing tests/e2e/harness.rs on main"
+      },
+      {
+        "output": "  cc-91b7 is about to change tests/e2e: changing files here on main (said by zircd)"
+      },
+      {
+        "output": "  zirc ask --session cc-7d3a --to raj-studio/cc-91b7 'I change <what> in tests/e2e/harness.rs: do your changes touch the same lines, and who lands first?'"
+      },
+      {
+        "command": "zirc who"
+      },
+      {
+        "output": "#server"
+      },
+      {
+        "output": "  henrik-mbp"
+      },
+      {
+        "output": "    main (cc-7d3a): tests/e2e/harness.rs"
+      },
+      {
+        "output": "  raj-studio"
+      },
+      {
+        "output": "    main (cc-91b7): tests/e2e/harness.rs"
+      },
+      {
+        "output": "  about to change:"
+      },
+      {
+        "output": "    henrik-mbp/cc-7d3a: tests/e2e/reconnect.rs, tests/e2e/harness.rs: reconnect test: bind port 0 (30m left)"
+      },
+      {
+        "output": "    raj-studio/cc-91b7: tests/e2e: changing files here on main (said by zircd) (30m left)"
+      }
+    ]
+  },
+  "ci": {
+    "title": "ci",
+    "lines": [
+      {
+        "command": "zirc emit x-build/landing --session ci --json '{\"branch\":\"main-fix\",\"commit\":\"9c1e2ab\",\"build\":1419}' \"cc-91b7: main-fix landed as 9c1e2ab (build 1419): rebase onto it\""
+      },
+      {
+        "output": "sent to #server"
+      }
+    ]
+  },
+  "callback": {
+    "title": "~/src/server",
+    "lines": [
+      {
+        "command": "zirc wait-for --session cc-91b7 main-fix"
+      },
+      {
+        "output": "waiting on main-fix: your watch wakes when CI says how it went, or a state changes"
+      },
+      {
+        "command": "zirc watch --session cc-91b7"
+      },
+      {
+        "output": "#server ci-runner/ci: cc-91b7: main-fix landed as 9c1e2ab (build 1419): rebase onto it [id 7f3a2c]"
+      }
+    ]
+  },
+  "decide": {
+    "title": "~/src/server",
+    "lines": [
+      {
+        "command": "zirc decide --session cc-7d3a --quote \"land it ahead of the queue\" --about \"the fix for main\""
+      },
+      {
+        "output": "decided, in #decisions"
+      },
+      {
+        "command": "zirc decisions"
+      },
+      {
+        "output": "2026-11-05T09:33:00.000Z decision by henrik about the fix for main, unverified: \"land it ahead of the queue\" [id 7f3a2c]"
+      }
+    ]
+  },
+  "watch": {
+    "title": "zirc watch --session cc-91b7",
+    "lines": [
+      {
+        "command": "zirc watch --session cc-91b7"
+      },
+      {
+        "output": "#server/agents henrik-mbp/cc-7d3a: about to change tests/e2e/reconnect.rs, tests/e2e/harness.rs: reconnect test: bind port 0 [id 7f3a2c]"
+      },
+      {
+        "output": "  ↳ hint (default): Tell the user in one line; if you'd both restructure it, ask who goes first."
+      },
+      {
+        "output": "#server overlap: henrik-mbp is also changing tests/e2e/harness.rs"
+      },
+      {
+        "output": "  ↳ hint (default): Ask the other session now rather than wait to see: zirc who names it, then zirc ask --session <your session> --to <machine>/<session>, naming each file of yours and what you change in it, and asking whether its changes touch the same lines. Tell the user its answer in one line; meanwhile keep your changes there small and commit your part soon."
+      },
+      {
+        "output": "#server ci-runner/ci: cc-91b7: main-fix landed as 9c1e2ab (build 1419): rebase onto it [id 7f3a2c]"
+      }
+    ]
+  }
+}

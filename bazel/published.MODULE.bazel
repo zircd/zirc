@@ -1,0 +1,162 @@
+"""What the published part of oss/ (published.txt) is built with: the Rust toolchain, zig's
+C toolchain for Linux, the pinned Ergo its tests start, ShellCheck and the wasm-bindgen CLI.
+
+The monorepo's MODULE.bazel includes this file, and so does the public repository's
+(oss/public/root.MODULE.bazel), so each is said once. What only private code or the apps need
+stays in the monorepo's own. The crates from Cargo.toml and Cargo.lock are each root's to
+declare (crate.from_cargo), as their manifests differ."""
+
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "rules_shell", version = "0.6.1")
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Rust: the toolchain. The crates the root Cargo.toml and Cargo.lock declare are the root
+# module file's own to name.
+bazel_dep(name = "rules_rust", version = "0.75.0")
+# wasm-bindgen's rules, for the web client's bindings to zirc-web (bazel/rust.bzl). Their
+# own CLI is 0.2.121, older than the wasm-bindgen GPUI needs; the CLI is wasm-bindgen's own
+# release instead, registered in bazel (wasm_bindgen_cli below).
+bazel_dep(name = "rules_rust_wasm_bindgen", version = "0.75.0")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2024",
+    # What's built for other machines than the one building: the tenant controller's
+    # Linux container image, both halves of the desktop app's universal macOS binary, its
+    # Linux builds for x86-64 and arm64, and
+    # the phone apps' core for Android phones and the emulator, and for iPhones and the
+    # simulator on an Apple silicon Mac.
+    # Setting this replaces rules_rust's defaults, so every target needed is listed.
+    extra_target_triples = [
+        "aarch64-apple-darwin",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "aarch64-linux-android",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "x86_64-linux-android",
+        "x86_64-unknown-linux-gnu",
+        # The browser, for the crates zirc's web client runs (bazel/wasm.bzl).
+        "wasm32-unknown-unknown",
+    ],
+    # GPUI's, as rust-toolchain.toml: change both together.
+    versions = ["1.98.0"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+# Zig's C toolchain, for building Linux binaries on any machine, such as the C in the
+# controller's crates (ring). Registered by .bazelrc's zig config, which Macs and CI's jobs
+# that build Rust use, rather than here, so a job that builds none doesn't fetch it. For Linux
+# only: Macs build for themselves with Xcode's, as GPUI needs.
+bazel_dep(name = "hermetic_cc_toolchain", version = "4.3.0")
+
+# Its zig wrapper drops the linker flag Rust's aarch64 Linux targets add and zig refuses,
+# for the desktop app's arm64 Linux build.
+single_version_override(
+    module_name = "hermetic_cc_toolchain",
+    patch_strip = 1,
+    patches = ["//bazel:hermetic_cc_toolchain-fix-cortex-a53.patch"],
+)
+
+zig = use_extension("@hermetic_cc_toolchain//toolchain:ext.bzl", "toolchains")
+use_repo(zig, "zig_sdk")
+
+# zirc's version, from [workspace.package] in Cargo.toml, and which of zirc's own crates each
+# crate under crates depends on, for the crates Bazel builds. See bazel/version.bzl.
+zirc_version = use_repo_rule("//bazel:version.bzl", "zirc_version")
+
+zirc_version(
+    name = "zirc_version",
+    cargo_toml = "//:Cargo.toml",
+)
+
+# Ergo, the IRC server each tenant runs, at the controller's version (its default
+# ZIRC_ERGO_IMAGE, which //controller:ergo_test checks), for the tests that start one
+# (//dev/ergo, zirc-test-ergo): zirc's, the apps', the alert bridge's and the controller's.
+# Release assets and checksums:
+# https://github.com/ergochat/ergo/releases/tag/v2.19.1
+
+ERGO_VERSION = "2.19.1"
+
+[
+    http_archive(
+        name = "ergo_" + platform.replace("-", "_"),
+        build_file_content = """exports_files(["ergo", "default.yaml"])""",
+        sha256 = sha256,
+        strip_prefix = "ergo-{}-{}".format(ERGO_VERSION, platform),
+        url = "https://github.com/ergochat/ergo/releases/download/v{0}/ergo-{0}-{1}.tar.gz".format(ERGO_VERSION, platform),
+    )
+    for platform, sha256 in {
+        "linux-arm64": "3f68fee0ede09eeeb205a553fe9727b409c686752e1cc2fea34ae2f9d64517fb",
+        "linux-x86_64": "c275f2de8e8eb074c38707136392290172400b5b78616cb9f660351527924b47",
+        "macos-arm64": "1bd97a0917036061e2dcdfc29149c2e252e3bc856282e0956afa2aaaa54dd787",
+        "macos-x86_64": "68b388a49034257082ee0292703874630a2c10cfba86c73bb2adc37b515c57a3",
+    }.items()
+]
+
+# ShellCheck, which checks release/install.sh in `bazel test`.
+# Release assets: https://github.com/koalaman/shellcheck/releases/tag/v0.11.0
+
+SHELLCHECK_VERSION = "0.11.0"
+
+[
+    http_archive(
+        name = "shellcheck_" + platform.replace("-", "_"),
+        build_file_content = """exports_files(["shellcheck"])""",
+        sha256 = sha256,
+        strip_prefix = "shellcheck-v" + SHELLCHECK_VERSION,
+        url = "https://github.com/koalaman/shellcheck/releases/download/v{0}/shellcheck-v{0}.{1}.tar.gz".format(SHELLCHECK_VERSION, asset),
+    )
+    for platform, asset, sha256 in [
+        ("linux-arm64", "linux.aarch64", "68a8133197a50beb8803f8d42f9908d1af1c5540d4bb05fdfca8c1fa47decefc"),
+        ("linux-x86_64", "linux.x86_64", "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6"),
+        ("macos-arm64", "darwin.aarch64", "339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f"),
+        ("macos-x86_64", "darwin.x86_64", "c2c15e08df0e8fbc374c335b230a7ee958c313fa5714817a59aa59f1aa594f51"),
+    ]
+]
+
+# The wasm-bindgen CLI, at exactly the version of the wasm-bindgen crate in Cargo.lock, as the
+# two must match: its release's prebuilt binaries, for bazel's wasm-bindgen toolchain.
+# https://github.com/wasm-bindgen/wasm-bindgen/releases/tag/0.2.130
+
+WASM_BINDGEN_VERSION = "0.2.130"
+
+[
+    http_archive(
+        name = "wasm_bindgen_cli_" + platform.replace("-", "_"),
+        build_file_content = """exports_files(["wasm-bindgen"])""",
+        sha256 = sha256,
+        strip_prefix = "wasm-bindgen-{}-{}".format(WASM_BINDGEN_VERSION, triple),
+        url = "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/{0}/wasm-bindgen-{0}-{1}.tar.gz".format(WASM_BINDGEN_VERSION, triple),
+    )
+    for platform, triple, sha256 in [
+        ("linux-arm64", "aarch64-unknown-linux-gnu", "cc8dd8e90aa9111758168d30c63a14b7f0276997d9d60d3e160a1fb5e7d3b919"),
+        ("linux-x86_64", "x86_64-unknown-linux-musl", "9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f"),
+        ("macos-arm64", "aarch64-apple-darwin", "b90ddb9357f584b1af897d58ad77e4cce2b48fc17e2a967bc249a87f72809444"),
+        ("macos-x86_64", "x86_64-apple-darwin", "eb209c115b7cb95832423c1aa3f4d06d6c53f63ef74fc4b6fb79ef0b2eea5f10"),
+    ]
+]
+
+register_toolchains("//bazel:wasm_bindgen_toolchain")
+
+# Container images: the self-hosted server's (crates/zirc-server), and zirc's own
+# services' in the repository that includes this file. Their base is distroless/cc: glibc, as
+# the Rust binaries link it, and nothing else; for both architectures a server may have.
+bazel_dep(name = "rules_oci", version = "2.3.0")
+bazel_dep(name = "tar.bzl", version = "0.10.9")
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "distroless_cc",
+    # gcr.io/distroless/cc-debian13:nonroot, its multi-architecture index (2026-11-12)
+    digest = "sha256:cc66d222f0a7ec996b78a99fe76a969bc80b539a5016ad866c14d1949bc6d0ab",
+    image = "gcr.io/distroless/cc-debian13",
+    platforms = [
+        "linux/amd64",
+        "linux/arm64/v8",
+    ],
+)
+use_repo(oci, "distroless_cc", "distroless_cc_linux_amd64", "distroless_cc_linux_arm64_v8")

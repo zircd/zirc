@@ -1,0 +1,53 @@
+[package]
+name = "zirc-server"
+description = "A zirc server of your own: Ergo and its sidecar in one container, with its own TLS and accounts."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "zirc-server"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+# The HTTPS side, with the server's certificate, reloaded as it's renewed.
+axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
+clap.workspace = true
+futures-util.workspace = true
+# A certificate of its own, for trying the server out (`--tls self-signed`).
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"] }
+# Let's Encrypt's certificates (ACME), answered over HTTP on port 80.
+instant-acme = { version = "0.8", default-features = false, features = ["hyper-rustls", "rcgen", "ring"] }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+ring.workspace = true
+# The organisation's own S3 bucket, if it keeps files in one: presigned links alone.
+rusty-s3 = "0.11"
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "signal", "process"] }
+# Files on disk served through their links, ranges and all, as a bucket would.
+tower = { version = "0.5", default-features = false, features = ["util"] }
+tower-http = { version = "0.6", default-features = false, features = ["fs"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+x509-parser = "0.18"
+zirc-media-worker.workspace = true
+zirc-proto.workspace = true
+zirc-sidecar.workspace = true
+
+[dev-dependencies]
+# zirc.dev, calling the server, and a stand-in for it.
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+serde_json.workspace = true
+tempfile.workspace = true
+zirc-irc.workspace = true
+zirc-test-ergo.workspace = true

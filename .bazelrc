@@ -1,0 +1,43 @@
+# What every build of zirc's published crates is run with. In zirc's own repository the
+# root .bazelrc imports this file (oss/public/bazelrc) and adds its own; in the public one
+# it is the root .bazelrc.
+
+# Show failing tests' output.
+test --test_output=errors
+# Tests start real zircds and TUIs: their analytics stay out of zirc's PostHog project.
+# Cargo's runs do the same in .cargo/config.toml.
+test --test_env=ZIRC_TELEMETRY=0
+
+# Zig's C toolchain (MODULE.bazel's hermetic_cc_toolchain), for building Linux binaries on
+# any machine: on Macs always, and in CI's jobs that build Rust (.buildkite/run.sh), so a job
+# that builds none, such as a staging deploy, doesn't fetch it. Building Linux binaries on
+# Linux without it would use the machine's own compiler: pass --config=zig there too.
+common:zig --extra_toolchains=@zig_sdk//toolchain:linux_amd64_gnu.2.31
+common:zig --extra_toolchains=@zig_sdk//toolchain:linux_arm64_gnu.2.31
+common --enable_platform_specific_config
+common:macos --config=zig
+
+# Bazel never rewrites MODULE.bazel.lock by itself: a build that needs a different lockfile
+# fails instead of leaving it changed in the working tree, where it blocks every session's
+# pull. After changing MODULE.bazel or a Cargo.toml, update the lockfiles on purpose
+# and commit them with that change (AGENTS.md, Working here):
+#   bazel mod deps --lockfile_mode=update
+common --lockfile_mode=error
+
+# Rust lints, as Cargo's clippy runs them: bazel build --config=lint //...
+build:lint --aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect,@rules_rust//rust:defs.bzl%rustfmt_aspect
+build:lint --output_groups=+clippy_checks,+rustfmt_checks
+# Clippy reads clippy.toml (the names docs may write without backticks) for every crate.
+# On every build, not only --config=lint: they're build options, so a build without them after
+# one with them (CI's image build after //ops:check, a local test after a lint) threw away
+# Bazel's whole analysis cache and analysed every package again. They change nothing until the
+# clippy aspect runs, which only --config=lint asks for; --aspects and --output_groups keep
+# the cache.
+build --@rules_rust//rust/settings:clippy.toml=//:clippy.toml
+build --@rules_rust//rust/settings:clippy_flags=-Dwarnings
+
+# Release builds of zirc, zircd and zirc-remote: optimised, and runnable on macOS 11 and later.
+#   bazel build --config=release //release:dist
+build:release --compilation_mode=opt
+build:release --macos_minimum_os=11.0
+build:release --action_env=MACOSX_DEPLOYMENT_TARGET=11.0

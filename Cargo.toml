@@ -1,0 +1,98 @@
+# zirc's crates. Bazel builds them too, reading this file and Cargo.lock through
+# crate_universe (MODULE.bazel), so dependencies are declared here only.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+# zirc's version: releases are tagged zirc-v<version>, and Bazel reads it from here too
+# (bazel/version.bzl). The private crates take it too, and use it for nothing.
+version = "0.1.49"
+edition = "2024"
+# GPUI follows Zed's toolchain. Keep in step with rust-toolchain.toml and MODULE.bazel.
+rust-version = "1.98"
+# What the crates under oss/ are licensed under (oss/LICENSE-*); private crates don't declare it.
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+zirc-proto = { path = "crates/zirc-proto" }
+zirc-media-worker = { path = "crates/zirc-media-worker" }
+zirc-irc = { path = "crates/zirc-irc" }
+zirc-line = { path = "crates/zirc-line" }
+zirc-workflows = { path = "crates/zirc-workflows" }
+zirc-chat = { path = "crates/zirc-chat" }
+zirc-core = { path = "crates/zirc-core" }
+zirc-sidecar = { path = "crates/zirc-sidecar" }
+zirc-server = { path = "crates/zirc-server" }
+zirc-theme = { path = "crates/zirc-theme" }
+zirc-tui = { path = "crates/zirc-tui" }
+zircd = { path = "crates/zircd" }
+zirc = { path = "crates/zirc" }
+zirc-test-ergo = { path = "crates/zirc-test-ergo" }
+zirc-test-irc = { path = "crates/zirc-test-irc" }
+
+anyhow = "1"
+base64 = "0.22"
+# Times in the terminal client, in the local time zone.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4.6", features = ["derive", "env"] }
+# Unicode's emoji, their names, shortcodes and groups, for the apps' reaction pickers.
+emojis = "0.9"
+futures = "0.3"
+futures-util = "0.3"
+# jq, for `zirc watch --filter`: its interpreter, standard library and JSON values.
+jaq-core = "3"
+jaq-json = "2"
+jaq-std = "3"
+# The system's secret store: the macOS Keychain, the Windows Credential Manager, the Secret
+# Service (over zbus, in Rust, so nothing needs D-Bus's C library).
+keyring = "4"
+notify = "8"
+# Markdown in messages, the Discord subset (zirc-chat's rich text), without its HTML writer.
+pulldown-cmark = { version = "0.13", default-features = false }
+# The terminal client, with crossterm as its backend.
+ratatui = "0.30"
+# Whether the terminal is dark or light, for the terminal client's theme.
+terminal-colorsaurus = "1"
+# HTTPS as zirc-core makes it: rustls without a provider; zirc installs ring, as tokio-rustls
+# uses, so nothing needs CMake.
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
+# SHA-256 for checking updates, from the ring rustls uses already.
+ring = "0.17"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+# The JSON Schema of the socket protocol and events, which the Python SDK's types are
+# generated from.
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+# Maps keep the order they were filled in, which the generated schema and the fixtures zirc
+# writes are compared in. Said here, as the published crates built alone (ops/oss_export.py)
+# have no GPUI or kube beside them to turn it on.
+serde_json = { version = "1", features = ["preserve_order"] }
+# Code blocks in messages, highlighted (zirc-chat), with its pure-Rust regex engine so it
+# builds for wasm, its bundled grammars, and none of its themes: zirc-theme colours it.
+syntect = { version = "5.3", default-features = false, features = ["default-syntaxes", "regex-fancy"] }
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1.54", features = ["fs", "io-util", "macros", "net", "process", "rt", "signal", "sync", "time"] }
+# ring rather than aws-lc: it builds without CMake, under Cargo and Bazel alike.
+tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "ring", "tls12"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+# A guest's terminal reaches its gateway over a WebSocket (zirc-irc); TLS is tokio-rustls's.
+tokio-tungstenite = "0.29"
+toml = "1"
+# The TypeScript types the web app and the SDKs use, generated from zirc-proto and zirc-core.
+ts-rs = { version = "12", features = ["serde-json-impl"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unicode-width = "0.2"
+webpki-roots = "1"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# GPUI's builders take and return `Self` all day.
+must_use_candidate = "allow"
+module_name_repetitions = "allow"

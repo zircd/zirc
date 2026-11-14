@@ -1,0 +1,32 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//bazel:platforms.bzl", "PLATFORMS")
+
+# The pinned Ergo release for the machine running the build. See MODULE.bazel.
+[
+    alias(
+        name = name,
+        actual = select({
+            "//bazel:" + platform: "@ergo_{}//:{}".format(platform.replace("-", "_"), file)
+            for platform in PLATFORMS
+        }),
+        visibility = ["//visibility:public"],
+    )
+    for name, file in {
+        "default_yaml": "default.yaml",
+        "ergo": "ergo",
+    }.items()
+]
+
+# A local Ergo for development: bazel run //dev/ergo:run
+sh_binary(
+    name = "run",
+    srcs = ["run.sh"],
+    args = [
+        "$(rlocationpath :ergo)",
+        "$(rlocationpath :default_yaml)",
+    ],
+    data = [
+        ":default_yaml",
+        ":ergo",
+    ],
+)
