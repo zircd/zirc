@@ -866,6 +866,10 @@ async fn a_wait_ends_when_ci_says_it_happened_or_failed() {
             .await
             .unwrap();
     }
+    // A wait reads back the channels zircd has joined, and hears what's said in them: one
+    // started before alpha was in #web read nothing back and never heard CI, which had
+    // spoken already, and waited till Bazel's 300s (build 3346).
+    until_in(alpha.path(), "#web").await;
     let here = alpha_clone.path().to_str().unwrap().to_owned();
     let landing = zirc_proto::ci::LANDING_KIND;
     let deploy = zirc_proto::ci::DEPLOY_KIND;
