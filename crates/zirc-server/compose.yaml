@@ -23,11 +23,11 @@ services:
       ZIRC_ACME_EMAIL: you@example.com
       # The join token zirc.dev gave when you made the organisation; used once.
       ZIRC_JOIN_TOKEN: paste-it-here
-      # imgproxy, below, which resizes the images people share for the screens showing them.
-      ZIRC_IMGPROXY: http://imgproxy:8080
-      # The media worker, below, which makes videos' posters and the copies people play.
-      # Without it, video is shared as a file to download.
-      ZIRC_MEDIA_WORKER: http://media-worker:8080
+      # The media container, below: its imgproxy resizes the images people share for the
+      # screens showing them, and its worker makes videos' posters and the copies people
+      # play. Without them, images are served as sent and video is a file to download.
+      ZIRC_IMGPROXY: http://media:8081
+      ZIRC_MEDIA_WORKER: http://media:8080
       # Files are kept in the data volume. To keep them in an S3 bucket of your own instead
       # (any S3-compatible service), set these, with a key that may read, write, list and
       # delete in that bucket alone:
@@ -47,32 +47,14 @@ services:
       # Everything the server keeps: accounts, history, files, its secrets and certificate.
       - zirc-data:/data
 
-  # Resizes images for the server alone, which nothing else reaches: it reads each from a
-  # link the server signed, which lasts minutes, and leaves out its metadata, location
-  # included. The version is the one zirc.dev runs (MODULE.bazel's imgproxy): a change goes
-  # in both.
-  imgproxy:
-    image: darthsim/imgproxy:v3.31.4
+  # Everything that reads what people share, for the server alone and apart from what it
+  # keeps: imgproxy, which resizes images, and zirc's media worker, which makes videos'
+  # posters and the copies people play. Each reads an original from a link the server
+  # signed, which lasts minutes, and what they make leaves out its metadata, location
+  # included. Nothing else reaches it. For amd64 machines.
+  media:
+    image: ghcr.io/zircd/zirc-media:latest
     restart: unless-stopped
-    environment:
-      IMGPROXY_MAX_RESULT_DIMENSION: "2048"
-      IMGPROXY_MAX_SRC_RESOLUTION: "50"
-      IMGPROXY_MAX_SRC_FILE_SIZE: "104857600"
-      IMGPROXY_MAX_ANIMATION_FRAMES: "200"
-      IMGPROXY_STRIP_METADATA: "true"
-      IMGPROXY_KEEP_COPYRIGHT: "false"
-      # The server is on compose's own network.
-      IMGPROXY_ALLOW_PRIVATE_SOURCE_ADDRESSES: "true"
-
-  # Reads videos people share, and makes their posters and the copies people play, for the
-  # server alone, as zirc.dev's does: from a link to the original the server signed, putting
-  # what it makes to another, without the original's metadata. For amd64 machines.
-  media-worker:
-    image: ghcr.io/zircd/zirc-media-worker:latest
-    restart: unless-stopped
-    environment:
-      # One video at a time.
-      ZIRC_MEDIA_WORKER_AT_ONCE: "1"
 
 volumes:
   zirc-data:

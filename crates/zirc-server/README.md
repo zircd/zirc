@@ -32,8 +32,8 @@ side by side, as a hosted server's pod does:
   which Ergo checks, upload to a link that lasts minutes, and download from `/m/<id>`, which
   sends them to another: S3's own, or the server's at `/s/…`, signed with a key in
   `/data/media/links.key`. People's pictures stay on zirc.dev.
-- Images are resized by [imgproxy](https://imgproxy.net), beside the server in
-  `compose.yaml`, at the widths and formats zirc.dev serves (`/m/<id>?w=640`). It reads each
+- Images are resized by [imgproxy](https://imgproxy.net), in the media container beside the
+  server in `compose.yaml`, at the widths and formats zirc.dev serves (`/m/<id>?w=640`). It reads each
   original from a link the server signs for it, at the server's side for it (port 8090,
   which nothing publishes), and the server answers with what it makes. Without it, images
   are served as sent.
@@ -42,8 +42,11 @@ side by side, as a hosted server's pod does:
   how long and large it is, and the first time each is asked for it makes the poster
   (`/m/<id>?w=640`) and the copy people play (`?r=720`), which the server answers 202 for
   meanwhile, reading the original and putting what it makes through links the server signs.
-  Without it, video is shared as a file. Its image is built with Debian's ffmpeg, for amd64
-  machines.
+  Without it, video is shared as a file.
+- The media container (`ghcr.io/zircd/zirc-media`) holds both, and nothing the server keeps:
+  whatever reads what people upload runs apart from accounts, history and secrets. The
+  worker starts imgproxy and stops when it does. It's built with Debian's ffmpeg and
+  imgproxy's release, for amd64 machines; the server runs without it, serving images as sent.
 - TLS, `--tls` (`ZIRC_TLS`):
   - `acme`, the default: a certificate from Let's Encrypt for `--host`, answered over HTTP on
     port 80, renewed a month before it runs out, which Ergo and the HTTPS side read again
@@ -93,8 +96,8 @@ Its settings, all from the environment:
 | `ZIRC_WEB_LISTEN` | Where the HTTPS side listens: `0.0.0.0:443` with TLS, `0.0.0.0:8080` without |
 | `ZIRC_WEB` | zirc.dev, unless another of its environments, such as staging's |
 | `ZIRC_DATA` | The data directory, `/data` unless set |
-| `ZIRC_MEDIA_WORKER` | The media worker's address, `http://media-worker:8080` in `compose.yaml`; video is a file unless set |
-| `ZIRC_IMGPROXY` | imgproxy's address, `http://imgproxy:8080` in `compose.yaml`; images aren't resized unless set |
+| `ZIRC_MEDIA_WORKER` | The media worker's address, `http://media:8080` in `compose.yaml`; video is a file unless set |
+| `ZIRC_IMGPROXY` | imgproxy's address, `http://media:8081` in `compose.yaml`; images aren't resized unless set |
 | `ZIRC_S3_BUCKET`, `ZIRC_S3_ENDPOINT`, `ZIRC_S3_REGION`, `ZIRC_S3_PATH_STYLE` | An S3 bucket to keep files in rather than `/data/media`: its name, its service's address, its region (`auto` unless set), and whether the bucket goes in the address's path |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | The bucket's key, which may read, write, list and delete in it |
 | `ZIRC_BESIDE_LISTEN`, `ZIRC_BESIDE_URL` | Where imgproxy and the media worker reach the server, `0.0.0.0:8090` in the image, and its address as they do, `http://zirc:8090` |
