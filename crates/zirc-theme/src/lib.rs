@@ -155,9 +155,6 @@ pub struct Logo {
     /// How much of an icon's side the braid takes where it stands alone, in one colour:
     /// Android's themed icon.
     pub icon_braid_side: f32,
-    /// How much of a favicon's side the stone takes: more than an icon's, to be seen at 16
-    /// pixels.
-    pub favicon_mark_side: f32,
 }
 
 impl Logo {
