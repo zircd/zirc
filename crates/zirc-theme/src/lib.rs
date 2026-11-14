@@ -35,12 +35,13 @@ pub mod fonts {
     ];
     /// The licence, which goes wherever the fonts do.
     pub const LICENCE: &str = include_str!("../fonts/OFL.txt");
-    /// The web's fonts, in `fonts/` beside the stylesheet: file, weight and style.
-    pub const WEB: [(&str, u16, &str); 4] = [
-        ("JetBrainsMono-Regular.woff2", 400, "normal"),
-        ("JetBrainsMono-Medium.woff2", 500, "normal"),
-        ("JetBrainsMono-Bold.woff2", 700, "normal"),
-        ("JetBrainsMono-Italic.woff2", 400, "italic"),
+    /// The web's fonts, in `fonts/` beside the stylesheet: file, weight, style and the TTF
+    /// whose characters it has (Medium's are the variable font's, as it has no static TTF).
+    pub const WEB: [(&str, u16, &str, &[u8]); 4] = [
+        ("JetBrainsMono-Regular.woff2", 400, "normal", STATIC[0]),
+        ("JetBrainsMono-Medium.woff2", 500, "normal", MONO),
+        ("JetBrainsMono-Bold.woff2", 700, "normal", STATIC[1]),
+        ("JetBrainsMono-Italic.woff2", 400, "italic", STATIC[2]),
     ];
     /// Inter 4.1, the `ui` role ([`crate::Design::ui_family`]), one file per weight, as
     /// GPUI picks them: regular, medium, semibold, bold and italic. The phones use their
@@ -54,14 +55,81 @@ pub mod fonts {
     ];
     /// Inter's licence, which goes wherever its files do.
     pub const UI_LICENCE: &str = include_str!("../fonts/Inter-OFL.txt");
-    /// Inter for the web, in `fonts/` beside the stylesheet: file, weight and style.
-    pub const UI_WEB: [(&str, u16, &str); 5] = [
-        ("Inter-Regular.woff2", 400, "normal"),
-        ("Inter-Medium.woff2", 500, "normal"),
-        ("Inter-SemiBold.woff2", 600, "normal"),
-        ("Inter-Bold.woff2", 700, "normal"),
-        ("Inter-Italic.woff2", 400, "italic"),
+    /// Inter for the web, in `fonts/` beside the stylesheet: file, weight, style and its TTF.
+    pub const UI_WEB: [(&str, u16, &str, &[u8]); 5] = [
+        ("Inter-Regular.woff2", 400, "normal", UI_STATIC[0]),
+        ("Inter-Medium.woff2", 500, "normal", UI_STATIC[1]),
+        ("Inter-SemiBold.woff2", 600, "normal", UI_STATIC[2]),
+        ("Inter-Bold.woff2", 700, "normal", UI_STATIC[3]),
+        ("Inter-Italic.woff2", 400, "italic", UI_STATIC[4]),
     ];
+
+    /// What a page in English or another Western European language draws, as a CSS
+    /// `unicode-range`: Google Fonts' latin set, with the arrows, box drawing, shapes, ✓ ✗ and
+    /// ❮ ❯ zirc's pages and chat draw too. A web font is served as two files,
+    /// `<name>-latin.woff2` with these and `<name>-rest.woff2` with the rest of what it has
+    /// ([`rest`]), and a browser fetches the rest only for a page that draws one of them:
+    /// Inter's latin is 32 KB of its 111. `bin/web_fonts.py` cuts the files, reading the
+    /// ranges from the stylesheet.
+    pub const LATIN: &str = "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, \
+                             U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, \
+                             U+2190-21FF, U+2212, U+2215, U+2500-25FF, U+2713, U+2717, \
+                             U+276E-276F, U+FEFF, U+FFFD";
+
+    /// The characters `ttf` has that [`LATIN`] leaves out, as a `unicode-range`. Only what
+    /// it has: a range reaching past it, over emoji say, would have a browser fetch the file
+    /// for a 👍 it can't draw.
+    ///
+    /// # Panics
+    ///
+    /// If `ttf` isn't a font with a Unicode cmap, or [`LATIN`] isn't hex: neither is so, which
+    /// the stylesheet's test reads.
+    #[must_use]
+    pub fn rest(ttf: &[u8]) -> String {
+        let latin = latin();
+        let face = ttf_parser::Face::parse(ttf, 0).expect("a font");
+        let mut has = std::collections::BTreeSet::new();
+        for table in face.tables().cmap.expect("a cmap").subtables {
+            if table.is_unicode() {
+                table.codepoints(|c| {
+                    if !latin.iter().any(|&(start, end)| (start..=end).contains(&c)) {
+                        has.insert(c);
+                    }
+                });
+            }
+        }
+        let mut ranges: Vec<(u32, u32)> = Vec::new();
+        for c in has {
+            match ranges.last_mut() {
+                Some((_, end)) if *end + 1 == c => *end = c,
+                _ => ranges.push((c, c)),
+            }
+        }
+        ranges
+            .into_iter()
+            .map(|(start, end)| {
+                if start == end {
+                    format!("U+{start:04X}")
+                } else {
+                    format!("U+{start:04X}-{end:04X}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// [`LATIN`]'s ranges, first and last code point.
+    fn latin() -> Vec<(u32, u32)> {
+        LATIN
+            .split(',')
+            .map(|range| {
+                let range = range.trim().trim_start_matches("U+");
+                let (start, end) = range.split_once('-').unwrap_or((range, range));
+                let hex = |digits| u32::from_str_radix(digits, 16).expect("LATIN is hex");
+                (hex(start), hex(end))
+            })
+            .collect()
+    }
 }
 
 /// zirc's macOS app icons on Apple's template, a rounded square filled with the stone's
@@ -1165,13 +1233,18 @@ pub fn css() -> String {
                 .iter()
                 .map(|face| (design.ui_family.as_str(), face)),
         );
-    for (family, (file, weight, style)) in faces {
-        let _ = write!(
-            css,
-            "\n@font-face {{\n  font-family: \"{family}\";\n  font-style: {style};\n  \
-             font-weight: {weight};\n  font-display: swap;\n  \
-             src: url(\"fonts/{file}\") format(\"woff2\");\n}}\n",
-        );
+    for (family, (file, weight, style, ttf)) in faces {
+        let name = file.trim_end_matches(".woff2");
+        let rest = fonts::rest(ttf);
+        for (part, range) in [("latin", fonts::LATIN), ("rest", rest.as_str())] {
+            let _ = write!(
+                css,
+                "\n@font-face {{\n  font-family: \"{family}\";\n  font-style: {style};\n  \
+                 font-weight: {weight};\n  font-display: swap;\n  \
+                 src: url(\"fonts/{name}-{part}.woff2\") format(\"woff2\");\n  \
+                 unicode-range: {range};\n}}\n",
+            );
+        }
     }
     let roles = |theme: &Theme, indent: &str| {
         let mut out = theme
@@ -1394,10 +1467,36 @@ mod tests {
              bazel run //crates/zirc-theme:css > oss/crates/zirc-theme/zirc-theme.css"
         );
         for (file, ..) in fonts::WEB.iter().chain(&fonts::UI_WEB) {
-            assert!(CSS.contains(&format!("fonts/{file}")));
+            let name = file.trim_end_matches(".woff2");
+            assert!(CSS.contains(&format!("fonts/{name}-latin.woff2")));
+            assert!(CSS.contains(&format!("fonts/{name}-rest.woff2")));
         }
         // Nothing from anyone else's servers.
         assert!(!CSS.contains("http"));
+    }
+
+    #[test]
+    fn a_fonts_rest_is_what_it_has_beyond_latin() {
+        let rest = fonts::rest(fonts::UI_STATIC[0]);
+        // Cyrillic, Greek and Vietnamese, and never Latin again or an emoji it can't draw.
+        for has in ["U+0410", "U+0391", "U+1EBF"] {
+            assert!(
+                rest.split(", ").any(|range| covers(range, has)),
+                "{has} in {rest}"
+            );
+        }
+        for not in ["U+0041", "U+2713", "U+276F", "U+1F44D"] {
+            assert!(
+                !rest.split(", ").any(|range| covers(range, not)),
+                "{not} in {rest}"
+            );
+        }
+    }
+
+    fn covers(range: &str, point: &str) -> bool {
+        let hex = |s: &str| u32::from_str_radix(s.trim_start_matches("U+"), 16).unwrap();
+        let (start, end) = range.split_once('-').unwrap_or((range, range));
+        (hex(start)..=hex(end.trim_start_matches("U+"))).contains(&hex(point))
     }
 
     #[test]

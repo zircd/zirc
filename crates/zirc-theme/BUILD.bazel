@@ -1,4 +1,7 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@theme_pip//:requirements.bzl", "requirement")
 load("@zirc_version//:version.bzl", "VERSION")
 load("//bazel:rust.bzl", "zirc_rust_library")
 
@@ -111,6 +114,47 @@ filegroup(
     srcs = glob(["art/avatars/*.svg"]),
 )
 
+# Each whole WOFF2 in fonts/ cut in two, fonts/<name>-latin.woff2 and fonts/<name>-rest.woff2,
+# as zirc-theme.css names them with their unicode-range: a browser fetches the rest only for a
+# page that draws something outside Latin (bin/web_fonts.py, lib.rs's fonts::LATIN).
+WEB_FONTS = [f.removesuffix(".woff2") for f in glob(["fonts/*.woff2"])]
+
+genrule(
+    name = "web_font_parts",
+    srcs = [
+        "zirc-theme.css",
+        ":fonts_whole",
+    ],
+    outs = ["%s-%s.woff2" % (name, part) for name in WEB_FONTS for part in ["latin", "rest"]],
+    cmd = "$(execpath :web_fonts_cutter) $(location zirc-theme.css) $(RULEDIR)/fonts $(locations :fonts_whole)",
+    tools = [":web_fonts_cutter"],
+)
+
+filegroup(
+    name = "fonts_whole",
+    srcs = glob(["fonts/*.woff2"]),
+    visibility = ["//visibility:private"],
+)
+
+py_binary(
+    name = "web_fonts_cutter",
+    srcs = ["bin/web_fonts.py"],
+    main = "bin/web_fonts.py",
+    deps = [
+        requirement("brotli"),
+        requirement("fonttools"),
+    ],
+)
+
+# bin/web_fonts.py's Python packages, locked with their hashes. Resolving them needs PyPI, so
+# it's run by hand: bazel run //crates/zirc-theme:requirements.update
+compile_pip_requirements(
+    name = "requirements",
+    src = "requirements.in",
+    requirements_txt = "requirements_lock.txt",
+    tags = ["manual"],
+)
+
 # A web page's stylesheet and the fonts it names relative to itself, and nothing else.
 filegroup(
     name = "stylesheet",
@@ -118,16 +162,19 @@ filegroup(
         "fonts/Inter-OFL.txt",
         "fonts/OFL.txt",
         "zirc-theme.css",
-    ] + glob(["fonts/*.woff2"]),
+        ":web_font_parts",
+    ],
 )
 
 # The web fonts alone, for a site that serves them to other sites' stylesheets (zirc.dev's
-# /fonts, which git.zirc.dev's theme names).
+# /fonts, which git.zirc.dev's theme names): the parts, and the whole ones its theme named
+# before them, so a forge still on that theme keeps its fonts.
 filegroup(
     name = "web_fonts",
     srcs = [
         "fonts/Inter-OFL.txt",
         "fonts/OFL.txt",
+        ":web_font_parts",
     ] + glob(["fonts/*.woff2"]),
 )
 

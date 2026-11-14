@@ -90,6 +90,9 @@ toml = "1"
 ts-rs = { version = "12", features = ["serde-json-impl"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Which characters a web font has, for its stylesheet's unicode-range (zirc-theme): the one
+# resvg reads fonts with already.
+ttf-parser = { version = "0.25", default-features = false, features = ["std"] }
 unicode-width = "0.2"
 webpki-roots = "1"
 

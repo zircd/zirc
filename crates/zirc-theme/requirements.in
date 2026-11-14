@@ -1,0 +1,4 @@
+# What bin/web_fonts.py needs: fontTools cuts the fonts, Brotli writes WOFF2.
+# Update the lock with: bazel run //crates/zirc-theme:requirements.update
+fonttools==4.60.1
+brotli==1.1.0
