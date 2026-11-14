@@ -267,7 +267,7 @@ mod tests {
         let area = |paths: &[&str]| team.area_of(paths.iter().copied());
         assert_eq!(area(&["web/src/app.ts", "oss/web/x.ts"]), Some("web"));
         assert_eq!(area(&["web/a", "web/b", "ops/land.sh"]), Some("web"));
-        // The closest path wins: zirc-tui is the apps', though it's under oss/crates/.
+        // The closest path wins: zirc-tui is the apps', though it's under crates/.
         assert_eq!(
             area(&[
                 "oss/crates/zirc-tui/src/lib.rs",

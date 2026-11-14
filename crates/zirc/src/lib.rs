@@ -530,9 +530,9 @@ enum Command {
     /// Keep a lesson about some paths for whoever changes them next, or list them.
     ///
     /// Without -m, it lists the lessons kept, newest first: about a path, such as zirc gotcha
-    /// oss/crates/zircd, or all of the repository's.
+    /// crates/zircd, or all of the repository's.
     ///
-    /// Such as zirc gotcha oss/crates/zircd -m "clippy's 100-line limit counts the whole
+    /// Such as zirc gotcha crates/zircd -m "clippy's 100-line limit counts the whole
     /// function: split it first". One line: what goes wrong, what to do instead. It goes to
     /// the repository's gotchas room, not the repository; zirc intend says those under the
     /// paths it names, and zircd tells a session those under what it starts changing.

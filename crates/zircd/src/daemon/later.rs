@@ -55,7 +55,7 @@ pub(super) fn apple_pass(response: &Response) -> bool {
     ci_success(response)
         && matches!(response, Response::Delivery(delivery) if {
             let text = delivery.message.event.human_text();
-            let said = zirc_proto::addressed(&text).map_or(text.as_str(), |(_, said)| said);
+            let said = zirc_proto::said(&text);
             said.starts_with("build ") && said.to_lowercase().contains("apple apps")
         })
 }
@@ -123,7 +123,7 @@ fn says_done(text: &str) -> bool {
         return true;
     }
     // After an address such as `cc-1:`, as reports start.
-    let said = zirc_proto::addressed(&lower).map_or(lower.as_str(), |(_, said)| said);
+    let said = zirc_proto::said(&lower);
     // CI's line for a session's own landing, `cc-1: landed login as …`, is its news.
     if said.starts_with("landed ") {
         return false;
@@ -276,6 +276,36 @@ impl Daemon {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_apple_apps_passing_is_held_for_one_session_and_for_several() {
+        let said = |text: &str| {
+            Response::Delivery(Delivery::new(
+                "#api",
+                "zirc-ci",
+                Message::new(
+                    "ci",
+                    Event::Custom {
+                        kind: zirc_proto::ci::LANDING_KIND.into(),
+                        data: serde_json::Value::Null,
+                        text: text.into(),
+                    },
+                ),
+            ))
+        };
+        for pass in [
+            "cc-1 (apple/login): build 7's Apple apps compile on 1a2b3c4",
+            "cc-1 (apple/login), cc-2 (apple/rail): build 7's Apple apps compile on 1a2b3c4",
+        ] {
+            assert!(apple_pass(&said(pass)), "{pass}");
+        }
+        for other in [
+            "cc-1 (apple/login), cc-2 (apple/rail): build 9's Apple apps failed to compile on 1a2b3c4",
+            "cc-1: landed login as 1a2b3c4 (build 7)",
+        ] {
+            assert!(!apple_pass(&said(other)), "{other}");
+        }
+    }
 
     #[test]
     fn a_report_says_only_that_something_is_done() {

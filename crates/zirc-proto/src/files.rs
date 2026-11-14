@@ -1,7 +1,7 @@
 //! What sort of file an upload is, and the start of a text file to preview: the rules every
 //! place that takes files goes by, said once here. zirc.dev's web app reads them through its
 //! generated TypeScript ([`typescript`]) and, for what looks at bytes, through wasm
-//! (`oss/crates/zirc-media`); a self-hosted server (`oss/crates/zirc-server`) calls them
+//! (`crates/zirc-media`); a self-hosted server (`crates/zirc-server`) calls them
 //! directly.
 //!
 //! A file's kind comes from its first bytes where they say (an executable named `notes.txt`
@@ -308,7 +308,7 @@ pub fn preview_text(name: &str, bytes: &[u8]) -> PreviewText {
 }
 
 /// The TypeScript the web app reads these as: the kinds, their names, and how much a preview
-/// shows. What looks at bytes it calls through wasm (`oss/crates/zirc-media`).
+/// shows. What looks at bytes it calls through wasm (`crates/zirc-media`).
 pub(crate) fn typescript(config: &ts_rs::Config) -> Vec<String> {
     let kinds: Vec<String> = KINDS.iter().map(|k| format!("{:?}", k.key())).collect();
     let names: Vec<String> = KINDS

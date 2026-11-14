@@ -1,4 +1,4 @@
-//! The files checked in under oss/generated/ are what `zirc_core::generated` makes now.
+//! The files checked in under generated/ are what `zirc_core::generated` makes now.
 
 use std::path::{Path, PathBuf};
 

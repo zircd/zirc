@@ -204,7 +204,7 @@ impl Data {
     }
 }
 
-/// A landing as a card (`oss/docs/cards.md`), from what CI's events carry (`ops/say.sh`):
+/// A landing as a card (`docs/cards.md`), from what CI's events carry (`ops/say.sh`):
 /// its id (`landing`, `<pipeline>/<build>`), branch, build, session and `state`; the build's
 /// `url`, the targets that `failed` with their results, and the `commit` in the `repo`. One
 /// card for every event of a landing, landed, failed, deploying or retried, each replacing

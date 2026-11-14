@@ -1,5 +1,5 @@
 //! Video for zirc's files, as zirc.dev (web/src/lib/media-video.ts) or a self-hosted server
-//! (`oss/crates/zirc-server`) asks: what a video is
+//! (`crates/zirc-server`) asks: what a video is
 //! (its length, size and codecs), its poster frame, and copies a browser or phone plays
 //! (H.264 and AAC in MP4, at most 480, 720 or 1080 lines, starting to play before they're
 //! all there). Nothing here has access to any bucket: zirc.dev hands over a short-lived URL

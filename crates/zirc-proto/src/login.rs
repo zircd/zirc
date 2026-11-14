@@ -471,7 +471,7 @@ pub fn typescript() -> String {
         "// The `zirc login` handshake's, the log's, uploads', cards', names' and a server's desired\n\
          // state's types and rules,\n\
          // generated from\n\
-         // zirc-proto (oss/crates/zirc-proto/src/login.rs, media.rs, profile.rs, card.rs,\n\
+         // zirc-proto (crates/zirc-proto/src/login.rs, media.rs, profile.rs, card.rs,\n\
          // report.rs, role.rs, names.rs, desired.rs, and lib.rs's, request.rs's and session.rs's message types) by `bazel run //web:zirc_proto_types`, which a test checks.\n\
          // Don't edit: change them there and generate this again.\n",
     );

@@ -1,4 +1,4 @@
-//! Writes the generated schema and types under `generated/` (`oss/generated/` in zirc's own
+//! Writes the generated schema and types under `generated/` (`generated/` in zirc's own
 //! repository): see [`zirc_core::generated`]. Under `bazel run`, into the source tree;
 //! otherwise under the current directory.
 

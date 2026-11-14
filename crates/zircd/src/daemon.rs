@@ -1615,7 +1615,7 @@ fn routine(from: &str, message: &Message) -> bool {
     let event = &message.event;
     let text = event.human_text();
     // CI's lines start with the session they're for.
-    let said = zirc_proto::addressed(&text).map_or(text.as_str(), |(_, said)| said);
+    let said = zirc_proto::said(&text);
     let lower = said.to_lowercase();
     if ["fail", "conflict", "couldn't", "firing", "error"]
         .iter()
@@ -1989,6 +1989,11 @@ mod tests {
             custom(
                 zirc_proto::ci::LANDING_KIND,
                 "cc-1: build 1467's Apple apps compile on be47ba2",
+            ),
+            // One build of them for several landings names each session.
+            custom(
+                zirc_proto::ci::LANDING_KIND,
+                "cc-1 (apple/login), cc-2 (apple/rail): build 1467's Apple apps compile on be47ba2",
             ),
             custom(
                 zirc_proto::ci::LANDING_KIND,

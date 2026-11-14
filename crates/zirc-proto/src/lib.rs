@@ -54,7 +54,7 @@ pub const NO_SESSION: &str = "watcher";
 
 /// zirc's name as people read it where they mean the product, its apps, its service or the
 /// company, a proper name: in apps' titles, menus and messages. Bundle and display names
-/// take it from `oss/bazel/brand.bzl`'s `PRODUCT_NAME`, a copy Bazel needs, which a test
+/// take it from `bazel/brand.bzl`'s `PRODUCT_NAME`, a copy Bazel needs, which a test
 /// keeps the same.
 pub const NAME: &str = "Zirc";
 
@@ -747,12 +747,31 @@ pub fn address(session: &str, name: Option<&str>) -> String {
 #[must_use]
 pub fn addressed(text: &str) -> Option<(&str, &str)> {
     let (who, said) = text.split_once(": ")?;
+    Some((session_of(who)?, said))
+}
+
+/// The session `who` names, as [`address`] writes one: `cc-1a2b3c` or `login-page (cc-1a2b3c)`.
+fn session_of(who: &str) -> Option<&str> {
     let session = match who.split_once(" (") {
         Some((name, rest)) if !name.contains(' ') => rest.strip_suffix(')')?,
         Some(_) => return None,
         None => who,
     };
-    (!session.is_empty() && !session.contains([' ', '(', ')'])).then_some((session, said))
+    (!session.is_empty() && !session.contains([' ', '(', ')'])).then_some(session)
+}
+
+/// What a line says after whom it's for, be that one session ([`addressed`]) or several, as
+/// CI names every session whose landing one build of the Apple apps covers:
+/// `cc-1 (apple/login), cc-2 (apple/rail): build 7's Apple apps compile on 1a2b3c4`. The
+/// whole line when it doesn't start with whom it's for. Reading only the first of several
+/// took such a line for one that says something else, and woke each session it named
+/// (7 lines, 19 names, in the week to 13 Nov 2026).
+#[must_use]
+pub fn said(text: &str) -> &str {
+    match text.split_once(": ") {
+        Some((who, said)) if who.split(", ").all(|one| session_of(one).is_some()) => said,
+        _ => text,
+    }
 }
 
 /// `name` as a session's name, as apps show it in place of its id: lowercase letters,
@@ -1214,6 +1233,15 @@ mod tests {
         assert_eq!(super::addressed("master is broken: x"), None);
         assert_eq!(super::addressed("a b (cc-1): x"), None);
         assert_eq!(super::addressed("no address here"), None);
+        // What it says, after one session or several.
+        assert_eq!(super::said("cc-1: landed"), "landed");
+        assert_eq!(
+            super::said("cc-1 (apple/login), ada-mbp (apple/rail): build 7's Apple apps compile"),
+            "build 7's Apple apps compile"
+        );
+        assert_eq!(super::said("master is broken: x"), "master is broken: x");
+        assert_eq!(super::said("cc-1, see above: x"), "cc-1, see above: x");
+        assert_eq!(super::said("no address here"), "no address here");
     }
 
     use super::*;

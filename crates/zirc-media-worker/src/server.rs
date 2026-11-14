@@ -1,5 +1,5 @@
 //! The worker's HTTP side, for zirc.dev alone (its network policy lets nothing else in), or a
-//! self-hosted server beside it (`oss/crates/zirc-server`, which nothing else reaches):
+//! self-hosted server beside it (`crates/zirc-server`, which nothing else reaches):
 //!
 //! - `POST /probe` `{"source": url}`: 200 with what the video is, or 422 for something that
 //!   isn't one.

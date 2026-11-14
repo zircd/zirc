@@ -1,4 +1,4 @@
-//! Files generated from the Rust types so they can't drift, checked in under `oss/generated`:
+//! Files generated from the Rust types so they can't drift, checked in under `generated`:
 //! a JSON Schema of the socket protocol and the envelope that any language can use, and the
 //! analytics events' types for the website and anything else ([`telemetry`]).
 //! `bazel run //crates/zirc-core:generated_types` writes them; a test fails when what's
@@ -11,7 +11,7 @@ use crate::ipc::{PROTOCOL, Request, Response};
 
 pub mod telemetry;
 
-/// Each generated file, by its path under `oss/generated/`, with what it should hold.
+/// Each generated file, by its path under `generated/`, with what it should hold.
 #[must_use]
 pub fn files() -> Vec<(&'static str, String)> {
     std::iter::once(("schema.json", schema()))

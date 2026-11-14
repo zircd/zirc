@@ -1,4 +1,4 @@
-//! Code named in a message: a repository's file, `oss/crates/zirc-chat/src/chat.rs:42`, or
+//! Code named in a message: a repository's file, `crates/zirc-chat/src/chat.rs:42`, or
 //! a commit, `3f2a1c0`, written bare or in backticks, becomes a link: into the person's
 //! editor where the repository is checked out on their machine, or else to its page on the
 //! repository's forge. Stack traces and diffs pasted without a fence become code blocks, so
@@ -154,7 +154,7 @@ pub fn chosen_editor(chosen: Option<&str>, installed: &[Editor]) -> Option<Edito
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub struct CodeRef {
-    /// The file's path in the repository, `oss/crates/zirc-chat/src/chat.rs`; `None` for a
+    /// The file's path in the repository, `crates/zirc-chat/src/chat.rs`; `None` for a
     /// commit.
     pub path: Option<String>,
     /// The line it names, from 1.

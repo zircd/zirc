@@ -14,7 +14,7 @@ use zirc_proto::telemetry::{
 
 use super::GENERATED;
 
-/// Each generated file, by its path under `oss/generated/`, with what it should hold.
+/// Each generated file, by its path under `generated/`, with what it should hold.
 #[must_use]
 pub fn files() -> Vec<(&'static str, String)> {
     vec![

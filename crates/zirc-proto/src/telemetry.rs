@@ -1,6 +1,6 @@
 //! The analytics events zirc's apps and servers send to `PostHog`, declared once. The
 //! TypeScript types the website sends them with are generated from these (`bazel run
-//! //crates/zirc-core:generated_types`, into `oss/generated/telemetry`), so a client can
+//! //crates/zirc-core:generated_types`, into `generated/telemetry`), so a client can
 //! only send what's declared here, and adding a property is a visible change to this file:
 //! it's also the privacy review.
 //!

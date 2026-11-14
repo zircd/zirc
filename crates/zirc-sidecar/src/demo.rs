@@ -1,5 +1,5 @@
 //! zirc.dev's live demo (`spec.demo`): two of the showcase's people and Maya's agent
-//! (`oss/fixtures/acme/showcase.json`) walk each visitor through using zirc from their own
+//! (`fixtures/acme/showcase.json`) walk each visitor through using zirc from their own
 //! terminal, played by the sidecar in a room of the visitor's own beside the demo's public
 //! channel (`#web/guest-7k2q`, [`zirc_proto::guest_room`], as zirc.dev's token names it), so
 //! visitors never see each other.

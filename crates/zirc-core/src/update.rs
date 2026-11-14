@@ -46,8 +46,8 @@ pub const RELEASE_KEY: &str = "7da026b48ec6c4b8e0fc6d8bf25714dafd0f98628d329c2d4
 pub const TEST_KEY: &str = "ZIRC_UPDATE_TEST_KEY";
 
 /// The binaries a release has: zirc, zircd, and zirc-remote, the host that serves a config's
-/// commands to its owner (oss/docs/remote.md). oss/release/BUILD.bazel packs them and
-/// oss/release/install.sh installs them: change all three.
+/// commands to its owner (docs/remote.md). release/BUILD.bazel packs them and
+/// release/install.sh installs them: change all three.
 const BINARIES: [&str; 3] = ["zirc", "zircd", "zirc-remote"];
 
 /// Binaries older releases had, removed on updating: `zirc tui` took `zirc-tui`'s place.

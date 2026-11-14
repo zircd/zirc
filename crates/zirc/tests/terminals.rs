@@ -1,4 +1,4 @@
-//! The terminals zirc.dev shows (oss/fixtures/home/terminals.json): the morning of the team on zirc.dev's home page (oss/fixtures/home), run with
+//! The terminals zirc.dev shows (fixtures/home/terminals.json): the morning of the team on zirc.dev's home page (fixtures/home), run with
 //! the real CLI and zircd against a real Ergo, as Henrik's and Raj's machines would run it, then
 //! made the same each run: the server's address, the scratch directories and message ids
 //! read as the team's. The test fails when what zirc prints has changed, and leaves what it
@@ -352,7 +352,7 @@ fn same_as_stored(stored: &Path, now: &str) {
 }
 
 /// A line as the team's: the test server's address as the team's, scratch directories as the paths
-/// people have, message ids as one id, times as the morning of the team on zirc.dev's home page (oss/fixtures/home), and zirc's version as
+/// people have, message ids as one id, times as the morning of the team on zirc.dev's home page (fixtures/home), and zirc's version as
 /// `<version>`, which the page fills in.
 fn as_the_teams(line: Value, ergo: &Ergo, machines: &[&Machine]) -> Value {
     let Value::Object(mut fields) = line else {
