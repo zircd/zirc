@@ -1940,6 +1940,63 @@ mod tests {
     }
 
     #[test]
+    fn cards_updated_one_after_another_point_in_the_order_they_came() {
+        // As one deploy updating six landings' cards: their pointers share one place, and
+        // must keep their order, not a map's, which changed on every redraw.
+        let mut chat = chat();
+        let post = |chat: &mut Chat, time: &str, id: String, card: &Card| {
+            let posted = Message::new(
+                "deploy",
+                Event::Custom {
+                    kind: "x-zirc/deploy".into(),
+                    data: card.as_data(),
+                    text: card.title.clone(),
+                },
+            );
+            put(
+                chat,
+                "zirc-ci",
+                time,
+                &id,
+                crate::chat::EntryKind::Zirc(posted),
+            );
+        };
+        let cards: Vec<Card> = (1..=6)
+            .map(|n| Card {
+                id: format!("deploy/{n}"),
+                title: format!("landing {n}"),
+                ..card(Vec::new())
+            })
+            .collect();
+        for (n, card) in cards.iter().enumerate() {
+            post(&mut chat, &format!("09:0{n}:00"), format!("c{n}"), card);
+        }
+        put(
+            &mut chat,
+            "bob",
+            "09:10:00",
+            "m1",
+            crate::chat::EntryKind::Message("deploying".into()),
+        );
+        for (n, card) in cards.iter().enumerate() {
+            let passed = Card {
+                state: State::Passed,
+                ..card.clone()
+            };
+            post(&mut chat, &format!("09:2{n}:00"), format!("u{n}"), &passed);
+        }
+        let shown: Vec<String> = api(&chat)
+            .iter()
+            .skip(7)
+            .map(|line| line.text.clone())
+            .collect();
+        let expected: Vec<String> = (1..=6)
+            .map(|n| format!("zirc-ci updated landing {n}: pending → passed ↑"))
+            .collect();
+        assert_eq!(shown, expected);
+    }
+
+    #[test]
     fn a_card_updated_with_nothing_after_it_needs_no_pointer() {
         let mut chat = chat();
         let mut now = card(Vec::new());

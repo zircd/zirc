@@ -1814,9 +1814,11 @@ pub(crate) fn items<'a>(
     // Each sender's last message's app, by folded nick.
     let mut apps: HashMap<String, Option<&str>> = HashMap::new();
     let mut landings: HashMap<String, usize> = HashMap::new();
-    // Each card's latest update: where its card is, where the update came, and its event.
-    let mut pointers: HashMap<String, (usize, usize, &Entry)> = HashMap::new();
+    // Each card's latest update: where its card is, where the update came, its event's
+    // place in `entries`, and its event.
+    let mut pointers: HashMap<String, (usize, usize, usize, &Entry)> = HashMap::new();
     for (at, entry) in entries.iter().enumerate() {
+        let came = at;
         // A card's live update, its steps as they stand now, folds into its card, which
         // is further up; it's never a row of its own, nor the card's latest said here.
         let skip = hidden.contains(&at) || entry.is_session_card() || !conversation.shows(entry);
@@ -1872,7 +1874,7 @@ pub(crate) fn items<'a>(
                         if let (Some(key), Some(at)) = (key, at)
                             && updates(&items, Some(at)) > before
                         {
-                            pointers.insert(key, (at, items.len(), entry));
+                            pointers.insert(key, (at, items.len(), came, entry));
                         }
                         continue;
                     };
@@ -1915,12 +1917,17 @@ pub(crate) fn items<'a>(
 }
 
 /// `items` with a [`Pointer`] for each card's latest update in `pointers` (where its card
-/// is, where the update came, and its event), where it came: unless nothing came between
-/// the card and it, as the card is then right there.
-fn point<'a>(items: &mut Vec<Item<'a>>, mut pointers: Vec<(usize, usize, &'a Entry)>) {
-    // From the last, so that inserting one leaves where the others go as it was.
-    pointers.sort_by_key(|(_, here, _)| std::cmp::Reverse(*here));
-    for (at, here, entry) in pointers {
+/// is, where the update came, its event's place among the conversation's, and its event),
+/// where it came: unless nothing came between
+/// the card and it, as the card is then right there. Several that came at one place, as
+/// when one deploy updates several cards, stay in the order their events came in
+/// the conversation: never `pointers`' order, which a map's is, else they'd swap on every
+/// redraw.
+fn point<'a>(items: &mut Vec<Item<'a>>, mut pointers: Vec<(usize, usize, usize, &'a Entry)>) {
+    // From the last, so that inserting one leaves where the others go as it was; at one
+    // place, the latest first, as each goes in before the one inserted there already.
+    pointers.sort_by_key(|(_, here, came, _)| std::cmp::Reverse((*here, *came)));
+    for (at, here, _, entry) in pointers {
         if here <= at + 1 {
             continue;
         }
