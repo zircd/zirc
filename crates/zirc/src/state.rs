@@ -78,6 +78,21 @@ enum StateCommand {
         #[arg(long = "org", value_name = "NAME", hide = true)]
         org: Option<String>,
     },
+    /// Say you're on it: the state said again as it stands, with you as its owner.
+    ///
+    /// Such as: zirc state take master --session cc-2b76ff. Refused while an owner it names
+    /// has a live watch, as two sessions fixing one break collide: ask them first.
+    Take {
+        /// What it's the state of, such as master.
+        #[arg(value_name = "NAME")]
+        name: String,
+        /// Who's taking it. Defaults to $ZIRC_SESSION, then $USER.
+        #[arg(long, env = "ZIRC_SESSION")]
+        session: Option<String>,
+        /// The organisation, on a machine signed in to several.
+        #[arg(long = "org", value_name = "NAME", hide = true)]
+        org: Option<String>,
+    },
     /// Say it's fine again: the same as zirc state set <NAME> ok.
     Clear {
         /// What it's the state of, such as master.
@@ -125,6 +140,9 @@ pub(super) async fn state(socket: &Path, args: StateArgs, out: &mut impl Write) 
                 org,
             };
             set(socket, saying, out).await
+        }
+        Some(StateCommand::Take { name, session, org }) => {
+            take(socket, name, session, org, out).await
         }
         Some(StateCommand::Clear {
             name,
@@ -215,6 +233,64 @@ async fn set(socket: &Path, saying: Saying, out: &mut impl Write) -> Result<()> 
     Ok(())
 }
 
+/// `zirc state take`: `name` said again as it stands, with `session` as its owner, unless
+/// someone else on it is live.
+async fn take(
+    socket: &Path,
+    name: String,
+    session: Option<String>,
+    org: Option<String>,
+    out: &mut impl Write,
+) -> Result<()> {
+    let session = session_or_user(session);
+    let org_name = org_here(socket, OrgArg { name: org.clone() }).await?;
+    let all = read(socket, org_name.as_deref(), LOOK_BACK).await?;
+    let repo = repo_here(socket).await;
+    let Some(said) = all.into_iter().find(|said| {
+        said.state.name == name && repo.as_ref().is_none_or(|repo| &said.state.repo == repo)
+    }) else {
+        bail!(
+            "no state {name} said in {}: nothing to take",
+            states::CHANNEL
+        );
+    };
+    if said.state.level == Level::Ok {
+        bail!("{name} is ok: nothing to take");
+    }
+    let (live, _) = live_sessions(socket, org_name.as_deref()).await;
+    if let Some(owner) = said
+        .state
+        .owners()
+        .into_iter()
+        .find(|owner| *owner != session && live.iter().any(|l| l == owner))
+    {
+        bail!(
+            "{owner} is on {name}, and its watch is live: ask it first (zirc ask --session {session} --to <its machine>/{owner} \"…\")"
+        );
+    }
+    let state = said.state;
+    let saying = Saying {
+        name,
+        level: state.level,
+        why: state.why,
+        owner: Some(session.clone()),
+        link: state.link,
+        until: state.until,
+        session: Some(session),
+        org,
+    };
+    set(socket, saying, out).await
+}
+
+/// The organisation's live sessions and those gone, as zircd knows them
+/// ([`Request::LiveSessions`]): none of either from a zircd that predates it.
+async fn live_sessions(socket: &Path, org: Option<&str>) -> (Vec<String>, Vec<String>) {
+    match ask_in(socket, org, Request::LiveSessions).await {
+        Ok(Response::LiveSessions { live, gone }) => (live, gone),
+        _ => (Vec::new(), Vec::new()),
+    }
+}
+
 /// The states in #ops's newest `limit` messages, the newest of each name, as they stand now:
 /// one that has ended by itself is fine ([`states::in_force`]).
 pub(super) async fn read(socket: &Path, org: Option<&str>, limit: usize) -> Result<Vec<Said>> {
@@ -249,8 +325,9 @@ pub(super) async fn repo_here(socket: &Path) -> Option<String> {
 
 /// A state in a line: `2026-11-05T12:00:00Z #monorepo master is broken: …, said by ci`, and
 /// for one that isn't fine, how long it has stood and how far its branch has moved since, as
-/// this checkout knows it ([`states::standing`]): `(broken 37h, master 14 commits on)`.
-pub(super) fn line(said: &Said, now: u64) -> String {
+/// this checkout knows it, and whether its owner has gone ([`states::standing`]):
+/// `(broken 37h, master 14 commits on, owner gone)`.
+pub(super) fn line(said: &Said, now: u64, gone: &[String]) -> String {
     let mut line = format!(
         "{} {}, said by {}",
         said.time.as_deref().unwrap_or("?"),
@@ -262,7 +339,9 @@ pub(super) fn line(said: &Said, now: u64) -> String {
         .time
         .as_deref()
         .and_then(|time| commits_since(branch, time));
-    if let Some(standing) = states::standing(said, now, moved.map(|commits| (branch, commits))) {
+    if let Some(standing) =
+        states::standing(said, now, moved.map(|commits| (branch, commits)), gone)
+    {
         line = format!("{line} ({standing})");
     }
     line
@@ -289,6 +368,7 @@ async fn show(socket: &Path, args: StateArgs, out: &mut impl Write) -> Result<()
     // In a watched repository, its states alone: another's master isn't this one's.
     let repo = repo_here(socket).await;
     let now = crate::catchup::now();
+    let (_, gone) = live_sessions(socket, org.as_deref()).await;
     let shown: Vec<&Said> = all
         .iter()
         .filter(|said| repo.as_ref().is_none_or(|repo| &said.state.repo == repo))
@@ -301,7 +381,7 @@ async fn show(socket: &Path, args: StateArgs, out: &mut impl Write) -> Result<()
         if args.json {
             writeln!(out, "{}", serde_json::to_string(&json(said))?)?;
         } else {
-            writeln!(out, "{}", line(said, now))?;
+            writeln!(out, "{}", line(said, now, &gone))?;
             if said.state.level != Level::Ok {
                 let wait = states::wait_hint(&said.state.name);
                 writeln!(out, "  \u{21b3} {wait}")?;
@@ -341,9 +421,10 @@ pub(super) async fn troubled_lines(socket: &Path) -> Vec<String> {
         return Vec::new();
     };
     let now = crate::catchup::now();
+    let (_, gone) = live_sessions(socket, None).await;
     states::troubled(&all)
         .into_iter()
-        .map(|said| format!("state: {}", line(said, now)))
+        .map(|said| format!("state: {}", line(said, now, &gone)))
         .collect()
 }
 

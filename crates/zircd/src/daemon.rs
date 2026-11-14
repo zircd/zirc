@@ -682,6 +682,8 @@ pub struct Daemon {
     restoring: BTreeSet<PathBuf>,
     /// Which of this machine's sessions are live, and where that was said ([`live`]).
     live: live::Live,
+    /// Other machines' live sessions, and every session seen live ([`live::Elsewhere`]).
+    elsewhere: live::Elsewhere,
 }
 
 /// A query a session here asked.
@@ -785,6 +787,7 @@ impl Daemon {
             last_posts: HashMap::new(),
             unowned: unowned::Unowned::default(),
             holds: holds::Holds::default(),
+            elsewhere: live::Elsewhere::default(),
             later: later::Later::default(),
             later_told: later::Told::default(),
             breaker: breaker::Breaker::default(),

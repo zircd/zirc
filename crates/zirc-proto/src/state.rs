@@ -134,6 +134,20 @@ impl State {
         self.until.as_deref().is_some_and(|until| until <= now)
     }
 
+    /// Who's on it, each as its session when it's named as CI names one
+    /// (`login-page (cc-1a2b3c)`), else as said: `owner` split at its commas.
+    #[must_use]
+    pub fn owners(&self) -> Vec<&str> {
+        self.owner
+            .as_deref()
+            .into_iter()
+            .flat_map(|owner| owner.split(','))
+            .map(str::trim)
+            .filter(|who| !who.is_empty())
+            .map(|who| crate::session_of(who).unwrap_or(who))
+            .collect()
+    }
+
     /// The state that says it has ended by itself: fine, saying until when it stood as it did.
     #[must_use]
     pub fn over(&self) -> Self {
@@ -225,6 +239,25 @@ mod tests {
             }),
             None
         );
+    }
+
+    #[test]
+    fn its_owners_are_sessions_where_named_as_ci_names_them() {
+        let state = State {
+            repo: "#monorepo".into(),
+            name: "master".into(),
+            level: Level::Broken,
+            why: None,
+            owner: Some("login-page (cc-1a2b3c), cc-2, mattias".into()),
+            link: None,
+            until: None,
+        };
+        assert_eq!(state.owners(), ["cc-1a2b3c", "cc-2", "mattias"]);
+        let none = State {
+            owner: None,
+            ..state
+        };
+        assert!(none.owners().is_empty());
     }
 
     #[test]

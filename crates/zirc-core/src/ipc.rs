@@ -370,6 +370,11 @@ pub enum Request {
     /// This machine's named sessions, with their titles and links, for its owner's apps:
     /// answered with [`Response::LocalSessions`].
     LocalSessions,
+    /// The organisation's sessions with a watch open now, on any machine, as each machine says
+    /// its list ([`zirc_proto::session::Live`]), and those seen live since zircd started that
+    /// no longer are: whether a state's owner is still on it. Answered with
+    /// [`Response::LiveSessions`]; a zircd from before it says it doesn't know the request.
+    LiveSessions,
     /// Leave a topic channel joined with [`Request::Join`].
     Leave {
         /// As for [`Request::Join`].
@@ -620,6 +625,13 @@ pub enum Response {
     Roles {
         /// Its roles, sorted.
         roles: Vec<String>,
+    },
+    /// The answer to [`Request::LiveSessions`].
+    LiveSessions {
+        /// The sessions live now, sorted.
+        live: Vec<String>,
+        /// Those seen live since zircd started that no longer are, sorted.
+        gone: Vec<String>,
     },
     /// The answer to [`Request::LocalSessions`], by session.
     LocalSessions {

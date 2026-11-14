@@ -73,12 +73,28 @@ pub fn troubled(states: &[Said]) -> Vec<&Said> {
         .collect()
 }
 
-/// How long `said` has stood at `now` and how far its branch has moved since, for its line:
-/// `broken 37h, master 14 commits on`, where `moved` is the branch and how many commits it
-/// took since. Nothing for a state that's fine, or one said at no time known. A break that
-/// stood days while master moved on was fixed and never cleared, unseen, on 8 and 10 Nov 2026.
+/// Whether everyone on `state` has gone: it names owners, and each is among `gone`, the
+/// sessions seen live that no longer are ([`crate::ipc::Request::LiveSessions`]). A person,
+/// never a live session, is never gone. On 10 Nov 2026 a break's owner had ended and nobody
+/// could tell.
 #[must_use]
-pub fn standing(said: &Said, now: u64, moved: Option<(&str, usize)>) -> Option<String> {
+pub fn owner_gone(state: &State, gone: &[String]) -> bool {
+    let owners = state.owners();
+    !owners.is_empty() && owners.iter().all(|owner| gone.iter().any(|g| g == owner))
+}
+
+/// How long `said` has stood at `now` and how far its branch has moved since, for its line:
+/// `broken 37h, master 14 commits on, owner gone`, where `moved` is the branch and how many
+/// commits it took since, and `gone` the sessions whose watch has gone ([`owner_gone`]).
+/// Nothing for a state that's fine, or one said at no time known. A break that stood days
+/// while master moved on was fixed and never cleared, unseen, on 8 and 10 Nov 2026.
+#[must_use]
+pub fn standing(
+    said: &Said,
+    now: u64,
+    moved: Option<(&str, usize)>,
+    gone: &[String],
+) -> Option<String> {
     if said.state.level == Level::Ok {
         return None;
     }
@@ -92,6 +108,9 @@ pub fn standing(said: &Said, now: u64, moved: Option<(&str, usize)>) -> Option<S
     if let Some((branch, commits)) = moved.filter(|(_, commits)| *commits > 0) {
         let plural = if commits == 1 { "" } else { "s" };
         text = format!("{text}, {branch} {commits} commit{plural} on");
+    }
+    if owner_gone(&said.state, gone) {
+        text = format!("{text}, owner gone");
     }
     Some(text)
 }
@@ -189,27 +208,46 @@ mod tests {
         let broken = said(Level::Broken, "2026-11-12T00:00:00.000Z");
         let at = crate::time::seconds_at("2026-11-12T00:00:00Z").unwrap();
         assert_eq!(
-            standing(&broken, at + 37 * 3600, Some(("master", 14))).as_deref(),
+            standing(&broken, at + 37 * 3600, Some(("master", 14)), &[]).as_deref(),
             Some("broken 37h, master 14 commits on")
         );
         assert_eq!(
-            standing(&broken, at + 5 * 60, Some(("master", 1))).as_deref(),
+            standing(&broken, at + 5 * 60, Some(("master", 1)), &[]).as_deref(),
             Some("broken 5m, master 1 commit on")
         );
         assert_eq!(
-            standing(&broken, at + 3 * 86_400, Some(("master", 0))).as_deref(),
+            standing(&broken, at + 3 * 86_400, Some(("master", 0)), &[]).as_deref(),
             Some("broken 3d")
         );
         let warning = said(Level::Warning, "2026-11-12T00:00:00.000Z");
         assert_eq!(
-            standing(&warning, at + 7200, None).as_deref(),
+            standing(&warning, at + 7200, None, &[]).as_deref(),
             Some("warning 2h")
         );
         assert_eq!(
-            standing(&said(Level::Ok, "2026-11-12T00:00:00Z"), at, None),
+            standing(&said(Level::Ok, "2026-11-12T00:00:00Z"), at, None, &[]),
             None
         );
-        assert_eq!(standing(&said(Level::Broken, "?"), at, None), None);
+        assert_eq!(standing(&said(Level::Broken, "?"), at, None, &[]), None);
+        let owned = Said {
+            state: State {
+                owner: Some("login-page (cc-1), cc-2".into()),
+                ..broken.state.clone()
+            },
+            ..broken.clone()
+        };
+        let gone = |sessions: &[&str]| -> Vec<String> {
+            sessions.iter().map(|s| (*s).to_owned()).collect()
+        };
+        assert_eq!(
+            standing(&owned, at + 3600, None, &gone(&["cc-1", "cc-2"])).as_deref(),
+            Some("broken 1h, owner gone")
+        );
+        assert_eq!(
+            standing(&owned, at + 3600, None, &gone(&["cc-1"])).as_deref(),
+            Some("broken 1h")
+        );
+        assert!(!owner_gone(&broken.state, &gone(&["cc-1"])));
         assert_eq!(branch_of("master/e2e"), "master");
         assert_eq!(branch_of("ci"), "ci");
     }

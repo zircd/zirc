@@ -751,7 +751,7 @@ pub fn addressed(text: &str) -> Option<(&str, &str)> {
 }
 
 /// The session `who` names, as [`address`] writes one: `cc-1a2b3c` or `login-page (cc-1a2b3c)`.
-fn session_of(who: &str) -> Option<&str> {
+pub(crate) fn session_of(who: &str) -> Option<&str> {
     let session = match who.split_once(" (") {
         Some((name, rest)) if !name.contains(' ') => rest.strip_suffix(')')?,
         Some(_) => return None,

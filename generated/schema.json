@@ -3290,6 +3290,20 @@
           "properties": {
             "op": {
               "type": "string",
+              "const": "live-sessions"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "The organisation's sessions with a watch open now, on any machine, as each machine says\nits list ([`zirc_proto::session::Live`]), and those seen live since zircd started that\nno longer are: whether a state's owner is still on it. Answered with\n[`Response::LiveSessions`]; a zircd from before it says it doesn't know the request.",
+          "title": "LiveSessionsRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
               "const": "leave"
             },
             "repo": {
@@ -3976,6 +3990,36 @@
           ],
           "description": "The answer to [`Request::Role`]: the session's roles now.",
           "title": "RolesResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "live-sessions"
+            },
+            "live": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The sessions live now, sorted."
+            },
+            "gone": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Those seen live since zircd started that no longer are, sorted."
+            }
+          },
+          "required": [
+            "kind",
+            "live",
+            "gone"
+          ],
+          "description": "The answer to [`Request::LiveSessions`].",
+          "title": "LiveSessionsResponse"
         },
         {
           "type": "object",

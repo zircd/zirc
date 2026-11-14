@@ -214,6 +214,11 @@ impl Daemon {
             } => self.leave_topic(&repo, &topic, org, session).await?,
             Request::Who => self.who(),
             Request::LocalSessions => self.local_sessions(),
+            Request::LiveSessions => {
+                let here: Vec<String> = self.live.sessions();
+                let (live, gone) = self.elsewhere.now(&here);
+                Response::LiveSessions { live, gone }
+            }
             Request::Wakes { days } => Response::Wakes {
                 counts: self.wake_counts(days),
                 breaker: Some(self.breaker.state(self.clock.now())),

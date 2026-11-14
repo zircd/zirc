@@ -16,6 +16,35 @@ use zirc_proto::{Level, Message};
 
 use super::{Daemon, WATCHER_SESSION, read_saved};
 
+/// Every machine's live sessions, as each last said its list in the organisation's channels,
+/// and every session seen live since zircd started: whose watch is gone ([`Request::LiveSessions`]).
+///
+/// [`Request::LiveSessions`]: zirc_core::ipc::Request::LiveSessions
+#[derive(Debug, Default)]
+pub(super) struct Elsewhere {
+    /// Machine's nick → its live sessions.
+    lists: BTreeMap<String, BTreeSet<String>>,
+    /// Every session seen live, here or on another machine.
+    ever: BTreeSet<String>,
+}
+
+impl Elsewhere {
+    /// `machine` said its live sessions are `sessions`.
+    pub(super) fn said(&mut self, machine: &str, sessions: &[String]) {
+        self.ever.extend(sessions.iter().cloned());
+        self.lists
+            .insert(machine.to_owned(), sessions.iter().cloned().collect());
+    }
+
+    /// Those live now, with `here`, this machine's, and those seen that no longer are.
+    pub(super) fn now(&mut self, here: &[String]) -> (Vec<String>, Vec<String>) {
+        self.ever.extend(here.iter().cloned());
+        let live: BTreeSet<String> = self.lists.values().flatten().chain(here).cloned().collect();
+        let gone = self.ever.difference(&live).cloned().collect();
+        (live.into_iter().collect(), gone)
+    }
+}
+
 /// How often, at most, the times are saved while the list stays the same, in seconds.
 const SAVE_EVERY: u64 = 60;
 
@@ -61,6 +90,11 @@ impl Live {
         let live: Vec<String> = self.seen.keys().cloned().collect();
         let changed = live != before;
         (live, changed)
+    }
+
+    /// The sessions live here, sorted.
+    pub(super) fn sessions(&self) -> Vec<String> {
+        self.seen.keys().cloned().collect()
     }
 
     /// Someone joined `channel`: they hear the list again.
@@ -155,6 +189,21 @@ impl Daemon {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_session_seen_live_elsewhere_is_gone_once_its_machine_leaves_it_out() {
+        let mut elsewhere = Elsewhere::default();
+        elsewhere.said("ada-mbp", &["cc-1".into(), "cc-2".into()]);
+        assert_eq!(
+            elsewhere.now(&["cc-3".into()]),
+            (vec!["cc-1".into(), "cc-2".into(), "cc-3".into()], vec![])
+        );
+        elsewhere.said("ada-mbp", &["cc-2".into()]);
+        assert_eq!(
+            elsewhere.now(&[]),
+            (vec!["cc-2".into()], vec!["cc-1".into(), "cc-3".into()])
+        );
+    }
 
     #[test]
     fn a_session_is_live_from_its_first_watch_until_the_grace_after_its_last() {

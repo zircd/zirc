@@ -77,6 +77,7 @@ const ACTS: &[(&str, Acts)] = &[
     ("state", Acts::One),
     ("state set", Acts::One),
     ("state clear", Acts::One),
+    ("state take", Acts::One),
     ("trim", Acts::One),
     ("log", Acts::One),
     ("ci token", Acts::One),

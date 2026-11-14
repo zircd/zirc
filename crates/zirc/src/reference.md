@@ -212,10 +212,16 @@ while it's busier or fuller.
 ```bash
 zirc state                                  # every state of this repository that isn't ok
 zirc state set --session cc-1a2b3c master broken --why "//web:e2e fails since build 1008" --owner cc-1a2b3c
+zirc state take --session cc-1a2b3c master  # you're on it: refused while its owner's watch is live
+zirc state set --session cc-1a2b3c landings broken --until 2h --why "the database moves"
 zirc state clear --session cc-1a2b3c master --why "fixed in build 1011"
 zirc wait state master ok                   # in the background: ends once it's fine
 zirc state master --check                   # fails while it's broken, for a CI script
 ```
+
+A state that isn't fine shows how long it has stood, how far its branch has moved since and
+whether its owner has gone: `(broken 37h, master 14 commits on, owner gone)`. One said with
+`--until` ends by itself then; `landings` broken, a hold on every landing, must say it.
 
 **Waits.** A command that ends when CI says something happened, to run in the background
 beside your watch: its ending wakes you, and stopping it stops the wait.

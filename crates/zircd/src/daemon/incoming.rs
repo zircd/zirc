@@ -26,12 +26,20 @@ impl Daemon {
             });
             self.ops_heard(line, delivery.as_ref());
         }
-        // Machines' lists of their live sessions are for apps: no watch needs them.
-        if line
+        // Machines' lists of their live sessions are for apps and for whether a state's
+        // owner is still on it ([`live::Elsewhere`]): no watch needs them.
+        if let Some(live) = line
             .tag(zirc_proto::EVENT_TAG)
             .and_then(|payload| zirc_proto::from_payload(payload).ok())
-            .is_some_and(|message| zirc_proto::session::Live::of(&message.event).is_some())
+            .and_then(|message| zirc_proto::session::Live::of(&message.event))
         {
+            if let Some(machine) = line
+                .source
+                .as_deref()
+                .and_then(|source| source.split('!').next())
+            {
+                self.elsewhere.said(machine, &live.sessions);
+            }
             return;
         }
         match zirc_core::presence::as_privmsg(line) {
