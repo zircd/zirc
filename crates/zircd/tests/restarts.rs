@@ -82,7 +82,12 @@ async fn in_api_again(ergo: &zirc_test_ergo::Ergo, nicks: &[&str]) {
 #[tokio::test]
 async fn after_ergo_restarts_a_held_lease_and_an_intent_are_known_to_all_again() {
     let mut ergo = require_ergo!();
-    let alpha = Peer::join(Machine::start(&ergo, "alpha").await, Some("cc-a")).await;
+    let clock = zircd::Clock::default();
+    let hooks = zircd::Hooks {
+        clock: clock.clone(),
+        ..zircd::Hooks::default()
+    };
+    let alpha = Peer::join(Machine::hooked(&ergo, "alpha", hooks).await, Some("cc-a")).await;
     let beta = Peer::join(Machine::start(&ergo, "beta").await, Some("cc-b")).await;
     let _alpha_watch = alpha.watch().await;
     alpha
@@ -109,8 +114,16 @@ async fn after_ergo_restarts_a_held_lease_and_an_intent_are_known_to_all_again()
     sees_auto_intent(&beta, "beta, after").await;
     sees_lease(&beta, "beta, after").await;
     sees_lease(&alpha, "alpha's own, after").await;
-    // And a machine new to the server learns both.
+    // And machines new to the server learn both, delta when it joins (or a minute after
+    // beta's rejoin, had alpha just told it).
+    let minute = std::time::Duration::from_mins(1);
+    let delta = Peer::join(Machine::start(&ergo, "delta").await, Some("cc-d")).await;
+    clock.advance(minute);
+    sees_lease(&delta, "delta, new").await;
+    // gamma, joining within the minute alpha was last told for, once the minute is up: it
+    // was never told (build 3366).
     let gamma = Peer::join(Machine::start(&ergo, "gamma").await, Some("cc-g")).await;
     sees_auto_intent(&gamma, "gamma, new").await;
+    clock.advance(minute);
     sees_lease(&gamma, "gamma, new").await;
 }

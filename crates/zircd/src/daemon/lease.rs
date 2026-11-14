@@ -75,6 +75,8 @@ pub(super) struct LeaseState {
     waiters_checked: Option<Instant>,
     /// When this machine's lease events were last said again, for one who joined.
     said_again: Option<Instant>,
+    /// Whether one joined too soon after that to be told, and is told once it's time.
+    say_owed: bool,
     /// Who ran each session's last `zirc lease`, by process id: its agent, say.
     runners: std::collections::BTreeMap<String, u32>,
     /// Whether a session without a watch was building, and when that was last looked at.
@@ -211,19 +213,27 @@ impl Daemon {
     ///
     /// Only while this machine has a request that still counts, holding or waiting, and at
     /// most once every [`SAY_AGAIN_EVERY`]: apps join and leave the channel all the time,
-    /// and saying every remembered event to each of them flooded it (5 Nov 2026).
+    /// and saying every remembered event to each of them flooded it (5 Nov 2026). One who
+    /// joins sooner is told once that much time has passed (`lease_tick`), not
+    /// never: a machine joining just after another was told never heard of a lease
+    /// (`zircd_restarts_test`, build 3366).
     pub(super) fn say_leases_again(&mut self) {
         let Some(client) = &self.client else { return };
         let me = client.nick().to_owned();
-        if !self.leases.leases.has_current(&me, now_ms())
-            || self
-                .leases
-                .said_again
-                .is_some_and(|at| self.clock.now().duration_since(at) < SAY_AGAIN_EVERY)
+        if !self.leases.leases.has_current(&me, now_ms()) {
+            self.leases.say_owed = false;
+            return;
+        }
+        if self
+            .leases
+            .said_again
+            .is_some_and(|at| self.clock.now().duration_since(at) < SAY_AGAIN_EVERY)
         {
+            self.leases.say_owed = true;
             return;
         }
         self.leases.said_again = Some(self.clock.now());
+        self.leases.say_owed = false;
         for event in self.leases.leases.events_of(&me) {
             let session = match &event {
                 LeaseEvent::Want(want) => want.session.clone(),
@@ -689,6 +699,9 @@ impl Daemon {
         let Some(me) = self.client.as_ref().map(|client| client.nick().to_owned()) else {
             return;
         };
+        if self.leases.say_owed {
+            self.say_leases_again();
+        }
         let now = now_ms();
         let mine = self.leases.leases.mine(&me, now);
         let watching: std::collections::BTreeSet<String> = self
