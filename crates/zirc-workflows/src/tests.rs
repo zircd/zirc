@@ -974,9 +974,9 @@ fn a_trigger_is_a_state_or_a_time_and_says_whats_wrong_with_it() {
     let wrong = |from: &str, to: &str| parse(&CHORE.replace(from, to)).unwrap_err();
     assert!(
         wrong("every = \"1d\"", "every = \"1d\"\nstate = \"master\"")
-            .contains("one of state and every")
+            .contains("a trigger has one of")
     );
-    assert!(wrong("every = \"1d\"\n", "").contains("one of state and every"));
+    assert!(wrong("every = \"1d\"\n", "").contains("a trigger has one of"));
     assert!(wrong("every = \"1d\"", "every = \"1m\"").contains("at least 300s"));
     assert!(wrong("with = { what", "with = { which").contains("isn't an input"));
     assert!(
@@ -986,4 +986,133 @@ fn a_trigger_is_a_state_or_a_time_and_says_whats_wrong_with_it() {
     assert!(wrong("at = \"09:00\"", "level = \"broken\"").contains("only a state has"));
     let state = MASTER.replace("level = \"broken\"", "level = \"broken\"\nat = \"09:00\"");
     assert!(parse(&state).unwrap_err().contains("only every has"));
+}
+
+const SUPPORT: &str = r##"
+name = "support"
+nick = "triage_bot"
+channel = "#support"
+
+[[input]]
+name = "ask"
+
+[[input]]
+name = "from"
+optional = true
+
+[[on]]
+said = "Refund"
+inputs = { ask = "text", from = "by" }
+
+[[on]]
+reaction = "🐛"
+inputs = { ask = "text", from = "author" }
+
+[[on]]
+landed = ["oss/crates/zirc", "MODULE.bazel"]
+inputs = { ask = "subject", from = "session" }
+
+[[step]]
+id = "note"
+kind = "post"
+says = "{from}: {ask}"
+"##;
+
+fn said(text: &str) -> Input {
+    Input::Said {
+        by: "ada".into(),
+        channel: "#support".into(),
+        id: "m1".into(),
+        text: text.into(),
+    }
+}
+
+#[test]
+fn words_said_start_a_run_when_theyre_words_of_their_own() {
+    let mut e = engine(SUPPORT);
+    assert!(e.handle(said("she was refunded already"), 0).is_empty());
+    let run = e.handle(said("Can I get a REFUND, please?"), 0);
+    assert_eq!(texts(&run)[0], "started `support-1` for ada");
+    assert!(
+        texts(&run)
+            .iter()
+            .any(|t| t.contains("ada: Can I get a REFUND, please?"))
+    );
+}
+
+#[test]
+fn a_reaction_starts_a_run_with_the_messages_words_or_says_theyre_gone() {
+    let reacted = |reaction: &str, text: Option<&str>| Input::Reacted {
+        by: "ada".into(),
+        reaction: reaction.into(),
+        channel: "#support".into(),
+        id: "m1".into(),
+        text: text.map(Into::into),
+        author: text.map(|_| "guest-1a2b".into()),
+    };
+    let mut e = engine(SUPPORT);
+    assert!(e.handle(reacted("👀", Some("it crashes")), 0).is_empty());
+    let run = e.handle(reacted("🐛", Some("it crashes")), 0);
+    assert!(
+        texts(&run)
+            .iter()
+            .any(|t| t.contains("guest-1a2b: it crashes"))
+    );
+    // A message from before it was listening: its words aren't known, and the run needs them.
+    let gone = e.handle(reacted("🐛", None), 0);
+    assert_eq!(
+        texts(&gone),
+        ["reply: ada: that starts no run, as its ask isn't known any more"]
+    );
+}
+
+#[test]
+fn a_landing_starts_a_run_when_it_changes_a_path_the_trigger_names() {
+    let landed = |changed: &[&str]| Input::Landed {
+        landing: BTreeMap::from([
+            ("commit".to_owned(), "4b66485".to_owned()),
+            ("session".to_owned(), "cc-1a2b3c".to_owned()),
+            ("subject".to_owned(), "zirc state says more".to_owned()),
+        ]),
+        changed: changed.iter().map(|c| (*c).to_owned()).collect(),
+    };
+    let mut e = engine(SUPPORT);
+    assert!(
+        e.handle(
+            landed(&["web/src/app/page.tsx", "oss/crates/zirc-core/src/lib.rs"]),
+            0
+        )
+        .is_empty()
+    );
+    assert!(e.handle(landed(&[]), 0).is_empty());
+    let run = e.handle(landed(&["oss/crates/zirc/src/state.rs"]), 0);
+    assert_eq!(texts(&run)[0], "started `support-1`");
+    assert!(
+        texts(&run)
+            .iter()
+            .any(|t| t.contains("cc-1a2b3c: zirc state says more"))
+    );
+    assert_eq!(
+        runs(&e.handle(landed(&["MODULE.bazel"]), 0))[0].run,
+        "support-2"
+    );
+    // A directory CI named for the many files changed in it: anything under it may have.
+    assert_eq!(
+        runs(&e.handle(landed(&["oss/crates/"]), 0))[0].run,
+        "support-3"
+    );
+}
+
+#[test]
+fn the_new_triggers_say_whats_wrong_with_them() {
+    let wrong = |from: &str, to: &str| parse(&SUPPORT.replace(from, to)).unwrap_err();
+    assert!(wrong("reaction = \"🐛\"", "reaction = \"👍\"").contains("answer an approval"));
+    assert!(wrong("\"MODULE.bazel\"", "\"oss/**\"").contains("no patterns"));
+    assert!(wrong("said = \"Refund\"", "said = \" \"").contains("some words"));
+    assert!(wrong("from = \"author\"", "from = \"owner\"").contains("none of text, author"));
+    assert!(
+        wrong("said = \"Refund\"", "said = \"Refund\"\nreaction = \"🐛\"")
+            .contains("a trigger has one of")
+    );
+    assert!(wrong("ask = \"subject\", ", "").contains("doesn't fill the input \"ask\""));
 }

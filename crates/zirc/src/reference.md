@@ -287,6 +287,18 @@ every = "7d"                   # 5m at least: every whole multiple of it since 1
 day = "mon"                    # with 7d; and at = "09:00" (UTC) with whole days
 with = { owner = "cc-1a2b3c" } # the inputs its runs are given
 
+[[on]]                         # or words a person or an integration says where it listens
+said = "is broken"             # whatever their case, as words of their own
+inputs = { why = "text" }      # input = the message's text, by, channel or id
+
+[[on]]                         # or a person's reaction to a message it heard
+reaction = "🐛"                # any but 👍 and 👎, which answer approvals
+inputs = { why = "text" }      # input = text, author, by, channel or id
+
+[[on]]                         # or a landing that changes these files or directories
+landed = ["web/content/docs"]  # "." for any landing
+inputs = { why = "subject" }   # input = commit, branch, session, build, link or subject
+
 [[step]]
 id = "fix"
 who = "inputs.owner"           # or role:fixers (its members), or a nick
@@ -320,6 +332,12 @@ zirc step answer spend-2 approve yes                # a person only; or 👍 / �
 zirc role join fixers --session cc-1a2b3c          # be given role:fixers steps while live
 zirc role leave fixers --session cc-1a2b3c
 ```
+
+A `said` or `reaction` trigger counts where the workflow's file says it listens, its
+`channel` and those it `follow`s, and only for the organisation's people (and, for `said`, its
+integrations): never a guest's or an agent session's. A reaction to a message from before the
+workflow was listening can't give its text. A `landed` trigger needs CI to say which paths a
+landing changed (`changed` in its landing event's data).
 
 A run a time starts (`every`) starts once for that time. One the server was away for, as
 while it restarted, still starts within the hour; later it's passed over, never made up for.

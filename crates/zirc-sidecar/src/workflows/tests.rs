@@ -467,6 +467,141 @@ fn a_time_starts_a_run_only_once_its_nick_has_read_its_channel_and_once_across_a
     assert_eq!(hosted.next_due(NINE + 180), Some(NINE + 86_400));
 }
 
+const BUGS: &str = r##"
+name = "master"
+nick = "master_bot"
+channel = "#ops"
+follow = ["#monorepo"]
+
+[[input]]
+name = "what"
+
+[[on]]
+said = "is broken"
+inputs = { what = "text" }
+
+[[on]]
+reaction = "🐛"
+inputs = { what = "text" }
+
+[[on]]
+landed = ["web"]
+inputs = { what = "subject" }
+
+[[step]]
+id = "note"
+kind = "post"
+says = "noted: {what}"
+"##;
+
+/// The runs `outs` started, as the workflow's nick said them.
+fn started(outs: &[Out]) -> Vec<String> {
+    let said = said(outs);
+    said.iter()
+        .filter(|(_, _, text)| text.starts_with("started"))
+        .map(|(_, _, text)| text.clone())
+        .collect()
+}
+
+#[test]
+fn a_persons_words_start_a_run_where_the_workflow_listens_and_nobody_elses_do() {
+    let mut hosted = Hosted::default();
+    deploys(&mut hosted, "mattias", BUGS);
+    let line =
+        |channel: &str, account: &str| row(channel, account, PRIVMSG, "search is broken again");
+    assert!(started(&hosted.take(&line("#elsewhere", "ada"), true, &who, 0)).is_empty());
+    assert!(started(&hosted.take(&line("#ops", "guest-abcd"), true, &who, 0)).is_empty());
+    // A machine's session saying it, as agents do all day: nothing.
+    let session = zirc(
+        "#ops",
+        "m3-mac",
+        "cc-1",
+        Event::Text {
+            body: "master is broken".into(),
+        },
+    );
+    assert!(started(&hosted.take(&session, true, &who, 0)).is_empty());
+    // Read back, nothing; said to its nick, a mention's to answer.
+    assert!(started(&hosted.take(&line("#ops", "ada"), false, &who, 0)).is_empty());
+    let to_it = row("#ops", "ada", PRIVMSG, "master_bot: is broken");
+    assert!(started(&hosted.take(&to_it, true, &who, 0)).is_empty());
+    let outs = hosted.take(&line("#monorepo", "ada"), true, &who, 0);
+    assert_eq!(started(&outs), ["started `master-1` for ada"]);
+    assert!(
+        said(&outs)
+            .iter()
+            .any(|(_, _, t)| t.contains("noted: search is broken again"))
+    );
+}
+
+#[test]
+fn a_persons_reaction_starts_a_run_with_the_words_of_the_message_it_heard() {
+    let mut hosted = Hosted::default();
+    deploys(&mut hosted, "mattias", BUGS);
+    let mut heard = row("#ops", "guest-abcd", PRIVMSG, "the app crashes on launch");
+    heard.msgid = "crash-1".into();
+    hosted.take(&heard, true, &who, 0);
+    let react = |account: &str, reaction: &str| {
+        let mut tagged = row("#ops", account, TAGMSG, "");
+        tagged.item.tags = BTreeMap::from([
+            ("+draft/react".to_owned(), reaction.to_owned()),
+            ("+draft/reply".to_owned(), "crash-1".to_owned()),
+        ]);
+        tagged
+    };
+    assert!(hosted.take(&react("ada", "👀"), true, &who, 1).is_empty());
+    assert!(
+        hosted
+            .take(&react("m3-mac", "🐛"), true, &who, 1)
+            .is_empty()
+    );
+    assert!(
+        hosted
+            .take(&react("guest-abcd", "🐛"), true, &who, 1)
+            .is_empty()
+    );
+    let outs = hosted.take(&react("ada", "🐛"), true, &who, 1);
+    assert_eq!(started(&outs), ["started `master-1` for ada"]);
+    assert!(
+        said(&outs)
+            .iter()
+            .any(|(_, _, t)| t.contains("noted: the app crashes on launch"))
+    );
+}
+
+#[test]
+fn a_landing_ci_says_passed_starts_a_run_when_it_changed_the_paths() {
+    let mut hosted = Hosted::default();
+    deploys(&mut hosted, "mattias", BUGS);
+    let landing = |account: &str, state: &str, changed: &[&str]| {
+        let event = Event::Custom {
+            kind: zirc_proto::ci::LANDING_KIND.to_owned(),
+            data: serde_json::json!({"state": state, "session": "cc-1", "commit": "4b66485",
+                "subject": "The docs have a page on workflows", "changed": changed}),
+            text: "landed".into(),
+        };
+        zirc("#monorepo/landings", account, "ci", event)
+    };
+    let take = |hosted: &mut Hosted, row: Row| started(&hosted.take(&row, true, &who, 0));
+    assert!(
+        take(
+            &mut hosted,
+            landing("zirc-ci", "passed", &["oss/crates/zirc/src/lib.rs"])
+        )
+        .is_empty()
+    );
+    assert!(take(&mut hosted, landing("zirc-ci", "running", &["web/a.ts"])).is_empty());
+    // Only CI's own account says what landed.
+    assert!(take(&mut hosted, landing("ada", "passed", &["web/a.ts"])).is_empty());
+    let outs = hosted.take(&landing("zirc-ci", "passed", &["web/a.ts"]), true, &who, 0);
+    assert_eq!(started(&outs), ["started `master-1`"]);
+    assert!(
+        said(&outs)
+            .iter()
+            .any(|(_, _, t)| t.contains("noted: The docs have a page on workflows"))
+    );
+}
+
 /// What the host says of a deploy of `source` by `account`, heard live.
 fn deploys(hosted: &mut Hosted, account: &str, source: &str) -> String {
     let outs = hosted.take(&deploy(account, source), true, &who, 0);

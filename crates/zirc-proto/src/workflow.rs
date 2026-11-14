@@ -248,8 +248,11 @@ pub struct Input {
     pub optional: bool,
 }
 
-/// What starts a run on its own: a state ([`crate::state`]) being said, whose fields become
-/// the run's inputs, or a time coming round (`every`), with the inputs it's given.
+/// What starts a run on its own, each trigger one of: a state ([`crate::state`]) being said, a
+/// time coming round (`every`), words someone says where the workflow listens (`said`), a
+/// person's reaction to a message there (`reaction`), or a landing that changes some paths
+/// (`landed`). What it knows of that fills the run's inputs (`inputs`), but a time, which
+/// knows nothing and is given them (`with`).
 ///
 /// ```toml
 /// [[on]]
@@ -262,6 +265,18 @@ pub struct Input {
 /// day = "mon"           # with 7d alone; Thursdays without it
 /// at = "09:00"          # UTC, when `every` is whole days; midnight without it
 /// with = { what = "update dependencies" }
+///
+/// [[on]]
+/// said = "refund"       # a person or an integration says it, as words of its own
+/// inputs = { ask = "text", who = "by" }   # of [`SAID_FIELDS`]
+///
+/// [[on]]
+/// reaction = "🐛"        # a person's, on a message the workflow heard
+/// inputs = { report = "text", from = "author" }   # of [`REACTION_FIELDS`]
+///
+/// [[on]]
+/// landed = ["crates/zirc", "MODULE.bazel"]   # files, or everything under a directory
+/// inputs = { commit = "commit", by = "session" } # of [`LANDED_FIELDS`]
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -272,10 +287,22 @@ pub struct Trigger {
     /// The level that starts a run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub level: Option<Level>,
-    /// Which input each of the state's fields fills: `input = "field"`, where the field is
-    /// one of [`STATE_FIELDS`].
+    /// Which input each thing the trigger knows fills: `input = "field"`, where the field
+    /// is one its kind has ([`TriggerKind::fields`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub inputs: BTreeMap<String, String>,
+    /// Words that start a run when a person or an integration says them where the workflow
+    /// listens, whatever their case, as words of their own: `refund` isn't in `refunded`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub said: Option<String>,
+    /// The reaction that starts a run when a person gives it to a message the workflow
+    /// heard, such as `🐛`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reaction: Option<String>,
+    /// Paths a landing changes to start a run: a file, or a directory for everything under
+    /// it; `.` for any landing. As CI says what a landing changed ([`crate::ci::Data`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub landed: Vec<String>,
     /// How often a run starts by itself, such as `1d` ([`seconds`]): at every whole multiple
     /// of it since 1 January 1970 UTC, so `1d` is each midnight and `6h` is 0, 6, 12 and 18.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -289,6 +316,83 @@ pub struct Trigger {
     /// What a run started by `every` is given: `input = "value"`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub with: BTreeMap<String, String>,
+}
+
+/// What a trigger is, by which of its fields it has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TriggerKind {
+    /// `state`.
+    State,
+    /// `every`.
+    Every,
+    /// `said`.
+    Said,
+    /// `reaction`.
+    Reaction,
+    /// `landed`.
+    Landed,
+}
+
+/// What a `said` trigger can pass on as inputs: the message's text, who said it, where, and
+/// its id on the server.
+pub const SAID_FIELDS: [&str; 4] = ["text", "by", "channel", "id"];
+
+/// What a `reaction` trigger can pass on: the message's text, who wrote it, who reacted,
+/// where, and the message's id.
+pub const REACTION_FIELDS: [&str; 5] = ["text", "author", "by", "channel", "id"];
+
+/// What a `landed` trigger can pass on: the landing's commit, branch, the session that
+/// queued it, its build, the build's page and the commit's subject.
+pub const LANDED_FIELDS: [&str; 6] = ["commit", "branch", "session", "build", "link", "subject"];
+
+/// The longest `said` is, in characters.
+pub const MAX_SAID: usize = 80;
+
+/// The most paths `landed` names.
+pub const MAX_LANDED: usize = 16;
+
+impl TriggerKind {
+    /// The fields its `inputs` may read; none for a time, which is given `with`.
+    #[must_use]
+    pub fn fields(self) -> &'static [&'static str] {
+        match self {
+            Self::State => &STATE_FIELDS,
+            Self::Every => &[],
+            Self::Said => &SAID_FIELDS,
+            Self::Reaction => &REACTION_FIELDS,
+            Self::Landed => &LANDED_FIELDS,
+        }
+    }
+
+    /// The field of a trigger that makes it this kind, as a file writes it.
+    #[must_use]
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::State => "state",
+            Self::Every => "every",
+            Self::Said => "said",
+            Self::Reaction => "reaction",
+            Self::Landed => "landed",
+        }
+    }
+}
+
+/// Whether a landing that changed `changed` starts a run of a trigger on `paths`: a changed
+/// file is one of them or under one; `.` is any landing. A changed path ending in `/` is a
+/// directory CI named in place of the many files it changed there: anything in it may have.
+#[must_use]
+pub fn landed_under(paths: &[String], changed: &[String]) -> bool {
+    let under = |path: &str, dir: &str| {
+        path.strip_prefix(dir)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/') || dir.ends_with('/'))
+    };
+    paths.iter().any(|path| {
+        let path = path.trim_end_matches('/');
+        path == "."
+            || changed.iter().any(|c| {
+                under(c.trim_end_matches('/'), path) || (c.ends_with('/') && under(path, c))
+            })
+    })
 }
 
 /// The shortest `every` may be, in seconds: a workflow isn't a clock.
@@ -329,6 +433,26 @@ impl Schedule {
 }
 
 impl Trigger {
+    /// Which kind it is.
+    ///
+    /// # Errors
+    ///
+    /// When it has none, or more than one, of the fields that say.
+    pub fn kind(&self) -> Result<TriggerKind, String> {
+        let has = [
+            (self.state.is_some(), TriggerKind::State),
+            (self.every.is_some(), TriggerKind::Every),
+            (self.said.is_some(), TriggerKind::Said),
+            (self.reaction.is_some(), TriggerKind::Reaction),
+            (!self.landed.is_empty(), TriggerKind::Landed),
+        ];
+        let mut kinds = has.iter().filter(|(has, _)| *has).map(|(_, kind)| *kind);
+        match (kinds.next(), kinds.next()) {
+            (Some(kind), None) => Ok(kind),
+            _ => Err("a trigger has one of state, every, said, reaction and landed".to_owned()),
+        }
+    }
+
     /// When it comes round, if it's one that does (`every`).
     ///
     /// # Errors
@@ -880,50 +1004,96 @@ impl Workflow {
         Ok(())
     }
 
-    /// The rules for what starts a run: a state or a time, never both, each filling every
-    /// input a run needs with what it has to give.
+    /// The rules for what starts a run: one kind of trigger, with only what its kind has,
+    /// filling every input a run needs from what it knows.
     fn check_trigger(&self, trigger: &Trigger, inputs: &BTreeSet<&str>) -> Result<(), String> {
-        let schedule = trigger.schedule().map_err(|e| format!("a trigger: {e}"))?;
-        let (filled, what) = match (&trigger.state, schedule) {
-            (Some(state), None) => {
+        let kind = trigger.kind()?;
+        let word = kind.word();
+        trigger.schedule().map_err(|e| format!("a trigger: {e}"))?;
+        if kind != TriggerKind::Every
+            && (!trigger.with.is_empty() || trigger.at.is_some() || trigger.day.is_some())
+        {
+            return Err(format!(
+                "the trigger on {word} has with, at or day, which only every has"
+            ));
+        }
+        if (kind != TriggerKind::State && trigger.level.is_some())
+            || (kind == TriggerKind::Every && !trigger.inputs.is_empty())
+        {
+            return Err(format!(
+                "a trigger with {word} has a level or inputs, which only a state has: \
+                 give a time's inputs as with"
+            ));
+        }
+        match kind {
+            TriggerKind::State => {
+                let state = trigger.state.as_deref().unwrap_or_default();
                 if let Some(why) = crate::state::check_name(state) {
                     return Err(why.to_owned());
                 }
                 if trigger.level.is_none() {
                     return Err(format!("the trigger on {state:?} needs a level"));
                 }
-                if !trigger.with.is_empty() || trigger.at.is_some() || trigger.day.is_some() {
-                    return Err(format!(
-                        "the trigger on {state:?} has with, at or day, which only every has"
-                    ));
-                }
-                if let Some(field) = trigger
-                    .inputs
-                    .values()
-                    .find(|f| !STATE_FIELDS.contains(&f.as_str()))
+            }
+            TriggerKind::Said => {
+                let said = trigger.said.as_deref().unwrap_or_default();
+                if said.trim().is_empty() || said.chars().count() > MAX_SAID || said.contains('\n')
                 {
                     return Err(format!(
-                        "a trigger reads the state's {field:?}, which is none of {}",
-                        STATE_FIELDS.join(", ")
+                        "said is some words on a line, {MAX_SAID} characters at most"
                     ));
                 }
-                (&trigger.inputs, format!("on {state:?}"))
             }
-            (None, Some(_)) => {
-                if trigger.level.is_some() || !trigger.inputs.is_empty() {
-                    return Err(
-                        "a trigger with every has a level or inputs, which only a state has: \
-                         give its inputs as with"
-                            .to_owned(),
-                    );
+            TriggerKind::Reaction => {
+                let reaction = trigger.reaction.as_deref().unwrap_or_default();
+                if reaction.is_empty() || reaction.chars().count() > 8 || reaction.contains(' ') {
+                    return Err(format!("reaction {reaction:?} isn't one reaction"));
                 }
-                (&trigger.with, "with every".to_owned())
+                if ["👍", "👎"].contains(&reaction) {
+                    return Err("👍 and 👎 answer an approval: choose another reaction".to_owned());
+                }
             }
-            _ => return Err("a trigger has one of state and every".to_owned()),
+            TriggerKind::Landed => {
+                if trigger.landed.len() > MAX_LANDED {
+                    return Err(format!("landed names more than {MAX_LANDED} paths"));
+                }
+                if let Some(bad) = trigger.landed.iter().find(|p| {
+                    p.is_empty()
+                        || p.starts_with('/')
+                        || p.contains(['*', '\n'])
+                        || p.contains("..")
+                }) {
+                    return Err(format!(
+                        "landed names {bad:?}, which isn't a file or directory from the \
+                         repository's root (no patterns: a directory is everything under it)"
+                    ));
+                }
+            }
+            TriggerKind::Every => {}
+        }
+        let filled = if kind == TriggerKind::Every {
+            &trigger.with
+        } else {
+            &trigger.inputs
         };
         if let Some(input) = filled.keys().find(|i| !inputs.contains(i.as_str())) {
             return Err(format!("a trigger fills {input:?}, which isn't an input"));
         }
+        if kind != TriggerKind::Every
+            && let Some(field) = trigger
+                .inputs
+                .values()
+                .find(|f| !kind.fields().contains(&f.as_str()))
+        {
+            return Err(format!(
+                "a trigger reads {word}'s {field:?}, which is none of {}",
+                kind.fields().join(", ")
+            ));
+        }
+        let what = match &trigger.state {
+            Some(state) => format!("on {state:?}"),
+            None => format!("with {word}"),
+        };
         match self
             .inputs
             .iter()
@@ -1111,6 +1281,9 @@ mod tests {
             state: None,
             level: None,
             inputs: BTreeMap::new(),
+            said: None,
+            reaction: None,
+            landed: Vec::new(),
             every: Some(every.into()),
             at: at.map(Into::into),
             day: day.map(Into::into),
@@ -1145,6 +1318,29 @@ mod tests {
             .last(60),
             None
         );
+    }
+
+    #[test]
+    fn a_landing_is_under_a_path_by_file_directory_or_the_directory_ci_named() {
+        let paths = |p: &[&str]| p.iter().map(|p| (*p).to_owned()).collect::<Vec<_>>();
+        let under = |p: &[&str], c: &[&str]| landed_under(&paths(p), &paths(c));
+        assert!(under(&["oss/crates/zirc"], &["oss/crates/zirc/src/lib.rs"]));
+        assert!(under(
+            &["oss/crates/zirc/"],
+            &["oss/crates/zirc/src/lib.rs"]
+        ));
+        assert!(!under(
+            &["oss/crates/zirc"],
+            &["oss/crates/zirc-core/src/lib.rs"]
+        ));
+        assert!(under(&["MODULE.bazel"], &["web/a.ts", "MODULE.bazel"]));
+        assert!(!under(&["MODULE.bazel"], &["MODULE.bazel.lock"]));
+        assert!(under(&["."], &[]));
+        assert!(!under(&["web"], &[]));
+        // CI named a directory in place of its files: what's under it may have changed.
+        assert!(under(&["oss/crates/zirc/src"], &["oss/crates/"]));
+        assert!(under(&["oss"], &["oss/crates/"]));
+        assert!(!under(&["web"], &["oss/crates/"]));
     }
 
     #[test]
@@ -1200,6 +1396,9 @@ mod tests {
                 state: Some("master".into()),
                 level: Some(Level::Broken),
                 inputs: BTreeMap::from([("owner".into(), "owner".into())]),
+                said: None,
+                reaction: None,
+                landed: Vec::new(),
                 every: None,
                 at: None,
                 day: None,

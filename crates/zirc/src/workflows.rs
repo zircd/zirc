@@ -210,22 +210,24 @@ fn described(workflow: &Workflow) -> String {
         workflow.name, workflow.nick, workflow.channel
     );
     for trigger in &workflow.on {
-        let _ = match (&trigger.state, trigger.level, &trigger.every) {
-            (Some(state), Some(level), _) => {
-                writeln!(text, "- starts when {state} is {}", level.word())
-            }
-            (_, _, Some(every)) => {
-                let day = trigger.day.as_deref().map(|d| format!(", on {d}"));
-                let at = trigger.at.as_deref().map(|at| format!(", at {at} UTC"));
-                writeln!(
-                    text,
-                    "- starts every {every}{}{}",
-                    day.unwrap_or_default(),
-                    at.unwrap_or_default()
-                )
-            }
-            _ => Ok(()),
+        let starts = if let (Some(state), Some(level)) = (&trigger.state, trigger.level) {
+            format!("when {state} is {}", level.word())
+        } else if let Some(every) = &trigger.every {
+            let day = trigger.day.as_deref().map(|d| format!(", on {d}"));
+            let at = trigger.at.as_deref().map(|at| format!(", at {at} UTC"));
+            format!(
+                "every {every}{}{}",
+                day.unwrap_or_default(),
+                at.unwrap_or_default()
+            )
+        } else if let Some(said) = &trigger.said {
+            format!("when someone says {said:?}")
+        } else if let Some(reaction) = &trigger.reaction {
+            format!("when a person reacts {reaction} to a message")
+        } else {
+            format!("when a landing changes {}", trigger.landed.join(", "))
         };
+        let _ = writeln!(text, "- starts {starts}");
     }
     for step in &workflow.steps {
         let kind = step.kind.word();

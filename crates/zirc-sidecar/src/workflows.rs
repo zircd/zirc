@@ -95,6 +95,9 @@ const RETRY_MOST: Duration = Duration::from_mins(5);
 /// How long connecting may take.
 const WITHIN: Duration = Duration::from_secs(8);
 
+/// How many messages the host remembers the words of, for reactions to them.
+const RECENT: usize = 2000;
+
 /// How far back a nick catches up on a channel's history when it joins, but `#workflows`,
 /// which it reads whole.
 pub const WINDOW: Duration = Duration::from_hours(24);
@@ -181,6 +184,11 @@ pub struct Hosted {
     /// the host's own word that it deployed them is read back too ([`Hosted::deployed`]): one
     /// it refused when it was said stays refused.
     read_back: BTreeMap<(String, String), Candidate>,
+    /// What was said lately where the workflows listen, by message id, oldest first in
+    /// `recent_order`: its words, who said them and where, for a `reaction` trigger to give
+    /// its run. The newest [`RECENT`] only, and never written anywhere.
+    recent: HashMap<String, (String, String, String)>,
+    recent_order: std::collections::VecDeque<String>,
     /// The last deploy of each name it didn't take, heard live, until one of that name is
     /// installed: what the dashboard shows whoever deployed it there.
     refused: BTreeMap<String, Refused>,
@@ -257,6 +265,116 @@ impl Hosted {
         {
             live.engine.caught_up();
         }
+    }
+
+    /// Keeps the words of a message heard, for a reaction to it later ([`Hosted::recent`]).
+    fn remember(&mut self, row: &Row, message: Option<&Message>, account: &str, channel: &str) {
+        if row.msgid.is_empty() || self.recent.contains_key(&row.msgid) {
+            return;
+        }
+        let text = message.map_or_else(|| row.item.text.clone(), |m| m.event.human_text());
+        self.recent.insert(
+            row.msgid.clone(),
+            (text, account.to_owned(), channel.to_owned()),
+        );
+        self.recent_order.push_back(row.msgid.clone());
+        if self.recent_order.len() > RECENT
+            && let Some(old) = self.recent_order.pop_front()
+        {
+            self.recent.remove(&old);
+        }
+    }
+
+    /// Whether the workflow `w` follows what's said and reacted to in `channel`: its own
+    /// channel and those its file follows.
+    fn listens(w: &Workflow, channel: &str) -> bool {
+        std::iter::once(&w.channel)
+            .chain(&w.follow)
+            .any(|c| c.eq_ignore_ascii_case(channel))
+    }
+
+    /// What `by`'s words in `channel` start, of the workflows listening there: a `said`
+    /// trigger's run, unless they were to the workflow's own nick, which a mention answers.
+    fn said(&mut self, channel: &str, by: &str, text: &str, id: &str, now: u64) -> Vec<Out> {
+        let mut outs = Vec::new();
+        for running in self.live.values_mut() {
+            let w = running.engine.workflow();
+            if !Self::listens(w, channel) || addressed(text, &w.nick).is_some() {
+                continue;
+            }
+            let input = Input::Said {
+                by: by.to_owned(),
+                channel: channel.to_owned(),
+                id: id.to_owned(),
+                text: text.to_owned(),
+            };
+            let said = running.engine.handle(input, now);
+            outs.extend(posts(running.engine.workflow(), said));
+        }
+        outs
+    }
+
+    /// What a person's `reaction` to the message `id` starts: a `reaction` trigger's run,
+    /// given the message's words if they're still known. Only a person's own account counts.
+    fn reacted(
+        &mut self,
+        row: &Row,
+        reaction: &str,
+        id: &str,
+        account: &str,
+        who: Who<'_>,
+        now: u64,
+    ) -> Vec<Out> {
+        let Some(by) = who(account, None).filter(|by| by.person) else {
+            return Vec::new();
+        };
+        let channel = row.channel.to_lowercase();
+        let known = self.recent.get(id).cloned();
+        let mut outs = Vec::new();
+        for running in self.live.values_mut() {
+            if !Self::listens(running.engine.workflow(), &channel) {
+                continue;
+            }
+            let input = Input::Reacted {
+                by: by.name(),
+                reaction: reaction.to_owned(),
+                channel: channel.clone(),
+                id: id.to_owned(),
+                text: known.as_ref().map(|(text, ..)| text.clone()),
+                author: known.as_ref().map(|(_, author, _)| author.clone()),
+            };
+            let said = running.engine.handle(input, now);
+            outs.extend(posts(running.engine.workflow(), said));
+        }
+        outs
+    }
+
+    /// What a landing CI says passed starts: a `landed` trigger's run, in every workflow.
+    fn landed(&mut self, data: &zirc_proto::ci::Data, now: u64) -> Vec<Out> {
+        if data.state.as_deref() != Some("passed") {
+            return Vec::new();
+        }
+        let landing: BTreeMap<String, String> = [
+            ("commit", &data.commit),
+            ("branch", &data.branch),
+            ("session", &data.session),
+            ("build", &data.build),
+            ("link", &data.url),
+            ("subject", &data.subject),
+        ]
+        .into_iter()
+        .filter_map(|(field, value)| Some((field.to_owned(), value.clone()?)))
+        .collect();
+        let mut outs = Vec::new();
+        for running in self.live.values_mut() {
+            let input = Input::Landed {
+                landing: landing.clone(),
+                changed: data.changed.clone(),
+            };
+            let said = running.engine.handle(input, now);
+            outs.extend(posts(running.engine.workflow(), said));
+        }
+        outs
     }
 
     /// The workflow `nick` runs, if one does.
@@ -375,12 +493,18 @@ impl Hosted {
             &row.channel.to_lowercase(),
             &row.item.account.to_lowercase(),
         );
+        self.remember(row, message.as_ref(), account, channel);
         let Some(message) = message else {
-            return if live {
-                self.mention(channel, account, None, &row.item.text, who, now)
-            } else {
-                Vec::new()
-            };
+            if !live {
+                return Vec::new();
+            }
+            let text = &row.item.text;
+            let mut outs = self.mention(channel, account, None, text, who, now);
+            // A person's words; a machine's plain lines are nobody's.
+            if let Some(by) = who(account, None).filter(|by| by.person) {
+                outs.extend(self.said(channel, &by.name(), text, &row.msgid, now));
+            }
+            return outs;
         };
         if let Some(deploy) = Deploy::of(&message.event) {
             if channel == workflow::CHANNEL {
@@ -408,14 +532,28 @@ impl Hosted {
         }
         match &message.event {
             Event::Text { body } => {
-                self.mention(channel, account, Some(&message.session), body, who, now)
+                let session = Some(message.session.as_str());
+                let mut outs = self.mention(channel, account, session, body, who, now);
+                // A person's words from one of their apps; an agent session's start nothing.
+                if let Some(by) = who(account, session).filter(|by| by.person) {
+                    outs.extend(self.said(channel, &by.name(), body, &row.msgid, now));
+                }
+                outs
+            }
+            // CI landed something: what a `landed` trigger starts a run on.
+            Event::Custom { kind, data, .. }
+                if kind == zirc_proto::ci::LANDING_KIND && account == zirc_proto::ci::NICK =>
+            {
+                self.landed(&zirc_proto::ci::Data::of(data), now)
             }
             // An integration, such as CI saying a test was flaky, starts a run by naming the
             // workflow in its event's text, as `@flake_bot run test=//web:unit`: it's the
             // team's own, as its states are, though no person or machine holds it.
             Event::Custom { text, .. } if zirc_proto::names::is_integration_nick(account) => {
                 let integration = |account: &str, _: Option<&str>| Some(Actor::person(account));
-                self.mention(channel, account, None, text, &integration, now)
+                let mut outs = self.mention(channel, account, None, text, &integration, now);
+                outs.extend(self.said(channel, account, text, &row.msgid, now));
+                outs
             }
             _ => Vec::new(),
         }
@@ -763,19 +901,18 @@ impl Hosted {
     }
 
     fn reaction(&mut self, row: &Row, account: &str, who: Who<'_>, now: u64) -> Vec<Out> {
-        let yes = match row.item.tags.get("+draft/react").map(String::as_str) {
-            Some("👍") => true,
-            Some("👎") => false,
-            _ => return Vec::new(),
-        };
-        let Some((name, run)) = row
-            .item
-            .tags
-            .get("+draft/reply")
-            .and_then(|id| self.messages.get(id))
-            .cloned()
-        else {
+        let tag = |name: &str| row.item.tags.get(name).cloned();
+        let (Some(reaction), Some(id)) = (tag("+draft/react"), tag("+draft/reply")) else {
             return Vec::new();
+        };
+        let Some((name, run)) = self.messages.get(&id).cloned() else {
+            // On anything but a run's own messages: what a `reaction` trigger starts a run on.
+            return self.reacted(row, &reaction, &id, account, who, now);
+        };
+        let yes = match reaction.as_str() {
+            "👍" => true,
+            "👎" => false,
+            _ => return Vec::new(),
         };
         let Some(running) = self.live.get_mut(&name) else {
             return Vec::new();

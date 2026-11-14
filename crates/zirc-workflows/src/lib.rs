@@ -26,7 +26,8 @@ use zirc_proto::card::{Card, Field, State as CardState};
 use zirc_proto::run::{Act, Change, MAX_OUTPUTS, Outcome, RunEvent, StepAction};
 use zirc_proto::state::{Level, State};
 use zirc_proto::workflow::{
-    Condition, EVERY_GRACE, MAX_SOURCE, Ref, Signal, Step, StepKind, Who, Workflow, fill, seconds,
+    Condition, EVERY_GRACE, MAX_SOURCE, Ref, Signal, Step, StepKind, Trigger, TriggerKind, Who,
+    Workflow, fill, landed_under, seconds,
 };
 
 /// The workflow `source` says, once it keeps every rule.
@@ -191,6 +192,41 @@ pub enum Input {
         /// What they said, for a post or an intent.
         text: Option<String>,
     },
+    /// A person or an integration said something where the workflow listens, not to its
+    /// nick: what a `said` trigger starts a run on.
+    Said {
+        /// Who, as the run says started it.
+        by: String,
+        /// Where.
+        channel: String,
+        /// The message's id on the server.
+        id: String,
+        /// What they said.
+        text: String,
+    },
+    /// A person reacted to a message the workflow heard: what a `reaction` trigger starts a
+    /// run on.
+    Reacted {
+        /// Who reacted.
+        by: String,
+        /// With what.
+        reaction: String,
+        /// Where.
+        channel: String,
+        /// The message's id on the server.
+        id: String,
+        /// What it says, when the workflow still has it.
+        text: Option<String>,
+        /// Who wrote it, when it does.
+        author: Option<String>,
+    },
+    /// CI landed something: what a `landed` trigger starts a run on.
+    Landed {
+        /// What CI says of the landing, by [`zirc_proto::workflow::LANDED_FIELDS`].
+        landing: BTreeMap<String, String>,
+        /// The paths it changed, as CI says them.
+        changed: Vec<String>,
+    },
     /// Time passed.
     Tick,
 }
@@ -207,6 +243,15 @@ fn scheduled_by(trigger: usize, at: u64) -> String {
 fn scheduled(by: &str) -> Option<(usize, u64)> {
     let (trigger, at) = by.strip_prefix(SCHEDULE)?.split_once(':')?;
     Some((trigger.parse().ok()?, at.parse().ok()?))
+}
+
+/// The fields known of something that happened, those there are.
+fn fields<const N: usize>(
+    known: [(&'static str, Option<String>); N],
+) -> impl Iterator<Item = (String, String)> {
+    known
+        .into_iter()
+        .filter_map(|(field, value)| Some((field.to_owned(), value?)))
 }
 
 /// What the workflow's nick says.
@@ -633,6 +678,43 @@ impl Engine {
                     self.follow(&id, &seen, now, &mut said);
                 }
             }
+            Input::Said {
+                by,
+                channel,
+                id,
+                text,
+            } => {
+                let lower = text.to_lowercase();
+                let known = fields([("text", Some(text)), ("by", Some(by.clone()))])
+                    .chain(fields([("channel", Some(channel)), ("id", Some(id))]))
+                    .collect();
+                let hears = |t: &Trigger| {
+                    t.said
+                        .as_deref()
+                        .is_some_and(|said| names_whole(&lower, &said.to_lowercase()))
+                };
+                self.happened(TriggerKind::Said, &hears, &by, &known, now, &mut said);
+            }
+            Input::Reacted {
+                by,
+                reaction,
+                channel,
+                id,
+                text,
+                author,
+            } => {
+                let known = fields([("text", text), ("author", author), ("by", Some(by.clone()))])
+                    .chain(fields([("channel", Some(channel)), ("id", Some(id))]))
+                    .collect();
+                let is = |t: &Trigger| t.reaction.as_deref() == Some(reaction.as_str());
+                self.happened(TriggerKind::Reaction, &is, &by, &known, now, &mut said);
+            }
+            Input::Landed { landing, changed } => {
+                let commit = landing.get("commit").map_or("", String::as_str);
+                let by = format!("landing:{commit}");
+                let under = |t: &Trigger| landed_under(&t.landed, &changed);
+                self.happened(TriggerKind::Landed, &under, &by, &landing, now, &mut said);
+            }
             Input::Tick => {
                 self.scheduled(now, &mut said);
                 for id in self.running() {
@@ -786,6 +868,43 @@ impl Engine {
         }
     }
 
+    /// Starts a run for each trigger of `kind` that `matches`, started by `by` and given
+    /// what's `known` of what happened, as the trigger's `inputs` read it. One whose run needs
+    /// an input that isn't known, as the text of a message too old to have, starts nothing.
+    fn happened(
+        &mut self,
+        kind: TriggerKind,
+        matches: &dyn Fn(&Trigger) -> bool,
+        by: &str,
+        known: &BTreeMap<String, String>,
+        now: u64,
+        said: &mut Vec<Said>,
+    ) {
+        for trigger in self.workflow.on.clone() {
+            if trigger.kind() != Ok(kind) || !matches(&trigger) {
+                continue;
+            }
+            let inputs: BTreeMap<String, String> = trigger
+                .inputs
+                .iter()
+                .filter_map(|(input, field)| Some((input.clone(), known.get(field)?.clone())))
+                .collect();
+            let missing = self
+                .workflow
+                .inputs
+                .iter()
+                .find(|i| !i.optional && !inputs.contains_key(&i.name));
+            if let Some(missing) = missing {
+                said.push(Said::Reply(format!(
+                    "{by}: that starts no run, as its {} isn't known any more",
+                    missing.name
+                )));
+                continue;
+            }
+            self.start(by.to_owned(), inputs, now, said);
+        }
+    }
+
     /// Starts a run for each `every` trigger whose time has come round since it was last
     /// dealt with, if not more than [`EVERY_GRACE`] ago: a time the server was away for
     /// longer is passed over, never made up for.
@@ -835,7 +954,10 @@ impl Engine {
         let id = format!("{}-{}", self.workflow.name, self.numbers + 1);
         let text = format!(
             "started `{id}`{}",
-            if by.starts_with("state:") || by.starts_with(SCHEDULE) {
+            if ["state:", SCHEDULE, "landing:"]
+                .iter()
+                .any(|what| by.starts_with(what))
+            {
                 String::new()
             } else {
                 format!(" for {by}")

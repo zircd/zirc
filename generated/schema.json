@@ -4466,6 +4466,13 @@
           },
           "description": "What the landing repairs, from its commits' `Fixes:` trailers: full ids of commits on\nthe default branch, or CI builds as `build N`."
         },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "On a landing that passed: the paths it changed, from the repository's root, for what\nfollows landings by where they land (a workflow's `landed` trigger). Where it changed\nmany files in a directory, CI may name the directory, ending in `/`, in their place."
+        },
         "deploys": {
           "type": "array",
           "items": {
