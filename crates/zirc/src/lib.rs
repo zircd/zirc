@@ -29,6 +29,7 @@ mod stack;
 mod state;
 mod status;
 pub mod telemetry;
+pub use status::BUSY;
 mod updates;
 mod wait;
 mod watch;

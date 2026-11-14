@@ -237,12 +237,16 @@ pub(crate) fn watching(watches: &[Option<String>]) -> String {
 /// say so: under it, nobody waited long enough to notice.
 const SLOW_MS: u64 = 1000;
 
+/// How [`slow`]'s line starts: what the machine's load added to `zirc status`, which the
+/// home page's terminals leave out (tests/terminals.rs).
+pub const BUSY: &str = "zircd was busy ";
+
 /// What `zirc status` says of a zircd that was busy `ms` with one thing lately
 /// ([`zirc_core::ipc::Status::busy_ms`]), when that's long enough to have been felt.
 fn slow(ms: u64) -> Option<String> {
     (ms >= SLOW_MS).then(|| {
         format!(
-            "zircd was busy {}.{}s with one thing in the last minute: commands waited that long",
+            "{BUSY}{}.{}s with one thing in the last minute: commands waited that long",
             ms / 1000,
             ms % 1000 / 100
         )

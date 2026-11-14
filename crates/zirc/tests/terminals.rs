@@ -54,11 +54,16 @@ impl Machine {
         Self { home, repo }
     }
 
-    /// `zirc <args>` in the machine's clone, as a person types it.
+    /// `zirc <args>` in the machine's clone, as a person types it, less what this machine's
+    /// load adds: `zirc status` says when zircd was busy ([`zirc::BUSY`]), which a loaded CI
+    /// machine made it say in the home page's terminals (build 3413).
     async fn zirc(&self, args: &[&str]) -> String {
         std::env::set_current_dir(self.repo.path()).unwrap();
         match run(self.home.path(), args).await {
-            Ok(out) => out,
+            Ok(out) => out
+                .split_inclusive('\n')
+                .filter(|line| !line.starts_with(zirc::BUSY))
+                .collect(),
             Err(err) => format!("zirc: {err:#}\n"),
         }
     }
