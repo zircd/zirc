@@ -820,3 +820,22 @@ fn a_run_asked_for_again_while_it_goes_on_starts_nothing_new() {
     let again = texts(&e.handle(mention("run owner=cc-1 why=//web:unit"), 4));
     assert_eq!(again[0], "started `master-3` for zirc-ci");
 }
+
+#[test]
+fn a_role_step_given_at_start_is_given_once() {
+    let mut e = engine(TRIAGE);
+    e.set_members(fixers(vec![member("m3-mac/master-fixer", 0, 0)]));
+    let started = texts(&e.handle(
+        Input::Mention {
+            by: Actor::person("zirc-ci"),
+            text: "run".into(),
+        },
+        0,
+    ));
+    let given = |said: &[String]| said.iter().filter(|t| t.contains(" → ")).count();
+    assert_eq!(given(&started), 1, "{started:?}");
+    // The member now busy with it, as the live lists say next.
+    e.set_members(fixers(vec![member("m3-mac/master-fixer", 1, 0)]));
+    let ticked = texts(&e.handle(Input::Tick, 1));
+    assert_eq!(given(&ticked), 0, "{ticked:?}");
+}
