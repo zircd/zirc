@@ -1213,6 +1213,18 @@ fn each_part_is_followed_on_its_own_and_the_run_goes_on_when_all_are_done() {
     assert!(last.contains(&"`build` of `rollout-1`: all 2 are done".to_owned()));
     assert!(last.contains(&"reactions is on every platform".to_owned()));
     assert!(e.running().is_empty());
+    // Ended, it's listed as one run, from its start to its end: its parts are its own.
+    let ended = e.ended();
+    assert_eq!(ended.len(), 1);
+    assert_eq!(
+        (
+            ended[0].run.as_str(),
+            ended[0].outcome,
+            ended[0].started,
+            ended[0].ended
+        ),
+        ("rollout-1", zirc_proto::run::Outcome::Done, 0, 18 * MIN)
+    );
 }
 
 #[test]

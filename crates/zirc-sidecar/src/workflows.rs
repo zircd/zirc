@@ -229,6 +229,7 @@ impl Hosted {
                     by: self.deployers.get(name).cloned(),
                     source: live.source.clone(),
                     runs: live.engine.going(),
+                    ended: live.engine.ended(),
                 }
             })
             .collect()

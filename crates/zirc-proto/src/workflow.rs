@@ -156,6 +156,32 @@ pub struct Listed {
     pub source: String,
     /// Its runs that aren't finished, oldest first.
     pub runs: Vec<Going>,
+    /// Its runs that have ended, the latest first, at most [`MAX_ENDED`]: those its nick
+    /// has seen end, or read back from its channel's history. Always sent, even empty, so
+    /// that its absence says the server is older and doesn't list them.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<Ended>>", optional)]
+    pub ended: Vec<Ended>,
+}
+
+/// How many of a workflow's ended runs [`Listed::ended`] lists.
+pub const MAX_ENDED: usize = 20;
+
+/// A run that has ended, and how.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(optional_fields, rename = "WorkflowEnded")]
+pub struct Ended {
+    /// The run, such as `master-12`.
+    pub run: String,
+    /// How it ended.
+    pub outcome: crate::run::Outcome,
+    /// Why, in a few words, when it said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+    /// When it started, in unix seconds.
+    pub started: u64,
+    /// When it ended, in unix seconds.
+    pub ended: u64,
 }
 
 /// A run that isn't finished, and where it stands.
@@ -183,11 +209,14 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Hosting::decl(config),
         Listed::decl(config),
         Going::decl(config),
+        Ended::decl(config),
+        crate::run::Outcome::decl(config),
         Refused::decl(config),
         Deploying::decl(config),
         Sent::decl(config),
         format!("const WORKFLOW_LIST_PATH = {LIST_PATH:?};"),
         format!("const WORKFLOW_MAX_SOURCE = {MAX_SOURCE};"),
+        format!("const WORKFLOW_MAX_ENDED = {MAX_ENDED};"),
         Workflow::decl(config),
         Input::decl(config),
         OneFails::decl(config),

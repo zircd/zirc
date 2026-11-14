@@ -26,8 +26,8 @@ use zirc_proto::card::{Card, Field, State as CardState};
 use zirc_proto::run::{Act, Change, MAX_OUTPUTS, Outcome, RunEvent, StepAction};
 use zirc_proto::state::{Level, State};
 use zirc_proto::workflow::{
-    Condition, EACH, EVERY_GRACE, Each, MAX_EACH, MAX_SOURCE, OneFails, Ref, Signal, Step,
-    StepKind, Trigger, TriggerKind, Who, Workflow, fill, landed_under, seconds,
+    Condition, EACH, EVERY_GRACE, Each, MAX_EACH, MAX_ENDED, MAX_SOURCE, OneFails, Ref, Signal,
+    Step, StepKind, Trigger, TriggerKind, Who, Workflow, fill, landed_under, seconds,
 };
 
 /// The workflow `source` says, once it keeps every rule.
@@ -358,6 +358,9 @@ struct Run {
     /// Who last did a step, whom a wait's nudge asks.
     last: Option<String>,
     finished: Option<(Outcome, Option<String>)>,
+    /// When it started, and when it ended, in unix seconds.
+    started: u64,
+    ended: Option<u64>,
     /// For a run that is one holder's part of a step given to several ([`Step::each`]).
     part: Option<Part>,
 }
@@ -679,6 +682,31 @@ impl Engine {
             )
         });
         going
+    }
+
+    /// Its runs that have ended, the latest first, at most [`MAX_ENDED`]: what a dashboard
+    /// lists as its recent runs. A part of a step given to several is its run's, not one of
+    /// its own.
+    #[must_use]
+    pub fn ended(&self) -> Vec<zirc_proto::workflow::Ended> {
+        let mut ended: Vec<_> = self
+            .runs
+            .values()
+            .filter(|r| r.part.is_none())
+            .filter_map(|r| {
+                let (outcome, why) = r.finished.clone()?;
+                Some(zirc_proto::workflow::Ended {
+                    run: r.id.clone(),
+                    outcome,
+                    why,
+                    started: r.started,
+                    ended: r.ended?,
+                })
+            })
+            .collect();
+        ended.sort_by(|a, b| b.ended.cmp(&a.ended).then_with(|| b.run.cmp(&a.run)));
+        ended.truncate(MAX_ENDED);
+        ended
     }
 
     /// The run and step answering 👍 or 👎 on a message of `run` would answer: its approval
@@ -1683,7 +1711,7 @@ impl Engine {
                 let dealt = self.fired.entry(trigger).or_default();
                 *dealt = (*dealt).max(at);
             }
-            self.started(id, by, inputs);
+            self.started(id, by, inputs, at);
             return;
         }
         let i =
@@ -1695,6 +1723,7 @@ impl Engine {
         };
         if let Change::Finished { outcome, why } = change {
             run.finished = Some((*outcome, why.clone()));
+            run.ended = Some(at);
             return;
         }
         let Some(i) = i else { return };
@@ -1790,7 +1819,7 @@ impl Engine {
         }
     }
 
-    fn started(&mut self, id: &str, by: &str, inputs: &BTreeMap<String, String>) {
+    fn started(&mut self, id: &str, by: &str, inputs: &BTreeMap<String, String>, at: u64) {
         let count = self.workflow.steps.len();
         let mut steps = vec![Status::Ahead; count];
         // A part of a step given to several: that step alone, knowing what the run it's
@@ -1818,6 +1847,8 @@ impl Engine {
                 escalated: vec![false; count],
                 last: None,
                 finished: None,
+                started: at,
+                ended: None,
                 part,
             },
         );

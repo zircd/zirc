@@ -135,8 +135,9 @@ pub enum Change {
 }
 
 /// How a run ended.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, JsonSchema)]
 #[serde(rename_all = "lowercase")]
+#[ts(rename = "RunOutcome")]
 pub enum Outcome {
     /// Every step was done or skipped.
     Done,
