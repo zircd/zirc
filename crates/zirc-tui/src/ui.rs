@@ -19,7 +19,7 @@ use crate::rows::{self, Row, TIME_WIDTH, Tone, fit, wrap};
 use zirc_core::chat::{
     APP_TAG, APPS_SECTION, Avatar, COMPOSER_NOTE, GUEST_PILL, GuestHeader, Icon, Kind, OUTSIDE,
     OrgHeader, Presence, Profile, QUOTE_MARK, UNASSIGNED, agent, assigned_label, away_label,
-    is_group, members_label, more_paths_label,
+    channel_title, is_group, members_label, more_paths_label,
 };
 use zirc_core::emoji;
 use zirc_theme::{Design, Rgb, Theme, Type};
@@ -378,12 +378,12 @@ fn browse_card(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let mut lines: Vec<Line<'static>> = channels
         .iter()
         .map(|(name, count)| {
-            let bare = name.strip_prefix('#').unwrap_or(name);
+            let parts = channel_title(name);
+            let (sigil, bare) = parts.as_ref().map_or(("", name.as_str()), |parts| {
+                (parts.sigil.as_str(), parts.name.as_str())
+            });
             let mut spans = vec![
-                Span::styled(
-                    if bare.len() < name.len() { "#" } else { "" },
-                    fg(theme.muted),
-                ),
+                Span::styled(sigil.to_owned(), fg(theme.muted)),
                 Span::styled(fit(bare, text), fg(theme.text)),
             ];
             if *count > 0 {
@@ -520,9 +520,9 @@ fn header(frame: &mut Frame<'_>, app: &App, area: Rect) {
     // Who it's with in front: an agent session by its tool's mark, a person by their
     // presence; a channel's "#" quieter than its name.
     spans.extend(header_face(app, &buffer.name));
-    let (hash, title) = match title.strip_prefix('#') {
-        Some(rest) if guest.is_none() => ("#", rest.to_owned()),
-        _ => ("", title),
+    let (hash, title) = match channel_title(&title).filter(|_| guest.is_none()) {
+        Some(parts) => (parts.sigil, parts.name),
+        None => (String::new(), title),
     };
     spans.push(Span::styled(hash, fg(theme.muted)));
     spans.push(Span::styled(
@@ -942,9 +942,9 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
         spans[0] = Span::styled("▎", fg(theme.text));
     }
     // The one shown, on the selected ground, its channel's "#" in the signal colour.
-    let (hash, name) = match name.strip_prefix('#') {
-        Some(rest) if selected => ("#".to_owned(), rest.to_owned()),
-        _ => (String::new(), name),
+    let (hash, name) = match channel_title(&name).filter(|_| selected) {
+        Some(parts) => (parts.sigil, parts.name),
+        None => (String::new(), name),
     };
     spans.push(Span::styled(indent, name_style));
     spans.push(Span::styled(

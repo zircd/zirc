@@ -937,6 +937,25 @@ impl Chat {
         rows
     }
 
+    /// What the conversation called `name` is with, when it's a direct message: an agent
+    /// session, a group, a machine, or else a person. `None` for a channel. The one rule:
+    /// the list's rows and a conversation's header both ask it.
+    #[must_use]
+    pub fn direct_kind(&self, name: &str) -> Option<DirectKind> {
+        // A group's name is a channel's, `#dm-abc`: it's asked first.
+        Some(if is_group(name) {
+            DirectKind::Group
+        } else if is_channel(name) {
+            return None;
+        } else if agent(name).is_some() {
+            DirectKind::Agent
+        } else if self.whose(name).is_some() {
+            DirectKind::Machine
+        } else {
+            DirectKind::Person
+        })
+    }
+
     /// The conversation called `name` as its direct-message row shows it.
     pub(super) fn direct_row(&self, name: String) -> DirectRow {
         let (unread, mentions, latest) = self.counts(&name);
@@ -965,12 +984,12 @@ impl Chat {
             folded: false,
             name,
         };
+        row.kind = self.direct_kind(&row.name).unwrap_or(DirectKind::Person);
         if let Some((nick, session_id)) = agent(&row.name) {
             let (owner, machine_name) = self
                 .whose(nick)
                 .unwrap_or_else(|| (nick.to_owned(), nick.to_owned()));
             let session = self.session_row(nick, session_id, machine_name);
-            row.kind = DirectKind::Agent;
             row.title = session.label;
             row.avatars = vec![session.avatar];
             row.latest = row.latest.max(session.latest);
@@ -980,17 +999,16 @@ impl Chat {
             let active = row.latest.max(self.heard(nick, session_id));
             row.folded = self.session_live(nick, session_id) != Some(true)
                 && self.quiet(&row.name, row.unread, active);
-        } else if is_group(&row.name) {
-            row.kind = DirectKind::Group;
-        } else if let Some((owner, _)) = self.whose(&row.name) {
-            row.kind = DirectKind::Machine;
+        } else if row.kind == DirectKind::Machine
+            && let Some((owner, _)) = self.whose(&row.name)
+        {
             row.mine = owner.eq_ignore_ascii_case(&self.me);
             if row.mine {
                 // Our agents' thread, not a conversation with ourselves: their glyph, not
                 // our photo.
                 row.avatars = vec![Self::agents_avatar()];
             }
-        } else {
+        } else if row.kind == DirectKind::Person {
             row.presence = Some(self.standing(&row.name).presence());
         }
         row

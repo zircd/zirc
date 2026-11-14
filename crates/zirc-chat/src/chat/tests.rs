@@ -4310,6 +4310,45 @@ fn lists_each_direct_conversation_on_its_own_newest_first() {
 }
 
 #[test]
+fn the_core_says_which_rows_are_channels_and_which_a_person() {
+    let mut chat = Scene::in_api();
+    feed(
+        &mut chat,
+        &[
+            &dm("me-mbp", "cc-1", "done", 1),
+            ":bob!u@h PRIVMSG me :hi",
+            ":me!u@h JOIN &local",
+            ":me!u@h JOIN #dm-abc",
+            ":s 353 me @ #dm-abc :me carol",
+        ],
+    );
+    let rows = chat.sidebar_list(&super::ListOptions::default());
+    let row = |name: &str| {
+        rows.iter()
+            .find(|row| row.name == name)
+            .unwrap_or_else(|| panic!("no row {name}: {rows:#?}"))
+    };
+    let title = |sigil: &str, name: &str| {
+        Some(ChannelTitle {
+            sigil: sigil.to_owned(),
+            name: name.to_owned(),
+        })
+    };
+    // "#" and "&" are both channels, their sigil drawn apart (the user's choice, 14 Nov 2026).
+    assert!(row("#api").channel && row("#api").channel_title == title("#", "api"));
+    assert!(row("&local").channel && row("&local").channel_title == title("&", "local"));
+    // A group's name is a channel's, but it's a direct message.
+    let group = row("#dm-abc");
+    assert!(!group.channel && group.channel_title.is_none() && group.person.is_none());
+    // Only a direct message with one person has a person.
+    assert!(matches!(row("bob").person, Some(Face::Person { .. })));
+    assert!(!row("bob").channel && row("bob").channel_title.is_none());
+    assert!(row("me-mbp/cc-1").person.is_none());
+    assert_eq!(chat.direct_kind("#api"), None);
+    assert_eq!(chat.direct_kind("#dm-abc"), Some(DirectKind::Group));
+}
+
+#[test]
 fn a_persons_direct_row_has_their_dot_and_a_groups_none() {
     let mut chat = Scene::in_api();
     feed(
