@@ -1856,6 +1856,91 @@ mod tests {
     }
 
     #[test]
+    fn a_cards_outcome_is_its_state_whatever_its_words_say() {
+        // An integration's card that failed and then passed: its words said "failed" once,
+        // which read as CI's words alone would be a failed deploy.
+        let mut chat = chat();
+        let post = |chat: &mut Chat, time: &str, id: &str, card: &Card| {
+            let state = if card.state == State::Failed {
+                "failed"
+            } else {
+                "passed"
+            };
+            let posted = Message::new(
+                "deploy",
+                Event::Custom {
+                    kind: "x-acme/deploy".into(),
+                    data: card.as_data(),
+                    text: format!("{} {state}", card.title),
+                },
+            );
+            put(
+                chat,
+                "zirc-alerts",
+                time,
+                id,
+                crate::chat::EntryKind::Zirc(posted),
+            );
+        };
+        let mut now = card(Vec::new());
+        now.state = State::Failed;
+        post(&mut chat, "09:00:00", "c1", &now);
+        assert_eq!(
+            api(&chat)[0].system.as_ref().unwrap().outcome,
+            Some(Icon::Failed)
+        );
+        now.state = State::Passed;
+        post(&mut chat, "09:02:00", "c2", &now);
+        assert_eq!(
+            api(&chat)[0].system.as_ref().unwrap().outcome,
+            Some(Icon::Landed)
+        );
+    }
+
+    #[test]
+    fn ci_saying_a_deploy_failed_fails_its_landing() {
+        let mut chat = chat();
+        let said = |chat: &mut Chat, time: &str, id: &str, kind: &str, data, text: &str| {
+            let posted = Message::new(
+                "ci",
+                Event::Custom {
+                    kind: kind.into(),
+                    data,
+                    text: text.into(),
+                },
+            );
+            put(
+                chat,
+                "zirc-ci",
+                time,
+                id,
+                crate::chat::EntryKind::Zirc(posted),
+            );
+        };
+        let landing = serde_json::json!({"landing": "monorepo/771", "build": "771"});
+        let outcome = |chat: &Chat| api(chat)[0].system.as_ref().unwrap().outcome;
+        said(
+            &mut chat,
+            "09:00:00",
+            "l1",
+            crate::chat::LANDING_KIND,
+            landing.clone(),
+            "cc-1: landed fix-login as abc1234 (build 771)",
+        );
+        assert_eq!(outcome(&chat), Some(Icon::Landed));
+        // CI's words alone: the deploy failed, so the landing's card did.
+        said(
+            &mut chat,
+            "09:05:00",
+            "l2",
+            zirc_proto::ci::DEPLOY_KIND,
+            landing,
+            "cc-1: deploy failed: web in build 771",
+        );
+        assert_eq!(outcome(&chat), Some(Icon::Failed));
+    }
+
+    #[test]
     fn a_cards_updates_show_under_it_and_its_latest_is_said_where_it_came() {
         let mut chat = chat();
         let post = |chat: &mut Chat, time: &str, id: &str, card: &Card| {

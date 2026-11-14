@@ -1347,7 +1347,13 @@ fn landing<'a>(entry: &'a Entry, message: &'a Message, continues: bool) -> Optio
         landing: field("landing"),
         branch: field("branch"),
         page: field("url").map(str::to_owned).or_else(|| build_page(text)),
-        stages: Stage::of(kind, said).into_iter().collect(),
+        // A card says how it stands; only CI's words without one tell a stage. Their events
+        // never fold into one row ([`Landing::key`]), so a card's ✓ is never a ✗ its words
+        // seemed to say.
+        stages: Stage::of(kind, said)
+            .filter(|_| card.is_none())
+            .into_iter()
+            .collect(),
         repo: field("repo"),
         sha: field("commit"),
         failed: data
