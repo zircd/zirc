@@ -192,7 +192,8 @@ pub struct Split {
 }
 
 /// Takes each `||…||` out of `text`, leaving the placeholder. A marker without its pair, or
-/// with nothing between them, stays as it is.
+/// with nothing between them, stays as it is, as do markers in code (`` `a || b` ``, or a
+/// fenced block): shell's `||` is no secret.
 #[must_use]
 pub fn split(text: &str) -> Split {
     let mut split = Split {
@@ -200,9 +201,9 @@ pub fn split(text: &str) -> Split {
         parts: Vec::new(),
     };
     let mut rest = text;
-    while let Some(start) = rest.find(MARKER) {
+    while let Some(start) = next_marker(rest) {
         let after = &rest[start + MARKER.len()..];
-        let Some(end) = after.find(MARKER).filter(|&end| end > 0) else {
+        let Some(end) = next_marker(after).filter(|&end| end > 0) else {
             break;
         };
         split.text.push_str(&rest[..start]);
@@ -212,6 +213,45 @@ pub fn split(text: &str) -> Split {
     }
     split.text.push_str(rest);
     split
+}
+
+/// Where the next [`MARKER`] outside code starts. Code is between runs of as many
+/// backticks, as Markdown has it; a run without its pair is only backticks.
+fn next_marker(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut at = 0;
+    while at < bytes.len() {
+        if bytes[at] == b'`' {
+            let run = backticks(&bytes[at..]);
+            at += run + closing(&bytes[at + run..], run).map_or(0, |end| end + run);
+        } else if bytes[at..].starts_with(MARKER.as_bytes()) {
+            return Some(at);
+        } else {
+            at += 1;
+        }
+    }
+    None
+}
+
+fn backticks(bytes: &[u8]) -> usize {
+    bytes.iter().take_while(|&&byte| byte == b'`').count()
+}
+
+/// Where a run of exactly `run` backticks starts in `bytes`.
+fn closing(bytes: &[u8], run: usize) -> Option<usize> {
+    let mut at = 0;
+    while at < bytes.len() {
+        if bytes[at] == b'`' {
+            let found = backticks(&bytes[at..]);
+            if found == run {
+                return Some(at);
+            }
+            at += found;
+        } else {
+            at += 1;
+        }
+    }
+    None
 }
 
 /// Why parts couldn't be sealed.
@@ -386,6 +426,26 @@ mod tests {
             let split = split(text);
             assert_eq!(split.parts.len(), usize::from(text.starts_with("||x")));
         }
+    }
+
+    #[test]
+    fn leaves_markers_in_code_alone() {
+        for text in [
+            "run `make || true` then `exit || 1`",
+            "```sh\ntest -f a || touch a\nls || true\n```",
+            "``a `||` b || c``",
+        ] {
+            assert_eq!(split(text).parts, Vec::<String>::new(), "{text}");
+        }
+        assert_eq!(
+            split("`a || b` and ||sk_1|| and `c || d`"),
+            Split {
+                text: "`a || b` and [sealed] and `c || d`".into(),
+                parts: vec!["sk_1".into()],
+            }
+        );
+        // A backtick without its pair is only a backtick.
+        assert_eq!(split("it`s ||sk_1||").parts, ["sk_1"]);
     }
 
     #[test]

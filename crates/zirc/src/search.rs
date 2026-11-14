@@ -307,7 +307,7 @@ fn history_message(delivery: &Delivery) -> HistoryMessage {
             nick: delivery.from.clone(),
             kind: if agent { "agent" } else { "person" }.to_owned(),
         },
-        text: delivery.message.event.human_text(),
+        text: crate::lines::text_of(delivery),
         zirc: serde_json::to_value(&delivery.message).ok(),
         support: None,
     }

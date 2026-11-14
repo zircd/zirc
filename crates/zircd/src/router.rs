@@ -510,6 +510,7 @@ fn repo_of(request: &Request) -> Option<&Path> {
     match request {
         Request::RepoAdd { path, .. } | Request::RepoRemove { path, .. } => Some(path),
         Request::Post { repo, .. }
+        | Request::SealedPost { repo, .. }
         | Request::Emit { repo, .. }
         | Request::Workflow { repo, .. }
         | Request::Intend { repo, .. }

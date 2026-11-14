@@ -54,12 +54,46 @@ impl Daemon {
                 force,
                 reply,
             } => match reply {
-                Some(reply) => self.say_reply(&session, &text, &reply, app.as_deref())?,
+                Some(reply) => self.say_reply(&session, &text, &reply, app.as_deref(), &[])?,
                 None => {
-                    self.say(&repo, session, text, (to, force), app, everyone)
-                        .await?
+                    self.say(
+                        &repo,
+                        session,
+                        (text, Vec::new()),
+                        (to, force),
+                        app,
+                        everyone,
+                    )
+                    .await?
                 }
             },
+            Request::SealedPost {
+                repo,
+                session,
+                text,
+                to,
+                force,
+                reply,
+            } => {
+                let split = zirc_core::sealed::split(&text);
+                match reply {
+                    Some(reply) => {
+                        self.say_reply(&session, &split.text, &reply, None, &split.parts)?
+                    }
+                    None => {
+                        self.say(
+                            &repo,
+                            session,
+                            (split.text, split.parts),
+                            (to, force),
+                            None,
+                            false,
+                        )
+                        .await?
+                    }
+                }
+            }
+            Request::Unseal { message, part } => self.unseal(&message, part)?,
             Request::Decide {
                 repo,
                 session,
@@ -326,7 +360,7 @@ impl Daemon {
         &mut self,
         repo: &Path,
         session: String,
-        text: String,
+        (text, sealed): (String, Vec<String>),
         (to, force): (Target, bool),
         app: Option<String>,
         everyone: bool,
@@ -340,11 +374,12 @@ impl Daemon {
                 self.joined.contains(&channel),
                 "{channel} isn't joined yet: zircd is joining it"
             );
+            let sealed = self.seal_for(&channel, &sealed, None)?;
             let message = Message {
                 app: app.as_deref().and_then(zirc_proto::app_label),
                 ..Message::new(session, Event::Text { body: text })
             };
-            self.publish_message(&channel, message);
+            self.publish_sealed(&channel, message, None, sealed);
             return Ok(Response::channel(channel));
         }
         // Addressed to one agent session, it's a note for it alone.
@@ -352,6 +387,10 @@ impl Daemon {
             && !everyone
             && let Some((address, said)) = self.note_address(&text)
         {
+            anyhow::ensure!(
+                sealed.is_empty(),
+                "a note to one session can't hold sealed parts: post them in a channel"
+            );
             let to = self.note_to(&session, &address, &said)?;
             return Ok(Response::Noted { to });
         }
@@ -363,13 +402,14 @@ impl Daemon {
             to => to,
         };
         let channel = self.channel_to(repo, to).await?;
+        let sealed = self.seal_for(&channel, &sealed, None)?;
         self.task_said(&session, &text, &channel);
         let message = Message {
             app: app.as_deref().and_then(zirc_proto::app_label),
             everyone,
             ..Message::new(session.clone(), Event::Text { body: text.clone() })
         };
-        self.publish_message(&channel, message);
+        self.publish_sealed(&channel, message, None, sealed);
         self.task_ended(&session, &text);
         Ok(Response::channel(channel))
     }
@@ -383,6 +423,7 @@ impl Daemon {
         text: &str,
         reply: &str,
         app: Option<&str>,
+        sealed: &[String],
     ) -> Result<Response> {
         let said = self.said(&super::Which {
             message: Some(reply),
@@ -402,6 +443,7 @@ impl Daemon {
                 guest.room
             );
         }
+        let sealed = self.seal_for(&said.target, sealed, Some(&said.id))?;
         self.awaits_said(session, text);
         self.task_said(session, text, &said.target);
         let message = Message {
@@ -413,7 +455,7 @@ impl Daemon {
                 },
             )
         };
-        self.publish_reply(&said.target, message, Some(&said.id));
+        self.publish_sealed(&said.target, message, Some(&said.id), sealed);
         self.task_ended(session, text);
         Ok(Response::channel(said.target))
     }

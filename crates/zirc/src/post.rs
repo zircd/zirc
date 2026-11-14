@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, Result, bail, ensure};
 use clap::Args;
 use zirc_core::intent_scope;
 use zirc_core::ipc::{Request, Response, Target};
@@ -459,7 +459,11 @@ pub(crate) async fn post(
     let (repo, to) = to.target();
     let session = session_or_user(session);
     name_session(socket, Some(&session), name).await?;
-    let text = words(&text)?;
+    let from_stdin = matches!(text.as_slice(), [dash] if dash == "-");
+    let text = crate::sealed::with_stdin_part(words(&text)?, from_stdin, || {
+        let mut read = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut read).map(|_| read)
+    })?;
     if hard_to_read(&text) && !force {
         bail!("{POST_REFUSED}");
     }
@@ -470,18 +474,36 @@ pub(crate) async fn post(
         "note: it didn't broadcast: @everyone in a post's text is only text. Post with \
          --everyone to wake every session, and only when they all need it",
     );
-    let request = Request::Post {
-        repo: here(repo)?,
-        session,
-        text,
-        to,
-        app: app_named(app)?,
-        everyone,
-        force,
-        reply: reply_to,
-    };
     let org = guest.as_deref().map(crate::guest::org_of);
-    print_posted(ask_in(socket, org.as_deref(), request).await?, out)?;
+    let answer = if zirc_core::sealed::split(&text).parts.is_empty() {
+        let request = Request::Post {
+            repo: here(repo)?,
+            session,
+            text,
+            to,
+            app: app_named(app)?,
+            everyone,
+            force,
+            reply: reply_to,
+        };
+        ask_in(socket, org.as_deref(), request).await?
+    } else {
+        ensure!(
+            app.is_none() && !everyone,
+            "a post with sealed parts goes without --app or --everyone"
+        );
+        let request = Request::SealedPost {
+            repo: here(repo)?,
+            session,
+            text,
+            to,
+            force,
+            reply: reply_to,
+        };
+        // A zircd from before sealing refuses it, rather than posting the parts unsealed.
+        waits(socket, org.as_deref(), request).await?
+    };
+    print_posted(answer, out)?;
     if let Some(note) = note {
         writeln!(out, "{note}")?;
     }

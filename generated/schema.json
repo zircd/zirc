@@ -1391,6 +1391,13 @@
             }
           ],
           "description": "For another session's intent ([`Why::Intent`]): how it meets the watching session's\nwork, file by file, as zircd can tell."
+        },
+        "sealed": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its sealed parts, the `+zirc.dev/sealed` tag's value ([`zirc_proto::sealed`]), when\nit has some: each is a `[sealed]` in its text, which `zirc unseal` opens."
         }
       },
       "required": [
@@ -2820,6 +2827,79 @@
           ],
           "description": "Say something in a channel of the repository containing `repo`.",
           "title": "PostRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "sealed-post"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside a watched repository."
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's saying it: an agent session, or a person."
+            },
+            "text": {
+              "type": "string",
+              "description": "The text, its parts to seal between `||` markers."
+            },
+            "to": {
+              "$ref": "#/$defs/Target",
+              "description": "Which of the repository's channels.",
+              "default": {
+                "kind": "repo"
+              }
+            },
+            "force": {
+              "type": "boolean",
+              "description": "As [`Request::Post`]'s."
+            },
+            "reply": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "As [`Request::Post`]'s."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "text"
+          ],
+          "description": "[`Request::Post`] with parts to seal: each `||…||` in `text` goes sealed with the\norganisation's key ([`crate::sealed`]), `[sealed]` in its place. A request of its own,\nso an older zircd, which can't seal, refuses it rather than posting the parts as they\nare.",
+          "title": "SealedPostRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "unseal"
+            },
+            "message": {
+              "type": "string",
+              "description": "The message's id, or a start of it."
+            },
+            "part": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0,
+              "description": "Which of its sealed parts, from 1."
+            }
+          },
+          "required": [
+            "op",
+            "message",
+            "part"
+          ],
+          "description": "Opens part `part`, counted from 1, of the message `message` names, whole or by a start\nof its id, with this machine's keys: answered with [`Response::Unsealed`].",
+          "title": "UnsealRequest"
         },
         {
           "type": "object",
@@ -4448,6 +4528,25 @@
           ],
           "description": "While watching: two worktrees on this machine started changing the same paths.",
           "title": "LocalOverlapResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unsealed"
+            },
+            "value": {
+              "type": "string",
+              "description": "What was sealed."
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "description": "The answer to [`Request::Unseal`]: the part's value.",
+          "title": "UnsealedResponse"
         },
         {
           "$ref": "#/$defs/Conflict",

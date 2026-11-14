@@ -207,6 +207,7 @@ mod tests {
             client_of: None,
             decided: None,
             fit: None,
+            sealed: None,
         }
     }
 

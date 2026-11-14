@@ -53,6 +53,7 @@ mod requests;
 mod respond;
 mod say;
 mod scans;
+mod sealing;
 mod sessions;
 mod tasks;
 mod unowned;
@@ -316,6 +317,8 @@ impl Guest {
             Request::Status
                 | Request::RepoList
                 | Request::Post { .. }
+                | Request::SealedPost { .. }
+                | Request::Unseal { .. }
                 | Request::React { .. }
                 | Request::Typing { .. }
                 | Request::Name { .. }
@@ -946,7 +949,7 @@ impl Daemon {
             Input::Request(Request::Conversations { seconds }, answer) => {
                 self.conversations(seconds, answer);
             }
-            Input::Request(post @ Request::Post { .. }, answer) => {
+            Input::Request(post @ (Request::Post { .. } | Request::SealedPost { .. }), answer) => {
                 self.post(post, answer).await;
             }
             Input::Request(deploy @ Request::Workflow { .. }, answer) => {
@@ -1296,6 +1299,16 @@ struct Seen {
     session: Option<String>,
     /// What it is, for a reaction to it, when it was a message heard in a channel.
     about: Option<zirc_core::ipc::Reacted>,
+    /// Its sealed parts, for `zirc unseal`, when it has some.
+    sealed: Option<Sealing>,
+}
+
+/// A message's sealed parts, as it came: the `+zirc.dev/sealed` tag's value, and the account
+/// that sent it, which they're bound to (empty for none).
+#[derive(Debug, Clone)]
+struct Sealing {
+    value: String,
+    account: String,
 }
 
 /// The messages heard lately, newest last.
@@ -1317,9 +1330,20 @@ impl Recent {
             from: from.to_owned(),
             session: session.map(str::to_owned),
             about,
+            sealed: None,
         });
         while self.0.len() > RECENT {
             self.0.pop_front();
+        }
+    }
+
+    /// Keeps the sealed parts `value` of the message `id`, which `account` sent, heard last.
+    fn sealed(&mut self, id: &str, value: &str, account: &str) {
+        if let Some(said) = self.0.iter_mut().rev().find(|said| said.id == id) {
+            said.sealed = Some(Sealing {
+                value: value.to_owned(),
+                account: account.to_owned(),
+            });
         }
     }
 
@@ -1483,6 +1507,7 @@ fn heard(channel: &str, line: &Line) -> Option<(Delivery, bool)> {
         id: tag("msgid"),
         time: tag("time"),
         reply: tag("+draft/reply"),
+        sealed: tag(zirc_proto::sealed::TAG),
         account: tag("account").filter(|account| !account.is_empty() && account != "*"),
         hosted_by: zirc_core::agents::host_owner(line.source.as_deref()).map(str::to_owned),
         client_of: zirc_core::agents::client_owner(line.source.as_deref()).map(str::to_owned),

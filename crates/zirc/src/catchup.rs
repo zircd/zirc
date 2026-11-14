@@ -454,10 +454,7 @@ fn said(delivery: &Delivery, target: &str) -> Said {
         session: delivery.message.session.clone(),
         target: target.to_owned(),
         // What others send may hold newlines: on one line, it can't pass for another.
-        text: delivery
-            .message
-            .event
-            .human_text()
+        text: crate::lines::text_of(delivery)
             .chars()
             .map(|c| if c.is_control() { ' ' } else { c })
             .collect(),

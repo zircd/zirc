@@ -20,6 +20,7 @@ mod queries;
 mod react;
 mod repo;
 mod safety;
+mod sealed;
 mod search;
 mod service;
 mod sessions;
@@ -95,6 +96,21 @@ const EXAMPLES: &[(&str, &[&str])] = &[
     ),
     ("status", &["zirc status", "zirc status --json"]),
     ("tui", &["zirc tui"]),
+    (
+        "unseal",
+        &[
+            "zirc unseal 01jbx7ab.1 --to .env.local",
+            "zirc unseal 01jbx7ab.2",
+        ],
+    ),
+    (
+        "team-key",
+        &[
+            "zirc team-key new",
+            "zirc team-key add",
+            "zirc team-key list",
+        ],
+    ),
     (
         "post",
         &[
@@ -243,11 +259,14 @@ const GROUPS: &[(&str, &[&str])] = &[
             "role", "step",
         ],
     ),
-    ("Read", &["catchup", "search", "decisions", "sessions"]),
+    (
+        "Read",
+        &["catchup", "search", "decisions", "sessions", "unseal"],
+    ),
     (
         "Manage",
         &[
-            "logout", "agents", "ci", "daemon", "update", "skill", "block", "report",
+            "logout", "agents", "ci", "daemon", "update", "skill", "block", "report", "team-key",
         ],
     ),
 ];
@@ -782,6 +801,24 @@ enum Command {
         #[command(flatten)]
         org: OrgArg,
     },
+    /// Keep the keys that seal parts of messages for your organisations.
+    ///
+    /// A part of a post between || markers, such as `zirc post "the key is ||sk_test_1||"`,
+    /// goes sealed with the organisation's key: only devices holding it can read it, never
+    /// the server, push or plain IRC clients. One key per organisation, handed on in person
+    /// or on a call.
+    #[command(after_long_help = examples("team-key", ""))]
+    TeamKey {
+        #[command(subcommand)]
+        command: sealed::TeamKey,
+    },
+    /// Print a part of a message sealed with your organisation's key.
+    ///
+    /// Name it as `zirc watch` shows it, 🔒[sealed 01jbx7ab.1]: `zirc unseal 01jbx7ab.1`.
+    /// Prints only the value, to redirect into a file or a command, or writes it with --to,
+    /// so it stays out of a transcript. Print it to the terminal only when someone asks.
+    #[command(after_long_help = examples("unseal", ""))]
+    Unseal(sealed::UnsealArgs),
     /// Remove a message from the server's history, such as a secret posted by mistake.
     #[command(long_about = trim_help())]
     #[command(hide = true)]
@@ -967,6 +1004,8 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Unblock(args) => safety::block(&home, &socket, &args, false, out).await,
         Command::Blocked(args) => safety::blocked(&home, &socket, &args, out).await,
         Command::React(args) => react::react(&socket, args, out).await,
+        Command::TeamKey { command } => sealed::team_key(&home, &socket, command, out).await,
+        Command::Unseal(args) => sealed::unseal(&socket, args, out).await,
         Command::Hints { check } => hints_command(&home, check, out),
         Command::Catchup(args) => catchup::catchup(&socket, &home, args, out).await,
         Command::Trim(args) => post::trim(&socket, args, out).await,
@@ -982,18 +1021,9 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Thinking(args) => post::thinking(&socket, args, out).await,
         Command::Log(args) => log::log(&home, &socket, args, out).await,
         Command::Ci(command) => ci::ci(&home, &socket, command, out).await,
-        Command::AgentGuide => {
-            write!(out, "{}", skill::agent_guide(&home))?;
-            Ok(())
-        }
-        Command::Reference => {
-            write!(out, "{REFERENCE}")?;
-            Ok(())
-        }
-        Command::Avatars => {
-            write!(out, "{}", avatars_text())?;
-            Ok(())
-        }
+        Command::AgentGuide => Ok(write!(out, "{}", skill::agent_guide(&home))?),
+        Command::Reference => Ok(write!(out, "{REFERENCE}")?),
+        Command::Avatars => Ok(write!(out, "{}", avatars_text())?),
         Command::Skill(command) => skill::install_or_remove(command, out),
         Command::Help { all, command } => help(all, &command, out),
     }

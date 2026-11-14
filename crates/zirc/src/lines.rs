@@ -221,15 +221,91 @@ pub(crate) fn said(delivery: &Delivery) -> String {
         );
     }
     if message.session.is_empty() {
-        return format!("{from}: {}", message.event.human_text());
+        return format!("{from}: {}", text_of(delivery));
     }
-    format!("{from}/{}: {}", message.session, message.event.human_text())
+    format!("{from}/{}: {}", message.session, text_of(delivery))
+}
+
+/// What `delivery` says, each of its sealed parts shown as `🔒[sealed 01jbx7ab.1]`, which
+/// `zirc unseal` takes, where its text has `[sealed]`: never the part itself.
+pub(crate) fn text_of(delivery: &Delivery) -> String {
+    use std::fmt::Write as _;
+    let text = delivery.message.event.human_text();
+    let Some(sealed) = delivery
+        .sealed
+        .as_deref()
+        .and_then(zirc_proto::sealed::Sealed::from_tag)
+    else {
+        return text;
+    };
+    let id = delivery
+        .id
+        .as_deref()
+        .map(|id| id.get(..SHORT_ID).unwrap_or(id));
+    let mut shown = String::with_capacity(text.len());
+    let mut rest = text.as_str();
+    for part in 1..=sealed.parts.len() {
+        let Some(at) = rest.find(zirc_proto::sealed::PLACEHOLDER) else {
+            break;
+        };
+        shown.push_str(&rest[..at]);
+        match id {
+            Some(id) => {
+                let _ = write!(shown, "🔒[sealed {id}.{part}]");
+            }
+            None => shown.push_str("🔒[sealed]"),
+        }
+        rest = &rest[at + zirc_proto::sealed::PLACEHOLDER.len()..];
+    }
+    shown.push_str(rest);
+    shown
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use zirc_proto::{Event, Message};
+
+    #[test]
+    fn shows_sealed_parts_by_what_unseal_takes() {
+        use zirc_proto::sealed::{Part, Sealed};
+        let part = || Part {
+            k: "k".into(),
+            n: "n".into(),
+            c: "c".into(),
+        };
+        let mut delivery = Delivery::new(
+            "#api",
+            "alpha",
+            Message::new(
+                "cc-1",
+                Event::Text {
+                    body: "key [sealed], url [sealed], and [sealed] typed".into(),
+                },
+            ),
+        );
+        delivery.sealed = Some(
+            Sealed {
+                v: 1,
+                parts: vec![part(), part()],
+            }
+            .to_tag(),
+        );
+        delivery.id = Some("01jbx7abcdef".into());
+        assert_eq!(
+            text_of(&delivery),
+            "key 🔒[sealed 01jbx7ab.1], url 🔒[sealed 01jbx7ab.2], and [sealed] typed"
+        );
+        // This machine's own, before the server gives it an id.
+        delivery.id = None;
+        assert!(text_of(&delivery).starts_with("key 🔒[sealed], url 🔒[sealed],"));
+        // Without parts, [sealed] is only text.
+        delivery.sealed = None;
+        assert_eq!(
+            text_of(&delivery),
+            "key [sealed], url [sealed], and [sealed] typed"
+        );
+    }
 
     pub(crate) fn delivery(event: Event) -> Delivery {
         Delivery::new("#acme/api", "alpha", Message::new("watcher", event))

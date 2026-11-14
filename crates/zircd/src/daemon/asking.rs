@@ -585,13 +585,15 @@ impl Daemon {
         self.expire_after(token);
     }
 
-    /// Posts as `post` ([`Request::Post`]) asks, answering once the server's echo gives the
+    /// Posts as `post` ([`Request::Post`], [`Request::SealedPost`]) asks, answering once the server's echo gives the
     /// post its link ([`Daemon::links_posts`]), or at once without one.
     /// The same post from the same session within [`REPEAT_SECONDS`] isn't said again: one
     /// session's `done:` line went out twice in the same second (the chat analysis, 11 Nov
     /// 2026), waking everyone it named twice.
     pub(super) async fn post(&mut self, post: Request, answer: oneshot::Sender<Response>) {
-        let Request::Post { session, text, .. } = &post else {
+        let (Request::Post { session, text, .. } | Request::SealedPost { session, text, .. }) =
+            &post
+        else {
             return;
         };
         let session = session.clone();

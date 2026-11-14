@@ -232,6 +232,7 @@ pub(super) fn automatic(response: &Response) -> bool {
 pub(super) fn acting(request: &Request) -> Option<(&str, Acted)> {
     match request {
         Request::Post { session, .. }
+        | Request::SealedPost { session, .. }
         | Request::Dm { session, .. }
         | Request::Ask { session, .. }
         | Request::Note { session, .. }

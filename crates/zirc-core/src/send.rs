@@ -115,19 +115,33 @@ pub fn send_reply(
     message: &Message,
     reply: Option<&str>,
 ) -> Result<(), zirc_irc::Error> {
+    let tags: Vec<_> = reply
+        .map(|id| ("+draft/reply".to_owned(), Some(id.to_owned())))
+        .into_iter()
+        .collect();
+    send_tagged(client, channel, message, &tags)
+}
+
+/// The same, with `tags` on the first line, or the multiline batch's opening one: a reply's
+/// (`+draft/reply`), or sealed parts' (`+zirc.dev/sealed`). A live message takes none.
+///
+/// # Errors
+///
+/// As [`Client::privmsg`].
+pub fn send_tagged(
+    client: &Client,
+    channel: &str,
+    message: &Message,
+    tags: &[(String, Option<String>)],
+) -> Result<(), zirc_irc::Error> {
     if message.is_live() {
         return crate::presence::working_line(channel, message)
             .map_or(Ok(()), |line| client.send(line));
     }
-    let tags = || {
-        reply
-            .map(|id| vec![("+draft/reply".to_owned(), Some(id.to_owned()))])
-            .unwrap_or_default()
-    };
     match bodies_of(message, client.multiline()) {
-        Bodies::Multiline(body) => client.privmsg_multiline_tagged(channel, &body, tags()),
+        Bodies::Multiline(body) => client.privmsg_multiline_tagged(channel, &body, tags.to_vec()),
         Bodies::Lines(lines) => lines.iter().enumerate().try_for_each(|(i, body)| {
-            let tags = if i == 0 { tags() } else { Vec::new() };
+            let tags = if i == 0 { tags.to_vec() } else { Vec::new() };
             client.privmsg_tagged(channel, body, tags)
         }),
     }

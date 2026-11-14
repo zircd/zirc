@@ -274,6 +274,10 @@ impl Daemon {
                 zirc_core::ipc::Reacted::of(&Delivery::new(channel, from, message.clone()))
             });
             self.recent.heard(id, channel, from, session, about);
+            if let Some(sealed) = line.tag(zirc_proto::sealed::TAG) {
+                let account = self.account.clone().unwrap_or_default();
+                self.recent.sealed(id, sealed, &account);
+            }
             if let Some(message) = message {
                 if matches!(message.event, Event::Text { .. }) {
                     self.post_echoed(channel, id, &message.session);
@@ -389,6 +393,10 @@ impl Daemon {
                 session,
                 Some(zirc_core::ipc::Reacted::of(delivery)),
             );
+            if let Some(sealed) = &delivery.sealed {
+                let account = delivery.account.as_deref().unwrap_or_default();
+                self.recent.sealed(id, sealed, account);
+            }
         }
     }
 
@@ -505,6 +513,7 @@ impl Daemon {
                     from: String::new(),
                     session: None,
                     about: None,
+                    sealed: None,
                 },
                 (Err(err), None) => return Err(err),
             },
@@ -638,11 +647,17 @@ impl Daemon {
     }
 
     /// [`Daemon::publish_message`], as a reply to the message `reply` names by its id.
-    pub(super) fn publish_reply(
+    pub(super) fn publish_reply(&mut self, channel: &str, message: Message, reply: Option<&str>) {
+        self.publish_sealed(channel, message, reply, None);
+    }
+
+    /// [`Daemon::publish_reply`], with `sealed`, its sealed parts' tag value, if it has some.
+    pub(super) fn publish_sealed(
         &mut self,
         channel: &str,
         mut message: Message,
         reply: Option<&str>,
+        sealed: Option<String>,
     ) {
         // A guest's terminal says nothing anywhere but its room, which the gateway refuses.
         if let Some(guest) = &self.org.guest
@@ -674,7 +689,16 @@ impl Daemon {
         let nick = client.nick().to_owned();
         // Debug, such as a working set or a lease event, goes out of the channel's history
         // (send_message).
-        let sent = zirc_core::send::send_reply(client, channel, &message, reply);
+        let tags: Vec<_> = reply
+            .map(|id| ("+draft/reply".to_owned(), Some(id.to_owned())))
+            .into_iter()
+            .chain(
+                sealed
+                    .clone()
+                    .map(|value| (zirc_proto::sealed::TAG.to_owned(), Some(value))),
+            )
+            .collect();
+        let sent = zirc_core::send::send_tagged(client, channel, &message, &tags);
         if let Err(err) = sent {
             tracing::warn!("couldn't send to {channel}: {err}");
         }
@@ -689,6 +713,7 @@ impl Daemon {
             let mut delivery = Delivery {
                 account: self.account.clone(),
                 reply: reply.map(str::to_owned),
+                sealed,
                 ..Delivery::new(channel, nick, message)
             };
             vouch(&mut delivery, self.zirc_dev);

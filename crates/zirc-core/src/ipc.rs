@@ -107,6 +107,35 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reply: Option<String>,
     },
+    /// [`Request::Post`] with parts to seal: each `||…||` in `text` goes sealed with the
+    /// organisation's key ([`crate::sealed`]), `[sealed]` in its place. A request of its own,
+    /// so an older zircd, which can't seal, refuses it rather than posting the parts as they
+    /// are.
+    SealedPost {
+        /// Anywhere inside a watched repository.
+        repo: PathBuf,
+        /// Who's saying it: an agent session, or a person.
+        session: String,
+        /// The text, its parts to seal between `||` markers.
+        text: String,
+        /// Which of the repository's channels.
+        #[serde(default)]
+        to: Target,
+        /// As [`Request::Post`]'s.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        force: bool,
+        /// As [`Request::Post`]'s.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply: Option<String>,
+    },
+    /// Opens part `part`, counted from 1, of the message `message` names, whole or by a start
+    /// of its id, with this machine's keys: answered with [`Response::Unsealed`].
+    Unseal {
+        /// The message's id, or a start of it.
+        message: String,
+        /// Which of its sealed parts, from 1.
+        part: usize,
+    },
     /// Say something to one person alone, as a direct message from `session`: to `to`, or
     /// without it to this machine's owner, which is how an agent answers the person whose
     /// machine it's on.
@@ -692,6 +721,11 @@ pub enum Response {
     Overlap(Overlap),
     /// While watching: two worktrees on this machine started changing the same paths.
     LocalOverlap(LocalOverlap),
+    /// The answer to [`Request::Unseal`]: the part's value.
+    Unsealed {
+        /// What was sealed.
+        value: String,
+    },
     /// While watching: a push changes the same lines as a worktree on this machine.
     Conflict(Conflict),
     /// The answer to [`Request::Lease`], [`Request::LeaseRelease`] and [`Request::Leases`].
@@ -927,6 +961,10 @@ pub struct Delivery {
     /// work, file by file, as zircd can tell.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fit: Option<Box<crate::fit::Fit>>,
+    /// Its sealed parts, the `+zirc.dev/sealed` tag's value ([`zirc_proto::sealed`]), when
+    /// it has some: each is a `[sealed]` in its text, which `zirc unseal` opens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed: Option<String>,
 }
 
 impl Delivery {
@@ -952,6 +990,7 @@ impl Delivery {
             client_of: None,
             decided: None,
             fit: None,
+            sealed: None,
         }
     }
 }

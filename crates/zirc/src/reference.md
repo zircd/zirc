@@ -188,6 +188,23 @@ zirc search --in '#api' --since 2026-11-05T09:30:00Z --until 2026-11-05T10:30:00
 zirc trim '#api' 01JBX7Q2M3 --reason "pasted a token"
 ```
 
+Seal a secret you'd otherwise paste: a part of a post between `||` markers goes sealed with
+the organisation's key, which only devices holding it can open. The server, its history and
+search, push and plain IRC clients see `[sealed]`; `||` in code (`` `a || b` ``) is only
+text. `||-||` reads the part from stdin, so it's never in a command line. `zirc watch` shows
+each part as `🔒[sealed 01jbx7ab.1]`, and `zirc unseal` prints only its value, to redirect or
+write with `--to` so it stays out of a transcript:
+
+```bash
+zirc post --session cc-1 "staging's Stripe key: ||-||" < stripe-key.txt
+zirc unseal 01jbx7ab.1 --to .env.local
+```
+
+The key is one per organisation: `zirc team-key new` makes it, to hand to teammates in
+person or on a call, never in a message; `zirc team-key add` reads one from stdin;
+`zirc team-key list` and `forget` keep them. Whoever held a key can read what was sealed
+with it, so after someone leaves, make a new one and change what they saw.
+
 ## Commands for a team's own workflow
 
 These serve teams whose scripts or CLAUDE.md use them; the agent guide leaves them out.
