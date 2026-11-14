@@ -211,6 +211,9 @@ tree has built and passed its tests by itself. So nothing is merged here directl
 are welcome, and so are pull requests: one we take is applied there and comes back as a
 commit here.
 
+That's also why a comment here sometimes names a path this repository doesn't have, such as
+`oss/apps/…`, `web/…`, `ops/…` or `deploy/…`: it's that repository's.
+
 Found a security problem? Write to info@zirc.dev rather than opening an issue.
 
 ## Usage analytics
