@@ -8,8 +8,14 @@
 //! What's kept is dropped, to be read again, whenever it might not be what the server holds:
 //! the connection dropping, a message trimmed from `#ops`, or a server that doesn't echo this
 //! machine's own messages, which would leave them out.
+//!
+//! The first read goes back [`STATES_BACK`], not just the newest [`states::LOOK_BACK`]: a
+//! state said before the newest 1000 messages, such as a hold or a break nobody touched for a
+//! fortnight, would read as never said. So the newest state of each name said before the
+//! messages kept is kept too, and a read of the newest [`states::LOOK_BACK`] or more, as reading
+//! states is, has those ahead of them, oldest first, as history comes.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 
 use tokio::sync::oneshot;
 use zirc_core::ipc::{Delivery, Request, Response};
@@ -17,14 +23,25 @@ use zirc_core::{history, states};
 use zirc_irc::Line;
 
 use super::Daemon;
+use crate::clock::unix;
+
+/// How far back the first read of `#ops` goes for states: 30 days.
+pub(super) const STATES_BACK: u64 = 30 * 86_400;
+
+/// The most messages that first read takes: `#ops` had about 1300 in 10 days on 14 Nov 2026.
+const READ_BACK: usize = 20_000;
 
 /// The newest messages of `#ops`, or those heard while they're being read.
 #[derive(Debug, Default)]
 pub(super) struct Kept {
     /// The most kept: the read's limit.
     limit: usize,
+    /// The oldest moment the first read asks for, in seconds since the Unix epoch.
+    since: u64,
     /// Oldest first, as history comes.
     messages: VecDeque<Delivery>,
+    /// The newest state of each (repository, name) said before `messages`.
+    before: BTreeMap<(String, String), Delivery>,
     /// Whether the read is in: until then, `messages` holds only those heard meanwhile.
     read: bool,
     /// Reads waiting for it, each with its limit.
@@ -32,11 +49,23 @@ pub(super) struct Kept {
 }
 
 impl Kept {
-    /// About to read the newest `limit`: what's heard meanwhile is kept, to add to them.
-    pub(super) fn reading(limit: usize) -> Self {
+    /// About to read back to `since`, keeping the newest `limit`: what's heard meanwhile is
+    /// kept, to add to them.
+    pub(super) fn reading(limit: usize, since: u64) -> Self {
         Self {
             limit,
+            since,
             ..Self::default()
+        }
+    }
+
+    /// The read that fills it: `#ops` back to its `since`.
+    pub(super) fn filling(&self) -> Request {
+        Request::Read {
+            target: states::CHANNEL.to_owned(),
+            limit: READ_BACK,
+            since: Some(self.since),
+            until: None,
         }
     }
 
@@ -45,6 +74,7 @@ impl Kept {
     pub(super) fn read(&mut self, history: Vec<Delivery>) {
         let heard = std::mem::replace(&mut self.messages, history.into());
         self.read = true;
+        self.trim();
         for delivery in heard {
             self.heard(delivery);
         }
@@ -68,17 +98,39 @@ impl Kept {
         }
         self.messages.push_back(delivery);
         if self.read {
-            while self.messages.len() > self.limit {
-                self.messages.pop_front();
+            self.trim();
+        }
+    }
+
+    /// Down to the newest `limit` messages, keeping the newest state of each name among
+    /// those dropped.
+    fn trim(&mut self) {
+        while self.messages.len() > self.limit {
+            let Some(dropped) = self.messages.pop_front() else {
+                return;
+            };
+            if let Some(state) = zirc_proto::state::State::of(&dropped.message.event) {
+                self.before.insert((state.repo, state.name), dropped);
             }
         }
     }
 
-    /// The newest `limit` messages, if they're all here.
+    /// The newest `limit` messages, if they're all here: for `limit` of
+    /// [`states::LOOK_BACK`] or more, after the newest state of each name said before them.
     pub(super) fn newest(&self, limit: usize) -> Option<Vec<Delivery>> {
         (self.read && limit <= self.limit).then(|| {
             let skip = self.messages.len().saturating_sub(limit);
-            self.messages.iter().skip(skip).cloned().collect()
+            let mut before: Vec<Delivery> = if limit >= states::LOOK_BACK {
+                self.before.values().cloned().collect()
+            } else {
+                Vec::new()
+            };
+            // RFC 3339 in UTC, as the server stamps them, sorts as text.
+            before.sort_by(|a, b| a.time.cmp(&b.time));
+            before
+                .into_iter()
+                .chain(self.messages.iter().skip(skip).cloned())
+                .collect()
         })
     }
 }
@@ -97,7 +149,7 @@ fn newest_of_ops(read: &Request) -> Option<usize> {
     }
 }
 
-/// A read of `#ops`'s newest `limit`.
+/// A read of `#ops`'s newest `limit`, from the server.
 fn newest(limit: usize) -> Request {
     Request::Read {
         target: states::CHANNEL.to_owned(),
@@ -142,8 +194,15 @@ impl Daemon {
             Some(kept) if !kept.read => Some(answer),
             _ => {
                 self.drop_ops();
-                self.ops = Some(Kept::reading(limit));
-                Some(answer)
+                let since = unix().saturating_sub(STATES_BACK);
+                let mut kept = Kept::reading(limit.max(states::LOOK_BACK), since);
+                let fill = kept.filling();
+                kept.waiting.push((limit, answer));
+                self.ops = Some(kept);
+                // Nobody waits on its answer: it's kept, and answers those waiting.
+                let (filled, _) = oneshot::channel();
+                self.read(fill, filled);
+                None
             }
         }
     }
@@ -153,10 +212,10 @@ impl Daemon {
     pub(super) fn read_in(&mut self, target: &str, range: history::Range, response: &Response) {
         let Some(kept) = &mut self.ops else { return };
         let keeping = target.eq_ignore_ascii_case(states::CHANNEL)
-            && range.since.is_none()
+            && range.since == Some(kept.since)
             && range.until.is_none()
             && !kept.read
-            && range.limit == Some(kept.limit);
+            && range.limit == Some(READ_BACK);
         if !keeping {
             return;
         }
@@ -232,13 +291,13 @@ mod tests {
 
     #[test]
     fn answers_nothing_until_the_read_is_in() {
-        let mut kept = Kept::reading(3);
+        let mut kept = Kept::reading(3, 0);
         kept.heard(said("c"));
         assert_eq!(kept.newest(3), None);
         // "c" came while the server was answering: the read may have it, or not.
         kept.read(vec![said("a"), said("b")]);
         assert_eq!(ids(&kept.newest(3).unwrap()), ["a", "b", "c"]);
-        let mut again = Kept::reading(3);
+        let mut again = Kept::reading(3, 0);
         again.heard(said("c"));
         again.read(vec![said("b"), said("c")]);
         assert_eq!(ids(&again.newest(3).unwrap()), ["b", "c"]);
@@ -246,7 +305,7 @@ mod tests {
 
     #[test]
     fn keeps_the_newest_as_they_come_and_no_more() {
-        let mut kept = Kept::reading(3);
+        let mut kept = Kept::reading(3, 0);
         kept.read(vec![said("a"), said("b"), said("c")]);
         kept.heard(said("d"));
         kept.heard(said("d"));
@@ -256,13 +315,47 @@ mod tests {
         assert_eq!(kept.newest(4), None);
     }
 
+    fn state_said(id: &str, name: &str, time: &str) -> Delivery {
+        let state = zirc_proto::state::State {
+            repo: "#monorepo".into(),
+            name: name.into(),
+            level: zirc_proto::state::Level::Broken,
+            why: None,
+            owner: None,
+            link: None,
+        };
+        Delivery {
+            id: Some(id.into()),
+            time: Some(time.into()),
+            ..Delivery::new("#ops", "ci", Message::new("ci", state.event()))
+        }
+    }
+
+    #[test]
+    fn a_state_said_before_whats_kept_is_still_read_with_states() {
+        let mut kept = Kept::reading(states::LOOK_BACK, 0);
+        kept.read(vec![
+            state_said("held", "landings", "2026-11-01T00:00:00Z"),
+            state_said("old", "master", "2026-11-01T00:00:01Z"),
+            state_said("new", "master", "2026-11-01T00:00:02Z"),
+        ]);
+        for n in 0..states::LOOK_BACK {
+            kept.heard(said(&format!("m{n}")));
+        }
+        let read = kept.newest(states::LOOK_BACK).unwrap();
+        assert_eq!(read.len(), states::LOOK_BACK + 2);
+        assert_eq!(ids(&read[..3]), ["held", "new", "m0"]);
+        // A read of fewer, which isn't a read of states, has the newest alone.
+        assert_eq!(ids(&kept.newest(2).unwrap()), ["m998", "m999"]);
+    }
+
     /// What answering `zirc state` from what's kept costs: the newest 1000 and their JSON,
     /// as the socket sends them. Printed with `--nocapture`; the limit catches a quadratic
     /// return, not noise: a loaded CI agent took 54 to 164 ms where a quiet machine takes
     /// about 15 (builds 3172 and 3191), and a quadratic return takes seconds.
     #[test]
     fn answering_from_whats_kept_takes_well_under_a_millisecond_a_message() {
-        let mut kept = Kept::reading(states::LOOK_BACK);
+        let mut kept = Kept::reading(states::LOOK_BACK, 0);
         kept.read(Vec::new());
         for n in 0..states::LOOK_BACK * 2 {
             let mut delivery = said(&format!("m{n}"));
