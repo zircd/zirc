@@ -1198,8 +1198,12 @@ async fn run_allowing(
     codes: &[i32],
 ) -> Result<String> {
     let mut command = Command::new("git");
+    // zircd only reads, beside the person's own Git: a `git status` that refreshed the index
+    // held its lock, and their commit meanwhile failed with "index.lock: File exists" (build
+    // 3425). Git's setting for a background reader leaves the index alone.
     command
         .args(args)
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .envs(env.iter().copied())
         .current_dir(dir);
     let output = output_within(command, WITHIN)
@@ -1262,6 +1266,32 @@ mod own_tests {
             .status()
             .unwrap();
         assert!(status.success(), "git {args:?}");
+    }
+
+    /// Reading a worktree writes nothing to its index: a `git status` that refreshes it
+    /// takes the index's lock meanwhile, and a commit of the person's own then fails with
+    /// "index.lock: File exists" (build 3425).
+    #[tokio::test]
+    async fn reading_a_worktree_leaves_its_index_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        run(&root, &["init", "--quiet", "--initial-branch=main"]);
+        std::fs::write(root.join("a.rs"), "a\n").unwrap();
+        run(&root, &["add", "."]);
+        run(&root, &["commit", "--quiet", "-m", "a"]);
+        // Touched, not changed: the index's record of it is stale, and a status refreshes it.
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+        std::fs::File::options()
+            .write(true)
+            .open(root.join("a.rs"))
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
+        let index = std::fs::read(root.join(".git/index")).unwrap();
+
+        files(&root).await.unwrap();
+
+        assert_eq!(std::fs::read(root.join(".git/index")).unwrap(), index);
     }
 
     #[tokio::test]
