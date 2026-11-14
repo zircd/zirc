@@ -795,3 +795,28 @@ fn a_step_that_names_nobody_goes_straight_to_its_fallback() {
         "{later}"
     );
 }
+
+#[test]
+fn a_run_asked_for_again_while_it_goes_on_starts_nothing_new() {
+    let source = MASTER.replace(
+        "[[input]]\nname = \"owner\"\n",
+        "one_run_per = \"why\"\n\n[[input]]\nname = \"owner\"\n",
+    );
+    let mut e = engine(&source);
+    let ci = Actor::person("zirc-ci");
+    let mention = |text: &str| Input::Mention {
+        by: ci.clone(),
+        text: text.into(),
+    };
+    let first = texts(&e.handle(mention("run owner=cc-1 why=//web:unit"), 0));
+    assert_eq!(first[0], "started `master-1` for zirc-ci");
+    assert_eq!(
+        texts(&e.handle(mention("run owner=cc-2 why=//web:unit"), 1)),
+        ["reply: `master-1` is on why=//web:unit already"]
+    );
+    let other = texts(&e.handle(mention("run owner=cc-2 why=//:check"), 2));
+    assert_eq!(other[0], "started `master-2` for zirc-ci");
+    e.handle(mention("cancel master-1"), 3);
+    let again = texts(&e.handle(mention("run owner=cc-1 why=//web:unit"), 4));
+    assert_eq!(again[0], "started `master-3` for zirc-ci");
+}

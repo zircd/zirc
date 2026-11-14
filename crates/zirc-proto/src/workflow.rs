@@ -106,6 +106,11 @@ pub struct Workflow {
     /// What a run is given when it starts.
     #[serde(default, rename = "input", skip_serializing_if = "Vec::is_empty")]
     pub inputs: Vec<Input>,
+    /// The input that tells runs apart, such as `test`: a run asked for while another with
+    /// the same value of it goes on doesn't start, so CI saying a flaky test failed again
+    /// while it's being fixed starts nothing new. Without it, every mention starts a run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub one_run_per: Option<String>,
     /// Each role's people: who a step falls back to (`fallback = "<role>"`) when its time is
     /// out, by handle, machine account or `machine/session`, or `role:<name>` for one of that
     /// role's live members (the sessions that joined it with `zirc role join`); the people
@@ -616,6 +621,13 @@ impl Workflow {
                 return Err(format!("two inputs are both {:?}", input.name));
             }
         }
+        if let Some(input) = &self.one_run_per
+            && !inputs.contains(input.as_str())
+        {
+            return Err(format!(
+                "one_run_per names {input:?}, which isn't one of its inputs"
+            ));
+        }
         for (role, members) in &self.roles {
             name(role, "a role")?;
             if members.is_empty() {
@@ -860,6 +872,7 @@ mod tests {
             description: None,
             channel: "#ops".into(),
             follow: vec![],
+            one_run_per: None,
             inputs: vec![
                 Input {
                     name: "owner".into(),
@@ -988,6 +1001,15 @@ mod tests {
         let mut w = master();
         w.on[0].inputs.insert("why".into(), "colour".into());
         assert!(w.check().unwrap_err().contains("none of repo"));
+    }
+
+    #[test]
+    fn runs_are_told_apart_by_one_of_its_inputs() {
+        let mut w = master();
+        w.one_run_per = Some("why".into());
+        assert_eq!(w.check(), Ok(()));
+        w.one_run_per = Some("test".into());
+        assert!(w.check().unwrap_err().contains("isn't one of its inputs"));
     }
 
     #[test]

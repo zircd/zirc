@@ -660,6 +660,19 @@ impl Engine {
         now: u64,
         said: &mut Vec<Said>,
     ) {
+        // Asked again for what a run goes on with, as CI saying a flaky test failed again
+        // while it's being fixed: that run is said, and nothing new starts.
+        if let Some(input) = &self.workflow.one_run_per
+            && let Some(value) = inputs.get(input)
+            && let Some(run) = self
+                .runs
+                .values()
+                .find(|r| r.finished.is_none() && r.inputs.get(input) == Some(value))
+        {
+            let text = format!("`{}` is on {input}={value} already", run.id);
+            said.push(Said::Reply(text));
+            return;
+        }
         let id = format!("{}-{}", self.workflow.name, self.numbers + 1);
         let text = format!(
             "started `{id}`{}",

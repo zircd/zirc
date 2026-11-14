@@ -263,6 +263,7 @@ name = "master"
 nick = "master_bot"            # the user it runs as: mention it to start a run
 channel = "#ops"
 follow = ["#monorepo/landings"]  # more channels it listens in; or /invite it
+one_run_per = "owner"          # optional: asked again while a run with this input goes on, starts none
 
 [[input]]
 name = "owner"
@@ -329,7 +330,9 @@ A workflow's nick hears what's said where it is, as it's said: its `channel`, th
 anyone in the organisation `/invite`s it (a kick takes it out). Joining, it catches up on the
 last day of a channel's history and acts on what came since it last read there, if within
 the hour; a run started more than a day before is forgotten. Workflows run only where
-zirc.dev has turned them on for the organisation.
+zirc.dev has turned them on for the organisation. An integration (`zirc-` and its name, as
+CI posts through `zirc.dev/ci`) starts a run as a person does, by naming the nick in its
+event's text: `@flake_bot run test=//web:unit`.
 
 **Sessions and tasks.** `zirc sessions --json` lists what each session is doing, `zirc task
 --session <s>` prints the id of its current task (for a landing script), and `zirc wakes`

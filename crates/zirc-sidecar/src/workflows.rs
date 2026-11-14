@@ -326,6 +326,13 @@ impl Hosted {
             Event::Text { body } => {
                 self.mention(channel, account, Some(&message.session), body, who, now)
             }
+            // An integration, such as CI saying a test was flaky, starts a run by naming the
+            // workflow in its event's text, as `@flake_bot run test=//web:unit`: it's the
+            // team's own, as its states are, though no person or machine holds it.
+            Event::Custom { text, .. } if zirc_proto::names::is_integration_nick(account) => {
+                let integration = |account: &str, _: Option<&str>| Some(Actor::person(account));
+                self.mention(channel, account, None, text, &integration, now)
+            }
             _ => Vec::new(),
         }
     }

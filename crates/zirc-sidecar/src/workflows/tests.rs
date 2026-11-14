@@ -331,6 +331,31 @@ fn a_guests_state_starts_no_run_and_cis_and_a_machines_do() {
     assert!(!said(&hosted.take(&machines, true, &who, 2)).is_empty());
 }
 
+#[test]
+fn an_integrations_event_naming_the_workflow_starts_a_run_and_a_guests_doesnt() {
+    let mut hosted = Hosted::default();
+    let outs = hosted.take(&deploy("mattias", MASTER), true, &who, 0);
+    installed(&mut hosted, outs);
+    let flaky = |account: &str| {
+        zirc(
+            "#ops",
+            account,
+            "ci",
+            Event::Custom {
+                kind: "x-zirc/flaky".into(),
+                data: serde_json::json!({}),
+                text: "@master_bot run owner=cc-1".into(),
+            },
+        )
+    };
+    assert_eq!(
+        said(&hosted.take(&flaky("zirc-ci"), true, &who, 1))[0].2,
+        "started `master-1` for zirc-ci"
+    );
+    assert!(hosted.take(&flaky("guest-abcd"), true, &who, 2).is_empty());
+    assert!(hosted.take(&flaky("m3-mac"), true, &who, 2).is_empty());
+}
+
 /// What the host says of a deploy of `source` by `account`, heard live.
 fn deploys(hosted: &mut Hosted, account: &str, source: &str) -> String {
     let outs = hosted.take(&deploy(account, source), true, &who, 0);
