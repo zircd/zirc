@@ -9,6 +9,7 @@
 pub mod chat;
 pub mod clock;
 pub mod command;
+pub mod compose;
 pub mod connection;
 pub mod emoji;
 pub mod link_ask;

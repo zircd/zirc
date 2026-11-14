@@ -321,6 +321,9 @@ fn first(list: &mut Vec<String>, emoji: &str) {
     list.truncate(RECENT);
 }
 
+/// How many emoji a composer offers for a `:shortcode` at once, in every app.
+pub const OFFERED: usize = 8;
+
 /// An emoji the composer offers as someone types `:` and part of its name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Suggestion {
@@ -336,13 +339,6 @@ impl Suggestion {
     pub fn hint(&self) -> String {
         format!(":{}:", self.code)
     }
-}
-
-/// The emoji a composer offers for the `:shortcode` being typed in `text` at `cursor`, a byte
-/// offset ([`shortcode_query`], then [`suggest`]): none when the cursor isn't in one.
-#[must_use]
-pub fn suggest_at(text: &str, cursor: usize, newest: Newest, limit: usize) -> Vec<Suggestion> {
-    shortcode_query(text, cursor).map_or_else(Vec::new, |(_, query)| suggest(query, newest, limit))
 }
 
 /// The emoji whose names or shortcodes `query` matches (what follows a `:` in the composer,
@@ -426,13 +422,12 @@ mod tests {
     }
 
     #[test]
-    fn suggests_for_the_shortcode_being_typed_with_its_colons_beside() {
-        let found = suggest_at("hi :tad", 7, NEWEST, 3);
+    fn suggests_for_a_shortcode_with_its_colons_beside() {
+        let found = suggest("tad", NEWEST, OFFERED);
         assert_eq!(
             found.first().map(|s| (s.emoji, s.hint())),
             Some(("🎉", ":tada:".to_owned()))
         );
-        assert!(suggest_at("hi tad", 6, NEWEST, 3).is_empty());
     }
 
     #[test]

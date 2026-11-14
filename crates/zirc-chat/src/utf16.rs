@@ -27,6 +27,14 @@ pub fn utf16_offset(text: &str, at: usize) -> u32 {
     u32::try_from(units).unwrap_or(u32::MAX)
 }
 
+/// An edit's result, `text` with the cursor at its byte offset `at`, as an app takes it: the
+/// text and the cursor in UTF-16 code units.
+#[must_use]
+pub fn edited((text, at): (String, usize)) -> (String, u32) {
+    let cursor = utf16_offset(&text, at);
+    (text, cursor)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

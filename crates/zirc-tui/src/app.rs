@@ -15,7 +15,7 @@ use ratatui::crossterm::event::{
 use zirc_core::chat::{
     Chat, Conversation, Entry, Face, GuestRequest, Here, Kind, ListKind, ListOptions, ListRow,
     Options, Quote, Ran, Shelf, complete_mention, copy_text, entry_text, first_link, fold,
-    is_channel, mention_query,
+    is_channel,
 };
 use zirc_irc::Line;
 
@@ -31,6 +31,7 @@ use crate::rows::{self, Row, Zone};
 use crate::scrollback::{Anchor, Cache, Laid, View};
 use zirc_core::agents::{self, Queries};
 use zirc_core::command::said;
+use zirc_core::compose::{self, Completing};
 use zirc_core::connection::Status;
 use zirc_core::emoji::{self, Recent};
 use zirc_core::ipc::{Request, Response};
@@ -175,20 +176,16 @@ struct Tabbed {
 }
 
 impl Tabbed {
-    /// How many emoji Tab goes through, as many as the other apps' lists show.
-    const OFFERED: usize = 8;
-
-    /// The first emoji for the `:shortcode` typed in `text` at `at`, written; none when
-    /// nothing matches.
-    fn new(text: String, at: usize) -> Option<Self> {
-        let offered: Vec<&'static str> =
-            emoji::suggest_at(&text, at, picker::NEWEST, Self::OFFERED)
-                .into_iter()
-                .map(|found| found.emoji)
-                .collect();
-        let wrote = emoji::complete_shortcode(&text, at, offered.first()?);
+    /// The first emoji for `query`, the `:shortcode` typed in `text` at `at`, written; none
+    /// when nothing matches. Tab goes through as many as the other apps' lists show.
+    fn new(query: &str, text: &str, at: usize) -> Option<Self> {
+        let offered: Vec<&'static str> = emoji::suggest(query, picker::NEWEST, emoji::OFFERED)
+            .into_iter()
+            .map(|found| found.emoji)
+            .collect();
+        let wrote = emoji::complete_shortcode(text, at, offered.first()?);
         Some(Self {
-            typed: (text, at),
+            typed: (text.to_owned(), at),
             offered,
             at: 0,
             wrote,
@@ -2122,19 +2119,22 @@ impl App {
             }
             return;
         }
-        if let Some((_, typed)) = mention_query(&text, at) {
-            if let Some(mention) = self.chat.mentions(typed, 1).first() {
-                let (completed, cursor) = complete_mention(&text, at, mention);
-                self.input.replace(completed, cursor);
+        match compose::completing(&text, at) {
+            Some(Completing::Mention(typed)) => {
+                if let Some(mention) = self.chat.mentions(typed, 1).first() {
+                    let (completed, cursor) = complete_mention(&text, at, mention);
+                    self.input.replace(completed, cursor);
+                }
+                return;
             }
-            return;
-        }
-        if emoji::shortcode_query(&text, at).is_some() {
-            if let Some(tabbed) = Tabbed::new(text, at) {
-                self.input.replace(tabbed.wrote.0.clone(), tabbed.wrote.1);
-                self.tabbed = Some(tabbed);
+            Some(Completing::Shortcode(query)) => {
+                if let Some(tabbed) = Tabbed::new(query, &text, at) {
+                    self.input.replace(tabbed.wrote.0.clone(), tabbed.wrote.1);
+                    self.tabbed = Some(tabbed);
+                }
+                return;
             }
-            return;
+            None => {}
         }
         let (start, word) = self.input.word_before_cursor();
         let Some(mention) = self.chat.mentions(word, 1).into_iter().next() else {
@@ -2788,7 +2788,7 @@ mod tests {
         app.key(KeyEvent::from(KeyCode::Tab));
         assert_eq!(app.input.text(), "yay 🎉 ");
         // Tab again writes the next emoji the other apps offer for `:tad`, then comes round.
-        let offered = emoji::suggest_at("yay :tad", 8, picker::NEWEST, Tabbed::OFFERED);
+        let offered = emoji::suggest("tad", picker::NEWEST, emoji::OFFERED);
         if let Some(second) = offered.get(1) {
             app.key(KeyEvent::from(KeyCode::Tab));
             assert_eq!(app.input.text(), format!("yay {} ", second.emoji));
