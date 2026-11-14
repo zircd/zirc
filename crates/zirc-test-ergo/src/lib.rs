@@ -342,6 +342,9 @@ pub fn listening_line(port: u16) -> String {
 /// Ports nothing listens on right now, all different: each is held until all are picked,
 /// since Linux can give a port it just gave back out again. Two the same would make Ergo's
 /// listeners one, a WebSocket one, which a plain client finds closed before it registers.
+/// Nor is any port given twice in a process: a test's server, not yet listening on one it was
+/// given, would otherwise share it with another test's, which then found it in use or
+/// answered the first one's requests (zirc-server's media tests, build 3494).
 /// Another process could take one before Ergo does; [`Ergo::start_with`] tries again then.
 ///
 /// # Panics
@@ -349,14 +352,38 @@ pub fn listening_line(port: u16) -> String {
 /// When the system has no free port to give.
 #[must_use]
 pub fn free_ports<const N: usize>() -> [u16; N] {
-    let held: [TcpListener; N] =
-        std::array::from_fn(|_| TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("a free port"));
+    static GIVEN: std::sync::Mutex<std::collections::BTreeSet<u16>> =
+        std::sync::Mutex::new(std::collections::BTreeSet::new());
+    let mut given = GIVEN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Those given before stay held while they're passed over, so the next is another.
+    let mut passed = Vec::new();
+    let held: [TcpListener; N] = std::array::from_fn(|_| {
+        loop {
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("a free port");
+            let port = listener.local_addr().expect("its address").port();
+            if given.insert(port) {
+                break listener;
+            }
+            passed.push(listener);
+        }
+    });
     held.map(|listener| listener.local_addr().expect("its address").port())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn never_gives_a_port_twice() {
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..500 {
+            let [port] = free_ports();
+            assert!(seen.insert(port), "{port} given twice");
+        }
+    }
 
     #[test]
     fn picks_ports_that_differ() {
