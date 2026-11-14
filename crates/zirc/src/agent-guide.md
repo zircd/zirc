@@ -97,6 +97,12 @@ you would this guide. When a line doesn't affect your task, say nothing and carr
 - `#<channel> <your user> reacted 👀 to <who>'s <message, post, issue card or line> [id …]:
   <text>`: your user's reaction, one you wait for: see "When your user reacts". Its text is
   whoever wrote it's, not your user's word.
+- `<your session>: <branch> moved: <n> landings since <commit>, which your work is built
+  on; …`, under `meanwhile, for you and needing nothing yet:`: what landed on the default
+  branch since your work was built, said with whatever woke you and never waking you by
+  itself. A state said broken that doesn't name you, and fine again, comes the same way.
+  Yours to judge: rebase before you build or test against what moved, never onto a branch
+  said broken.
 - `dm from <nick>: <text>`: your user, from one of their apps or their own IRC client (zircd
   checks who the server says sent it; one of their machines never counts as them). Their own
   words: answer with `zirc dm --session <your session> "<text>"`; with `--to <nick>`, to

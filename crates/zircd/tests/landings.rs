@@ -140,6 +140,74 @@ async fn a_sessions_own_ci_success_waits_and_its_failure_wakes_it() {
 }
 
 #[tokio::test]
+async fn landings_and_a_broken_state_are_said_with_a_sessions_next_wake() {
+    let ergo = require_ergo!();
+    let [(alpha, alpha_clone), _] = two_machines(&ergo).await;
+    let add = Request::RepoAdd {
+        path: alpha_clone.path().to_owned(),
+        session: Some("cc-1".into()),
+    };
+    alpha.request(add).await;
+    let mut cc1 = alpha.watch(Some("cc-1")).await;
+    let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#api").await;
+    // Two landings of another session's, as ops/say.sh says them: neither wakes cc-1.
+    for (commit, subject) in [("c", "Fix login"), ("d", "Add logout")] {
+        let event = Event::Custom {
+            kind: "x-zirc/landing".into(),
+            data: serde_json::json!({
+                "state": "passed", "session": "cc-9", "branch": "login",
+                "commit": commit.repeat(40), "subject": subject,
+            }),
+            text: format!("cc-9: landed login as {} (build 7)", commit.repeat(7)),
+        };
+        let line = zirc_proto::encode(&zirc_proto::Message::new("ci", event)).unwrap();
+        ci.privmsg("#api", &line).unwrap();
+        assert_eq!(next(&mut cc1).await.why, None);
+    }
+    // Nor does master said broken, which names nobody here; broken twice is one note.
+    let state = |level| Request::SetState {
+        repo: alpha_clone.path().to_owned(),
+        session: "ci".into(),
+        name: "master".into(),
+        level,
+        why: Some("//api:unit fails".into()),
+        owner: None,
+        link: None,
+        until: None,
+    };
+    alpha.request(state(zirc_proto::state::Level::Broken)).await;
+    alpha.request(state(zirc_proto::state::Level::Broken)).await;
+    // What wakes it brings them first: one line for both landings, and the state.
+    let failed = "cc-1: build 8 of login failed in test: //api:unit";
+    ci.privmsg("#api", failed).unwrap();
+    let mut said = Vec::new();
+    while said.last().is_none_or(|(text, _)| text != failed) {
+        let delivery = next(&mut cc1).await;
+        if let Some(why) = delivery.why {
+            said.push((delivery.message.event.human_text(), why));
+        }
+    }
+    let texts: Vec<&str> = said.iter().map(|(text, _)| text.as_str()).collect();
+    assert_eq!(
+        texts[0],
+        "cc-1: meanwhile, for you and needing nothing yet:"
+    );
+    assert_eq!(
+        (texts[1], said[1].1),
+        (
+            "cc-1: main moved: 2 landings; the newest is ddddddd \"Add logout\"",
+            Why::DefaultMoved
+        )
+    );
+    assert!(
+        texts[2].contains("master") && texts[2].contains("broken"),
+        "{texts:?}"
+    );
+    assert_eq!((said[2].1, said.len()), (Why::StateChanged, 4));
+}
+
+#[tokio::test]
 async fn the_apple_apps_passing_with_a_landing_waits_for_the_next_wake() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), _] = two_machines(&ergo).await;

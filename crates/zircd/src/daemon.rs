@@ -42,6 +42,7 @@ mod intents_told;
 mod later;
 mod lease;
 mod live;
+mod moved;
 mod ops_kept;
 mod post_room;
 mod queries;
@@ -652,6 +653,8 @@ pub struct Daemon {
     later: later::Later,
     /// What each session has lately heard in a digest of [`later`], so the next leaves it out.
     later_told: later::Told,
+    /// What sessions are told of the default branch at their next wake ([`moved`]).
+    moved: moved::Moved,
     /// The circuit breaker on wakes.
     pub(crate) breaker: breaker::Breaker,
     /// The clock the breaker's window and a gone watch's leases are counted by.
@@ -796,6 +799,7 @@ impl Daemon {
             elsewhere: live::Elsewhere::default(),
             later: later::Later::default(),
             later_told: later::Told::default(),
+            moved: moved::Moved::default(),
             breaker: breaker::Breaker::default(),
             clock: crate::clock::Clock::default(),
             request_hold: requests::HOLD,

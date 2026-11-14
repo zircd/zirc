@@ -1568,6 +1568,11 @@
         },
         {
           "type": "string",
+          "const": "default-moved",
+          "description": "Landings went onto the default branch since the session's work was built: said\nwith its next wake, never waking it, for the session to judge whether to rebase."
+        },
+        {
+          "type": "string",
           "const": "other",
           "description": "A reason a newer zircd gives that this zirc doesn't know: it still concerns the\nsession."
         }

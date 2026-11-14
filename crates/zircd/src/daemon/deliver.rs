@@ -57,6 +57,14 @@ impl Daemon {
         self.follow_branches(response, &reasons);
         self.hold_reports(response, &mut reasons);
         self.gate_wakes(response, &mut reasons);
+        // Before what waited is taken: a state fine again takes back its note that it broke.
+        let waking: BTreeSet<String> = self
+            .watchers
+            .iter()
+            .zip(&reasons)
+            .filter_map(|(watcher, why)| why.and(watcher.session.clone()))
+            .collect();
+        self.note_quietly(response, &waking);
         let mut waited = self.waited_for(&reasons);
         let woken: Vec<(String, Why)> = self
             .watchers

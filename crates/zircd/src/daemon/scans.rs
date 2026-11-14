@@ -252,11 +252,21 @@ impl Daemon {
                 again(watched);
                 return;
             }
-            Found::Changed(after, changes) => (*after, changes),
+            Found::Changed(after, changes) => (after, changes),
         };
         watched.held = false;
         tracing::debug!("scanned {}: {} changes", root.display(), changes.len());
-        watched.snapshot = after;
+        // Built on another commit now, as after a rebase: what landed before it is behind it.
+        let rebuilt: Vec<String> = if watched.snapshot.base == after.base {
+            Vec::new()
+        } else {
+            watched.sessions.names().map(str::to_owned).collect()
+        };
+        watched.snapshot = *after;
+        self.rebuilt(&rebuilt);
+        let Some(watched) = self.repos.get_mut(root) else {
+            return;
+        };
         (watched.room, watched.areas) =
             post_room::rooms_of(root, &watched.project, &mut self.warned);
         let channel = watched.channel.clone();

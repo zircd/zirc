@@ -83,6 +83,11 @@ level = "act"
 text = "It didn't land, and that ends your wait: it may land later, on another build or branch. To hear when, zirc wait-for --session <your session> {session}; before saying it's still pending, check the default branch's log."
 
 [[hint]]
+kind = "default-moved"
+level = "act"
+text = "Nothing to do now, and nothing to tell the user. Before you build, test or land against it, see whether what landed reaches your work (git log <that commit>..origin/<the default branch> --stat), and rebase when it suits; a landing rebases anyway."
+
+[[hint]]
 kind = "state.ok"
 level = "act"
 text = "It's fine again: carry on with what waited on it, such as landing."

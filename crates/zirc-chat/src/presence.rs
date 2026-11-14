@@ -942,6 +942,9 @@ pub enum Why {
     /// The machine's person gave a reaction the session waits for (`zirc wait-for
     /// --reaction`), such as 👀, to a message it hadn't woken the session for yet.
     ReactionAwaited,
+    /// Landings went onto the default branch since the session's work was built: said
+    /// with its next wake, never waking it, for the session to judge whether to rebase.
+    DefaultMoved,
     /// A reason a newer zircd gives that this zirc doesn't know: it still concerns the
     /// session.
     #[serde(other)]

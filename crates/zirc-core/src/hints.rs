@@ -48,6 +48,8 @@ pub mod kind {
     pub const AWAITED_UNLANDED: &str = "landing.awaited.unlanded";
     /// CI: a branch zircd told you changes files you're changing landed.
     pub const OVERLAPPING_LANDED: &str = "landing.overlapping";
+    /// The default branch moved since your work was built, said with your next wake.
+    pub const DEFAULT_MOVED: &str = "default-moved";
     /// A state you wait on (`zirc wait-for --state`) is ok again.
     pub const STATE_OK: &str = "state.ok";
     /// A state you wait on is said broken or in warning.
@@ -82,7 +84,7 @@ pub mod kind {
     pub const REACTION_OTHER: &str = "reaction.other";
 
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 29] = [
+    pub const ALL: [&str; 30] = [
         OVERLAP,
         OVERLAP_SAME_LINES,
         CONFLICT_AHEAD,
@@ -94,6 +96,7 @@ pub mod kind {
         FAILED,
         CONFLICTS,
         DEFAULT_BROKEN,
+        DEFAULT_MOVED,
         AWAITED,
         AWAITED_UNLANDED,
         OVERLAPPING_LANDED,
@@ -416,6 +419,7 @@ pub fn seen(heard: &Heard, watching: Option<&str>) -> Option<Seen> {
         Heard::Reaction(_) => return None,
         Heard::Message(delivery)
             if delivery.message.session == zirc_proto::NO_SESSION
+                && delivery.why != Some(Why::DefaultMoved)
                 && matches!(delivery.message.event, Event::Text { .. }) =>
         {
             return None;
@@ -488,6 +492,9 @@ fn message_kind(
 ) -> Option<&'static str> {
     if why == Some(Why::Decision) {
         return Some(kind::DECISION);
+    }
+    if why == Some(Why::DefaultMoved) {
+        return Some(kind::DEFAULT_MOVED);
     }
     if why == Some(Why::StateChanged)
         && let Some(state) = zirc_proto::state::State::of(event)
