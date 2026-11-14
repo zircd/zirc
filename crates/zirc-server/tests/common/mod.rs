@@ -103,6 +103,10 @@ pub async fn start_with(change: impl FnOnce(&mut Options)) -> Option<Running> {
     change(&mut options);
     let task = tokio::spawn(zirc_server::run::run(options.clone()));
     for _ in 0..200 {
+        if task.is_finished() {
+            let ended = task.await.expect("the server's task");
+            panic!("the server stopped before it answered: {ended:?}");
+        }
         if let Ok(secrets) = Secrets::read(&options.data) {
             let accounts = Client::new(
                 options.inside.accounts_listen,
@@ -123,5 +127,5 @@ pub async fn start_with(change: impl FnOnce(&mut Options)) -> Option<Running> {
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    panic!("the server's account endpoint never answered");
+    panic!("the server's account endpoint never answered, though the server still runs");
 }
