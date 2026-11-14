@@ -35,9 +35,10 @@ pub(crate) enum WaitCommand {
     /// Wait until a landing is deployed to production.
     ///
     /// Name it by its branch, its build's number or the commit it landed as, which the line
-    /// saying it landed gives: zirc wait deployed 9426072. Add --app controller when one
-    /// app of several matters. Prints CI's line and ends; ends as
-    /// failed when CI says the deploy failed.
+    /// saying it landed gives: zirc wait deployed 9426072. It ends once every app the
+    /// landing deploys is out, web's step and the system apps' alike; --app controller ends
+    /// it on that one. Prints CI's line and ends; ends as failed when CI says the deploy
+    /// failed.
     Deployed(DeployedArgs),
     /// Wait until a state your team shares, such as master, stands as you say.
     ///

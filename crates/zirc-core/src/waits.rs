@@ -33,6 +33,9 @@ pub enum Condition {
         /// The builds learnt to be the landing's, from the line saying what it landed as:
         /// a deploy's failure names its build, never the commit.
         builds: Vec<String>,
+        /// The apps its deploys' lines said were deployed so far: with no `app`, the wait
+        /// ends once every app the landing deploys ([`Data::deploys`]) is among them.
+        seen: Vec<String>,
     },
     /// A state, such as master, stands as wanted.
     Stands {
@@ -78,6 +81,7 @@ impl Condition {
             on: named(on),
             app: app.map(str::to_owned),
             builds: Vec::new(),
+            seen: Vec::new(),
         }
     }
 
@@ -186,7 +190,12 @@ impl Condition {
                 }
                 None
             }
-            Self::Deployed { on, app, builds } if kind == DEPLOY_KIND => {
+            Self::Deployed {
+                on,
+                app,
+                builds,
+                seen,
+            } if kind == DEPLOY_KIND => {
                 let ours = said.branch.as_deref() == Some(on.as_str())
                     || said
                         .build
@@ -205,8 +214,21 @@ impl Condition {
                 // All of it: a line names several apps on lines of their own.
                 let (_, what) = text.split_once(DEPLOYED)?;
                 let what = what.rsplit_once(" at ").map_or(what, |(what, _)| what);
-                app.as_deref()
-                    .is_none_or(|app| among(app, what))
+                if let Some(app) = app {
+                    return (said.deployed.contains(app) || among(app, what))
+                        .then_some(Outcome::Met);
+                }
+                // A landing's apps deploy in steps of their own (web, then the system apps),
+                // each said on its line: the wait is for them all. A line that doesn't say
+                // what the landing deploys, as CI's did before, ends it.
+                for deployed in said.deployed {
+                    if !seen.contains(&deployed) {
+                        seen.push(deployed);
+                    }
+                }
+                said.deploys
+                    .iter()
+                    .all(|app| seen.contains(app))
                     .then_some(Outcome::Met)
             }
             _ => None,
@@ -351,6 +373,30 @@ mod tests {
         assert_eq!(controller.judge(&line("every app")), Some(Outcome::Met));
         assert_eq!(
             controller.judge(&line("every app but web")),
+            Some(Outcome::Met)
+        );
+    }
+
+    #[test]
+    fn a_landing_is_deployed_once_every_app_it_deploys_is() {
+        let line = |what: &str, deployed: &[&str]| {
+            deploy(
+                &format!("cc-5: deployed to production: {what} at 9426072 ✓"),
+                json!({"branch": "ci-token", "state": "passed",
+                       "deploys": ["web", "controller", "edge"], "deployed": deployed}),
+            )
+        };
+        let mut wait = Condition::deployed("ci-token", None);
+        assert_eq!(wait.judge(&line("web", &["web"])), None);
+        assert_eq!(wait.judge(&line("the edge (deploy/edge)", &["edge"])), None);
+        assert_eq!(
+            wait.judge(&line("controller", &["controller"])),
+            Some(Outcome::Met)
+        );
+        // One app of them is met by its own line, by what the line says it deployed.
+        let mut controller = Condition::deployed("ci-token", Some("controller"));
+        assert_eq!(
+            controller.judge(&line("the system apps", &["controller"])),
             Some(Outcome::Met)
         );
     }

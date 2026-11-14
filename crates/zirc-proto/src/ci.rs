@@ -165,6 +165,13 @@ pub struct Data {
     /// the default branch, or CI builds as `build N`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fixes: Vec<String>,
+    /// On a deploy's event: every app the landing deploys to production, of every kind, so a
+    /// wait for the landing to be deployed ends once all of them are, not on the first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deploys: Vec<String>,
+    /// On a deploy's event: the apps this event says were deployed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deployed: Vec<String>,
 }
 
 /// A target that failed in a landing's build.

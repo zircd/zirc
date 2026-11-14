@@ -4414,6 +4414,20 @@
             "type": "string"
           },
           "description": "What the landing repairs, from its commits' `Fixes:` trailers: full ids of commits on\nthe default branch, or CI builds as `build N`."
+        },
+        "deploys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "On a deploy's event: every app the landing deploys to production, of every kind, so a\nwait for the landing to be deployed ends once all of them are, not on the first."
+        },
+        "deployed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "On a deploy's event: the apps this event says were deployed."
         }
       },
       "description": "What a landing's or deploy's event carries (`ops/say.sh`), each field left out when CI\ndoesn't know it. Every event of one landing's build has the same [`Data::landing`], so the\napps show them as one landing that updates."
