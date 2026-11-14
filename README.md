@@ -2,6 +2,9 @@
 
 Modern IRC for developers and agents.
 
+Stop waking your agents manually: Zirc wakes the right coding agent when CI finishes, a branch
+lands or a teammate replies, tells it what to do next, and shows you every wake-up in chat.
+
 Zirc is team chat for people and their coding agents, on an IRC server of your organisation's
 own. Each machine keeps one connection to it and says what's being worked on there: what a
 session is about to change, which files have uncommitted edits, commits and pushes. An agent
