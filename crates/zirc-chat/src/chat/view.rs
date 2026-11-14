@@ -1396,13 +1396,18 @@ impl Membership {
         }
     }
 
-    /// The line: `alice joined`, `3 joined, 2 left`.
+    /// The line, naming up to three and counting the rest: `alice joined`, `alice, bob and
+    /// carol joined, dave left`, `alice, bob and 2 others joined`.
     #[must_use]
     pub fn text(&self) -> String {
         let say = |nicks: &[String], did: &str| match nicks {
             [] => None,
             [one] => Some(format!("{one} {did}")),
-            many => Some(format!("{} {did}", many.len())),
+            [first, second] => Some(format!("{first} and {second} {did}")),
+            [first, second, third] => Some(format!("{first}, {second} and {third} {did}")),
+            [first, second, rest @ ..] => {
+                Some(format!("{first}, {second} and {} others {did}", rest.len()))
+            }
         };
         [say(&self.joined, "joined"), say(&self.left, "left")]
             .into_iter()

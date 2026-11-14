@@ -1732,7 +1732,7 @@ mod tests {
         assert_eq!(lines.len(), 1, "{lines:#?}");
         let came = &lines[0];
         assert_eq!(came.kind, LineKind::Membership);
-        assert_eq!(came.text, "2 joined, alice left");
+        assert_eq!(came.text, "carol and dave joined, alice left");
         assert_eq!(came.from, "");
         assert!(came.speaker.is_none() && came.presence.is_none());
         let system = came.system.as_ref().unwrap();
