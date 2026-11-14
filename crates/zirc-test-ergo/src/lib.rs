@@ -34,6 +34,9 @@ pub mod wait;
 pub mod web;
 
 pub use wait::wait;
+/// The overrides that keep history as zirc's servers do, in SQLite across restarts, for
+/// [`Ergo::start_with`]: without them a test's server keeps it in memory only.
+pub use zirc_sidecar::environment::HISTORY;
 
 use std::net::{Ipv4Addr, TcpListener};
 use std::path::{Path, PathBuf};

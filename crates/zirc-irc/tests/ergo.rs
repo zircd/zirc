@@ -143,6 +143,52 @@ async fn keeps_client_tags_live_and_in_history() {
     );
 }
 
+/// History kept as zirc's servers keep it, in SQLite, gives back a client tag as long as a
+/// message's client tags may be, after a restart: IRCv3 allows 4094 bytes of them, the
+/// tag's name included. End-to-end sealed parts of messages would travel this way.
+#[tokio::test]
+async fn keeps_a_long_client_tag_in_history_across_a_restart() {
+    const TAG: &str = "+zirc.dev/sealed";
+    let Some(mut ergo) = Ergo::start_with(zirc_test_ergo::HISTORY) else {
+        return;
+    };
+    let (alice, mut alice_in) = connect(&config(&ergo, "alice")).await.unwrap();
+    let (bob, mut bob_in) = connect(&config(&ergo, "bob")).await.unwrap();
+    alice.join("#api").unwrap();
+    joined(&mut alice_in, "alice", "#api").await;
+    bob.join("#api").unwrap();
+    joined(&mut bob_in, "bob", "#api").await;
+
+    // Base64url, as a sealed part's would be, filling what's left after the name and `=`.
+    let value: String = "AbC-_0189xYz"
+        .chars()
+        .cycle()
+        .take(4094 - TAG.len() - 1)
+        .collect();
+    let mut said = Line::new("PRIVMSG", ["#api", "the key is [sealed]"]);
+    said.tags = vec![(TAG.to_owned(), Some(value.clone()))];
+    alice.send(said).unwrap();
+    // Heard once Ergo has taken it, so it's in history before the restart.
+    let live = next_matching(&mut bob_in, |line| line.command == "PRIVMSG").await;
+    assert_eq!(live.tag(TAG), Some(value.as_str()), "live: {live}");
+    drop((alice, bob));
+
+    ergo.restart();
+    let (carol, mut carol_in) = connect(&config(&ergo, "carol")).await.unwrap();
+    carol.join("#api").unwrap();
+    joined(&mut carol_in, "carol", "#api").await;
+    carol
+        .send(Line::new("CHATHISTORY", ["LATEST", "#api", "*", "10"]))
+        .unwrap();
+    let replayed = next_matching(&mut carol_in, |line| {
+        line.command == "PRIVMSG"
+            && line.tag("batch").is_some()
+            && line.params[1].contains("[sealed]")
+    })
+    .await;
+    assert_eq!(replayed.tag(TAG), Some(value.as_str()), "{}", ergo.log());
+}
+
 #[tokio::test]
 async fn takes_another_nick_when_its_own_is_taken() {
     let ergo = require_ergo!();

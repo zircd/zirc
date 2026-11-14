@@ -22,6 +22,26 @@ pub const API_LISTENER: &str = "127.0.0.1:8089";
 /// nothing about a conversation may go; a self-hosted one's says no more.
 const NAMES_CHANNELS: [&str; 3] = ["channels", "services", "opers"];
 
+/// How every server keeps history, in [`ergo`]'s overrides and in tests that need history
+/// as servers keep it (`zirc_test_ergo::Ergo::start_with`).
+pub const HISTORY: &[(&str, &str)] = &[
+    // History survives restarts, in ergo_history.db next to ircd.db. A team's channels
+    // aren't registered with ChanServ, so theirs is kept too.
+    ("ERGO__DATASTORE__SQLITE__ENABLED", "true"),
+    ("ERGO__HISTORY__PERSISTENT__ENABLED", "true"),
+    ("ERGO__HISTORY__PERSISTENT__UNREGISTERED_CHANNELS", "true"),
+    // People remove their own messages, and team ops any in their channels, with REDACT;
+    // owners any, through the sidecar's operator (crate::trim). Without this Ergo also
+    // stops telling clients what was removed.
+    ("ERGO__HISTORY__RETENTION__ALLOW_INDIVIDUAL_DELETE", "true"),
+    // Reactions, and taking them back, so a reload shows what's left; and the team's
+    // events in a conversation with a guest (crate::gateway::SUPPORT_TAG).
+    (
+        "ERGO__HISTORY__TAGMSG_STORAGE__WHITELIST",
+        r#"["+draft/react", "+react", "+draft/unreact", "+zirc/support"]"#,
+    ),
+];
+
 /// A value Ergo reads that is a secret, which the runner fills in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Secret {
@@ -138,32 +158,15 @@ pub fn ergo(server: &Server) -> Vec<(&'static str, Value)> {
             "ERGO__SERVER__WEBSOCKETS__ALLOWED_ORIGINS",
             json!(server.web_origins).to_string().into(),
         ),
-        // History survives restarts, in ergo_history.db next to ircd.db. A team's channels
-        // aren't registered with ChanServ, so theirs is kept too.
-        ("ERGO__DATASTORE__SQLITE__ENABLED", "true".into()),
-        ("ERGO__HISTORY__PERSISTENT__ENABLED", "true".into()),
-        (
-            "ERGO__HISTORY__PERSISTENT__UNREGISTERED_CHANNELS",
-            "true".into(),
-        ),
-        // People remove their own messages, and team ops any in their channels, with REDACT;
-        // owners any, through the sidecar's operator (crate::trim). Without this Ergo also
-        // stops telling clients what was removed.
-        (
-            "ERGO__HISTORY__RETENTION__ALLOW_INDIVIDUAL_DELETE",
-            "true".into(),
-        ),
-        // Reactions, and taking them back, so a reload shows what's left; and the team's
-        // events in a conversation with a guest (crate::gateway::SUPPORT_TAG).
-        (
-            "ERGO__HISTORY__TAGMSG_STORAGE__WHITELIST",
-            r#"["+draft/react", "+react", "+draft/unreact", "+zirc/support"]"#.into(),
-        ),
+    ];
+    // Where they've always been in the list: a hosted server's Ergo restarts when it changes.
+    env.extend(HISTORY.iter().map(|&(key, value)| (key, value.into())));
+    env.extend([
         // The API, on localhost only, for the sidecar.
         ("ERGO__API__ENABLED", "true".into()),
         ("ERGO__API__LISTENER", server.api_listener.into()),
         ("ERGO__API__BEARER_TOKENS", secret(Secret::ApiBearerTokens)),
-    ];
+    ]);
     match server.push_subscriber {
         // Push notifications for the phone apps: people's accounts are always-on, so Ergo
         // pushes their mentions and direct messages, encrypted for their phones, to the
