@@ -308,7 +308,12 @@ async fn checked_out(root: &Path) -> (Option<String>, Option<String>) {
 ///
 /// When a git command fails.
 pub async fn snapshot(root: &Path) -> Result<Snapshot> {
-    let (branch, head) = checked_out(root).await;
+    // The refs before HEAD: a push is a remote-tracking branch caught up with HEAD
+    // ([`diff`]), and HEAD read before them, as a `git commit && git push` went by between,
+    // paired the old HEAD with the new remote-tracking branch. Nothing was said, the next
+    // scan found that branch as it was and said the commit alone, and the push was never
+    // told (`zircd_overlaps_test`, builds 2245, 2340 and 3327). Read first, the
+    // remote-tracking branch is at worst behind HEAD, and its push is told when it catches up.
     let refs = git(
         root,
         &[
@@ -334,6 +339,7 @@ pub async fn snapshot(root: &Path) -> Result<Snapshot> {
         .filter_map(|(name, _)| name.strip_prefix("refs/heads/"))
         .map(str::to_owned)
         .collect();
+    let (branch, head) = checked_out(root).await;
     let status = git(
         root,
         &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
