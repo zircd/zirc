@@ -470,10 +470,9 @@ pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) ->
     let entry = entry_of(item);
     let id = entry.and_then(|entry| entry.id.clone());
     let head = entry.map(|entry| head(who.chat.speaker(entry)));
-    // What follows a brief line heads itself again: there's no header to carry on from.
-    let after_brief = before.is_some_and(|before| brief_of(conversation, before).is_some());
+    let after_brief = before.is_some_and(|before| brief_of(look, before).is_some());
     if let Some(parts) = system_parts(item) {
-        let brief = brief_of(conversation, item);
+        let brief = brief_of(look, item);
         // A post addressed to an agent session says to whom first, by its name.
         let parts = who.chat.addressed_parts(parts);
         system_rows(
@@ -782,11 +781,13 @@ fn system_parts(item: &Item<'_>) -> Option<Parts> {
     }
 }
 
-/// `item` as one quiet line, when it's an agent's routine work in `conversation`: the core's
-/// brief (the user's choice, 14 Nov 2026). `None` for anything else, and for everything in an
-/// agent's own conversation, where its work is whole.
-fn brief_of(conversation: &Conversation, item: &Item<'_>) -> Option<String> {
-    if zirc_core::chat::agent(&conversation.name).is_some() {
+/// `item` as one quiet line, when it's an agent's routine work in `look`'s conversation: the core's
+/// brief (the user's choice, 14 Nov 2026). `None` for anything else, for everything in an
+/// agent's own conversation, where its work is whole, and in IRC's way (`compact`), which
+/// says every event whole on its line, as it always has. What follows a brief line heads
+/// itself again: there's no header for it to carry on from.
+fn brief_of(look: &Look<'_>, item: &Item<'_>) -> Option<String> {
+    if look.compact || zirc_core::chat::agent(&look.conversation.name).is_some() {
         return None;
     }
     system_parts(item)?.brief()
@@ -1763,6 +1764,31 @@ mod tests {
                 "14:04       + |bob joined",
             ]
         );
+    }
+
+    #[test]
+    fn says_every_event_whole_in_irc_mode() {
+        let mut api = Conversation::new("#api", Kind::Channel);
+        let intent = zirc_proto::Event::Intent {
+            summary: "split the login form".into(),
+            paths: vec!["web/src/login/part1.tsx".into()],
+            expires: None,
+            lasts: None,
+        };
+        api.entries.push(at(30, 14, 3, zirc("dana-mbp", intent)));
+        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+        let rows = layout(
+            &api,
+            who(),
+            None,
+            100,
+            (utc(), today),
+            (true, Links::Plain, false),
+        );
+        // Compact, IRC's way: the event's own words, its summary too, never the brief.
+        let line = shown(&rows).join("\n");
+        assert!(line.contains("split the login form"), "{line}");
+        assert!(!line.contains("part1.tsx and"), "{line}");
     }
 
     #[test]
