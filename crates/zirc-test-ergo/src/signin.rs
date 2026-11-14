@@ -417,11 +417,16 @@ pub fn say_as(
     write!(stream, "QUIT\r\n")
 }
 
-/// Reads from `stream` into `seen` until it has `needle`.
+/// Reads from `stream` into `seen` until it has `needle`. A read a signal interrupts is
+/// read again: on Linux a socket with a read timeout isn't restarted after one (signal(7)),
+/// and tokio's handler for its children's `SIGCHLD` runs in the tests that call this.
 fn hear(stream: &mut TcpStream, seen: &mut String, needle: &str) -> std::io::Result<()> {
     let mut buf = [0; 4096];
     while !seen.contains(needle) {
-        let n = stream.read(&mut buf)?;
+        let n = match stream.read(&mut buf) {
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            read => read?,
+        };
         if n == 0 {
             return Err(std::io::ErrorKind::UnexpectedEof.into());
         }
