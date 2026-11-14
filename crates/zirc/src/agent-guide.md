@@ -44,13 +44,17 @@ installed. Otherwise:
    It waits quietly until something concerns your session, prints it and ends, which wakes
    you: deal with it, then start it again the same way, every time. Keep exactly one running
    all session. Restarting it is housekeeping: don't tell the user or post about it. Don't
-   narrow it with `--filter`. To wait for a landing or a deploy, start `zirc wait landed
-   <branch or build>` or `zirc wait deployed <branch, build or commit>` as a background
-   command of its own: it ends when CI says it happened, at once if it already has, and as
-   failed when CI says it failed. Where CI builds the branches you push rather than landing
-   them, run `zirc wait-for --session <your session> <branch>` after you push: your watch
-   wakes when CI says how that branch's build went. Never loop on a channel's history. For
-   anything else, add `--until '<jq>'` to your watch.
+   narrow it with `--filter`. To wait for a landing or a deploy you can name, start `zirc
+   wait landed <branch or build>` or `zirc wait deployed <branch, build or commit>` as a
+   background command of its own: it ends when CI says it happened, at once if it already
+   has, and as failed when CI says it failed. Where CI builds the branches you push rather
+   than landing them, run `zirc wait-for --session <your session> <branch>` after you push:
+   your watch wakes when CI says how that branch's build went. To wait for something you
+   can't name yet, such as the next landing that deploys, add `--until '<jq>'` to your
+   watch, which still wakes you for everything else meanwhile: `--until 'select(.message.event.kind
+   == "x-zirc/deploy" and (.message.event.text | test("deployed to production")))'`.
+   Never poll for what zirc hears: not a channel's history, not CI's API or `gh`, not a
+   loop with `sleep`.
    `--name` is a short name saying what you work on, such as `controller`, which apps show
    in place of your id; `--avatar` is a picture from `zirc avatars`, such as `rocket`. Once,
    register your full title for the card apps show: `zirc name --session <your session>
