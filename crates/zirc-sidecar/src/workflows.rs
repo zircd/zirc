@@ -736,7 +736,12 @@ impl Hosted {
         } = event;
         let log = self.logs.entry(name.to_owned()).or_default();
         if matches!(change, Change::Finished { .. }) {
-            log.retain(|kept| kept.run != run);
+            // A part of a step given to several (`master-3.1`) is kept whole while the run
+            // it's part of goes on, which reads how each part ended; and goes with it.
+            let parts = format!("{run}.");
+            if !run.contains('.') {
+                log.retain(|kept| kept.run != run && !kept.run.starts_with(&parts));
+            }
             self.messages.retain(|_, (_, of)| *of != run);
         } else {
             self.messages

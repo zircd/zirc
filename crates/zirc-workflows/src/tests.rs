@@ -1117,3 +1117,196 @@ fn the_new_triggers_say_whats_wrong_with_them() {
     );
     assert!(wrong("ask = \"subject\", ", "").contains("doesn't fill the input \"ask\""));
 }
+
+const ROLLOUT: &str = r##"
+name = "rollout"
+nick = "rollout_bot"
+channel = "#apps"
+
+[[input]]
+name = "feature"
+
+[roles]
+people = ["mattias"]
+
+[[step]]
+id = "build"
+each = ["cc-ios", "cc-android"]
+says = "{each}: build {feature}"
+nudge = "15m"
+escalate = "30m"
+fallback = "people"
+stages = [
+  { name = "working", on = "push" },
+  { name = "landed", on = "landed" },
+]
+
+[[step]]
+id = "announce"
+kind = "post"
+says = "{feature} is on every platform"
+"##;
+
+fn session(id: &str) -> Actor {
+    Actor::session("m3-mac", id)
+}
+
+/// A rollout started by ada at 0: `rollout-1`, its build given to cc-ios and cc-android.
+fn rollout(source: &str) -> (Engine, Vec<String>) {
+    let mut e = engine(source);
+    let said = e.handle(
+        Input::Mention {
+            by: Actor::person("ada"),
+            text: "run feature=reactions".into(),
+        },
+        0,
+    );
+    (e, texts(&said))
+}
+
+#[test]
+fn a_step_for_each_of_several_gives_each_a_run_of_their_own() {
+    let (e, said) = rollout(ROLLOUT);
+    assert_eq!(said[0], "started `rollout-1` for ada");
+    assert!(said[1].starts_with("`rollout-1` · `build` goes to each of cc-ios, cc-android"));
+    assert_eq!(
+        said[2],
+        "started `rollout-1.1`: `build` of `rollout-1` for cc-ios"
+    );
+    assert!(said[3].starts_with("`rollout-1.1` · `build` → @cc-ios: cc-ios: build reactions"));
+    assert!(
+        said[5].starts_with("`rollout-1.2` · `build` → @cc-android: cc-android: build reactions")
+    );
+    assert_eq!(e.running(), ["rollout-1", "rollout-1.1", "rollout-1.2"]);
+    let going = e.going();
+    assert_eq!((going[0].run.as_str(), going[0].to.len()), ("rollout-1", 0));
+    assert_eq!(going[1].to, ["cc-ios"]);
+    // The run itself isn't nudged for it: its parts are.
+    assert_eq!(e.next_due(0), Some(15 * MIN));
+}
+
+#[test]
+fn each_part_is_followed_on_its_own_and_the_run_goes_on_when_all_are_done() {
+    let (mut e, _) = rollout(ROLLOUT);
+    let pushed = e.handle(
+        did(session("cc-ios"), Did::Push, Some("ios-reactions")),
+        MIN,
+    );
+    assert_eq!(
+        texts(&pushed),
+        ["`rollout-1.1` · `build`: working (ios-reactions)"]
+    );
+    // Quiet, the other is nudged, alone.
+    let nudged = texts(&e.handle(Input::Tick, 15 * MIN + 30));
+    assert_eq!(nudged.len(), 1);
+    assert!(nudged[0].contains("`rollout-1.2`") && nudged[0].contains("@cc-android"));
+    let first = texts(&e.handle(
+        act(session("cc-ios"), "rollout-1.1", "build", done(&[])),
+        17 * MIN,
+    ));
+    assert!(first.contains(&"`rollout-1.1` is done".to_owned()));
+    assert!(!first.iter().any(|t| t.contains("every platform")));
+    let last = texts(&e.handle(
+        act(session("cc-android"), "rollout-1.2", "build", done(&[])),
+        18 * MIN,
+    ));
+    assert!(last.contains(&"`build` of `rollout-1`: all 2 are done".to_owned()));
+    assert!(last.contains(&"reactions is on every platform".to_owned()));
+    assert!(e.running().is_empty());
+}
+
+#[test]
+fn when_one_fails_the_others_carry_on_unless_the_file_says_stop() {
+    let fail = |e: &mut Engine| {
+        let why = Act::Fail {
+            why: "no simulator".into(),
+        };
+        texts(&e.handle(act(session("cc-ios"), "rollout-1.1", "build", why), MIN))
+    };
+    let (mut e, _) = rollout(ROLLOUT);
+    fail(&mut e);
+    assert_eq!(e.running(), ["rollout-1", "rollout-1.2"]);
+    let last = texts(&e.handle(
+        act(session("cc-android"), "rollout-1.2", "build", done(&[])),
+        2 * MIN,
+    ));
+    assert!(last.contains(&"`rollout-1` failed: `build` failed for cc-ios".to_owned()));
+    assert!(e.running().is_empty());
+
+    let stop = ROLLOUT.replace(
+        "channel = \"#apps\"",
+        "channel = \"#apps\"\nwhen_one_fails = \"stop\"",
+    );
+    let (mut e, _) = rollout(&stop);
+    let ended = fail(&mut e);
+    assert!(ended.contains(&"`rollout-1` failed: `build` failed for cc-ios".to_owned()));
+    assert!(ended.contains(&"`rollout-1.2` was cancelled: `rollout-1` ended".to_owned()));
+    assert!(e.running().is_empty());
+}
+
+#[test]
+fn cancelling_the_run_ends_its_parts_and_they_read_back_as_they_were() {
+    let (mut e, _) = rollout(ROLLOUT);
+    let mut history = Vec::new();
+    for said in [
+        e.handle(
+            Input::Mention {
+                by: Actor::person("ada"),
+                text: "run feature=threads".into(),
+            },
+            MIN,
+        ),
+        e.handle(
+            act(session("cc-ios"), "rollout-2.1", "build", done(&[])),
+            2 * MIN,
+        ),
+    ] {
+        history.extend(runs(&said));
+    }
+    let mut back = engine(ROLLOUT);
+    for event in &history {
+        back.restore(event);
+    }
+    assert_eq!(back.running(), ["rollout-2", "rollout-2.2"]);
+    let last = texts(&back.handle(
+        act(session("cc-android"), "rollout-2.2", "build", done(&[])),
+        3 * MIN,
+    ));
+    assert!(last.contains(&"threads is on every platform".to_owned()));
+
+    let cancel = Input::Mention {
+        by: Actor::person("ada"),
+        text: "cancel rollout-1".into(),
+    };
+    let ended = texts(&e.handle(cancel, 4 * MIN));
+    assert!(ended.contains(&"`rollout-1.1` was cancelled: `rollout-1` ended".to_owned()));
+    assert_eq!(e.running(), ["rollout-2", "rollout-2.2"]);
+}
+
+#[test]
+fn a_step_for_each_reads_its_holders_from_an_input_and_says_whats_wrong_with_it() {
+    let from_input = ROLLOUT
+        .replace(
+            "each = [\"cc-ios\", \"cc-android\"]",
+            "each = \"inputs.sessions\"",
+        )
+        .replace("[roles]", "[[input]]\nname = \"sessions\"\n\n[roles]");
+    let mut e = engine(&from_input);
+    let text = "run feature=reactions sessions=cc-a,cc-b,cc-a".to_owned();
+    e.handle(
+        Input::Mention {
+            by: Actor::person("ada"),
+            text,
+        },
+        0,
+    );
+    assert_eq!(e.running(), ["rollout-1", "rollout-1.1", "rollout-1.2"]);
+
+    let wrong = |from: &str, to: &str| parse(&ROLLOUT.replace(from, to)).unwrap_err();
+    assert!(wrong("each = [", "who = \"mattias\"\neach = [").contains("in place of a who"));
+    assert!(wrong("each = [\"cc-ios\", \"cc-android\"]", "each = []").contains("each of 1 to 8"));
+    assert!(wrong("\"cc-android\"]", "\"cc android\"]").contains("none of a nick"));
+    assert!(wrong("nudge = \"15m\"", "outputs = [\"commit\"]").contains("no outputs of its own"));
+    assert!(wrong("name = \"feature\"", "name = \"each\"").contains("is named \"each\""));
+    assert!(wrong("{feature} is on", "{each} is on").contains("isn't an input"));
+}

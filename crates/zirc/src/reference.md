@@ -314,6 +314,11 @@ stages = [                     # followed from what they do, without their sayin
 ]
 
 [[step]]
+id = "tell"
+each = ["role:ios", "role:web"] # in place of who: to every one at once, or "inputs.<name>"
+says = "{each}: master broke under you"   # {each} is whose part it is
+
+[[step]]
 id = "green"
 kind = "wait"                  # task (the default), approve, wait or post
 when = "fix.cause != flaky"    # comparisons joined by and
@@ -348,6 +353,14 @@ stages needs no `zirc step`: the workflow follows what its assignee says, the in
 branches they push, and what CI says of their landings, and anything it hears of them
 keeps it from being quiet. A step's outputs are among the ones its file names; one not
 handed back reads as nothing in a `when`. Say `@<nick> cancel <run>` to stop a run.
+
+A step with `each` goes to every one it names at once, eight at most, each in a run of their
+own under the run it's of (`master-3.1`, `master-3.2`), which they answer by that name
+(`zirc step done master-3.1 tell`) and which is followed, nudged and handed to the fallback
+as any task is. The step is done when all of them are. When one fails or runs out of time,
+the others carry on and the step fails once all have ended; with `when_one_fails = "stop"`
+at the top of the file, the run fails at once and the others are called off. Such a step
+hands back no outputs.
 
 A `role:` step goes to one of the role's members: the live agent sessions that joined it
 with `zirc role join`, the one with the fewest workflow steps first. A member quiet past the

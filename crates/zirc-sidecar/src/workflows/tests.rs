@@ -602,6 +602,68 @@ fn a_landing_ci_says_passed_starts_a_run_when_it_changed_the_paths() {
     );
 }
 
+const BOTH: &str = r##"
+name = "master"
+nick = "master_bot"
+channel = "#ops"
+
+[[step]]
+id = "tell"
+each = ["cc-1", "cc-2"]
+says = "{each}: have a look"
+
+[[step]]
+id = "told"
+kind = "post"
+says = "both looked"
+"##;
+
+#[test]
+fn a_step_for_each_is_answered_by_its_parts_name_and_kept_until_its_run_ends() {
+    let mut hosted = Hosted::default();
+    deploys(&mut hosted, "mattias", BOTH);
+    let run = row("#ops", "mattias", PRIVMSG, "master_bot: run");
+    let outs = hosted.take(&run, true, &who, 0);
+    assert!(
+        said(&outs)
+            .iter()
+            .any(|(_, _, t)| t.contains("`master-1.2` · `tell` → @cc-2: cc-2: have a look"))
+    );
+    // As the server keeps them, heard back from its own nick.
+    for kept in kept(&outs) {
+        hosted.take(&kept, true, &who, 0);
+    }
+    let done = |session: &str, run: &str| {
+        let action = StepAction {
+            run: run.into(),
+            step: "tell".into(),
+            act: Act::Done {
+                outputs: BTreeMap::new(),
+            },
+        };
+        zirc("#ops", "m3-mac", session, action.event())
+    };
+    let first = hosted.take(&done("cc-1", "master-1.1"), true, &who, 1);
+    for kept in kept(&first) {
+        hosted.take(&kept, true, &who, 1);
+    }
+    assert_eq!(hosted.listed()[0].runs.len(), 2);
+    // Deployed again meanwhile, it still knows the part that ended, and goes on when the
+    // other does.
+    hosted.install(Candidate {
+        workflow: zirc_workflows::parse(BOTH).unwrap(),
+        version: "again".into(),
+        source: BOTH.into(),
+        by: "mattias".into(),
+    });
+    let last = hosted.take(&done("cc-2", "master-1.2"), true, &who, 2);
+    assert!(
+        said(&last).iter().any(|(_, _, t)| t == "both looked"),
+        "{:?}",
+        said(&last)
+    );
+}
+
 /// What the host says of a deploy of `source` by `account`, heard live.
 fn deploys(hosted: &mut Hosted, account: &str, source: &str) -> String {
     let outs = hosted.take(&deploy(account, source), true, &who, 0);

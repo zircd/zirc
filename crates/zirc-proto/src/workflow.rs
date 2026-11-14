@@ -219,6 +219,11 @@ pub struct Workflow {
     /// while it's being fixed starts nothing new. Without it, every mention starts a run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub one_run_per: Option<String>,
+    /// What becomes of a step given to several at once (`each`) when one of them fails or
+    /// runs out of time: the others carry on, and the step fails once all have ended, when
+    /// it doesn't say; or the run stops at once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when_one_fails: Option<OneFails>,
     /// Each role's people: who a step falls back to (`fallback = "<role>"`) when its time is
     /// out, by handle, machine account or `machine/session`, or `role:<name>` for one of that
     /// role's live members (the sessions that joined it with `zirc role join`); the people
@@ -233,6 +238,36 @@ pub struct Workflow {
     #[serde(rename = "step")]
     pub steps: Vec<Step>,
 }
+
+/// What becomes of a step given to several at once when one of them fails
+/// ([`Workflow::when_one_fails`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum OneFails {
+    /// The others carry on; the step fails once all have ended.
+    #[default]
+    CarryOn,
+    /// The run fails at once, and the others' work on it is called off.
+    Stop,
+}
+
+/// Whom a step goes to, every one of them at once, each doing it on their own ([`Step::each`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum Each {
+    /// `inputs.<name>`: everyone the input names, separated by spaces or commas.
+    Input(String),
+    /// Those the file names: nicks, `machine/session`s, or `role:<name>` for one of a role's
+    /// live members.
+    Named(Vec<String>),
+}
+
+/// The most a step goes to at once.
+pub const MAX_EACH: usize = 8;
+
+/// The name a step given to several reads whom this one is by, as `{each}` in its `says`:
+/// no input may have it.
+pub const EACH: &str = "each";
 
 /// Something a run is given when it starts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -513,6 +548,12 @@ pub struct Step {
     /// approvals have one; waits and posts don't.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub who: Option<String>,
+    /// For a task, in place of `who`: everyone it goes to at once, each doing it on their
+    /// own, in a run of their own under this one (`master-3.1`, `master-3.2`), followed,
+    /// nudged and handed on as any task is. Its `says` reads whose it is as `{each}`. The
+    /// step is done when all of them are ([`Workflow::when_one_fails`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub each: Option<Each>,
     /// What the workflow says when the step starts: the task, the question, or the post. It
     /// may read inputs as `{name}` and earlier steps' outputs as `{step.output}`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -916,6 +957,7 @@ impl Workflow {
             s.who
                 .as_deref()
                 .is_some_and(|who| matches!(Who::parse(who), Ok(Who::Role(_))))
+                || matches!(&s.each, Some(Each::Named(names)) if names.iter().any(|n| n.starts_with("role:")))
         }) || self
             .roles
             .values()
@@ -960,6 +1002,11 @@ impl Workflow {
         let mut inputs = BTreeSet::new();
         for input in &self.inputs {
             name(&input.name, "an input")?;
+            if input.name == EACH {
+                return Err(format!(
+                    "an input is named {EACH:?}, which a step given to several reads whose it is by"
+                ));
+            }
             if !inputs.insert(input.name.as_str()) {
                 return Err(format!("two inputs are both {:?}", input.name));
             }
@@ -1127,6 +1174,7 @@ impl Workflow {
         }
         let read = |r: &Ref| match r {
             Ref::Input(input) if inputs.contains(input.as_str()) => Ok(()),
+            Ref::Input(input) if input == EACH && step.each.is_some() => Ok(()),
             Ref::Input(input) => Err(format!("step {id:?} reads {input:?}, which isn't an input")),
             Ref::Output { step: from, output } => match before.get(from.as_str()) {
                 Some(outs) if outs.contains(output) => Ok(()),
@@ -1151,6 +1199,7 @@ impl Workflow {
             }
         }
         self.check_shepherding(step)?;
+        Self::check_each(step, inputs)?;
         let has_who = match step.who.as_deref().map(Who::parse).transpose()? {
             Some(Who::Input(input)) if !inputs.contains(input.as_str()) => {
                 return Err(format!(
@@ -1163,7 +1212,7 @@ impl Workflow {
                      are agent sessions, so name the person"
                 ));
             }
-            who => who.is_some(),
+            who => who.is_some() || step.each.is_some(),
         };
         match step.kind {
             StepKind::Task | StepKind::Approve if !has_who => {
@@ -1193,6 +1242,49 @@ impl Workflow {
 }
 
 impl Workflow {
+    /// The rules for a step given to several at once: a task, with no `who` of its own and
+    /// no outputs, as each hands back its own and none is the step's.
+    fn check_each(step: &Step, inputs: &BTreeSet<&str>) -> Result<(), String> {
+        let id = &step.id;
+        let Some(each) = &step.each else {
+            return Ok(());
+        };
+        if step.kind != StepKind::Task || step.who.is_some() {
+            return Err(format!(
+                "step {id:?} has each, which a task has in place of a who"
+            ));
+        }
+        if !step.outputs.is_empty() {
+            return Err(format!(
+                "step {id:?} goes to each of several, so it has no outputs of its own"
+            ));
+        }
+        match each {
+            Each::Input(input) => match Who::parse(input)? {
+                Who::Input(input) if inputs.contains(input.as_str()) => Ok(()),
+                _ => Err(format!(
+                    "step {id:?} goes to each of {input:?}, which isn't inputs.<an input> or a list"
+                )),
+            },
+            Each::Named(names) => {
+                let fits = |m: &&String| {
+                    m.strip_prefix("role:")
+                        .map_or_else(|| is_member(m), |role| name(role, "a role").is_ok())
+                };
+                if names.is_empty() || names.len() > MAX_EACH {
+                    return Err(format!("step {id:?} goes to each of 1 to {MAX_EACH}"));
+                }
+                match names.iter().find(|m| !fits(m)) {
+                    Some(bad) => Err(format!(
+                        "step {id:?} goes to each of {bad:?}, which is none of a nick, \
+                         machine/session or role:<name>"
+                    )),
+                    None => Ok(()),
+                }
+            }
+        }
+    }
+
     /// The rules for how `step` is followed: its times, its fallback and its stages.
     fn check_shepherding(&self, step: &Step) -> Result<(), String> {
         let id = &step.id;
@@ -1359,6 +1451,7 @@ mod tests {
             id: id.into(),
             kind,
             who: None,
+            each: None,
             says: String::new(),
             outputs: Vec::new(),
             when: None,
@@ -1379,6 +1472,7 @@ mod tests {
             channel: "#ops".into(),
             follow: vec![],
             one_run_per: None,
+            when_one_fails: None,
             inputs: vec![
                 Input {
                     name: "owner".into(),

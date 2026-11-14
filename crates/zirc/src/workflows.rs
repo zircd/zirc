@@ -14,7 +14,7 @@ use clap::Subcommand;
 use zirc_core::ipc::{Request, Response};
 use zirc_proto::Event;
 use zirc_proto::run::{Act, StepAction};
-use zirc_proto::workflow::{CHANNEL, Deploy, HOST, Workflow};
+use zirc_proto::workflow::{CHANNEL, Deploy, Each, HOST, Workflow};
 
 use crate::args::session_or_user;
 use crate::client::{ask, here};
@@ -231,11 +231,12 @@ fn described(workflow: &Workflow) -> String {
     }
     for step in &workflow.steps {
         let kind = step.kind.word();
-        let who = step
-            .who
-            .as_deref()
-            .map(|who| format!(" for {who}"))
-            .unwrap_or_default();
+        let who = match (&step.who, &step.each) {
+            (Some(who), _) => format!(" for {who}"),
+            (None, Some(Each::Input(input))) => format!(" for each of {input}"),
+            (None, Some(Each::Named(names))) => format!(" for each of {}", names.join(", ")),
+            (None, None) => String::new(),
+        };
         let when = step
             .when
             .as_deref()

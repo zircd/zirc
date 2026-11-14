@@ -26,8 +26,8 @@ use zirc_proto::card::{Card, Field, State as CardState};
 use zirc_proto::run::{Act, Change, MAX_OUTPUTS, Outcome, RunEvent, StepAction};
 use zirc_proto::state::{Level, State};
 use zirc_proto::workflow::{
-    Condition, EVERY_GRACE, MAX_SOURCE, Ref, Signal, Step, StepKind, Trigger, TriggerKind, Who,
-    Workflow, fill, landed_under, seconds,
+    Condition, EACH, EVERY_GRACE, Each, MAX_EACH, MAX_SOURCE, OneFails, Ref, Signal, Step,
+    StepKind, Trigger, TriggerKind, Who, Workflow, fill, landed_under, seconds,
 };
 
 /// The workflow `source` says, once it keeps every rule.
@@ -358,14 +358,44 @@ struct Run {
     /// Who last did a step, whom a wait's nudge asks.
     last: Option<String>,
     finished: Option<(Outcome, Option<String>)>,
+    /// For a run that is one holder's part of a step given to several ([`Step::each`]).
+    part: Option<Part>,
+}
+
+/// One holder's part of a step given to several: a run of its own under the run the step is
+/// of, which does that step alone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Part {
+    /// The run the step is of.
+    parent: String,
+    /// The step, by its place.
+    step: usize,
+    /// Whose part it is, as the step's `each` names them.
+    each: String,
+}
+
+/// Who started a part ([`Change::Started`]'s `by`): `each:`, the run it's part of, the
+/// step's id, and whose it is.
+const PART: &str = "each:";
+
+fn part_by(parent: &str, step: &str, each: &str) -> String {
+    format!("{PART}{parent}:{step}:{each}")
+}
+
+/// The run, step and holder `by` says a part is of, if it's a part's.
+fn part_of(by: &str) -> Option<(&str, &str, &str)> {
+    let mut parts = by.strip_prefix(PART)?.splitn(3, ':');
+    Some((parts.next()?, parts.next()?, parts.next()?))
 }
 
 impl Run {
-    /// The step it's on: the first neither done nor skipped.
+    /// The step it's on: the first neither done nor skipped; for a part, its one step.
     fn current(&self) -> Option<usize> {
-        self.steps
-            .iter()
-            .position(|s| !matches!(s, Status::Done(_) | Status::Skipped))
+        let open = |s: &Status| !matches!(s, Status::Done(_) | Status::Skipped);
+        match &self.part {
+            Some(part) => open(&self.steps[part.step]).then_some(part.step),
+            None => self.steps.iter().position(open),
+        }
     }
 
     fn value(&self, workflow: &Workflow, r: &Ref) -> Option<String> {
@@ -508,6 +538,57 @@ impl Engine {
         people
     }
 
+    /// Step `i` as `run` does it: for a part of a step given to several, that step going to
+    /// the one whose part it is.
+    fn step(&self, run: &Run, i: usize) -> Step {
+        let mut step = self.workflow.steps[i].clone();
+        if let Some(part) = run.part.as_ref().filter(|part| part.step == i) {
+            step.who = Some(part.each.clone());
+            step.each = None;
+        }
+        step
+    }
+
+    /// Whether `run` waits at step `i` for its parts: the step is given to several, and this
+    /// is the run it's of.
+    fn waits_on_parts(&self, run: &Run, i: usize) -> bool {
+        run.part.is_none() && self.workflow.steps[i].each.is_some()
+    }
+
+    /// The parts of step `i` of run `id`, in the order they were given out.
+    fn parts(&self, id: &str, i: usize) -> Vec<&Run> {
+        let mut parts: Vec<&Run> = self
+            .runs
+            .values()
+            .filter(|r| {
+                r.part
+                    .as_ref()
+                    .is_some_and(|p| p.parent == id && p.step == i)
+            })
+            .collect();
+        parts.sort_by_key(|r| r.id.rsplit('.').next().and_then(|n| n.parse::<u64>().ok()));
+        parts
+    }
+
+    /// Everyone step `step` of `run` goes to at once: those its `each` names.
+    fn each_of(run: &Run, step: &Step) -> Vec<String> {
+        let mut names: Vec<String> = match &step.each {
+            Some(Each::Named(names)) => names.clone(),
+            Some(Each::Input(input)) => who(
+                run,
+                &Step {
+                    who: Some(input.clone()),
+                    ..step.clone()
+                },
+            ),
+            None => Vec::new(),
+        };
+        let mut seen = std::collections::BTreeSet::new();
+        names.retain(|name| seen.insert(name.clone()));
+        names.truncate(MAX_EACH);
+        names
+    }
+
     /// The workflow it runs.
     #[must_use]
     pub fn workflow(&self) -> &Workflow {
@@ -564,7 +645,7 @@ impl Engine {
             .filter(|r| r.finished.is_none())
             .filter_map(|r| Some((r, r.current()?)))
             .map(|(r, i)| {
-                let step = &self.workflow.steps[i];
+                let step = &self.step(r, i);
                 let (to, stage, since) = match &r.steps[i] {
                     Status::Working(work) => (
                         work.by
@@ -587,10 +668,15 @@ impl Engine {
                 }
             })
             .collect();
-        // By number, not by name: master-10 after master-9.
+        // By number, not by name: master-10 after master-9, and its parts after it.
         going.sort_by_key(|g| {
-            let number = g.run.rsplit('-').next().and_then(|n| n.parse::<u64>().ok());
-            (number, g.run.clone())
+            let number = g.run.rsplit('-').next().unwrap_or_default();
+            let (run, part) = number.split_once('.').unwrap_or((number, "0"));
+            (
+                run.parse::<u64>().ok(),
+                part.parse::<u64>().ok(),
+                g.run.clone(),
+            )
         });
         going
     }
@@ -619,6 +705,9 @@ impl Engine {
                     return Vec::new();
                 };
                 let step = &self.workflow.steps[i];
+                if self.waits_on_parts(run, i) {
+                    return Vec::new();
+                }
                 match &run.steps[i] {
                     Status::Held { counts_at, .. } => vec![*counts_at],
                     Status::Working(work) => [time(&step.nudge), time(&step.escalate)]
@@ -990,7 +1079,7 @@ impl Engine {
         let Some(i) = run.current() else {
             return refuse(said, format!("{} has nothing left to do", action.run));
         };
-        let step = self.workflow.steps[i].clone();
+        let step = self.step(run, i);
         let step = &step;
         if step.id != action.step {
             return refuse(
@@ -1149,7 +1238,7 @@ impl Engine {
         } = *seen;
         let Some(run) = self.runs.get(id) else { return };
         let Some((i, work)) = run.work() else { return };
-        let step = self.workflow.steps[i].clone();
+        let step = self.step(run, i);
         if step.kind != StepKind::Task || !work.has(by) {
             return;
         }
@@ -1233,8 +1322,8 @@ impl Engine {
     fn dispatch(&mut self, id: &str, said: &mut Vec<Said>) {
         let Some(run) = self.runs.get(id) else { return };
         let Some((i, work)) = run.work() else { return };
-        let step = self.workflow.steps[i].clone();
-        if !work.to.is_empty() || run.escalated[i] {
+        let step = self.step(run, i);
+        if !work.to.is_empty() || run.escalated[i] || self.waits_on_parts(run, i) {
             return;
         }
         let Some(role) = role_of(&step) else { return };
@@ -1255,8 +1344,12 @@ impl Engine {
     fn stall(&mut self, id: &str, now: u64, said: &mut Vec<Said>) {
         let Some(run) = self.runs.get(id) else { return };
         let Some((i, work)) = run.work() else { return };
+        // A step given to several is followed in its parts, each a run of its own.
+        if self.waits_on_parts(run, i) {
+            return;
+        }
         let work = work.clone();
-        let step = self.workflow.steps[i].clone();
+        let step = self.step(run, i);
         let time = |t: &Option<String>| t.as_deref().and_then(|t| seconds(t).ok());
         let (nudge, escalate) = (time(&step.nudge), time(&step.escalate));
         let at = stage_words(&step, &work);
@@ -1342,10 +1435,16 @@ impl Engine {
             let Some(i) = run.current() else {
                 return self.finish(id, Outcome::Done, None, said);
             };
-            let step = self.workflow.steps[i].clone();
+            let step = self.step(run, i);
             let nick = self.workflow.nick.clone();
             match &run.steps[i] {
                 Status::Ahead => {}
+                Status::Working(_) if self.waits_on_parts(run, i) => {
+                    if self.parts_ended(id, i, &step, said) {
+                        continue;
+                    }
+                    return;
+                }
                 Status::Held { counts_at, .. } if now >= *counts_at => {
                     let text = format!("the yes to `{}` of `{id}` counts now", step.id);
                     let done = done(&step.id, &nick);
@@ -1388,6 +1487,9 @@ impl Engine {
                     };
                     self.say(id, change, text, said);
                 }
+                StepKind::Task if step.each.is_some() => {
+                    return self.give_each(id, run, &step, &says, now, said);
+                }
                 StepKind::Task | StepKind::Approve => {
                     if let Some(role) = role_of(&step) {
                         let to: Vec<String> = self.pick(&role, &[]).into_iter().collect();
@@ -1402,39 +1504,113 @@ impl Engine {
                         };
                         return self.say(id, change, text, said);
                     }
-                    let to = who(run, &step);
-                    // Nobody named, as CI with too many suspects to name: straight to the
-                    // fallback, which is there for whoever named doesn't do it.
-                    let fallback = match &step.fallback {
-                        Some(role) if to.is_empty() => self.fallback(role, &[]),
-                        _ => Vec::new(),
-                    };
-                    if !fallback.is_empty() {
-                        let text = format!(
-                            "`{id}` · `{}` names nobody: {}, over to you. {says}",
-                            step.id,
-                            mentions(&fallback),
-                        );
-                        let change = Change::Escalated {
-                            step: step.id.clone(),
-                            to: fallback,
-                        };
-                        return self.say(id, change, text, said);
-                    }
-                    if to.is_empty() {
-                        let why = Some(format!("`{}` has nobody to do it", step.id));
-                        return self.finish(id, Outcome::Failed, why, said);
-                    }
-                    let text = given(id, &step, &to, &says);
-                    let change = Change::Assigned {
-                        step: step.id.clone(),
-                        to,
-                    };
-                    self.say(id, change, text, said);
-                    return;
+                    return self.give_named(id, run, &step, &says, said);
                 }
             }
         }
+    }
+
+    /// Gives `step` of run `id` to those it names, an input's or a nick; to its fallback when
+    /// it names nobody; and fails the run when there's nobody at all.
+    fn give_named(&mut self, id: &str, run: &Run, step: &Step, says: &str, said: &mut Vec<Said>) {
+        let to = who(run, step);
+        // Nobody named, as CI with too many suspects to name: straight to the fallback,
+        // which is there for whoever named doesn't do it.
+        let fallback = match &step.fallback {
+            Some(role) if to.is_empty() => self.fallback(role, &[]),
+            _ => Vec::new(),
+        };
+        if !fallback.is_empty() {
+            let text = format!(
+                "`{id}` · `{}` names nobody: {}, over to you. {says}",
+                step.id,
+                mentions(&fallback),
+            );
+            let change = Change::Escalated {
+                step: step.id.clone(),
+                to: fallback,
+            };
+            return self.say(id, change, text, said);
+        }
+        if to.is_empty() {
+            let why = Some(format!("`{}` has nobody to do it", step.id));
+            return self.finish(id, Outcome::Failed, why, said);
+        }
+        let text = given(id, step, &to, says);
+        let change = Change::Assigned {
+            step: step.id.clone(),
+            to,
+        };
+        self.say(id, change, text, said);
+    }
+
+    /// Gives `step` of run `id` to each of those it names at once: a part for each, a run of
+    /// its own that does this step alone, numbered under this one.
+    fn give_each(
+        &mut self,
+        id: &str,
+        run: &Run,
+        step: &Step,
+        says: &str,
+        now: u64,
+        said: &mut Vec<Said>,
+    ) {
+        let each = Self::each_of(run, step);
+        if each.is_empty() {
+            let why = Some(format!("`{}` has nobody to do it", step.id));
+            return self.finish(id, Outcome::Failed, why, said);
+        }
+        let text = format!(
+            "`{id}` · `{}` goes to each of {}, a run of its own for each: {}",
+            step.id,
+            each.join(", "),
+            clip(says, 200)
+        );
+        // To nobody itself: its parts have its holders, and are followed for it.
+        let change = Change::Assigned {
+            step: step.id.clone(),
+            to: Vec::new(),
+        };
+        self.say(id, change, text, said);
+        for (n, whose) in each.iter().enumerate() {
+            let part = format!("{id}.{}", n + 1);
+            let mut inputs = run.inputs.clone();
+            inputs.insert(EACH.to_owned(), whose.clone());
+            let change = Change::Started {
+                by: part_by(id, &step.id, whose),
+                inputs,
+                version: self.version.clone(),
+            };
+            let text = format!("started `{part}`: `{}` of `{id}` for {whose}", step.id);
+            self.say(&part, change, text, said);
+            self.advance(&part, now, said);
+        }
+    }
+
+    /// Whether the parts of `step`, step `i` of run `id`, have all ended, and it's done:
+    /// said so, for the run to go on. If one failed, the run fails instead, once all have
+    /// ended or at once ([`Workflow::when_one_fails`]), and `false` is what's left to say.
+    fn parts_ended(&mut self, id: &str, i: usize, step: &Step, said: &mut Vec<Said>) -> bool {
+        let all = self.parts(id, i);
+        let going = all.iter().filter(|r| r.finished.is_none()).count();
+        let failed: Vec<String> = all
+            .iter()
+            .filter(|r| matches!(r.finished, Some((Outcome::Failed | Outcome::Cancelled, _))))
+            .filter_map(|r| r.part.as_ref().map(|whose| whose.each.clone()))
+            .collect();
+        let at_once = self.workflow.when_one_fails == Some(OneFails::Stop);
+        if !failed.is_empty() && (going == 0 || at_once) {
+            let why = Some(format!("`{}` failed for {}", step.id, failed.join(", ")));
+            self.finish(id, Outcome::Failed, why, said);
+            return false;
+        }
+        if going > 0 {
+            return false;
+        }
+        let text = format!("`{}` of `{id}`: all {} are done", step.id, all.len());
+        let nick = self.workflow.nick.clone();
+        self.say(id, done(&step.id, &nick), text, said);
+        true
     }
 
     /// Whether a wait's state is as it waits for.
@@ -1466,6 +1642,23 @@ impl Engine {
             why.as_deref().map(|w| format!(": {w}")).unwrap_or_default()
         );
         self.say(id, Change::Finished { outcome, why }, text, said);
+        // A run that ends takes its parts still going with it; a part that ends may be the
+        // last its run waited for.
+        let parts: Vec<String> = self
+            .runs
+            .values()
+            .filter(|r| r.finished.is_none())
+            .filter(|r| r.part.as_ref().is_some_and(|part| part.parent == id))
+            .map(|r| r.id.clone())
+            .collect();
+        for part in parts {
+            let why = Some(format!("`{id}` ended"));
+            self.finish(&part, Outcome::Cancelled, why, said);
+        }
+        if let Some(parent) = self.runs.get(id).and_then(|r| r.part.as_ref()) {
+            let (parent, now) = (parent.parent.clone(), self.now);
+            self.advance(&parent, now, said);
+        }
     }
 
     /// Applies `change` to run `id` and says it, with the run's card as it stands after.
@@ -1599,16 +1792,33 @@ impl Engine {
 
     fn started(&mut self, id: &str, by: &str, inputs: &BTreeMap<String, String>) {
         let count = self.workflow.steps.len();
+        let mut steps = vec![Status::Ahead; count];
+        // A part of a step given to several: that step alone, knowing what the run it's
+        // part of had done before it, whose outputs its words may read.
+        let part = part_of(by).and_then(|(parent, step, each)| {
+            let step = self.workflow.steps.iter().position(|s| s.id == step)?;
+            steps = match self.runs.get(parent) {
+                Some(parent) => parent.steps.clone(),
+                None => vec![Status::Skipped; count],
+            };
+            steps[step] = Status::Ahead;
+            Some(Part {
+                parent: parent.to_owned(),
+                step,
+                each: each.to_owned(),
+            })
+        });
         self.runs.insert(
             id.to_owned(),
             Run {
                 id: id.to_owned(),
                 by: by.to_owned(),
                 inputs: inputs.clone(),
-                steps: vec![Status::Ahead; count],
+                steps,
                 escalated: vec![false; count],
                 last: None,
                 finished: None,
+                part,
             },
         );
     }
@@ -1629,15 +1839,32 @@ impl Engine {
         let first = current
             .saturating_sub(shown / 2)
             .min(self.workflow.steps.len() - shown);
-        let fields = (first..first + shown)
-            .map(|i| Field {
-                label: clip(&self.workflow.steps[i].id, 24),
-                value: clip(&status_words(&run.steps[i], &self.workflow.steps[i]), 120),
-            })
-            .collect();
-        let title = match &self.workflow.description {
-            Some(about) => format!("{id}: {about}"),
-            None => format!("{id}: {}", self.workflow.name),
+        let field = |i: usize| {
+            let step = self.step(run, i);
+            let value = if self.waits_on_parts(run, i) && matches!(run.steps[i], Status::Working(_))
+            {
+                let parts = self.parts(id, i);
+                let done = parts.iter().filter(|r| r.finished.is_some()).count();
+                format!("{done} of {} done", parts.len())
+            } else {
+                status_words(&run.steps[i], &step)
+            };
+            Field {
+                label: clip(&step.id, 24),
+                value: clip(&value, 120),
+            }
+        };
+        let fields = match &run.part {
+            Some(part) => vec![field(part.step)],
+            None => (first..first + shown).map(field).collect(),
+        };
+        let title = match (&run.part, &self.workflow.description) {
+            (Some(part), _) => format!(
+                "{id}: {} for {}",
+                self.workflow.steps[part.step].id, part.each
+            ),
+            (None, Some(about)) => format!("{id}: {about}"),
+            (None, None) => format!("{id}: {}", self.workflow.name),
         };
         let about = match run.work() {
             Some((_, Work { by: Some(by), .. })) => Some(by.clone()),
