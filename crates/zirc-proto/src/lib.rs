@@ -21,6 +21,7 @@ pub mod guest_terminal;
 pub mod images;
 pub mod irc;
 pub mod join;
+pub mod lines;
 pub mod link;
 pub mod logging;
 pub mod login;
@@ -1180,6 +1181,7 @@ pub fn live(event: &Event) -> bool {
         Event::Custom { kind, .. } => {
             kind == LEASE_KIND
                 || kind == RENEWAL_KIND
+                || kind == lines::KIND
                 || kind == session::LIVE_KIND
                 || activity::KINDS.contains(&kind.as_str())
         }

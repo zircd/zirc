@@ -336,6 +336,8 @@ pub struct Presence {
     tools: BTreeMap<(String, String), String>,
     /// (nick, session) → the picture the session goes by, as its latest message said.
     avatars: BTreeMap<(String, String), String>,
+    /// channel → nick → session → the lines its work changes ([`zirc_proto::lines`]).
+    lines: BTreeMap<String, BTreeMap<String, BTreeMap<String, zirc_proto::lines::Lines>>>,
 }
 
 impl Presence {
@@ -426,6 +428,11 @@ impl Presence {
                     at,
                 };
                 self.landed(channel, landing);
+            }
+            Event::Custom { .. }
+                if let Some(lines) = zirc_proto::lines::Lines::of(&message.event) =>
+            {
+                self.lines_said(channel, nick, session, lines);
             }
             // Nothing more to keep: a team's own event, for one, says nothing about who's
             // working on what.
@@ -657,10 +664,68 @@ impl Presence {
         claims
     }
 
+    /// What `session` on `nick` says it changes: one that's not `continued` replaces what
+    /// was said before.
+    fn lines_said(
+        &mut self,
+        channel: &str,
+        nick: &str,
+        session: &str,
+        lines: zirc_proto::lines::Lines,
+    ) {
+        let sessions = self
+            .lines
+            .entry(channel.to_owned())
+            .or_default()
+            .entry(nick.to_owned())
+            .or_default();
+        match sessions.get_mut(session) {
+            Some(known) if lines.continued && known.base == lines.base => {
+                known.lines.extend(lines.lines);
+            }
+            _ if lines.lines.is_empty() => {
+                sessions.remove(session);
+            }
+            _ => {
+                sessions.insert(session.to_owned(), lines);
+            }
+        }
+    }
+
+    /// The lines `session` on `nick` last said its work in `channel` changes, and the
+    /// commit they're of, if it said.
+    #[must_use]
+    pub fn lines_of(
+        &self,
+        channel: &str,
+        nick: &str,
+        session: &str,
+    ) -> Option<&zirc_proto::lines::Lines> {
+        self.lines.get(channel)?.get(nick)?.get(session)
+    }
+
+    /// Every session's lines said in `channel`: its nick, the session, and the lines.
+    #[must_use]
+    pub fn all_lines(&self, channel: &str) -> Vec<(String, String, zirc_proto::lines::Lines)> {
+        self.lines
+            .get(channel)
+            .into_iter()
+            .flatten()
+            .flat_map(|(nick, sessions)| {
+                sessions
+                    .iter()
+                    .map(|(session, lines)| (nick.clone(), session.clone(), lines.clone()))
+            })
+            .collect()
+    }
+
     /// `nick` left `channel`: whatever it was working on or taking on there no longer
     /// counts.
     pub fn left(&mut self, channel: &str, nick: &str) {
         if let Some(members) = self.working.get_mut(channel) {
+            members.remove(nick);
+        }
+        if let Some(members) = self.lines.get_mut(channel) {
             members.remove(nick);
         }
         if let Some(members) = self.alerted.get_mut(channel) {
@@ -679,6 +744,7 @@ impl Presence {
         let channels: BTreeSet<String> = self
             .working
             .keys()
+            .chain(self.lines.keys())
             .chain(self.claims.keys())
             .chain(self.intents.keys())
             .cloned()
@@ -693,6 +759,11 @@ impl Presence {
         for members in self.working.values_mut() {
             if let Some(paths) = members.remove(nick) {
                 members.insert(new.to_owned(), paths);
+            }
+        }
+        for members in self.lines.values_mut() {
+            if let Some(lines) = members.remove(nick) {
+                members.insert(new.to_owned(), lines);
             }
         }
         for members in self.alerted.values_mut() {
@@ -731,6 +802,7 @@ impl Presence {
     /// Forgets everything heard from the server, as when the connection drops.
     pub fn clear(&mut self) {
         self.working.clear();
+        self.lines.clear();
         self.alerted.clear();
         self.claims.clear();
         self.intents.clear();

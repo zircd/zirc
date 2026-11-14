@@ -29,6 +29,8 @@ pub(super) struct Said {
     base: Option<String>,
     /// The paths its own commits change, beyond `paths`.
     committed: BTreeSet<String>,
+    /// The lines of `base` its work changes, file by file.
+    lines: BTreeMap<String, Vec<[u32; 2]>>,
 }
 
 impl Said {
@@ -43,6 +45,26 @@ impl Said {
             base: self.base.as_deref().map(said_base),
             committed: self.committed.into_iter().collect(),
         }
+    }
+
+    /// What says the lines it changes ([`zirc_proto::lines`]), when it's built on a known
+    /// commit: none of a set without one. A set that's gone says none, which clears what
+    /// was said.
+    pub(super) fn lines(&self) -> Option<Event> {
+        let gone = self.paths.is_empty() && self.committed.is_empty();
+        let base = match &self.base {
+            Some(base) => said_base(base),
+            None if gone => String::new(),
+            None => return None,
+        };
+        Some(
+            zirc_proto::lines::Lines {
+                base,
+                continued: false,
+                lines: self.lines.clone(),
+            }
+            .event(),
+        )
     }
 
     /// Whose it is.
@@ -128,6 +150,7 @@ impl Daemon {
                         paths: set.paths,
                         base: set.base,
                         committed: set.committed,
+                        lines: set.lines,
                     };
                     ((worktree_name(root), set.branch), said)
                 })
@@ -139,6 +162,18 @@ impl Daemon {
     /// This machine's sets in `channel` as they are now, by place.
     pub(super) fn sets_now(&self, channel: &str) -> Sets {
         self.sets_said(channel).into_iter().collect()
+    }
+
+    /// Tells `channel` the lines `said`, `session`'s set, changes, in as many parts as it
+    /// takes.
+    pub(super) fn publish_lines(&mut self, channel: &str, session: &str, said: &Said) {
+        let Some(event) = said.lines() else {
+            return;
+        };
+        let parts = zirc_core::send::fitting_as(&self.signed(session, event.clone()), event);
+        for part in parts {
+            self.publish(channel, session, part);
+        }
     }
 
     /// Notes that `channel` was just told this machine's sets whole.
@@ -163,7 +198,12 @@ impl Daemon {
             }
             self.worktree_updates.due.remove(&channel);
             let sets = self.sets_now(&channel);
-            let events: Vec<(String, Event)> = changes(told, &sets)
+            let changed = changes(told, &sets);
+            let lines: Vec<(String, Said)> = changed
+                .iter()
+                .map(|(_, said)| (said.session().to_owned(), said.clone()))
+                .collect();
+            let events: Vec<(String, Event)> = changed
                 .into_iter()
                 .map(|(place, said)| {
                     let session = said.session().to_owned();
@@ -197,6 +237,9 @@ impl Daemon {
             }
             for (session, event) in events {
                 self.publish(&channel, &session, event);
+            }
+            for (session, said) in lines {
+                self.publish_lines(&channel, &session, &said);
             }
             self.worktree_updates
                 .told

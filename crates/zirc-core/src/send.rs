@@ -404,6 +404,9 @@ fn smaller_intent(event: Event) -> Smaller {
 /// kept whole without the data when that fits; otherwise it's halved, the data with the
 /// first half while it fits there, then nowhere.
 fn smaller_custom(sender: &Message, event: Event) -> Smaller {
+    if let Some(lines) = zirc_proto::lines::Lines::of(&event) {
+        return smaller_lines(lines);
+    }
     let Event::Custom { kind, data, text } = event else {
         return Smaller::Nothing;
     };
@@ -434,6 +437,49 @@ fn smaller_custom(sender: &Message, event: Event) -> Smaller {
         Smaller::Nothing
     } else {
         Smaller::Shorter(bare)
+    }
+}
+
+/// A session's lines made smaller: its files halved, the second half adding to the first;
+/// one file alone, its spans merged into one, which still covers every line it changes.
+fn smaller_lines(lines: zirc_proto::lines::Lines) -> Smaller {
+    let zirc_proto::lines::Lines {
+        base,
+        continued,
+        lines: mut files,
+    } = lines;
+    if files.len() > 1 {
+        let second = files.split_off(
+            &files
+                .keys()
+                .nth(files.len() / 2)
+                .cloned()
+                .unwrap_or_default(),
+        );
+        let part = |continued, lines| zirc_proto::lines::Lines {
+            base: base.clone(),
+            continued,
+            lines,
+        };
+        return Smaller::Split(vec![
+            part(continued, files).event(),
+            part(true, second).event(),
+        ]);
+    }
+    match files.iter().next() {
+        Some((path, spans)) if spans.len() > 1 => {
+            let spans = zirc_proto::lines::coarse(spans.clone(), 1);
+            Smaller::Shorter(
+                zirc_proto::lines::Lines {
+                    base,
+                    continued,
+                    lines: [(path.clone(), spans)].into(),
+                }
+                .event(),
+            )
+        }
+        // A path too long for a line: said nothing of, which a reader takes as lines unknown.
+        _ => Smaller::Nothing,
     }
 }
 

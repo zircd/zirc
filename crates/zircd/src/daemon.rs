@@ -101,6 +101,9 @@ pub enum Input {
     /// The overlaps between this machine's worktrees in this channel, with the lines Git
     /// says they share ([`Daemon::check_overlaps`]).
     Predicted(String, Vec<LocalOverlap>),
+    /// Of this machine's worktrees and other machines' sessions, the lines both change, as
+    /// Git says from the lines those sessions said ([`Daemon::predict_remote`]).
+    RemotePredicted(Vec<(fit::RemoteKey, fit::Predicted)>),
     /// The request waiting on the server with this token has waited long enough.
     Expired(u64),
     /// Whether this daemon watches the repository with this root, or will once its restore
@@ -410,6 +413,8 @@ struct Set<'a> {
     base: Option<String>,
     /// The paths its own commits change beyond `paths` ([`git::Snapshot::committed`]).
     committed: BTreeSet<String>,
+    /// The lines of `base` its work changes ([`git::Snapshot::lines`]).
+    lines: BTreeMap<String, Vec<[u32; 2]>>,
 }
 
 impl Watched {
@@ -426,6 +431,7 @@ impl Watched {
             paths: self.snapshot.dirty.clone(),
             base: self.snapshot.base.clone(),
             committed: self.snapshot.committed.clone(),
+            lines: self.snapshot.lines.clone(),
         }]
     }
 
@@ -1013,6 +1019,7 @@ impl Daemon {
             }
             Input::PushChecked(clashes) => self.push_checked(clashes),
             Input::Predicted(channel, overlaps) => self.predicted(&channel, overlaps),
+            Input::RemotePredicted(predicted) => self.remote_predicted(predicted),
             Input::Holds(root, answer) => {
                 let _ = answer.send(self.holds(&root));
             }

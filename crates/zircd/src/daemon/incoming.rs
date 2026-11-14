@@ -202,6 +202,8 @@ impl Daemon {
                     .apply(&channel, from, &delivery.message, now(), default.as_deref());
                 if matches!(delivery.message.event, Event::Working { .. }) {
                     self.check_overlaps(&channel);
+                } else if zirc_proto::lines::Lines::of(&delivery.message.event).is_some() {
+                    self.predict_remote(&channel);
                 }
                 let push = delivery.message.event.clone();
                 self.tell_watchers(&Response::Delivery(delivery));

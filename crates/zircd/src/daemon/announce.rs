@@ -164,8 +164,9 @@ impl Daemon {
     /// Unless `again`, as for someone who's just joined, not when it would say what it said
     /// there last. `now` is when it's said, from which the next waits [`Daemon::announce_every`].
     pub(super) fn announce(&mut self, channel: &str, again: bool, now: Instant) {
-        let mut sets: Vec<(String, Event)> = self
-            .sets_said(channel)
+        let said = self.sets_said(channel);
+        let mut sets: Vec<(String, Event)> = said
+            .clone()
             .into_iter()
             .map(|(place, said)| {
                 let session = said.session().to_owned();
@@ -216,6 +217,9 @@ impl Daemon {
             }
             self.publish(channel, &session, event);
         }
+        for (_, said) in said {
+            self.publish_lines(channel, said.session(), &said);
+        }
         self.told_whole(channel);
     }
 
@@ -223,6 +227,7 @@ impl Daemon {
     /// with other machines now, and between this machine's own worktrees once Git has said
     /// which lines they share, in a task of its own ([`Input::Predicted`]).
     pub(super) fn check_overlaps(&mut self, channel: &str) {
+        self.predict_remote(channel);
         let mine = self.mine(channel);
         let alerts: Vec<(Response, bool)> = self
             .presence

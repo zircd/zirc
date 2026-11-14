@@ -34,6 +34,10 @@ pub struct Snapshot {
     /// The paths HEAD's own commits since `base` change, beyond the `dirty` ones: none once
     /// those commits are all on the default branch, as after a landing.
     pub committed: BTreeSet<String>,
+    /// For each of the `dirty` and `committed` paths Git tracks, the lines of `base` the work
+    /// here changes, as [`zirc_proto::lines::Lines`] says them: coarsened to
+    /// [`zirc_proto::lines::MOST_SPANS`].
+    pub lines: BTreeMap<String, Vec<[u32; 2]>>,
 }
 
 /// How many paths at least a scan must newly find changed, nearly all of them missing from
@@ -86,8 +90,13 @@ pub enum Change {
 pub fn diff(before: &Snapshot, after: &Snapshot) -> Vec<Change> {
     let mut changes = Vec::new();
 
-    if (&after.dirty, &after.base, &after.committed)
-        != (&before.dirty, &before.base, &before.committed)
+    if (&after.dirty, &after.base, &after.committed, &after.lines)
+        != (
+            &before.dirty,
+            &before.base,
+            &before.committed,
+            &before.lines,
+        )
     {
         changes.push(Change::Working(after.dirty.clone()));
     }
@@ -363,6 +372,10 @@ pub async fn snapshot(root: &Path) -> Result<Snapshot> {
         .cloned()
         .collect();
     let (base, committed) = built_on(root, head.as_deref(), &dirty).await;
+    let lines = match &base {
+        Some(base) => own_lines(root, base, dirty.union(&committed).cloned().collect()).await,
+        None => BTreeMap::new(),
+    };
     Ok(Snapshot {
         branch,
         head,
@@ -372,7 +385,26 @@ pub async fn snapshot(root: &Path) -> Result<Snapshot> {
         missing,
         base,
         committed,
+        lines,
     })
+}
+
+/// The lines of `base` the worktree at `root` changes in `paths`, coarsened.
+async fn own_lines(root: &Path, base: &str, paths: Vec<String>) -> BTreeMap<String, Vec<[u32; 2]>> {
+    if paths.is_empty() {
+        return BTreeMap::new();
+    }
+    hunks(root, base, None, &paths)
+        .await
+        .into_iter()
+        .map(|(path, hunks)| {
+            let spans = hunks.iter().map(|hunk| [hunk.start, hunk.len]).collect();
+            (
+                path,
+                zirc_proto::lines::coarse(spans, zirc_proto::lines::MOST_SPANS),
+            )
+        })
+        .collect()
 }
 
 /// What the work at `root`, whose HEAD is `head`, is built on, and the paths its own
