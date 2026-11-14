@@ -26,8 +26,25 @@ use zirc_proto::{Event, Message};
 use crate::exporter::{self, PRIVMSG};
 
 /// The store's format. A file with another is built again from Ergo's history; live
-/// records it held are lost. 2: a state's level and owner, which 1 missed.
-pub const VERSION: &str = "2";
+/// records it held are lost, so a format that only adds is brought up to date in place
+/// ([`migrate`]). 2: a state's level and owner, which 1 missed. 3: whether a working set
+/// says again what its session said earlier in the hour ([`AGAIN`]), from 2 in place.
+pub const VERSION: &str = "3";
+
+/// An hour, in nanoseconds: how far apart a session's like working sets are both kept.
+const HOUR: i64 = 3_600 * 1_000_000_000;
+
+/// Whether the row being recorded (?1 its Ergo row, ?2 its time, ?3 its session, ?4 agent,
+/// ?5 task, ?6 data) is a working set its session said, the same, earlier in the same hour:
+/// most of the store, as zircd says a working set each time it changes or is asked, and
+/// nothing a reader of who changed what, to the hour, needs twice ([`rows`]' `collapse`).
+const AGAIN: &str = "EXISTS (
+    SELECT 1 FROM rows e
+    WHERE e.kind = 'working' AND e.session = ?3
+      AND e.nanotime >= ?2 / 3600000000000 * 3600000000000 AND e.nanotime <= ?2
+      AND e.agent = ?4 AND e.task IS ?5 AND e.data IS ?6
+      AND (?1 IS NULL OR e.ergo IS NOT ?1)
+)";
 
 /// How many history rows one step of [`catch_up`] reads and commits.
 const BATCH: usize = 1_000;
@@ -64,6 +81,10 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
         .optional()
         .unwrap_or(None);
     if version.as_deref() == Some(VERSION) {
+        return Ok(connection);
+    }
+    if version.as_deref() == Some("2") {
+        migrate(&connection)?;
         return Ok(connection);
     }
     if version.is_some() {
@@ -103,14 +124,54 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
              kind TEXT NOT NULL,
              level TEXT,
              task TEXT,
-             data TEXT
+             data TEXT,
+             -- A working set said again in its hour ([`AGAIN`]).
+             again INTEGER NOT NULL DEFAULT 0
          );
          CREATE INDEX rows_time ON rows (nanotime, id);
          CREATE INDEX rows_kind ON rows (kind, nanotime);
+         {REPEATS}
          INSERT INTO meta VALUES ('version', '{VERSION}'), ('last', '0');
          COMMIT;"
     ))?;
     Ok(connection)
+}
+
+/// Each session's working sets by time, for [`AGAIN`].
+const REPEATS: &str =
+    "CREATE INDEX rows_repeats ON rows (session, nanotime) WHERE kind = 'working';";
+
+/// Brings a store of format 2 up to [`VERSION`], keeping its live records: marks the working
+/// sets said again in their hour, as [`insert`] does from now on. Once, under a write lock,
+/// so a second connection opening meanwhile waits and finds it done.
+fn migrate(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch("BEGIN IMMEDIATE;")?;
+    let done = (|| {
+        let version: String =
+            connection.query_row("SELECT value FROM meta WHERE key = 'version'", [], |row| {
+                row.get(0)
+            })?;
+        if version == VERSION {
+            return Ok(());
+        }
+        connection.execute_batch(&format!(
+            "ALTER TABLE rows ADD COLUMN again INTEGER NOT NULL DEFAULT 0;
+             {REPEATS}
+             UPDATE rows SET again = 1 WHERE id IN (
+                 SELECT id FROM (
+                     SELECT id, ROW_NUMBER() OVER (
+                         PARTITION BY session, agent, task, nanotime / {HOUR}, data ORDER BY id
+                     ) AS nth
+                     FROM rows WHERE kind = 'working' AND session IS NOT NULL
+                 ) WHERE nth > 1
+             );
+             UPDATE meta SET value = '{VERSION}' WHERE key = 'version';"
+        ))?;
+        info!("the activity store marks working sets said again in their hour");
+        Ok(())
+    })();
+    connection.execute_batch(if done.is_ok() { "COMMIT;" } else { "ROLLBACK;" })?;
+    done
 }
 
 fn open_file(path: &Path) -> rusqlite::Result<Connection> {
@@ -403,11 +464,20 @@ fn insert(
     direct: bool,
     fact: &Fact,
 ) -> rusqlite::Result<()> {
+    let data = fact.data.as_ref().map(Value::to_string);
+    let again = fact.kind == "working"
+        && fact.session.is_some()
+        && connection
+            .prepare_cached(&format!("SELECT {AGAIN}"))?
+            .query_row(
+                params![ergo, nanotime, fact.session, fact.agent, fact.task, data],
+                |row| row.get::<_, bool>(0),
+            )?;
     connection.execute(
         "INSERT OR REPLACE INTO rows \
          (ergo, msgid, nanotime, channel, direct, account, agent, session, name, tool, kind, \
-          level, task, data) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+          level, task, data, again) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             ergo,
             msgid,
@@ -422,7 +492,8 @@ fn insert(
             fact.kind,
             fact.level,
             fact.task,
-            fact.data.as_ref().map(Value::to_string),
+            data,
+            again,
         ],
     )?;
     Ok(())
@@ -539,11 +610,11 @@ pub struct Row {
 /// Rows from `since` (nanoseconds) on, oldest first, after the row `after` when paging, at
 /// most `limit` ([`MOST`] at most).
 ///
-/// With `collapse`, a session's working set that says again, in the same hour, what an earlier
-/// row since `since` said (the same agent, task and data) is left out: most of the store, as
-/// zircd says a working set each time it changes or is asked, and nothing a reader of who
-/// changed what, and when to the hour, needs twice. The Insights page reads 16 days of rows
-/// for its 7-day window, which without it took the web app past its memory.
+/// With `collapse`, without the working sets said again in their hour ([`AGAIN`]), most of the
+/// store: the Insights page reads 16 days of rows for its 7-day window, which without it took
+/// the web app past its memory and the edge's timeout. Marked as each is recorded, so it costs
+/// a read nothing. One whose first in the hour is older than `since`, or pruned, is left out
+/// all the same.
 ///
 /// # Errors
 ///
@@ -555,26 +626,18 @@ pub fn rows(
     limit: usize,
     collapse: bool,
 ) -> rusqlite::Result<Vec<Row>> {
-    const COLUMNS: &str = "id, nanotime, msgid, channel, direct, ergo IS NULL, account, agent, \
-                           session, name, tool, kind, level, task, data";
-    // The first of each session's like working sets in an hour, counted from `since` so that
-    // every page of one read agrees on which that is.
-    let sql = if collapse {
-        format!(
-            "SELECT {COLUMNS} FROM (
-                 SELECT *, kind = 'working' AND session IS NOT NULL AND ROW_NUMBER() OVER (
-                     PARTITION BY kind, session, agent, task, nanotime / 3600000000000, data
-                     ORDER BY id
-                 ) > 1 AS again
-                 FROM rows WHERE nanotime >= ?1
-             ) WHERE NOT again AND id > ?2 ORDER BY id LIMIT ?3"
-        )
-    } else {
-        format!("SELECT {COLUMNS} FROM rows WHERE nanotime >= ?1 AND id > ?2 ORDER BY id LIMIT ?3")
-    };
-    let mut statement = connection.prepare_cached(&sql)?;
+    let sql = "SELECT id, nanotime, msgid, channel, direct, ergo IS NULL, account, agent, \
+                      session, name, tool, kind, level, task, data \
+               FROM rows WHERE nanotime >= ?1 AND id > ?2 AND NOT (?4 AND again) \
+               ORDER BY id LIMIT ?3";
+    let mut statement = connection.prepare_cached(sql)?;
     let rows = statement.query_map(
-        params![since, after, i64::try_from(limit.min(MOST)).unwrap_or(0)],
+        params![
+            since,
+            after,
+            i64::try_from(limit.min(MOST)).unwrap_or(0),
+            collapse
+        ],
         |row| {
             Ok(Row {
                 id: row.get(0)?,
@@ -824,9 +887,32 @@ mod tests {
             paged.extend(page);
         }
         assert_eq!(msgids(&paged), msgids(&all));
-        // Counted from `since`: from the second row on, it's the first of its kind.
-        let from_m2 = rows(&store, 20 * SECOND, 0, 100, true).unwrap();
-        assert_eq!(msgids(&from_m2)[..2], ["m2", "m3"]);
+        // Marked as recorded: a store of the format before is marked the same, its live
+        // records kept.
+        let wake = Message::new(
+            "cc-1",
+            Wake {
+                id: "w1".into(),
+                why: "mention".into(),
+                kind: "text".into(),
+                level: None,
+                line: None,
+                automatic: false,
+            }
+            .event(),
+        );
+        assert!(record_live(&store, hour + 30 * SECOND, Some("ada-mbp".into()), &wake).unwrap());
+        store
+            .execute_batch(
+                "DROP INDEX rows_repeats; ALTER TABLE rows DROP COLUMN again;
+                 UPDATE meta SET value = '2' WHERE key = 'version';",
+            )
+            .unwrap();
+        drop(store);
+        let store = open(&path_for(&path)).unwrap();
+        let again = rows(&store, 0, 0, 100, true).unwrap();
+        assert_eq!(msgids(&again[..5]), ["m1", "m3", "m4", "m6", "m7"]);
+        assert_eq!(again.len(), 6, "the live record kept");
     }
 
     #[test]
