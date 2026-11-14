@@ -9,7 +9,7 @@ use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use zirc_core::ipc::{Request, Response};
 use zirc_core::states::{self, LOOK_BACK, Said};
-use zirc_proto::state::Level;
+use zirc_proto::state::{HOLD, Level};
 
 use crate::args::{OrgArg, session_or_user};
 use crate::client::{ask, ask_in, here, org_here, waits};
@@ -66,6 +66,11 @@ enum StateCommand {
         /// Where to read more, such as a failed build's log.
         #[arg(long)]
         link: Option<String>,
+        /// When it ends by itself, as how long from now (90m, 2h) or a time (2026-11-14T15:00:00Z):
+        /// it reads as fine from then, and this machine says so. A hold on landing, landings
+        /// broken, must say it.
+        #[arg(long, value_name = "WHEN")]
+        until: Option<String>,
         /// Who's saying it. Defaults to $ZIRC_SESSION, then $USER.
         #[arg(long, env = "ZIRC_SESSION")]
         session: Option<String>,
@@ -104,15 +109,18 @@ pub(super) async fn state(socket: &Path, args: StateArgs, out: &mut impl Write) 
             why,
             owner,
             link,
+            until,
             session,
             org,
         }) => {
+            let until = until_of(&name, level, until.as_deref(), crate::catchup::now())?;
             let saying = Saying {
                 name,
                 level,
                 why,
                 owner,
                 link,
+                until,
                 session,
                 org,
             };
@@ -130,6 +138,7 @@ pub(super) async fn state(socket: &Path, args: StateArgs, out: &mut impl Write) 
                 why,
                 owner: None,
                 link: None,
+                until: None,
                 session,
                 org,
             };
@@ -139,6 +148,32 @@ pub(super) async fn state(socket: &Path, args: StateArgs, out: &mut impl Write) 
     }
 }
 
+/// When a state said now, at `now`, ends by itself, as a time tag, from `--until`'s `when`:
+/// how long from now, or a time. A hold on landing ([`HOLD`]) that isn't fine must say it.
+fn until_of(name: &str, level: Level, when: Option<&str>, now: u64) -> Result<Option<String>> {
+    let Some(when) = when else {
+        if name == HOLD && level != Level::Ok {
+            bail!(
+                "{HOLD} {} is a hold on every landing: say when it ends, with --until 2h or --until 2026-11-14T15:00:00Z",
+                level.word()
+            );
+        }
+        return Ok(None);
+    };
+    let at = zirc_core::time::duration(when)
+        .map(|seconds| now.saturating_add(seconds))
+        .or_else(|| zirc_core::time::seconds_at(when))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "--until {when}: say how long from now (90m, 2h) or a time (2026-11-14T15:00:00Z)"
+            )
+        })?;
+    if at <= now {
+        bail!("--until {when} has passed");
+    }
+    Ok(Some(zirc_core::time::tag(at)))
+}
+
 /// How something stands, as `zirc state set` and `zirc state clear` say it.
 struct Saying {
     name: String,
@@ -146,6 +181,7 @@ struct Saying {
     why: Option<String>,
     owner: Option<String>,
     link: Option<String>,
+    until: Option<String>,
     session: Option<String>,
     org: Option<String>,
 }
@@ -157,6 +193,7 @@ async fn set(socket: &Path, saying: Saying, out: &mut impl Write) -> Result<()> 
         why,
         owner,
         link,
+        until,
         session,
         org,
     } = saying;
@@ -169,6 +206,7 @@ async fn set(socket: &Path, saying: Saying, out: &mut impl Write) -> Result<()> 
         why,
         owner,
         link,
+        until,
     };
     let Response::Channel { channel, .. } = ask_in(socket, org.as_deref(), request).await? else {
         return Err(crate::client::unexpected());
@@ -177,7 +215,8 @@ async fn set(socket: &Path, saying: Saying, out: &mut impl Write) -> Result<()> 
     Ok(())
 }
 
-/// The states in #ops's newest `limit` messages, the newest of each name.
+/// The states in #ops's newest `limit` messages, the newest of each name, as they stand now:
+/// one that has ended by itself is fine ([`states::in_force`]).
 pub(super) async fn read(socket: &Path, org: Option<&str>, limit: usize) -> Result<Vec<Said>> {
     let request = Request::Read {
         target: states::CHANNEL.to_owned(),
@@ -188,7 +227,11 @@ pub(super) async fn read(socket: &Path, org: Option<&str>, limit: usize) -> Resu
     let Response::Messages { messages } = waits(socket, org, request).await? else {
         return Err(crate::client::unexpected());
     };
-    Ok(states::current(&messages))
+    let now = zirc_core::time::tag(crate::catchup::now());
+    Ok(states::current(&messages)
+        .into_iter()
+        .map(|said| states::in_force(said, &now))
+        .collect())
 }
 
 /// The channel of the watched repository this is run in, if it's in one.
@@ -302,4 +345,28 @@ pub(super) async fn troubled_lines(socket: &Path) -> Vec<String> {
         .into_iter()
         .map(|said| format!("state: {}", line(said, now)))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOW: u64 = 1_794_668_400;
+
+    #[test]
+    fn a_hold_says_when_it_ends_and_ends_ahead() {
+        assert!(until_of(HOLD, Level::Broken, None, NOW).is_err());
+        assert_eq!(until_of(HOLD, Level::Ok, None, NOW).unwrap(), None);
+        assert_eq!(until_of("master", Level::Broken, None, NOW).unwrap(), None);
+        assert_eq!(
+            until_of(HOLD, Level::Broken, Some("2h"), NOW).unwrap(),
+            Some(zirc_core::time::tag(NOW + 7200))
+        );
+        assert_eq!(
+            until_of(HOLD, Level::Broken, Some("2026-11-14T15:00:00Z"), 0).unwrap(),
+            Some("2026-11-14T15:00:00.000Z".into())
+        );
+        assert!(until_of(HOLD, Level::Broken, Some("2026-11-14T15:00:00Z"), NOW * 2).is_err());
+        assert!(until_of(HOLD, Level::Broken, Some("later"), NOW).is_err());
+    }
 }

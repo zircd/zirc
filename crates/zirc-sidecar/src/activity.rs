@@ -750,6 +750,7 @@ mod tests {
             why: Some("the login page fails".into()),
             owner: Some("cc-1".into()),
             link: Some("https://x".into()),
+            until: None,
         };
         let message = Message::new("ci", state.event());
         assert_eq!(

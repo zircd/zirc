@@ -79,7 +79,16 @@ pub struct State {
     /// Where to read more, such as a failed build's log.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<String>,
+    /// When it ends by itself, as a time tag (`2026-11-14T15:00:00.000Z`): a hold, such as
+    /// `landings` broken while a migration runs, reads as fine from then on
+    /// ([`State::ended`]). Readers that predate it show it as it was said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub until: Option<String>,
 }
+
+/// The name of the team's hold on landing: `landings` broken, until a time it must say,
+/// stops every landing, its fixes too (the user's decisions, 14 Nov 2026).
+pub const HOLD: &str = "landings";
 
 /// What's wrong with `name` as a state's name, if anything.
 #[must_use]
@@ -118,6 +127,30 @@ impl State {
         }
     }
 
+    /// Whether it has ended by itself by `now`, a time tag as `until` is: RFC 3339 in UTC
+    /// sorts as text, so no clock is needed to compare them.
+    #[must_use]
+    pub fn ended(&self, now: &str) -> bool {
+        self.until.as_deref().is_some_and(|until| until <= now)
+    }
+
+    /// The state that says it has ended by itself: fine, saying until when it stood as it did.
+    #[must_use]
+    pub fn over(&self) -> Self {
+        Self {
+            level: Level::Ok,
+            why: Some(format!(
+                "it was {} until {}",
+                self.level.word(),
+                self.until.as_deref().unwrap_or("?")
+            )),
+            owner: None,
+            link: None,
+            until: None,
+            ..self.clone()
+        }
+    }
+
     /// What it says, for people: `#monorepo master is broken: //web:e2e fails since build
     /// 1008; cc-2b76ff is on it`, or `#monorepo master is ok`.
     #[must_use]
@@ -125,6 +158,9 @@ impl State {
         let mut said = format!("{} {} is {}", self.repo, self.name, self.level.word());
         if let Some(why) = &self.why {
             said = format!("{said}: {why}");
+        }
+        if let Some(until) = &self.until {
+            said = format!("{said}; until {until}");
         }
         if let Some(owner) = &self.owner {
             said = format!("{said}; {owner} is on it");
@@ -149,6 +185,7 @@ mod tests {
             why: Some("//web:e2e fails since build 1008".into()),
             owner: Some("cc-2b76ff".into()),
             link: None,
+            until: None,
         };
         let event = state.event();
         assert!(crate::check_kind(KIND).is_none());
@@ -164,6 +201,24 @@ mod tests {
             ..state
         };
         assert_eq!(fine.text(), "#monorepo master is ok");
+        let held = State {
+            name: HOLD.into(),
+            level: Level::Broken,
+            why: Some("the database moves".into()),
+            until: Some("2026-11-14T15:00:00.000Z".into()),
+            ..fine
+        };
+        assert_eq!(
+            held.text(),
+            "#monorepo landings is broken: the database moves; until 2026-11-14T15:00:00.000Z"
+        );
+        assert!(!held.ended("2026-11-14T14:59:59.999Z"));
+        assert!(held.ended("2026-11-14T15:00:00.000Z"));
+        assert_eq!(
+            held.over().text(),
+            "#monorepo landings is ok: it was broken until 2026-11-14T15:00:00.000Z"
+        );
+        assert_eq!(State::of(&held.event()), Some(held.clone()));
         assert_eq!(
             State::of(&Event::Text {
                 body: "master is broken".into()

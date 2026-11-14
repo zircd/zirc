@@ -235,6 +235,7 @@ impl Place<'_> {
 
     /// How the state `condition` waits on stands, as the newest message here saying it
     /// has it, with that message: none when it was never said, or isn't a wait on a state.
+    /// One that has ended by itself, as a hold whose time has passed, is fine.
     async fn stands(&self, condition: &Condition) -> Result<Option<(Level, Delivery)>> {
         let request = Request::Read {
             target: self.channel.to_owned(),
@@ -245,9 +246,15 @@ impl Place<'_> {
         let Response::Messages { messages } = ask_in(self.socket, self.org, request).await? else {
             return Err(crate::client::unexpected());
         };
+        let now = zirc_core::time::tag(now());
         Ok(messages.into_iter().rev().find_map(|delivery| {
             let state = condition.state_in(&delivery.message.event)?;
-            Some((state.level, delivery))
+            let level = if state.ended(&now) {
+                Level::Ok
+            } else {
+                state.level
+            };
+            Some((level, delivery))
         }))
     }
 

@@ -116,6 +116,7 @@ impl Daemon {
         if !self.joined.contains(&ops) {
             client.send(Line::new("JOIN", [ops.as_str()]))?;
         }
+        self.holds.said(session, &state);
         self.publish(&ops, session, state.event());
         Ok(ops)
     }

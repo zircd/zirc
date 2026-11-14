@@ -50,6 +50,20 @@ pub fn current<'a>(deliveries: impl IntoIterator<Item = &'a Delivery>) -> Vec<Sa
     newest.into_values().collect()
 }
 
+/// `said` as it stands at `now`, a time tag: one that has ended by itself
+/// ([`State::ended`]), such as a hold whose time has passed, is fine, as the machine that said
+/// it says once it's up, and as readers take it when that machine is off.
+#[must_use]
+pub fn in_force(said: Said, now: &str) -> Said {
+    if said.state.level == Level::Ok || !said.state.ended(now) {
+        return said;
+    }
+    Said {
+        state: said.state.over(),
+        ..said
+    }
+}
+
 /// Those of `states` that aren't fine.
 #[must_use]
 pub fn troubled(states: &[Said]) -> Vec<&Said> {
@@ -124,6 +138,7 @@ mod tests {
             why: None,
             owner: None,
             link: None,
+            until: None,
         }
     }
 
@@ -197,6 +212,23 @@ mod tests {
         assert_eq!(standing(&said(Level::Broken, "?"), at, None), None);
         assert_eq!(branch_of("master/e2e"), "master");
         assert_eq!(branch_of("ci"), "ci");
+    }
+
+    #[test]
+    fn a_hold_whose_time_has_passed_is_fine() {
+        let held = Said {
+            state: State {
+                until: Some("2026-11-14T15:00:00.000Z".into()),
+                ..state("#monorepo", "landings", Level::Broken)
+            },
+            by: "cc-1".into(),
+            time: Some("2026-11-14T13:00:00.000Z".into()),
+        };
+        let before = in_force(held.clone(), "2026-11-14T14:00:00.000Z");
+        assert_eq!(before, held);
+        let after = in_force(held, "2026-11-14T15:00:00.000Z");
+        assert_eq!(after.state.level, Level::Ok);
+        assert_eq!(after.by, "cc-1");
     }
 
     #[test]

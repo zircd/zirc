@@ -2810,6 +2810,13 @@
                 "null"
               ],
               "description": "Where to read more."
+            },
+            "until": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "When it ends by itself, as a time tag: zircd says it's fine then."
             }
           },
           "required": [

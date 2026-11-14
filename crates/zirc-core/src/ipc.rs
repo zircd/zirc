@@ -190,6 +190,9 @@ pub enum Request {
         /// Where to read more.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         link: Option<String>,
+        /// When it ends by itself, as a time tag: zircd says it's fine then.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        until: Option<String>,
     },
     /// Ask this machine's owner `question` in `#decisions` ([`zirc_proto::request`]), to
     /// answer with a reaction: answered with [`Response::Requested`], and their answer, once

@@ -808,6 +808,7 @@ async fn set_master(home: &Path, repo: &Path, level: zirc_proto::state::Level) {
         why: None,
         owner: None,
         link: None,
+        until: None,
     };
     let said = zirc_core::ipc::request(&zirc_core::paths::socket(home), &request).await;
     assert!(

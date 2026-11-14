@@ -1191,6 +1191,7 @@ mod tests {
                 why: None,
                 owner: None,
                 link: None,
+                until: None,
             }
             .event()
         };

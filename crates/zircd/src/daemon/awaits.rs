@@ -863,6 +863,7 @@ mod tests {
             why: None,
             owner: None,
             link: None,
+            until: None,
         };
         let mut awaits = Awaits::default();
         awaits.add_states(

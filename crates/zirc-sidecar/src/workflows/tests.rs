@@ -90,6 +90,7 @@ fn broken(owner: &str) -> Event {
         why: None,
         owner: Some(owner.into()),
         link: None,
+        until: None,
     }
     .event()
 }

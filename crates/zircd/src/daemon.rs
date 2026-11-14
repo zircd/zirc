@@ -36,6 +36,7 @@ mod broadcast;
 mod busy;
 mod deliver;
 mod gotchas;
+mod holds;
 mod incoming;
 mod intents_told;
 mod later;
@@ -502,6 +503,7 @@ pub async fn run(mut daemon: Daemon, mut received: mpsc::UnboundedReceiver<Input
                 daemon.requests_tick();
                 daemon.wakes_tick();
                 daemon.unowned_tick();
+                daemon.holds_tick();
                 daemon.replay_tick();
                 daemon.live_tick(now());
                 daemon.forget_sessions(now());
@@ -638,6 +640,8 @@ pub struct Daemon {
     /// Breakages nobody owns, told to the machine's owner once they've gone too long
     /// ([`unowned`]).
     unowned: unowned::Unowned,
+    /// The states this machine said that end by themselves ([`holds`]).
+    holds: holds::Holds,
     /// The reports waiting for each session's next wake ([`later`]).
     later: later::Later,
     /// What each session has lately heard in a digest of [`later`], so the next leaves it out.
@@ -780,6 +784,7 @@ impl Daemon {
             gotchas_told: gotchas::Told::default(),
             last_posts: HashMap::new(),
             unowned: unowned::Unowned::default(),
+            holds: holds::Holds::default(),
             later: later::Later::default(),
             later_told: later::Told::default(),
             breaker: breaker::Breaker::default(),

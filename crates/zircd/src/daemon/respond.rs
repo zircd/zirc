@@ -89,6 +89,7 @@ impl Daemon {
                 why,
                 owner,
                 link,
+                until,
             } => {
                 let state = zirc_proto::state::State {
                     repo: String::new(),
@@ -97,6 +98,7 @@ impl Daemon {
                     why,
                     owner,
                     link,
+                    until,
                 };
                 let channel = self.set_state(&repo, &session, state).await?;
                 Response::channel(channel)

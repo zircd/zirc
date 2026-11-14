@@ -1185,6 +1185,7 @@ async fn states_go_to_ops_name_their_repository_and_wake_their_owner() {
         why: Some("//web:e2e fails since build 1008".into()),
         owner: Some("cc-b".into()),
         link: None,
+        until: None,
     };
     let Ok(Response::Channel { channel, .. }) = ask(&mbp, set("master", Level::Broken)).await
     else {
@@ -1249,6 +1250,7 @@ async fn a_session_waiting_on_a_state_is_woken_once_when_it_changes_level() {
             why: None,
             owner: None,
             link: None,
+            until: None,
         };
         let mbp = mbp.clone();
         async move { ask(&mbp, request).await.expect("said") }

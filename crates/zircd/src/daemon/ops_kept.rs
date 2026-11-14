@@ -323,6 +323,7 @@ mod tests {
             why: None,
             owner: None,
             link: None,
+            until: None,
         };
         Delivery {
             id: Some(id.into()),

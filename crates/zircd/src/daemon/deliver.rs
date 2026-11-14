@@ -456,6 +456,7 @@ impl Daemon {
                 .and_then(zirc_core::time::seconds_at)
                 .unwrap_or_else(super::now);
             self.unowned_heard(&state, at);
+            self.holds.heard(&state);
             if self.awaits.state_heard(&state) {
                 self.save_awaits();
             }

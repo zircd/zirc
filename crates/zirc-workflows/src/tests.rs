@@ -88,6 +88,7 @@ fn state(level: Level, owner: Option<&str>) -> Input {
         why: owner.map(|_| "//:check fails".into()),
         owner: owner.map(Into::into),
         link: None,
+        until: None,
     })
 }
 

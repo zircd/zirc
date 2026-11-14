@@ -1,7 +1,8 @@
 //! Breakages nobody owns: a state said `broken` with no owner, such as CI saying master is
 //! broken, that stays so for [`UNOWNED_FOR`] is told to the machine's owner, once, by direct
 //! message. Overnight on 11 Nov 2026 two breakages of master went 5 to 7 hours with no owner:
-//! seven sessions said in #ops that it wasn't theirs and left it there.
+//! seven sessions said in #ops that it wasn't theirs and left it there. A hold, which ends by
+//! itself ([`State::until`]), is no breakage: nobody need be on it.
 
 use std::collections::BTreeMap;
 
@@ -33,7 +34,11 @@ impl Unowned {
     /// said so; anything else ends it.
     pub(super) fn heard(&mut self, state: &State, at: u64, now: u64) {
         let key = (state.repo.clone(), state.name.clone());
-        if state.level == Level::Broken && state.owner.is_none() && now.saturating_sub(at) < STALE {
+        if state.level == Level::Broken
+            && state.owner.is_none()
+            && state.until.is_none()
+            && now.saturating_sub(at) < STALE
+        {
             self.0.entry(key).or_insert(Breakage {
                 since: at,
                 why: state.why.clone(),
@@ -97,6 +102,7 @@ mod tests {
             why: Some("//web:e2e fails since build 9".into()),
             owner: owner.map(Into::into),
             link: None,
+            until: None,
         }
     }
 
