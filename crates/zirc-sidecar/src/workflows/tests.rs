@@ -438,6 +438,35 @@ fn the_dashboards_deploy_is_the_person_it_names_and_a_refusal_is_listed() {
     assert!(hosted.refusals().is_empty());
 }
 
+#[test]
+fn a_time_starts_a_run_only_once_its_nick_has_read_its_channel_and_once_across_a_deploy() {
+    // 2026-11-16 09:00 UTC, as `every = "1d"` and `at = "09:00"` come round.
+    const NINE: u64 = 20_773 * 86_400 + 9 * 3600;
+    let chore = MASTER.replace(
+        "state = \"master\"\nlevel = \"broken\"\ninputs = { owner = \"owner\" }",
+        "every = \"1d\"\nat = \"09:00\"\nwith = { owner = \"cc-8b60f7\" }",
+    );
+    assert!(chore.contains("every"), "{chore}");
+    let mut hosted = Hosted::default();
+    deploys(&mut hosted, "mattias", &chore);
+    assert_eq!(hosted.next_due(NINE - 60), Some(NINE));
+    // Its history unread, it can't know whether it started this one already.
+    assert!(hosted.tick(NINE).is_empty());
+    hosted.caught("master_bot", "#OPS");
+    assert_eq!(said(&hosted.tick(NINE + 60))[0].2, "started `master-1`");
+    assert!(hosted.tick(NINE + 120).is_empty());
+    // Cancelled and deployed again within the hour: the time isn't dealt with twice.
+    let cancel = row("#ops", "mattias", PRIVMSG, "master_bot: cancel master-1");
+    hosted.take(&cancel, true, &who, NINE + 130);
+    deploys(
+        &mut hosted,
+        "mattias",
+        &chore.replace("fix it.", "fix it now."),
+    );
+    assert!(hosted.tick(NINE + 180).is_empty());
+    assert_eq!(hosted.next_due(NINE + 180), Some(NINE + 86_400));
+}
+
 /// What the host says of a deploy of `source` by `account`, heard live.
 fn deploys(hosted: &mut Hosted, account: &str, source: &str) -> String {
     let outs = hosted.take(&deploy(account, source), true, &who, 0);

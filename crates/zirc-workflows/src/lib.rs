@@ -26,7 +26,7 @@ use zirc_proto::card::{Card, Field, State as CardState};
 use zirc_proto::run::{Act, Change, MAX_OUTPUTS, Outcome, RunEvent, StepAction};
 use zirc_proto::state::{Level, State};
 use zirc_proto::workflow::{
-    Condition, MAX_SOURCE, Ref, Signal, Step, StepKind, Who, Workflow, fill, seconds,
+    Condition, EVERY_GRACE, MAX_SOURCE, Ref, Signal, Step, StepKind, Who, Workflow, fill, seconds,
 };
 
 /// The workflow `source` says, once it keeps every rule.
@@ -195,6 +195,20 @@ pub enum Input {
     Tick,
 }
 
+/// Who started a run a time started ([`Change::Started`]'s `by`): `every:`, the trigger's
+/// place among `on`, and the time that came round.
+const SCHEDULE: &str = "every:";
+
+fn scheduled_by(trigger: usize, at: u64) -> String {
+    format!("{SCHEDULE}{trigger}:{at}")
+}
+
+/// The trigger and the time `by` says started a run, if a time did.
+fn scheduled(by: &str) -> Option<(usize, u64)> {
+    let (trigger, at) = by.strip_prefix(SCHEDULE)?.split_once(':')?;
+    Some((trigger.parse().ok()?, at.parse().ok()?))
+}
+
 /// What the workflow's nick says.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Said {
@@ -344,6 +358,12 @@ pub struct Engine {
     now: u64,
     /// Each role's live members, as the host last said.
     members: BTreeMap<String, Vec<Member>>,
+    /// The time each `every` trigger last came round and was dealt with: a run started, or
+    /// the time passed over.
+    fired: BTreeMap<usize, u64>,
+    /// Whether its own channel's history has been read back ([`Engine::caught_up`]): until
+    /// then it can't tell which times it dealt with already, and starts no run for one.
+    caught_up: bool,
 }
 
 impl Engine {
@@ -358,6 +378,36 @@ impl Engine {
             states: BTreeMap::new(),
             now: 0,
             members: BTreeMap::new(),
+            fired: BTreeMap::new(),
+            caught_up: false,
+        }
+    }
+
+    /// The time each of its `every` triggers last came round and was dealt with, by the
+    /// trigger's place among `on`: what a deploy of the workflow again carries over
+    /// ([`Engine::restore_fired`]), so the time it's in isn't dealt with twice.
+    #[must_use]
+    pub fn fired(&self) -> BTreeMap<usize, u64> {
+        self.fired.clone()
+    }
+
+    /// Notes that its channel's history has been read back, runs a time started among it:
+    /// from now, a time that comes round starts a run.
+    pub const fn caught_up(&mut self) {
+        self.caught_up = true;
+    }
+
+    /// Whether it has ([`Engine::caught_up`]).
+    #[must_use]
+    pub const fn is_caught_up(&self) -> bool {
+        self.caught_up
+    }
+
+    /// Takes over what the engine before it had dealt with ([`Engine::fired`]).
+    pub fn restore_fired(&mut self, fired: &BTreeMap<usize, u64>) {
+        for (trigger, at) in fired {
+            let known = self.fired.entry(*trigger).or_default();
+            *known = (*known).max(*at);
         }
     }
 
@@ -534,6 +584,13 @@ impl Engine {
                     _ => Vec::new(),
                 }
             })
+            .chain(
+                self.workflow
+                    .on
+                    .iter()
+                    .filter_map(|t| t.schedule().ok().flatten())
+                    .map(|schedule| schedule.next(after)),
+            )
             .filter(|&due| due > after)
             .min()
     }
@@ -577,6 +634,7 @@ impl Engine {
                 }
             }
             Input::Tick => {
+                self.scheduled(now, &mut said);
                 for id in self.running() {
                     self.dispatch(&id, &mut said);
                     self.stall(&id, now, &mut said);
@@ -683,7 +741,7 @@ impl Engine {
             .workflow
             .on
             .iter()
-            .filter(|t| t.state == state.name && t.level == state.level)
+            .filter(|t| t.state.as_deref() == Some(&state.name) && t.level == Some(state.level))
             .map(|t| {
                 t.inputs
                     .iter()
@@ -728,6 +786,32 @@ impl Engine {
         }
     }
 
+    /// Starts a run for each `every` trigger whose time has come round since it was last
+    /// dealt with, if not more than [`EVERY_GRACE`] ago: a time the server was away for
+    /// longer is passed over, never made up for.
+    fn scheduled(&mut self, now: u64, said: &mut Vec<Said>) {
+        if !self.caught_up {
+            return;
+        }
+        for (i, trigger) in self.workflow.on.clone().iter().enumerate() {
+            let Some(at) = trigger
+                .schedule()
+                .ok()
+                .flatten()
+                .and_then(|schedule| schedule.last(now))
+            else {
+                continue;
+            };
+            if self.fired.get(&i).is_some_and(|dealt| *dealt >= at) {
+                continue;
+            }
+            self.fired.insert(i, at);
+            if now - at <= EVERY_GRACE {
+                self.start(scheduled_by(i, at), trigger.with.clone(), now, said);
+            }
+        }
+    }
+
     fn start(
         &mut self,
         by: String,
@@ -751,7 +835,7 @@ impl Engine {
         let id = format!("{}-{}", self.workflow.name, self.numbers + 1);
         let text = format!(
             "started `{id}`{}",
-            if by.starts_with("state:") {
+            if by.starts_with("state:") || by.starts_with(SCHEDULE) {
                 String::new()
             } else {
                 format!(" for {by}")
@@ -1279,6 +1363,11 @@ impl Engine {
     fn apply(&mut self, id: &str, change: &Change, at: u64) {
         self.numbered(id);
         if let Change::Started { by, inputs, .. } = change {
+            // A run a time started: that time is dealt with, read back as much as said.
+            if let Some((trigger, at)) = scheduled(by) {
+                let dealt = self.fired.entry(trigger).or_default();
+                *dealt = (*dealt).max(at);
+            }
             self.started(id, by, inputs);
             return;
         }

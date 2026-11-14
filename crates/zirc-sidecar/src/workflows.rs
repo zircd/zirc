@@ -248,6 +248,17 @@ impl Hosted {
         }
     }
 
+    /// Notes that `nick` has read back `channel`'s history: its workflow's own channel read,
+    /// it knows its runs, and may start one when a time comes round.
+    pub fn caught(&mut self, nick: &str, channel: &str) {
+        if let Some(name) = self.named(nick)
+            && let Some(live) = self.live.get_mut(&name)
+            && live.engine.workflow().channel.eq_ignore_ascii_case(channel)
+        {
+            live.engine.caught_up();
+        }
+    }
+
     /// The workflow `nick` runs, if one does.
     fn named(&self, nick: &str) -> Option<String> {
         self.live
@@ -510,6 +521,13 @@ impl Hosted {
         // Whoever deployed it first keeps it, whoever replaces it since.
         self.deployers.entry(workflow.name.clone()).or_insert(by);
         let mut engine = Engine::new(workflow.clone(), version.clone());
+        // Deployed again, it knows what the one before it did of the times that came round.
+        if let Some(before) = self.live.get(&workflow.name) {
+            engine.restore_fired(&before.engine.fired());
+            if before.engine.is_caught_up() {
+                engine.caught_up();
+            }
+        }
         for state in self.states.values() {
             engine.restore_state(state);
         }
@@ -1102,6 +1120,7 @@ impl Host {
                         && !hosted.runs_as(&row.item.account);
                     outs.extend(hosted.take(&row, live, &who, now));
                 }
+                hosted.caught(&nick, &channel);
             }
             connection::Heard::Read {
                 nick,

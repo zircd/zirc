@@ -248,19 +248,129 @@ pub struct Input {
     pub optional: bool,
 }
 
-/// A state ([`crate::state`]) that starts a run when it's said: the state's fields become the
-/// run's inputs.
+/// What starts a run on its own: a state ([`crate::state`]) being said, whose fields become
+/// the run's inputs, or a time coming round (`every`), with the inputs it's given.
+///
+/// ```toml
+/// [[on]]
+/// state = "master"
+/// level = "broken"
+/// inputs = { owner = "owner" }
+///
+/// [[on]]
+/// every = "7d"          # at least [`MIN_EVERY`]
+/// day = "mon"           # with 7d alone; Thursdays without it
+/// at = "09:00"          # UTC, when `every` is whole days; midnight without it
+/// with = { what = "update dependencies" }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Trigger {
     /// The state's name, such as `master`.
-    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
     /// The level that starts a run.
-    pub level: Level,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<Level>,
     /// Which input each of the state's fields fills: `input = "field"`, where the field is
     /// one of [`STATE_FIELDS`].
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub inputs: BTreeMap<String, String>,
+    /// How often a run starts by itself, such as `1d` ([`seconds`]): at every whole multiple
+    /// of it since 1 January 1970 UTC, so `1d` is each midnight and `6h` is 0, 6, 12 and 18.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub every: Option<String>,
+    /// The time of day it starts at, `HH:MM` in UTC, when `every` is whole days.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+    /// The day of the week it starts on, `mon` to `sun`, when `every` is `7d`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day: Option<String>,
+    /// What a run started by `every` is given: `input = "value"`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub with: BTreeMap<String, String>,
+}
+
+/// The shortest `every` may be, in seconds: a workflow isn't a clock.
+pub const MIN_EVERY: u64 = 300;
+
+/// How long after its time a run `every` starts may still start, in seconds, as when the
+/// server was restarting then: later, that time is passed over.
+pub const EVERY_GRACE: u64 = 3600;
+
+/// The days `day` may name, Monday first.
+pub const DAYS: [&str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+const DAY: u64 = 86_400;
+
+/// When a trigger's `every` comes round.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Schedule {
+    /// How often, in seconds.
+    pub every: u64,
+    /// How long after each whole multiple of `every` since 1970, in seconds: its `at`, and
+    /// its `day`.
+    pub offset: u64,
+}
+
+impl Schedule {
+    /// The time it last came round, at or before `now` (unix seconds); none before the first.
+    #[must_use]
+    pub fn last(&self, now: u64) -> Option<u64> {
+        let since = now.checked_sub(self.offset)?;
+        Some(since - since % self.every + self.offset)
+    }
+
+    /// The time it next comes round, after `now`.
+    #[must_use]
+    pub fn next(&self, now: u64) -> u64 {
+        self.last(now).map_or(self.offset, |last| last + self.every)
+    }
+}
+
+impl Trigger {
+    /// When it comes round, if it's one that does (`every`).
+    ///
+    /// # Errors
+    ///
+    /// What's wrong with its `every`, `at` or `day`.
+    pub fn schedule(&self) -> Result<Option<Schedule>, String> {
+        let Some(every) = &self.every else {
+            return Ok(None);
+        };
+        let every = seconds(every)?;
+        if every < MIN_EVERY {
+            return Err(format!("every is at least {MIN_EVERY}s"));
+        }
+        let mut offset = 0;
+        if let Some(at) = &self.at {
+            let bad = || format!("at {at:?} isn't a time of day like 09:00");
+            if every % DAY != 0 {
+                return Err("at needs an every of whole days".to_owned());
+            }
+            let (hours, minutes) = at.split_once(':').ok_or_else(bad)?;
+            let part = |text: &str, below: u64| {
+                (text.len() == 2)
+                    .then(|| text.parse::<u64>().ok())
+                    .flatten()
+                    .filter(|n| *n < below)
+            };
+            offset +=
+                part(hours, 24).ok_or_else(bad)? * 3600 + part(minutes, 60).ok_or_else(bad)? * 60;
+        }
+        if let Some(day) = &self.day {
+            if every != 7 * DAY {
+                return Err("day needs an every of 7d".to_owned());
+            }
+            let index = DAYS
+                .iter()
+                .position(|d| d == day)
+                .ok_or_else(|| format!("day {day:?} is none of {}", DAYS.join(", ")))?;
+            // 1 January 1970 was a Thursday.
+            offset += (index as u64 + 7 - 3) % 7 * DAY;
+        }
+        Ok(Some(Schedule { every, offset }))
+    }
 }
 
 /// The fields of a state a trigger can pass on as inputs.
@@ -676,7 +786,8 @@ impl Workflow {
     /// when a step or a fallback goes to a role.
     #[must_use]
     pub fn channels(&self) -> Vec<String> {
-        let states = !self.on.is_empty() || self.steps.iter().any(|s| s.until.is_some());
+        let states = self.on.iter().any(|t| t.state.is_some())
+            || self.steps.iter().any(|s| s.until.is_some());
         let roles = self.steps.iter().any(|s| {
             s.who
                 .as_deref()
@@ -753,30 +864,7 @@ impl Workflow {
             }
         }
         for trigger in &self.on {
-            if let Some(why) = crate::state::check_name(&trigger.state) {
-                return Err(why.to_owned());
-            }
-            for (input, field) in &trigger.inputs {
-                if !inputs.contains(input.as_str()) {
-                    return Err(format!("a trigger fills {input:?}, which isn't an input"));
-                }
-                if !STATE_FIELDS.contains(&field.as_str()) {
-                    return Err(format!(
-                        "a trigger reads the state's {field:?}, which is none of {}",
-                        STATE_FIELDS.join(", ")
-                    ));
-                }
-            }
-            if let Some(missing) = self
-                .inputs
-                .iter()
-                .find(|i| !i.optional && !trigger.inputs.contains_key(&i.name))
-            {
-                return Err(format!(
-                    "the trigger on {:?} doesn't fill the input {:?}",
-                    trigger.state, missing.name
-                ));
-            }
+            self.check_trigger(trigger, &inputs)?;
         }
         if self.steps.is_empty() {
             return Err("it has no steps".to_owned());
@@ -790,6 +878,63 @@ impl Workflow {
             outputs.insert(&step.id, &step.outputs);
         }
         Ok(())
+    }
+
+    /// The rules for what starts a run: a state or a time, never both, each filling every
+    /// input a run needs with what it has to give.
+    fn check_trigger(&self, trigger: &Trigger, inputs: &BTreeSet<&str>) -> Result<(), String> {
+        let schedule = trigger.schedule().map_err(|e| format!("a trigger: {e}"))?;
+        let (filled, what) = match (&trigger.state, schedule) {
+            (Some(state), None) => {
+                if let Some(why) = crate::state::check_name(state) {
+                    return Err(why.to_owned());
+                }
+                if trigger.level.is_none() {
+                    return Err(format!("the trigger on {state:?} needs a level"));
+                }
+                if !trigger.with.is_empty() || trigger.at.is_some() || trigger.day.is_some() {
+                    return Err(format!(
+                        "the trigger on {state:?} has with, at or day, which only every has"
+                    ));
+                }
+                if let Some(field) = trigger
+                    .inputs
+                    .values()
+                    .find(|f| !STATE_FIELDS.contains(&f.as_str()))
+                {
+                    return Err(format!(
+                        "a trigger reads the state's {field:?}, which is none of {}",
+                        STATE_FIELDS.join(", ")
+                    ));
+                }
+                (&trigger.inputs, format!("on {state:?}"))
+            }
+            (None, Some(_)) => {
+                if trigger.level.is_some() || !trigger.inputs.is_empty() {
+                    return Err(
+                        "a trigger with every has a level or inputs, which only a state has: \
+                         give its inputs as with"
+                            .to_owned(),
+                    );
+                }
+                (&trigger.with, "with every".to_owned())
+            }
+            _ => return Err("a trigger has one of state and every".to_owned()),
+        };
+        if let Some(input) = filled.keys().find(|i| !inputs.contains(i.as_str())) {
+            return Err(format!("a trigger fills {input:?}, which isn't an input"));
+        }
+        match self
+            .inputs
+            .iter()
+            .find(|i| !i.optional && !filled.contains_key(&i.name))
+        {
+            Some(missing) => Err(format!(
+                "the trigger {what} doesn't fill the input {:?}",
+                missing.name
+            )),
+            None => Ok(()),
+        }
     }
 
     fn check_step(
@@ -961,6 +1106,58 @@ impl Deploy {
 mod tests {
     use super::*;
 
+    fn every(every: &str, at: Option<&str>, day: Option<&str>) -> Trigger {
+        Trigger {
+            state: None,
+            level: None,
+            inputs: BTreeMap::new(),
+            every: Some(every.into()),
+            at: at.map(Into::into),
+            day: day.map(Into::into),
+            with: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn a_schedule_comes_round_at_whole_multiples_since_1970_and_its_time_of_day() {
+        // 2026-11-16 is a Monday: 20_773 days since 1970.
+        let monday = 20_773 * DAY;
+        let daily = every("1d", Some("09:00"), None)
+            .schedule()
+            .unwrap()
+            .unwrap();
+        assert_eq!(daily.last(monday + 10 * 3600), Some(monday + 9 * 3600));
+        assert_eq!(daily.last(monday + 8 * 3600), Some(monday - DAY + 9 * 3600));
+        assert_eq!(daily.next(monday + 9 * 3600), monday + DAY + 9 * 3600);
+        let weekly = every("7d", Some("09:00"), Some("mon"))
+            .schedule()
+            .unwrap()
+            .unwrap();
+        assert_eq!(weekly.last(monday + 2 * DAY), Some(monday + 9 * 3600));
+        assert_eq!(weekly.next(monday + 2 * DAY), monday + 7 * DAY + 9 * 3600);
+        let six = every("6h", None, None).schedule().unwrap().unwrap();
+        assert_eq!(six.last(monday + 7 * 3600), Some(monday + 6 * 3600));
+        assert_eq!(
+            Schedule {
+                every: DAY,
+                offset: 3600
+            }
+            .last(60),
+            None
+        );
+    }
+
+    #[test]
+    fn a_schedule_says_whats_wrong_with_it() {
+        let wrong = |t: Trigger| t.schedule().unwrap_err();
+        assert!(wrong(every("1m", None, None)).contains("at least 300s"));
+        assert!(wrong(every("6h", Some("09:00"), None)).contains("whole days"));
+        assert!(wrong(every("1d", Some("9:00"), None)).contains("time of day"));
+        assert!(wrong(every("1d", Some("24:00"), None)).contains("time of day"));
+        assert!(wrong(every("1d", None, Some("mon"))).contains("7d"));
+        assert!(wrong(every("7d", None, Some("monday"))).contains("none of mon"));
+    }
+
     fn step(id: &str, kind: StepKind) -> Step {
         Step {
             id: id.into(),
@@ -1000,9 +1197,13 @@ mod tests {
             ],
             roles: BTreeMap::from([("fixers".into(), vec!["mattias".into()])]),
             on: vec![Trigger {
-                state: "master".into(),
-                level: Level::Broken,
+                state: Some("master".into()),
+                level: Some(Level::Broken),
                 inputs: BTreeMap::from([("owner".into(), "owner".into())]),
+                every: None,
+                at: None,
+                day: None,
+                with: BTreeMap::new(),
             }],
             steps: vec![
                 Step {

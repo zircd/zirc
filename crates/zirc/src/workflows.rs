@@ -210,12 +210,22 @@ fn described(workflow: &Workflow) -> String {
         workflow.name, workflow.nick, workflow.channel
     );
     for trigger in &workflow.on {
-        let _ = writeln!(
-            text,
-            "- starts when {} is {}",
-            trigger.state,
-            trigger.level.word()
-        );
+        let _ = match (&trigger.state, trigger.level, &trigger.every) {
+            (Some(state), Some(level), _) => {
+                writeln!(text, "- starts when {state} is {}", level.word())
+            }
+            (_, _, Some(every)) => {
+                let day = trigger.day.as_deref().map(|d| format!(", on {d}"));
+                let at = trigger.at.as_deref().map(|at| format!(", at {at} UTC"));
+                writeln!(
+                    text,
+                    "- starts every {every}{}{}",
+                    day.unwrap_or_default(),
+                    at.unwrap_or_default()
+                )
+            }
+            _ => Ok(()),
+        };
     }
     for step in &workflow.steps {
         let kind = step.kind.word();

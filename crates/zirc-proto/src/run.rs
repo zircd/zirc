@@ -49,7 +49,8 @@ pub struct RunEvent {
 pub enum Change {
     /// It started.
     Started {
-        /// Who or what started it: a nick, or `state:<name>` for a trigger.
+        /// Who or what started it: a nick, `state:<name>` for a state's trigger, or
+        /// `every:<n>:<time>` for the time that came round, of the `n`th trigger.
         by: String,
         /// What it was given.
         inputs: BTreeMap<String, String>,

@@ -889,3 +889,101 @@ fn a_role_step_given_at_start_is_given_once() {
     let ticked = texts(&e.handle(Input::Tick, 1));
     assert_eq!(given(&ticked), 0, "{ticked:?}");
 }
+
+const CHORE: &str = r##"
+name = "chore"
+nick = "chore_bot"
+channel = "#chores"
+one_run_per = "what"
+
+[[input]]
+name = "what"
+
+[[on]]
+every = "1d"
+at = "09:00"
+with = { what = "update dependencies" }
+
+[[step]]
+id = "report"
+kind = "post"
+says = "Time for: {what}"
+"##;
+
+const HOUR: u64 = 3600;
+/// A midnight UTC: 2026-11-16.
+const DAY0: u64 = 20_773 * 86_400;
+
+#[test]
+fn a_time_coming_round_starts_a_run_once_with_what_its_given() {
+    let mut e = engine(CHORE);
+    // Until its own history is read back it can't tell what it started, and starts nothing.
+    assert!(e.handle(Input::Tick, DAY0 + 9 * HOUR).is_empty());
+    e.caught_up();
+    assert!(e.handle(Input::Tick, DAY0 + 8 * HOUR).is_empty());
+    assert_eq!(e.next_due(DAY0 + 8 * HOUR), Some(DAY0 + 9 * HOUR));
+    let said = e.handle(Input::Tick, DAY0 + 9 * HOUR);
+    assert_eq!(texts(&said)[0], "started `chore-1`");
+    assert!(
+        texts(&said)
+            .iter()
+            .any(|t| t.contains("Time for: update dependencies"))
+    );
+    // Once: the same time again starts nothing, and the next is tomorrow's.
+    assert!(e.handle(Input::Tick, DAY0 + 9 * HOUR + MIN).is_empty());
+    assert_eq!(e.next_due(DAY0 + 9 * HOUR), Some(DAY0 + 33 * HOUR));
+    assert_eq!(
+        runs(&e.handle(Input::Tick, DAY0 + 33 * HOUR))[0].run,
+        "chore-2"
+    );
+}
+
+#[test]
+fn a_time_the_server_was_away_for_is_passed_over_and_one_read_back_isnt_started_again() {
+    let mut e = engine(CHORE);
+    e.caught_up();
+    // More than an hour late: passed over, for good.
+    assert!(e.handle(Input::Tick, DAY0 + 11 * HOUR).is_empty());
+    assert!(e.handle(Input::Tick, DAY0 + 11 * HOUR + MIN).is_empty());
+    // Within the hour, as after a restart: started.
+    let history = runs(&e.handle(Input::Tick, DAY0 + 33 * HOUR + 10 * MIN));
+    assert_eq!(history[0].run, "chore-1");
+
+    // Read back by the server that restarted, and by the engine of a deploy again.
+    let mut back = engine(CHORE);
+    for event in &history {
+        back.restore(event);
+    }
+    back.caught_up();
+    assert!(
+        back.handle(Input::Tick, DAY0 + 33 * HOUR + 20 * MIN)
+            .is_empty()
+    );
+    let mut again = engine(CHORE);
+    again.restore_fired(&e.fired());
+    again.caught_up();
+    assert!(
+        again
+            .handle(Input::Tick, DAY0 + 33 * HOUR + 20 * MIN)
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_trigger_is_a_state_or_a_time_and_says_whats_wrong_with_it() {
+    let wrong = |from: &str, to: &str| parse(&CHORE.replace(from, to)).unwrap_err();
+    assert!(
+        wrong("every = \"1d\"", "every = \"1d\"\nstate = \"master\"")
+            .contains("one of state and every")
+    );
+    assert!(wrong("every = \"1d\"\n", "").contains("one of state and every"));
+    assert!(wrong("every = \"1d\"", "every = \"1m\"").contains("at least 300s"));
+    assert!(wrong("with = { what", "with = { which").contains("isn't an input"));
+    assert!(
+        wrong("with = { what = \"update dependencies\" }", "")
+            .contains("doesn't fill the input \"what\"")
+    );
+    assert!(wrong("at = \"09:00\"", "level = \"broken\"").contains("only a state has"));
+    let state = MASTER.replace("level = \"broken\"", "level = \"broken\"\nat = \"09:00\"");
+    assert!(parse(&state).unwrap_err().contains("only every has"));
+}

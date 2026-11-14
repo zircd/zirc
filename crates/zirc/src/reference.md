@@ -282,6 +282,11 @@ state = "master"
 level = "broken"
 inputs = { owner = "owner" }   # input = the state's repo, name, why, owner or link
 
+[[on]]                         # or a time coming round
+every = "7d"                   # 5m at least: every whole multiple of it since 1970, UTC
+day = "mon"                    # with 7d; and at = "09:00" (UTC) with whole days
+with = { owner = "cc-1a2b3c" } # the inputs its runs are given
+
 [[step]]
 id = "fix"
 who = "inputs.owner"           # or role:fixers (its members), or a nick
@@ -315,6 +320,9 @@ zirc step answer spend-2 approve yes                # a person only; or üëç / 
 zirc role join fixers --session cc-1a2b3c          # be given role:fixers steps while live
 zirc role leave fixers --session cc-1a2b3c
 ```
+
+A run a time starts (`every`) starts once for that time. One the server was away for, as
+while it restarted, still starts within the hour; later it's passed over, never made up for.
 
 Only those a step went to may take it, and only a person's own account answers an approval;
 an `irreversible` approval's yes counts a minute later, unless a no comes first. A task with
