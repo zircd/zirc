@@ -275,6 +275,45 @@ pub fn complete_shortcode(text: &str, cursor: usize, emoji: &str) -> (String, us
     (completed, start + emoji.len() + 1)
 }
 
+/// `text`, typed into from `before`, with the `:shortcode:` the person just closed with the
+/// colon before `cursor` (a byte offset) written as its emoji, and the cursor after it:
+/// `("hi 😂", 7)` for `"hi :joy:"` at its end. `None` unless the one change from `before` is
+/// that colon, so a paste, a deletion or a cursor moved is left as it is; and unless its
+/// opening `:` is at the start or after a space, as [`shortcode_query`]'s is, and it's the
+/// shortcode of an emoji up to `newest`.
+#[must_use]
+pub fn closed_shortcode(
+    before: &str,
+    text: &str,
+    cursor: usize,
+    newest: Newest,
+) -> Option<(String, usize)> {
+    let typed = text.get(..cursor)?.strip_suffix(':')?;
+    let after = &text[cursor..];
+    let only_the_colon = before.len() == typed.len() + after.len()
+        && before.starts_with(typed)
+        && before.ends_with(after);
+    if !only_the_colon {
+        return None;
+    }
+    let open = typed.rfind(':')?;
+    let code = &typed[open + 1..];
+    let opens = typed[..open]
+        .chars()
+        .next_back()
+        .is_none_or(char::is_whitespace);
+    if !opens || code.is_empty() || code.contains(char::is_whitespace) {
+        return None;
+    }
+    let emoji = emojis::get_by_shortcode(&code.to_lowercase())
+        .filter(|e| drawable(e, newest))?
+        .as_str();
+    Some((
+        format!("{}{emoji}{after}", &typed[..open]),
+        open + emoji.len(),
+    ))
+}
+
 /// Puts `emoji` first in `list`, once, keeping at most [`RECENT`].
 fn first(list: &mut Vec<String>, emoji: &str) {
     list.retain(|e| e != emoji);
@@ -289,6 +328,21 @@ pub struct Suggestion {
     pub emoji: &'static str,
     /// Its shortcode, without colons: `tada`.
     pub code: &'static str,
+}
+
+impl Suggestion {
+    /// What a composer shows beside the emoji, dimmer: its shortcode as it's typed, `:tada:`.
+    #[must_use]
+    pub fn hint(&self) -> String {
+        format!(":{}:", self.code)
+    }
+}
+
+/// The emoji a composer offers for the `:shortcode` being typed in `text` at `cursor`, a byte
+/// offset ([`shortcode_query`], then [`suggest`]): none when the cursor isn't in one.
+#[must_use]
+pub fn suggest_at(text: &str, cursor: usize, newest: Newest, limit: usize) -> Vec<Suggestion> {
+    shortcode_query(text, cursor).map_or_else(Vec::new, |(_, query)| suggest(query, newest, limit))
 }
 
 /// The emoji whose names or shortcodes `query` matches (what follows a `:` in the composer,
@@ -341,6 +395,44 @@ mod tests {
             complete_shortcode("hi :tad", 7, "🎉"),
             ("hi 🎉 ".to_owned(), 8)
         );
+    }
+
+    #[test]
+    fn a_shortcode_closed_as_its_typed_becomes_its_emoji() {
+        let typed =
+            |before: &str, text: &str, cursor| closed_shortcode(before, text, cursor, NEWEST);
+        assert_eq!(
+            typed("hi :joy", "hi :joy:", 8),
+            Some(("hi 😂".to_owned(), 7))
+        );
+        assert_eq!(typed(":+1", ":+1:", 4), Some(("👍".to_owned(), 4)));
+        assert_eq!(
+            typed(":tada there", ":tada: there", 6),
+            Some(("🎉 there".to_owned(), 4)),
+            "in the middle, what follows stays"
+        );
+        assert_eq!(typed(":JOY", ":JOY:", 5), Some(("😂".to_owned(), 4)));
+        assert_eq!(typed("hi :nope", "hi :nope:", 9), None, "not a shortcode");
+        assert_eq!(
+            typed("re:joy", "re:joy:", 7),
+            None,
+            "opens only after a space"
+        );
+        assert_eq!(typed("at 10:30", "at 10:30:", 9), None);
+        assert_eq!(typed("a :", "a ::", 4), None);
+        assert_eq!(typed("", ":joy:", 5), None, "a paste is left as it is");
+        assert_eq!(typed("hi :joy:x", "hi :joy:", 8), None, "a deletion is too");
+        assert_eq!(typed("hi :joy", "hi :joy!", 8), None);
+    }
+
+    #[test]
+    fn suggests_for_the_shortcode_being_typed_with_its_colons_beside() {
+        let found = suggest_at("hi :tad", 7, NEWEST, 3);
+        assert_eq!(
+            found.first().map(|s| (s.emoji, s.hint())),
+            Some(("🎉", ":tada:".to_owned()))
+        );
+        assert!(suggest_at("hi tad", 6, NEWEST, 3).is_empty());
     }
 
     #[test]

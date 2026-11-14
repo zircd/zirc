@@ -32,7 +32,7 @@ use crate::scrollback::{Anchor, Cache, Laid, View};
 use zirc_core::agents::{self, Queries};
 use zirc_core::command::said;
 use zirc_core::connection::Status;
-use zirc_core::emoji::Recent;
+use zirc_core::emoji::{self, Recent};
 use zirc_core::ipc::{Request, Response};
 use zirc_core::orgs::Unread;
 use zirc_theme::Theme;
@@ -161,6 +161,52 @@ pub struct SessionsPanel {
     pub at: u64,
 }
 
+/// The emoji Tab offers for a `:shortcode`, as the other apps' lists do, and the one written.
+#[derive(Debug)]
+struct Tabbed {
+    /// The input before the first Tab, and its cursor.
+    typed: (String, usize),
+    /// The emoji offered.
+    offered: Vec<&'static str>,
+    /// The one written.
+    at: usize,
+    /// The input once it's written, and its cursor: Tab again moves on only from there.
+    wrote: (String, usize),
+}
+
+impl Tabbed {
+    /// How many emoji Tab goes through, as many as the other apps' lists show.
+    const OFFERED: usize = 8;
+
+    /// The first emoji for the `:shortcode` typed in `text` at `at`, written; none when
+    /// nothing matches.
+    fn new(text: String, at: usize) -> Option<Self> {
+        let offered: Vec<&'static str> =
+            emoji::suggest_at(&text, at, picker::NEWEST, Self::OFFERED)
+                .into_iter()
+                .map(|found| found.emoji)
+                .collect();
+        let wrote = emoji::complete_shortcode(&text, at, offered.first()?);
+        Some(Self {
+            typed: (text, at),
+            offered,
+            at: 0,
+            wrote,
+        })
+    }
+
+    /// The next emoji written instead, when the input at `at` is still `text`, what Tab
+    /// wrote last.
+    fn next(mut self, text: &str, at: usize) -> Option<Self> {
+        if (text, at) != (self.wrote.0.as_str(), self.wrote.1) {
+            return None;
+        }
+        self.at = (self.at + 1) % self.offered.len();
+        self.wrote = emoji::complete_shortcode(&self.typed.0, self.typed.1, self.offered[self.at]);
+        Some(self)
+    }
+}
+
 /// Everything the client shows.
 #[derive(Debug)]
 pub struct App {
@@ -243,6 +289,8 @@ pub struct App {
     hidden: Option<String>,
     /// Whether what [`App::prefs`] holds changed since it was last taken.
     prefs_changed: bool,
+    /// The emoji Tab wrote for a `:shortcode`, which Tab again moves on from.
+    tabbed: Option<Tabbed>,
     /// Whether others are told we're typing.
     send_typing: bool,
 }
@@ -366,6 +414,7 @@ impl App {
             flash: None,
             sent_typed: None,
             prefs_changed: false,
+            tabbed: None,
             send_typing: true,
         }
     }
@@ -1599,10 +1648,24 @@ impl App {
             KeyCode::PageDown => return Action::Send(self.scroll_down()),
             _ => {}
         }
-        if self.input.text() == before {
+        if !self.edited(&before) {
             return Action::Send(Vec::new());
         }
         Action::Send(self.typed())
+    }
+
+    /// Whether a key changed the input from `before`. A `:shortcode:` it closed becomes its
+    /// emoji first, as zirc-core writes it.
+    fn edited(&mut self, before: &str) -> bool {
+        if let Some((text, at)) = emoji::closed_shortcode(
+            before,
+            self.input.text(),
+            self.input.cursor_byte(),
+            picker::NEWEST,
+        ) {
+            self.input.replace(text, at);
+        }
+        self.input.text() != before
     }
 
     /// What the input holding something else says to the conversation shown: that we're
@@ -2037,9 +2100,16 @@ impl App {
     /// Completes who's being named before the cursor, as zirc-chat offers them
     /// ([`Chat::mentions`]): people, agent sessions by their token, apps. An `@` mention
     /// completes as the other apps' composers do; a bare word IRC's way, `alice: ` first.
+    /// A `:shortcode` completes to the first emoji the other apps offer for it, and Tab again
+    /// to the next.
     fn complete(&mut self) {
         let text = self.input.text().to_owned();
         let at = self.input.cursor_byte();
+        if let Some(tabbed) = self.tabbed.take().and_then(|tabbed| tabbed.next(&text, at)) {
+            self.input.replace(tabbed.wrote.0.clone(), tabbed.wrote.1);
+            self.tabbed = Some(tabbed);
+            return;
+        }
         // `/join #na`: a channel to join, from those zirc-chat's `Chat::browse` lists.
         if let Some(typed) = joining(&text[..at]) {
             let typed = typed.trim_start_matches('#').to_lowercase();
@@ -2056,6 +2126,13 @@ impl App {
             if let Some(mention) = self.chat.mentions(typed, 1).first() {
                 let (completed, cursor) = complete_mention(&text, at, mention);
                 self.input.replace(completed, cursor);
+            }
+            return;
+        }
+        if emoji::shortcode_query(&text, at).is_some() {
+            if let Some(tabbed) = Tabbed::new(text, at) {
+                self.input.replace(tabbed.wrote.0.clone(), tabbed.wrote.1);
+                self.tabbed = Some(tabbed);
             }
             return;
         }
@@ -2696,6 +2773,32 @@ mod tests {
         }
         app.key(KeyEvent::from(KeyCode::Tab));
         assert_eq!(app.input.text(), "Alice: and bob ");
+    }
+
+    #[test]
+    fn completes_shortcodes_cycling_on_tab_and_writes_one_closed_as_its_typed() {
+        let mut app = app();
+        app.connected(link(true));
+        let keys = |app: &mut App, text: &str| {
+            for c in text.chars() {
+                app.key(KeyEvent::from(KeyCode::Char(c)));
+            }
+        };
+        keys(&mut app, "yay :tad");
+        app.key(KeyEvent::from(KeyCode::Tab));
+        assert_eq!(app.input.text(), "yay 🎉 ");
+        // Tab again writes the next emoji the other apps offer for `:tad`, then comes round.
+        let offered = emoji::suggest_at("yay :tad", 8, picker::NEWEST, Tabbed::OFFERED);
+        if let Some(second) = offered.get(1) {
+            app.key(KeyEvent::from(KeyCode::Tab));
+            assert_eq!(app.input.text(), format!("yay {} ", second.emoji));
+        }
+        for _ in 1..offered.len() {
+            app.key(KeyEvent::from(KeyCode::Tab));
+        }
+        assert_eq!(app.input.text(), "yay 🎉 ");
+        keys(&mut app, ":joy:");
+        assert_eq!(app.input.text(), "yay 🎉 😂");
     }
 
     #[test]
