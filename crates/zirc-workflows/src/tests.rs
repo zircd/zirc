@@ -106,6 +106,7 @@ fn did(by: Actor, did: Did, detail: Option<&str>) -> Input {
         did,
         detail: detail.map(Into::into),
         branch: (did == Did::Push).then(|| detail.map(Into::into)).flatten(),
+        text: None,
     }
 }
 
@@ -116,6 +117,7 @@ fn landing(did: Did, build: &str, branch: &str) -> Input {
         did,
         detail: Some(format!("build {build}")),
         branch: Some(branch.into()),
+        text: None,
     }
 }
 
@@ -575,6 +577,53 @@ fn only_the_pushed_branch_lands_it() {
     assert!(
         e.handle(landing(Did::LandingFailed, "3080", "other-work"), 4)
             .is_empty()
+    );
+}
+
+#[test]
+fn with_several_runs_what_they_do_moves_the_one_it_names() {
+    let mut e = engine(MASTER);
+    for _ in 0..2 {
+        e.handle(
+            Input::Mention {
+                by: Actor::person("mattias"),
+                text: "run owner=cc-8b60f7".into(),
+            },
+            0,
+        );
+    }
+    let post = |text: &str| Input::Activity {
+        by: owner(),
+        did: Did::Said,
+        detail: None,
+        branch: None,
+        text: Some(text.into()),
+    };
+    assert!(
+        e.handle(post("looking at the logs"), 1).is_empty(),
+        "names neither"
+    );
+    // master-12 isn't master-1: the id stands whole.
+    assert!(
+        e.handle(did(owner(), Did::Push, Some("fix-master-12")), 3)
+            .is_empty()
+    );
+    assert_eq!(
+        texts(&e.handle(post("**master-2**: found it"), 2)),
+        ["`master-2` · `fix`: seen"]
+    );
+    assert_eq!(
+        texts(&e.handle(did(owner(), Did::Push, Some("fix-master-1")), 4)),
+        ["`master-1` · `fix`: working (fix-master-1)"]
+    );
+    let landed = texts(&e.handle(landing(Did::Landed, "3345", "fix-master-1"), 5));
+    assert_eq!(
+        landed[0],
+        "`master-1` · `fix`: landed (build 3345), so it's done"
+    );
+    assert!(
+        landed.iter().all(|line| !line.contains("master-2")),
+        "{landed:?}"
     );
 }
 

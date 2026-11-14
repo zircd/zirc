@@ -188,6 +188,8 @@ pub enum Input {
         /// The branch it was on, for a push or a landing: once a task's assignee has pushed
         /// one, only that branch's landings move it.
         branch: Option<String>,
+        /// What they said, for a post or an intent.
+        text: Option<String>,
     },
     /// Time passed.
     Tick,
@@ -237,6 +239,26 @@ struct Seen<'a> {
     did: Did,
     detail: Option<&'a str>,
     branch: Option<&'a str>,
+    text: Option<&'a str>,
+}
+
+impl Seen<'_> {
+    /// Whether it names run `id`, by its branch or its words, the id whole: `fix-flaky-7`
+    /// names `flaky-7`, and `flaky-17` doesn't.
+    fn names(&self, id: &str) -> bool {
+        [self.branch, self.text]
+            .into_iter()
+            .flatten()
+            .any(|said| names_whole(said, id))
+    }
+}
+
+/// Whether `id` stands in `said` as a word of its own, not inside a longer name.
+fn names_whole(said: &str, id: &str) -> bool {
+    let apart = |c: Option<char>| c.is_none_or(|c| !c.is_alphanumeric());
+    said.match_indices(id).any(|(at, _)| {
+        apart(said[..at].chars().next_back()) && apart(said[at + id.len()..].chars().next())
+    })
 }
 
 /// Notes that something was heard of `by` at `at`: when `run`'s step given out is theirs,
@@ -495,14 +517,22 @@ impl Engine {
                 did,
                 detail,
                 branch,
+                text,
             } => {
                 let seen = Seen {
                     by: &by,
                     did,
                     detail: detail.as_deref(),
                     branch: branch.as_deref(),
+                    text: text.as_deref(),
                 };
-                for id in self.running() {
+                let (moved, heard_only) = self.concerned(&seen);
+                for id in heard_only {
+                    if let Some(run) = self.runs.get_mut(&id) {
+                        heard(run, &by, now);
+                    }
+                }
+                for id in moved {
                     self.follow(&id, &seen, now, &mut said);
                 }
             }
@@ -821,6 +851,46 @@ impl Engine {
         yes
     }
 
+    /// Which running runs what `seen` did moves on, and which it only shows they're not
+    /// quiet in. Someone with one task has everything they do counted for it. With several,
+    /// only what names a run counts for it, by its branch or its words, else for the one
+    /// they took on if there's one: a fixer given six flakes at once once had its post, push
+    /// and landing for one counted for all six, and five closed as fixed with nothing done.
+    fn concerned(&self, seen: &Seen<'_>) -> (Vec<String>, Vec<String>) {
+        let theirs: Vec<String> = self
+            .running()
+            .into_iter()
+            .filter(|id| {
+                self.runs[id].work().is_some_and(|(i, work)| {
+                    self.workflow.steps[i].kind == StepKind::Task && work.has(seen.by)
+                })
+            })
+            .collect();
+        if theirs.len() < 2 {
+            return (self.running(), Vec::new());
+        }
+        let mut named: Vec<String> = theirs.iter().filter(|id| seen.names(id)).cloned().collect();
+        if named.is_empty() {
+            let me = seen.by.name();
+            let took: Vec<&String> = theirs
+                .iter()
+                .filter(|id| {
+                    self.runs[*id]
+                        .work()
+                        .is_some_and(|(_, work)| work.by.as_deref() == Some(me.as_str()))
+                })
+                .collect();
+            if let [only] = took[..] {
+                named.push(only.clone());
+            }
+        }
+        let others = theirs
+            .into_iter()
+            .filter(|id| !named.contains(id))
+            .collect();
+        (named, others)
+    }
+
     /// Follows what `by` did on run `id`'s task, if it's theirs: on to the next stage it
     /// reaches, back before its landing if that failed, or at least not quiet.
     fn follow(&mut self, id: &str, seen: &Seen<'_>, now: u64, said: &mut Vec<Said>) {
@@ -829,6 +899,7 @@ impl Engine {
             did,
             detail,
             branch,
+            ..
         } = *seen;
         let Some(run) = self.runs.get(id) else { return };
         let Some((i, work)) = run.work() else { return };

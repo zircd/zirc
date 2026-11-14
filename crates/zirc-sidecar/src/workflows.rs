@@ -348,6 +348,7 @@ impl Hosted {
                     did: seen.did,
                     detail: seen.detail.clone(),
                     branch: seen.branch.clone(),
+                    text: seen.text.clone(),
                 };
                 let said = running.engine.handle(input, now);
                 outs.extend(posts(running.engine.workflow(), said));
@@ -707,8 +708,15 @@ fn seen(message: Option<&Message>, account: &str, who: Who<'_>) -> Option<Seen> 
     };
     let mine = || who(account, Some(&message.session));
     match &message.event {
-        Event::Text { .. } => mine().map(|by| Seen::of(by, Did::Said)),
-        Event::Intent { .. } => mine().map(|by| Seen::of(by, Did::Intent)),
+        // Their words, so a session given several runs moves the one it names.
+        Event::Text { body } => mine().map(|by| Seen {
+            text: Some(body.clone()),
+            ..Seen::of(by, Did::Said)
+        }),
+        Event::Intent { summary, .. } => mine().map(|by| Seen {
+            text: Some(summary.clone()),
+            ..Seen::of(by, Did::Intent)
+        }),
         Event::Push { branch, .. } => mine().map(|by| Seen {
             detail: Some(branch.clone()),
             branch: Some(branch.clone()),
@@ -740,6 +748,7 @@ struct Seen {
     did: Did,
     detail: Option<String>,
     branch: Option<String>,
+    text: Option<String>,
 }
 
 impl Seen {
@@ -749,6 +758,7 @@ impl Seen {
             did,
             detail: None,
             branch: None,
+            text: None,
         }
     }
 }
