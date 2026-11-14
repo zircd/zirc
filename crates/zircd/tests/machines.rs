@@ -13,7 +13,8 @@ use common::*;
 #[tokio::test]
 async fn a_machine_drops_the_ops_it_gets_for_making_a_channel() {
     let ergo = require_ergo!();
-    let [(_alpha, _), (_beta, _)] = two_machines(&ergo).await;
+    // Their clones kept: a `_` drops one at once, and a machine leaves a removed clone's channel.
+    let [(_alpha, _alpha_clone), (_beta, _beta_clone)] = two_machines(&ergo).await;
     let mut config = zirc_irc::Config::new("127.0.0.1", ergo.port(), "looker");
     config.tls = false;
     let (client, mut incoming) = zirc_irc::connect(&config).await.unwrap();
