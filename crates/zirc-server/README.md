@@ -106,4 +106,4 @@ media worker. `tests/join.rs` joins a stand-in
 for zirc.dev.
 
 Licensed under either of Apache License 2.0 or MIT, at your option (`LICENSE-APACHE` and
-`LICENSE-MIT` in the repository's `oss/` directory).
+`LICENSE-MIT`, beside zirc's README).

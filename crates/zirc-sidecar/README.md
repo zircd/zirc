@@ -38,4 +38,4 @@ is bumped, so keep what the sidecar and the controller say to each other readabl
 older side.
 
 Licensed under either of Apache License 2.0 or MIT, at your option (`LICENSE-APACHE` and
-`LICENSE-MIT` in the repository's `oss/` directory).
+`LICENSE-MIT`, beside zirc's README).

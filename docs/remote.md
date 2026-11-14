@@ -16,8 +16,7 @@ program and its arguments, with typed, checked values filled in. The host answer
 owner, the owner's own machines, and accounts the config names; everyone else gets no answer
 at all.
 
-It ships with zirc. CI's own steering is a working example: [.buildkite/steer](../../.buildkite/steer)
-holds its config and scripts.
+It ships with zirc.
 
 ## Install
 
