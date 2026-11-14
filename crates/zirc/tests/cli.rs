@@ -174,10 +174,27 @@ async fn catchup_with(
             &zirc_core::ipc::Request::Conversations { seconds: 1800 },
         )
         .await;
+        // And the read catch-up makes of that conversation, as zircd answers it: with a
+        // start, which `zirc search --in` reads without. Whether the message is missing
+        // from it, or there and left out after, is what a failure hasn't said so far.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        let since = zirc_core::ipc::request(
+            &zirc_core::paths::socket(machine),
+            &zirc_core::ipc::Request::Read {
+                target: (*conversation).to_owned(),
+                limit: 200,
+                since: Some(now.saturating_sub(1800)),
+                until: None,
+            },
+        )
+        .await;
         let machine = machine.display();
         write!(
             seen,
-            "\n{machine}: {status:?}\nits {conversation}: {read:?}\nits direct messages: {listed:?}"
+            "\n{machine}: {status:?}\nits {conversation}: {read:?}\nits direct messages: {listed:?}\nits {conversation} since {}, at {now}: {since:?}",
+            now.saturating_sub(1800)
         )
         .unwrap();
     }
