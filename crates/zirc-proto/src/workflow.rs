@@ -188,12 +188,39 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Sent::decl(config),
         format!("const WORKFLOW_LIST_PATH = {LIST_PATH:?};"),
         format!("const WORKFLOW_MAX_SOURCE = {MAX_SOURCE};"),
+        Workflow::decl(config),
+        Input::decl(config),
+        OneFails::decl(config),
+        Trigger::decl(config),
+        Step::decl(config),
+        StepKind::decl(config),
+        Each::decl(config),
+        Stage::decl(config),
+        Signal::decl(config),
+        Until::decl(config),
+        Level::decl(config),
+        // What a builder of the file offers, as the rules here have it.
+        list("WORKFLOW_STATE_FIELDS", &STATE_FIELDS),
+        list("WORKFLOW_SAID_FIELDS", &SAID_FIELDS),
+        list("WORKFLOW_REACTION_FIELDS", &REACTION_FIELDS),
+        list("WORKFLOW_LANDED_FIELDS", &LANDED_FIELDS),
+        list("WORKFLOW_DAYS", &DAYS),
+        format!("const WORKFLOW_MAX_STEPS = {MAX_STEPS};"),
+        format!("const WORKFLOW_MAX_EACH = {MAX_EACH};"),
+        format!("const WORKFLOW_EACH = {EACH:?};"),
     ]
 }
 
+/// `values` as a TypeScript constant named `name`.
+fn list(name: &str, values: &[&str]) -> String {
+    let values: Vec<String> = values.iter().map(|v| format!("{v:?}")).collect();
+    format!("const {name}: readonly string[] = [{}];", values.join(", "))
+}
+
 /// A workflow, as its file says it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[ts(optional_fields, rename = "Workflow")]
 pub struct Workflow {
     /// Its name: lowercase letters, digits and `-`, such as `master`. A deploy of the same
     /// name replaces it.
@@ -241,8 +268,9 @@ pub struct Workflow {
 
 /// What becomes of a step given to several at once when one of them fails
 /// ([`Workflow::when_one_fails`]).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[ts(rename = "WorkflowOneFails")]
 pub enum OneFails {
     /// The others carry on; the step fails once all have ended.
     #[default]
@@ -252,8 +280,9 @@ pub enum OneFails {
 }
 
 /// Whom a step goes to, every one of them at once, each doing it on their own ([`Step::each`]).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(untagged)]
+#[ts(rename = "WorkflowEach")]
 pub enum Each {
     /// `inputs.<name>`: everyone the input names, separated by spaces or commas.
     Input(String),
@@ -270,8 +299,9 @@ pub const MAX_EACH: usize = 8;
 pub const EACH: &str = "each";
 
 /// Something a run is given when it starts.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[ts(optional_fields, rename = "WorkflowInput")]
 pub struct Input {
     /// Its name, which steps read as `{name}`.
     pub name: String,
@@ -313,8 +343,9 @@ pub struct Input {
 /// landed = ["crates/zirc", "MODULE.bazel"]   # files, or everything under a directory
 /// inputs = { commit = "commit", by = "session" } # of [`LANDED_FIELDS`]
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[ts(optional_fields, rename = "WorkflowTrigger")]
 pub struct Trigger {
     /// The state's name, such as `master`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -536,8 +567,9 @@ impl Trigger {
 pub const STATE_FIELDS: [&str; 5] = ["repo", "name", "why", "owner", "link"];
 
 /// A step of a workflow.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[ts(optional_fields, rename = "WorkflowStep")]
 pub struct Step {
     /// Its id, unique in the workflow: lowercase letters, digits and `-`.
     pub id: String,
@@ -590,8 +622,9 @@ pub struct Step {
 }
 
 /// What kind of step a step is.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "lowercase")]
+#[ts(rename = "WorkflowStepKind")]
 pub enum StepKind {
     /// Work an agent session or a person claims and hands back, with its outputs.
     #[default]
@@ -629,8 +662,9 @@ impl StepKind {
 }
 
 /// A stage of a task.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[ts(rename = "WorkflowStage")]
 pub struct Stage {
     /// What the card calls it, such as `working`.
     pub name: String,
@@ -639,8 +673,9 @@ pub struct Stage {
 }
 
 /// What the workflow sees of whoever has a task, wherever it's said in the organisation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[ts(rename = "WorkflowSignal")]
 pub enum Signal {
     /// They said something, anywhere.
     Said,
@@ -655,8 +690,9 @@ pub enum Signal {
 }
 
 /// The state a wait step waits for.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[ts(rename = "WorkflowUntil")]
 pub struct Until {
     /// The state's name.
     pub state: String,

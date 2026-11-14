@@ -16,6 +16,7 @@
 pub const CHANNEL: &str = "#ops";
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::Event;
 
@@ -27,9 +28,10 @@ pub const MAX_NAME: usize = 64;
 
 /// How it stands.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS, JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
+#[ts(rename = "StateLevel")]
 pub enum Level {
     /// Fine: what a state is when nobody has said otherwise.
     Ok,
