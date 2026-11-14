@@ -263,6 +263,7 @@ pub(crate) async fn workflow(
                 name: workflow.name.clone(),
                 nick: workflow.nick.clone(),
                 source,
+                by: None,
             };
             let sent = send(socket, session_or_user(session), CHANNEL, deploy.event()).await?;
             write!(out, "{sent}")?;

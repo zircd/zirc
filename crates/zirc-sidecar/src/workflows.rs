@@ -42,7 +42,7 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 use zirc_proto::run::{Act, Change, RunEvent, StepAction};
 use zirc_proto::state::State;
-use zirc_proto::workflow::{self, Deploy, Listed, Workflow};
+use zirc_proto::workflow::{self, Deploy, Listed, Refused, Workflow};
 use zirc_proto::{Event, Message};
 use zirc_workflows::{Actor, Did, Engine, Input, Said};
 
@@ -69,23 +69,23 @@ pub fn is_zircs_own(account: &str) -> bool {
 
 /// The workflows the server runs now, as its host last had them ([`Hosted::listed`]): what
 /// the account endpoint lists, which the host keeps as its runs move.
-static LISTED: std::sync::LazyLock<std::sync::RwLock<Vec<Listed>>> =
+static LISTED: std::sync::LazyLock<std::sync::RwLock<(Vec<Listed>, Vec<Refused>)>> =
     std::sync::LazyLock::new(std::sync::RwLock::default);
 
-/// The workflows the server runs now and their runs that aren't finished; none while
-/// workflows are off.
+/// The workflows the server runs now with their runs that aren't finished, and the deploys
+/// it didn't take ([`Hosted::refusals`]); none while workflows are off.
 #[must_use]
-pub fn listed() -> Vec<Listed> {
+pub fn listed() -> (Vec<Listed>, Vec<Refused>) {
     LISTED
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone()
 }
 
-fn list(listed: Vec<Listed>) {
+fn list(listed: Vec<Listed>, refused: Vec<Refused>) {
     *LISTED
         .write()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = listed;
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = (listed, refused);
 }
 
 /// How long a nick's connection waits before connecting again, at first and at most.
@@ -181,6 +181,9 @@ pub struct Hosted {
     /// the host's own word that it deployed them is read back too ([`Hosted::deployed`]): one
     /// it refused when it was said stays refused.
     read_back: BTreeMap<(String, String), Candidate>,
+    /// The last deploy of each name it didn't take, heard live, until one of that name is
+    /// installed: what the dashboard shows whoever deployed it there.
+    refused: BTreeMap<String, Refused>,
     /// The organisation's owners and admins, and whose each machine is, as the server was
     /// last told ([`Hosted::know`]).
     admins: BTreeSet<String>,
@@ -221,6 +224,28 @@ impl Hosted {
                 }
             })
             .collect()
+    }
+
+    /// The deploys it didn't take, by name.
+    #[must_use]
+    pub fn refusals(&self) -> Vec<Refused> {
+        self.refused.values().cloned().collect()
+    }
+
+    /// Notes that `candidate` wasn't taken, and why, as the host says it ([`Out::Post`]).
+    pub fn refuse(&mut self, candidate: &Candidate, said: &Out) {
+        if let Out::Post { message, .. } = said
+            && let Event::Text { body } = &message.event
+        {
+            self.refused.insert(
+                candidate.workflow.name.clone(),
+                Refused {
+                    name: candidate.workflow.name.clone(),
+                    version: candidate.version.clone(),
+                    why: body.clone(),
+                },
+            );
+        }
     }
 
     /// The workflow `nick` runs, if one does.
@@ -408,10 +433,18 @@ impl Hosted {
     }
 
     fn deploy(&mut self, deploy: &Deploy, account: &str, live: bool, who: Who<'_>) -> Vec<Out> {
-        if who(account, None).is_none() {
+        // zirc.dev's dashboard says a deploy for the person signed in there, as zirc's own
+        // account, which nobody else posts as: theirs, then. From anyone else, `by` is ignored.
+        let by = if account == zirc_proto::names::SYSTEM {
+            let Some(by) = &deploy.by else {
+                return Vec::new();
+            };
+            by.to_lowercase()
+        } else if who(account, None).is_some() {
+            self.person(account)
+        } else {
             return Vec::new();
-        }
-        let by = self.person(account);
+        };
         let checked = zirc_workflows::parse(&deploy.source).and_then(|workflow| {
             if workflow.name != deploy.name || workflow.nick != deploy.nick {
                 return Err("its name or nick isn't what the deploy says".to_owned());
@@ -446,10 +479,20 @@ impl Hosted {
                 self.read_back.insert(key, candidate);
                 Vec::new()
             }
-            (Err(why), true) => vec![host(format!(
-                "{account}: couldn't deploy `{}`: {why}",
-                deploy.name
-            ))],
+            (Err(why), true) => {
+                self.refused.insert(
+                    deploy.name.clone(),
+                    Refused {
+                        name: deploy.name.clone(),
+                        version,
+                        why: why.clone(),
+                    },
+                );
+                vec![host(format!(
+                    "{by}: couldn't deploy `{}`: {why}",
+                    deploy.name
+                ))]
+            }
             (Err(_), false) => Vec::new(),
         }
     }
@@ -463,6 +506,7 @@ impl Hosted {
             source,
             by,
         } = candidate;
+        self.refused.remove(&workflow.name);
         // Whoever deployed it first keeps it, whoever replaces it since.
         self.deployers.entry(workflow.name.clone()).or_insert(by);
         let mut engine = Engine::new(workflow.clone(), version.clone());
@@ -961,7 +1005,7 @@ impl Host {
             }
             info!("workflows are on");
             self.serve(&account, &mut on).await;
-            list(Vec::new());
+            list(Vec::new(), Vec::new());
             info!("workflows were turned off");
         }
     }
@@ -1016,7 +1060,7 @@ impl Host {
             self.carry_out(outs, &mut hosted, &mut links, &kept, &hear, account)
                 .await;
             due = hosted.next_due(now);
-            list(hosted.listed());
+            list(hosted.listed(), hosted.refusals());
         }
     }
 
@@ -1186,8 +1230,16 @@ impl Host {
                             outs.push(Hosted::deployed(&candidate));
                             outs.extend(hosted.install(candidate));
                         }
-                        Login::Theirs => outs.push(Hosted::refused(&candidate)),
-                        Login::Unknown => outs.push(Hosted::unchecked(&candidate)),
+                        Login::Theirs => {
+                            let said = Hosted::refused(&candidate);
+                            hosted.refuse(&candidate, &said);
+                            outs.push(said);
+                        }
+                        Login::Unknown => {
+                            let said = Hosted::unchecked(&candidate);
+                            hosted.refuse(&candidate, &said);
+                            outs.push(said);
+                        }
                     }
                 }
             }

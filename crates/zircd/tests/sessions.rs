@@ -1024,6 +1024,7 @@ async fn a_workflows_file_is_sent_only_where_the_server_runs_workflows() {
             name: "master".into(),
             nick: "master_bot".into(),
             source: "name = \"master\"".into(),
+            by: None,
         }
         .event(),
     };

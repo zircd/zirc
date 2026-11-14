@@ -410,7 +410,10 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         .route("/v1/say", post(say))
         .route("/v1/push", get(push_key))
         .route("/v1/server", get(describe))
-        .route(zirc_proto::workflow::LIST_PATH, get(list_workflows))
+        .route(
+            zirc_proto::workflow::LIST_PATH,
+            get(list_workflows).post(deploy_workflow),
+        )
         .route("/v1/channels", get(list_channels))
         .route("/v1/guests", get(list_guests))
         .route("/v1/guests/unread", get(unread_for_guests))
@@ -1096,11 +1099,70 @@ async fn integration_account(ergo: &Ergo, nick: &str, reset: bool) -> Result<(),
 /// ([`crate::workflows::listed`]), and whether it runs them at all.
 async fn list_workflows(State(ergo): State<Arc<Ergo>>) -> Response {
     let on = *ergo.gateway.runs_workflows().borrow();
+    let (workflows, refused) = crate::workflows::listed();
     Json(zirc_proto::workflow::Hosting {
         on,
-        workflows: crate::workflows::listed(),
+        workflows,
+        refused,
     })
     .into_response()
+}
+
+/// `POST /v1/workflows`: a deploy from zirc.dev's dashboard, for the person signed in there.
+/// The file is checked here, then said in `#workflows` as zirc's own account, where the
+/// workflows' host hears it as it hears any deploy and holds it to the same rules: whose it
+/// is to replace, and never under a run. Whether it took it shows in the list.
+async fn deploy_workflow(
+    State(ergo): State<Arc<Ergo>>,
+    Json(body): Json<zirc_proto::workflow::Deploying>,
+) -> Response {
+    use zirc_proto::workflow::{CHANNEL, Deploy, Sent};
+    if !*ergo.gateway.runs_workflows().borrow() {
+        return error(
+            StatusCode::CONFLICT,
+            "off",
+            "workflows aren't turned on for this organisation",
+        );
+    }
+    if !zirc_proto::names::is_account_name(&body.by) {
+        return error(StatusCode::BAD_REQUEST, "invalid", "by isn't an account");
+    }
+    let workflow = match zirc_workflows::parse(&body.source) {
+        Ok(workflow) => workflow,
+        Err(why) => return error(StatusCode::BAD_REQUEST, "invalid", why),
+    };
+    let sent = Sent {
+        name: workflow.name.clone(),
+        version: zirc_workflows::version(&body.source),
+    };
+    let deploy = Deploy {
+        name: workflow.name,
+        nick: workflow.nick,
+        source: body.source,
+        by: Some(body.by),
+    };
+    let nick = zirc_proto::names::SYSTEM;
+    if let Err(response) = integration_account(&ergo, nick, false).await {
+        return *response;
+    }
+    let config = say::config(
+        &ergo.irc.ip().to_string(),
+        ergo.irc.port(),
+        ergo.gate.as_deref(),
+        &ergo.token,
+        nick,
+    );
+    let message = zirc_proto::Message::new("dashboard", deploy.event());
+    match say::post(&config, CHANNEL, &message).await {
+        Ok(()) => {
+            info!(workflow = sent.name, "the dashboard deployed a workflow");
+            (StatusCode::ACCEPTED, Json(sent)).into_response()
+        }
+        Err(failure) => {
+            warn!(workflow = sent.name, %failure, "the dashboard's deploy couldn't be said");
+            error(StatusCode::BAD_GATEWAY, "say", failure.to_string())
+        }
+    }
 }
 
 /// `POST /v1/say`: an integration's post, as `crate::say` says.

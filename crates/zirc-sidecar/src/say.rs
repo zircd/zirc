@@ -233,7 +233,8 @@ async fn deliver(
                 return Ok(());
             }
             // 4xx numerics: no such channel, banned, invite only, full, and so on.
-            if line.command.len() == 3 && line.command.starts_with('4') {
+            // But 422, which a server without a message of the day says to everyone connecting.
+            if line.command.len() == 3 && line.command.starts_with('4') && line.command != "422" {
                 return Err(Failed::Join(format!("the server said {}", line.command)));
             }
         }

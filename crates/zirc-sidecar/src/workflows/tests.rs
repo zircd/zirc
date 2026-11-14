@@ -74,6 +74,7 @@ fn deploy(account: &str, source: &str) -> Row {
         name: "master".into(),
         nick: "master_bot".into(),
         source: source.into(),
+        by: None,
     }
     .event();
     // A deploy is a multiline message, which the history keeps joined.
@@ -389,6 +390,54 @@ fn the_list_has_each_workflow_its_file_and_where_its_runs_stand() {
     assert_eq!(runs[0].since, Some(10));
 }
 
+#[test]
+fn the_dashboards_deploy_is_the_person_it_names_and_a_refusal_is_listed() {
+    let from = |account: &str, by: Option<&str>, source: &str| {
+        let event = Deploy {
+            name: "master".into(),
+            nick: "master_bot".into(),
+            source: source.into(),
+            by: by.map(str::to_owned),
+        }
+        .event();
+        let message = Message::new("dashboard", event);
+        let body = zirc_proto::encode_lines_up_to(&message, 16_384).unwrap();
+        row("#workflows", account, PRIVMSG, &body)
+    };
+    let mut hosted = Hosted::default();
+    // zirc's own account names nobody: nothing. A person naming someone else is themselves.
+    assert!(
+        hosted
+            .take(&from("zirc-system", None, MASTER), true, &who, 0)
+            .is_empty()
+    );
+    let outs = hosted.take(&from("henrik", Some("mattias"), MASTER), true, &who, 0);
+    installed(&mut hosted, outs);
+    assert_eq!(hosted.listed()[0].by.as_deref(), Some("henrik"));
+
+    // The dashboard's, for raj, who isn't its deployer nor an admin: refused, and listed so.
+    let other = MASTER.replace("fix it.", "fix it now.");
+    let outs = hosted.take(&from("zirc-system", Some("raj"), &other), true, &who, 0);
+    assert!(
+        said(&outs)[0]
+            .2
+            .starts_with("raj: couldn't deploy `master`: `master` is @henrik's")
+    );
+    let refused = hosted.refusals();
+    assert_eq!(refused[0].version, zirc_workflows::version(&other));
+    assert!(
+        refused[0]
+            .why
+            .contains("an owner or an admin can replace it")
+    );
+
+    // For henrik, it replaces it, and nothing stays refused.
+    let outs = hosted.take(&from("zirc-system", Some("Henrik"), &other), true, &who, 0);
+    installed(&mut hosted, outs);
+    assert_eq!(hosted.listed()[0].version, zirc_workflows::version(&other));
+    assert!(hosted.refusals().is_empty());
+}
+
 /// What the host says of a deploy of `source` by `account`, heard live.
 fn deploys(hosted: &mut Hosted, account: &str, source: &str) -> String {
     let outs = hosted.take(&deploy(account, source), true, &who, 0);
@@ -648,6 +697,7 @@ fn triage_deploy() -> Row {
         name: "triage".into(),
         nick: "triage_bot".into(),
         source: TRIAGE.into(),
+        by: None,
     }
     .event();
     let body = zirc_proto::encode_lines_up_to(&Message::new("cc-1", event), 16_384).unwrap();
@@ -775,6 +825,7 @@ async fn a_deployed_workflow_hears_live_where_it_is_and_where_its_invited() {
             name: "hello".into(),
             nick: "hello_bot".into(),
             source: HELLO.into(),
+            by: None,
         };
         crate::say::send(&ada, "#workflows", &Message::new("ada", deploy.event())).unwrap();
         next_matching(
@@ -803,6 +854,68 @@ async fn a_deployed_workflow_hears_live_where_it_is_and_where_its_invited() {
     // Where it was invited is kept for next time.
     let kept = std::fs::read_to_string(dir.path().join(KEPT)).unwrap();
     assert!(kept.contains("#elsewhere"), "{kept}");
+}
+
+#[tokio::test]
+async fn a_deploy_said_as_zircs_own_account_is_the_person_it_names() {
+    use zirc_test_irc::{joins, next_matching};
+    let ergo = zirc_test_ergo::require_ergo!();
+    let dir = tempfile::tempdir().unwrap();
+    let host = host_on(&ergo, dir.path());
+    let (ergo, port) = (&ergo, ergo.port());
+    let system = crate::say::config("127.0.0.1", port, None, "token", "zirc-system");
+    let account = move |nick: String| async move {
+        let config = crate::say::config("127.0.0.1", port, None, "token", &nick);
+        zirc_test_irc::register(ergo, &nick, &config.sasl.unwrap().password).await;
+        true
+    };
+    account("zirc-system".to_owned()).await;
+    let (ada, mut hears) = zirc_irc::connect(&person_on(ergo, "ada").await)
+        .await
+        .unwrap();
+    joins(&ada, &mut hears, "#workflows").await;
+    // As the dashboard's deploy is said (accounts.rs's deploy_workflow): for ada, then for bob.
+    let dashboard = |by: &str, source: String| {
+        Message::new(
+            "dashboard",
+            Deploy {
+                name: "hello".into(),
+                nick: "hello_bot".into(),
+                source,
+                by: Some(by.to_owned()),
+            }
+            .event(),
+        )
+    };
+    let ada = async {
+        next_matching(&mut hears, joined("zirc-workflows", "#workflows")).await;
+        crate::say::post(&system, "#workflows", &dashboard("ada", HELLO.into()))
+            .await
+            .unwrap();
+        next_matching(
+            &mut hears,
+            said_by("zirc-workflows", "#workflows", "deployed `hello`"),
+        )
+        .await;
+        // It's ada's now: for bob, who is neither her nor an admin, it isn't replaced.
+        let other = HELLO.replace("hello from", "hello again from");
+        crate::say::post(&system, "#workflows", &dashboard("bob", other))
+            .await
+            .unwrap();
+        next_matching(
+            &mut hears,
+            said_by(
+                "zirc-workflows",
+                "#workflows",
+                "bob: couldn't deploy `hello`: `hello` is @ada's",
+            ),
+        )
+        .await;
+    };
+    tokio::select! {
+        () = host.run(account) => panic!("the host stopped"),
+        () = ada => {}
+    }
 }
 
 #[test]

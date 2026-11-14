@@ -95,6 +95,43 @@ pub struct Hosting {
     pub on: bool,
     /// Those deployed, by name.
     pub workflows: Vec<Listed>,
+    /// The last deploy of each name the server didn't take, until one of that name is.
+    #[serde(default)]
+    pub refused: Vec<Refused>,
+}
+
+/// A deploy the server didn't take.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "WorkflowRefused")]
+pub struct Refused {
+    /// The workflow's name, as the file said it.
+    pub name: String,
+    /// Which file it was ([`Listed::version`]).
+    pub version: String,
+    /// Why not.
+    pub why: String,
+}
+
+/// A deploy from zirc.dev's dashboard, as it POSTs it to [`LIST_PATH`]: the server checks the
+/// file and says it in [`CHANNEL`] as a [`Deploy`] of `by`'s.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "WorkflowDeploying")]
+pub struct Deploying {
+    /// The file.
+    pub source: String,
+    /// The account of the person signed in at zirc.dev, an owner or admin of the organisation.
+    pub by: String,
+}
+
+/// What [`LIST_PATH`] answers a [`Deploying`] it said in [`CHANNEL`]: whether the server took
+/// it shows in its list, as this version of the workflow or among those refused.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "WorkflowSent")]
+pub struct Sent {
+    /// The workflow's name, as the file says it.
+    pub name: String,
+    /// Which file it is ([`Listed::version`]).
+    pub version: String,
 }
 
 /// A workflow a server runs.
@@ -146,6 +183,9 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Hosting::decl(config),
         Listed::decl(config),
         Going::decl(config),
+        Refused::decl(config),
+        Deploying::decl(config),
+        Sent::decl(config),
         format!("const WORKFLOW_LIST_PATH = {LIST_PATH:?};"),
         format!("const WORKFLOW_MAX_SOURCE = {MAX_SOURCE};"),
     ]
@@ -879,6 +919,11 @@ pub struct Deploy {
     pub nick: String,
     /// The file, as written, at most [`MAX_SOURCE`] bytes: the server reads the rest from it.
     pub source: String,
+    /// Whose deploy it is, when zirc.dev's dashboard says it for the person signed in there, as
+    /// [`crate::names::SYSTEM`]: their account. Said by anyone else it's ignored, and the
+    /// deploy is whoever's account said it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
 }
 
 impl Deploy {
@@ -1154,6 +1199,7 @@ mod tests {
             name: "master".into(),
             nick: "master_bot".into(),
             source: "name = \"master\"".into(),
+            by: None,
         };
         let event = deploy.event();
         assert!(crate::check_kind(KIND).is_none());
