@@ -159,8 +159,8 @@ async fn keeps_a_long_client_tag_in_history_across_a_restart() {
     bob.join("#api").unwrap();
     joined(&mut bob_in, "bob", "#api").await;
 
-    // Base64url, as a sealed part's would be, filling what's left after the name and `=`.
-    let value: String = "AbC-_0189xYz"
+    // JSON of base64url, as sealed parts are, filling what's left after the name and `=`.
+    let value: String = r#"{"v":1,"parts":[{"k":"AbC-_0189xYz","n":""#
         .chars()
         .cycle()
         .take(4094 - TAG.len() - 1)

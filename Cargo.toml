@@ -32,6 +32,10 @@ zirc = { path = "crates/zirc" }
 zirc-test-ergo = { path = "crates/zirc-test-ergo" }
 zirc-test-irc = { path = "crates/zirc-test-irc" }
 
+# Sealed parts of messages (zirc-chat's sealed): AES-256-GCM and SHA-256 in plain Rust, which
+# builds for the web client's wasm; the randomness comes from whoever calls it. The mobile
+# core's Web Push uses them too.
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 anyhow = "1"
 base64 = "0.22"
 # Times in the terminal client, in the local time zone.
@@ -60,6 +64,7 @@ terminal-colorsaurus = "1"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
 # SHA-256 for checking updates, from the ring rustls uses already.
 ring = "0.17"
+sha2 = "0.10"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 # The JSON Schema of the socket protocol and events, which the Python SDK's types are
 # generated from.

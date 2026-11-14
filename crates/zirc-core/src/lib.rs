@@ -33,6 +33,7 @@ pub mod owners;
 pub mod paths;
 pub mod project;
 pub mod reports;
+pub mod sealed;
 pub mod search;
 pub mod secrets;
 pub mod send;

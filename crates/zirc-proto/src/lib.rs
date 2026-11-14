@@ -31,6 +31,7 @@ pub mod report;
 pub mod request;
 pub mod role;
 pub mod run;
+pub mod sealed;
 pub mod search;
 pub mod session;
 pub mod state;
