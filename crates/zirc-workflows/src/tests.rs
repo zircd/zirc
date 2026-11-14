@@ -761,3 +761,37 @@ fn a_fallback_goes_to_a_live_role_member_and_its_stand_ins_only_without_one() {
         "{to_mattias}"
     );
 }
+
+#[test]
+fn a_step_that_names_nobody_goes_straight_to_its_fallback() {
+    // CI names no owner when too many landings reach what failed (ops/suspects.sh).
+    let source = MASTER
+        .replace(
+            "[[input]]\nname = \"owner\"\n",
+            "[[input]]\nname = \"owner\"\noptional = true\n",
+        )
+        .replace(
+            r#"fixers = ["mattias"]"#,
+            r#"fixers = ["role:master-fixers", "mattias"]"#,
+        );
+    let mut e = engine(&source);
+    e.set_members(BTreeMap::from([(
+        "master-fixers".to_owned(),
+        vec![member("m3-mac/master-fixer", 0, 0)],
+    )]));
+    let said = texts(&e.handle(state(Level::Broken, None), 0)).join("\n");
+    assert!(
+        said.contains("names nobody: @m3-mac/master-fixer, over to you."),
+        "{said}"
+    );
+    assert!(
+        !said.contains("stalled") && !said.contains("nobody to do it"),
+        "{said}"
+    );
+    // Escalated already: quiet past its times, it isn't escalated again, nor failed.
+    let later = texts(&e.handle(Input::Tick, 46 * MIN)).join("\n");
+    assert!(
+        !later.contains("over to you") && !later.contains("failed"),
+        "{later}"
+    );
+}

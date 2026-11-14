@@ -1068,6 +1068,24 @@ impl Engine {
                         return self.say(id, change, text, said);
                     }
                     let to = who(run, &step);
+                    // Nobody named, as CI with too many suspects to name: straight to the
+                    // fallback, which is there for whoever named doesn't do it.
+                    let fallback = match &step.fallback {
+                        Some(role) if to.is_empty() => self.fallback(role, &[]),
+                        _ => Vec::new(),
+                    };
+                    if !fallback.is_empty() {
+                        let text = format!(
+                            "`{id}` · `{}` names nobody: {}, over to you. {says}",
+                            step.id,
+                            mentions(&fallback),
+                        );
+                        let change = Change::Escalated {
+                            step: step.id.clone(),
+                            to: fallback,
+                        };
+                        return self.say(id, change, text, said);
+                    }
                     if to.is_empty() {
                         let why = Some(format!("`{}` has nobody to do it", step.id));
                         return self.finish(id, Outcome::Failed, why, said);
