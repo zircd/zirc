@@ -470,7 +470,10 @@ pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) ->
     let entry = entry_of(item);
     let id = entry.and_then(|entry| entry.id.clone());
     let head = entry.map(|entry| head(who.chat.speaker(entry)));
+    // What follows a brief line heads itself again: there's no header to carry on from.
+    let after_brief = before.is_some_and(|before| brief_of(conversation, before).is_some());
     if let Some(parts) = system_parts(item) {
+        let brief = brief_of(conversation, item);
         // A post addressed to an agent session says to whom first, by its name.
         let parts = who.chat.addressed_parts(parts);
         system_rows(
@@ -483,7 +486,8 @@ pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) ->
             (
                 head.as_ref().and_then(|head| head.1.clone()),
                 pill(who.chat, entry, head.is_some_and(|head| head.2)),
-                runs_on(item),
+                runs_on(item) && !after_brief,
+                brief,
             ),
         );
         let first = usize::from(matches!(rows.first(), Some(Row::New)));
@@ -778,6 +782,16 @@ fn system_parts(item: &Item<'_>) -> Option<Parts> {
     }
 }
 
+/// `item` as one quiet line, when it's an agent's routine work in `conversation`: the core's
+/// brief (the user's choice, 14 Nov 2026). `None` for anything else, and for everything in an
+/// agent's own conversation, where its work is whole.
+fn brief_of(conversation: &Conversation, item: &Item<'_>) -> Option<String> {
+    if zirc_core::chat::agent(&conversation.name).is_some() {
+        return None;
+    }
+    system_parts(item)?.brief()
+}
+
 /// Marks a system row's `rows` as mentioning us when it does, as a message's are.
 fn mark_mentions(rows: &mut [Row], mentions: bool) {
     for row in rows {
@@ -792,7 +806,8 @@ fn mark_mentions(rows: &mut [Row], mentions: bool) {
 type Shape<'a> = (usize, &'a dyn Fn(&SpanKind) -> Option<String>, Links);
 
 /// A system row, `parts`, at `time`. A short one, or any `compact`, is one line, `dana's
-/// agent pushed main`, wrapped; otherwise a header, `dana's agent · intent · 14:03`, with
+/// agent pushed main`, wrapped; an agent's routine work with its `brief` is that brief on
+/// one line, its paths left out; otherwise a header, `dana's agent · intent · 14:03`, with
 /// what it's about under it. Its paths follow, unless compact, on a dim row cut to fit.
 fn system_rows(
     rows: &mut Vec<Row>,
@@ -801,7 +816,7 @@ fn system_rows(
     id: Option<&str>,
     compact: bool,
     (text_width, named, link_mode): Shape<'_>,
-    (agent, pill, continues): (Option<Agent>, Option<&'static str>, bool),
+    (agent, pill, continues, brief): (Option<Agent>, Option<&'static str>, bool, Option<String>),
 ) {
     // Agent sessions named in it go by their names, drawn as mentions; the branch and
     // commit it names link to their pages, where the terminal can.
@@ -821,7 +836,7 @@ fn system_rows(
     // People coming and going are one line, as zirc-chat decides (`Parts::compact`), and
     // everything is in the IRC display mode, its icon in front. Anything else is drawn as a
     // message: its actor's header, unless it carries on their run, then its body.
-    let one_line = compact || parts.compact;
+    let one_line = compact || parts.compact || brief.is_some();
     let phrase = parts.phrase();
     let agent = agent.map(|agent| Agent {
         detail: if one_line {
@@ -837,7 +852,12 @@ fn system_rows(
         } else {
             text_width
         };
-        let (said, width) = time_room(parts.line(), text_width, time, (agent.is_some(), compact));
+        let (said, width) = time_room(
+            brief.clone().unwrap_or_else(|| parts.line()),
+            text_width,
+            time,
+            (agent.is_some(), compact),
+        );
         let wrapped = wrap(&said, width);
         let marked = fragments(&wrapped, &marks, width);
         let mut lines = wrapped.into_iter().zip(marked);
@@ -896,7 +916,7 @@ fn system_rows(
         links,
     };
     rows.extend(lines.into_iter().map(|(line, tone)| text_row(line, tone)));
-    if !compact && phrase.is_none() && !parts.paths.is_empty() {
+    if !compact && brief.is_none() && phrase.is_none() && !parts.paths.is_empty() {
         rows.push(text_row(
             (paths_line(&parts.paths, text_width), Vec::new()),
             Tone::Path,
@@ -1566,7 +1586,8 @@ mod tests {
     #[test]
     fn says_a_commit_and_its_push_in_one_row() {
         let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let mut api = Conversation::new("#api", Kind::Channel);
+        // In the agent's own conversation, where its work is whole.
+        let mut api = Conversation::new("mattias-mbp/cc-12", Kind::Query);
         let push = zirc_proto::Message::new(
             "cc-12",
             zirc_proto::Event::Push {
@@ -1711,8 +1732,44 @@ mod tests {
     }
 
     #[test]
-    fn heads_an_event_as_a_message_and_starts_its_body_with_the_lead() {
+    fn says_routine_work_in_a_channel_on_one_quiet_line() {
         let mut api = Conversation::new("#api", Kind::Channel);
+        let intent = zirc_proto::Event::Intent {
+            summary: "split the login form".into(),
+            paths: (1..=6)
+                .map(|n| format!("web/src/login/part{n}.tsx"))
+                .collect(),
+            expires: None,
+            lasts: None,
+        };
+        api.entries.push(at(30, 14, 3, zirc("dana-mbp", intent)));
+        api.entries.push(at(30, 14, 4, ("bob", EntryKind::Join)));
+        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+        let rows = layout(
+            &api,
+            who(),
+            None,
+            60,
+            (utc(), today),
+            (false, Links::Plain, false),
+        );
+        // The core's brief: who, what and the first file's name, no paths after it (the
+        // user's choice, 14 Nov 2026).
+        assert_eq!(
+            shown(&rows),
+            [
+                "--- Today",
+                "14:03       ✎ cc-12|is about to change part1.tsx and 5 more",
+                "14:04       + |bob joined",
+            ]
+        );
+    }
+
+    #[test]
+    fn heads_an_event_as_a_message_and_starts_its_body_with_the_lead() {
+        // In the agent's own conversation, where its work is whole; in a channel it's one
+        // quiet line (says_routine_work_in_a_channel_on_one_quiet_line).
+        let mut api = Conversation::new("dana-mbp/cc-12", Kind::Query);
         let intent = zirc_proto::Event::Intent {
             summary: "split the login form".into(),
             paths: (1..=6)

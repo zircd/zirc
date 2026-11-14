@@ -458,6 +458,9 @@ impl App {
             }
             // A terminal makes a channel with /join, as IRC does: no row for it.
             ListKind::AllDirect | ListKind::NewChannel => return None,
+            // A room under its channel is listed while it's an active thread, as Discord lists
+            // them (the core's `quiet`, the user's choice, 14 Nov 2026).
+            ListKind::Room if row.quiet => return None,
             ListKind::Browse => Some(Target::Browse),
             ListKind::Conversation | ListKind::Room | ListKind::GuestRoom => {
                 self.side_target(&row.name)
@@ -472,18 +475,23 @@ impl App {
         };
         // A conversation with a guest assigned to us: a dot after its name.
         let guest = row.guest && row.kind == ListKind::Conversation;
+        let thread = row.kind == ListKind::Room;
         let label = if guest && row.mine {
             format!("{} •", row.title)
+        } else if thread {
+            // A thread under its channel: a branch mark from it.
+            format!("└ {}", row.title)
         } else {
             row.title
         };
-        // After a direct message's name, what was said last and when; for an agent at work,
-        // what it's taking on.
+        // After a direct message's name, and a channel's, what was said last and when, as
+        // WhatsApp and Discord list them; for an agent at work, what it's taking on.
         let private = row.direct_kind.is_some();
+        let previews = private || row.depth == 0;
         let preview = row
             .preview
-            .filter(|_| private)
-            .zip(row.when.filter(|_| private));
+            .filter(|_| previews)
+            .zip(row.when.filter(|_| previews));
         let note = row.note.filter(|_| private);
         Some(Side::Row {
             label,

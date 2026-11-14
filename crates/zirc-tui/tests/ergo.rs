@@ -126,9 +126,11 @@ async fn chats_with_history_events_and_mentions() {
         shown.contains("│ alice  ") && shown.contains("│   morning all"),
         "{shown}"
     );
-    // The commit as a message: its lead, the marker and what they did, then what it was.
-    assert!(shown.contains("│   ● committed"), "{shown}");
-    assert!(shown.contains("│   Fix login  (main abc123)"), "{shown}");
+    // The commit as one quiet line in the channel, in the core's words: who, what and what it was.
+    assert!(
+        shown.contains("│ ● alice committed: Fix login  (main abc123)"),
+        "{shown}"
+    );
     assert!(
         !shown.contains("ZIRC") && !shown.contains("uncommitted changes"),
         "{shown}"

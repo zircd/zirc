@@ -532,7 +532,19 @@ fn header(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let about = match (buffer.kind, &buffer.topic) {
         _ if guest.is_some() => guest.as_ref().map(guest_about).unwrap_or_default(),
         (Kind::Channel, _) if is_group(&buffer.name) => " group direct message".to_owned(),
-        (Kind::Channel, Some(topic)) => format!(" {topic}"),
+        // A channel's people, threads and topic, from the core: "5 members · 2 threads · The
+        // web app".
+        (Kind::Channel, topic)
+            if app.chat.channel_about(&buffer.name).is_some() || topic.is_some() =>
+        {
+            format!(
+                " {}",
+                app.chat
+                    .channel_about(&buffer.name)
+                    .or_else(|| topic.clone())
+                    .unwrap_or_default()
+            )
+        }
         (Kind::Channel, None) if !buffer.joined => " (not joined)".to_owned(),
         _ => String::new(),
     };
@@ -543,15 +555,8 @@ fn header(frame: &mut Frame<'_>, app: &App, area: Rect) {
             fg(theme.muted).add_modifier(Modifier::BOLD),
         ));
     }
+    // A channel's line counts its threads already, as every app's header counts them.
     spans.push(Span::styled(about, fg(theme.muted)));
-    // A channel's threads, its rooms, counted as every app's header counts them.
-    let threads = app.chat.threads(&buffer.name).len();
-    if threads > 0 {
-        spans.push(Span::styled(
-            format!(" · Threads ({threads})"),
-            fg(theme.muted),
-        ));
-    }
     frame.render_widget(
         Paragraph::new(Line::from(spans)).style(fg(theme.text)),
         area,
@@ -2147,7 +2152,7 @@ mod tests {
     }
 
     #[test]
-    fn lists_every_thread_quiet_ones_too() {
+    fn lists_active_threads_and_leaves_quiet_ones_to_the_channel() {
         let mut app = app();
         for line in [
             ":me!u@h JOIN #web/fresh",
@@ -2159,11 +2164,15 @@ mod tests {
             app.handle(line.parse().unwrap());
         }
         let (rows, _) = draw(&app, 100, 20);
-        // Threads by title, as every app titles them, none folded away.
-        row_with(&rows, "   fresh");
-        row_with(&rows, "   old a");
-        row_with(&rows, "   old b");
-        assert!(!rows.iter().any(|row| row.contains("more")), "{rows:#?}");
+        // Threads by title with a branch mark, as every app lists them: only the active one,
+        // the quiet ones (nothing new for a day) left to the channel (the core's `quiet`).
+        row_with(&rows, "└ fresh");
+        assert!(
+            !rows
+                .iter()
+                .any(|row| row.contains("old a") || row.contains("old b")),
+            "{rows:#?}"
+        );
     }
 
     #[test]
@@ -2622,8 +2631,9 @@ mod tests {
         let _ = app.select(0);
         let (rows, _) = draw(&app, 100, 16);
         // Unread, with a pip; a pill for what mentions us, none for the rest.
-        assert_eq!(row_with(&rows, "#api"), "▎#api                 1  │");
-        assert_eq!(row_with(&rows, "#web"), "▎#web                    │");
+        // What was said last and when, where it fits.
+        assert_eq!(row_with(&rows, "#api"), "▎#api cc-12: Fix… 58m 1  │");
+        assert!(row_with(&rows, "#web").starts_with("▎#web bob: "));
         // Long names are cut to fit, the same way everywhere.
         assert_eq!(row_with(&rows, " #a-"), " #a-channel-with-a-very… │");
         // The server's conversation is shown, but isn't in the list.
@@ -3236,14 +3246,15 @@ mod tests {
                 .collect()
         };
         let (rows, _) = draw(&app, screen.width, screen.height);
-        // The switch's Channels: A–Z and Browse channels.
+        // The switch's Channels: A–Z and Browse channels, each with what was said last and
+        // when, where it fits.
         assert_eq!(
             side(&rows, 4),
             [
                 // Unread in bold with a pip at the edge; a pill counts what mentions us.
                 " Channels",
-                "▎#api               1",
-                "▎#web",
+                "▎#api cc-12: F… 58m 1",
+                "▎#web bob: deploy… 57m",
                 " Browse channels",
             ]
         );
@@ -3581,7 +3592,7 @@ mod tests {
     }
 
     #[test]
-    fn shows_an_agents_whole_doing_never_cut_short() {
+    fn says_an_agents_taking_on_in_a_channel_as_one_quiet_line() {
         let mut app = app();
         app.compact = false;
         let _ = app.select(1);
@@ -3602,13 +3613,12 @@ mod tests {
             .unwrap(),
         );
         let (rows, _) = draw(&app, 100, 16);
-        // A message, as every event is: its header, then what it is, wrapped, never cut.
-        row_with(&rows, "11:40");
-        row_with(&rows, "nightly");
-        assert!(
-            !rows
-                .iter()
-                .any(|row| row.contains("coupon") && row.contains('…')),
+        // In a channel, one quiet line in the core's words, its time at the end (the user's
+        // choice, 14 Nov 2026): never a header and body.
+        assert!(row_with(&rows, "is taking: fix the coupon").contains("11:40"));
+        assert_eq!(
+            rows.iter().filter(|row| row.contains("coupon")).count(),
+            1,
             "{rows:#?}"
         );
     }
@@ -3743,7 +3753,12 @@ mod tests {
         // The room under its repository's channel, the channels A–Z.
         assert_eq!(
             side(&app),
-            [" Channels", "▎#api             1", "   login", "▎#web"]
+            [
+                " Channels",
+                "▎#api bob: r… 30m 1",
+                "   └ login",
+                "▎#web bob: depl… 57m"
+            ]
         );
 
         // Alt-P pins the conversation shown, under Starred at the top; it's said, and kept.
@@ -3751,7 +3766,12 @@ mod tests {
         app.key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::ALT));
         assert_eq!(
             side(&app),
-            [" Starred", " #web*", " Channels", "▎#api             1"]
+            [
+                " Starred",
+                " #web* bob: dep… 57m",
+                " Channels",
+                "▎#api bob: r… 30m 1"
+            ]
         );
         let (rows, _) = draw(&app, 100, 16);
         assert!(row_with(&rows, "irc.zirc.test · ").contains("pinned #web, Alt-P unpins"));
@@ -3765,10 +3785,14 @@ mod tests {
             pins: vec!["#web".into()],
             ..crate::prefs::Prefs::default()
         });
-        assert_eq!(side(&app)[1], " #web*");
-        // The channel's header counts its threads.
+        assert!(side(&app)[1].starts_with(" #web*"));
+        // The channel's header counts its threads, in the core's line.
         let _ = app.select(app.chat.position("#api").unwrap());
-        assert!(draw(&app, 100, 16).0[0].ends_with("· Threads (1)"));
+        assert!(
+            draw(&app, 100, 16).0[0].contains("1 thread"),
+            "{:?}",
+            draw(&app, 100, 16).0[0]
+        );
     }
 
     #[test]
@@ -3848,16 +3872,16 @@ mod tests {
         // first's header; an agent's commit a message too: its header, who and when, then
         // its lead and what it was.
         let rows = scrollback(&app);
+        assert!(rows.len() >= 4, "{rows:#?}");
         assert_eq!(
-            rows[rows.len() - 6..],
+            rows[rows.len() - 4..],
             [
                 " alice  11:00",
                 "   morning",
                 // What mentions us, its edge in front.
                 " ▎ me: can you look?",
-                " ⚙ cc-12 mattias's agent  11:02",
-                "   ● committed",
-                "   Fix login  (main abc)",
+                // An agent's commit in a channel: one quiet line in the core's words.
+                " ⚙ ● cc-12 committed: Fix login  (main abc) · 11:02",
             ]
         );
 
@@ -3968,7 +3992,8 @@ mod tests {
         let mut app = app();
         let _ = app.select(1);
         let (rows, _) = draw(&app, 40, 10);
-        assert!(!rows.iter().any(|row| row.contains(" members")));
+        // No people beside it, nor the list (the header names how many, as the core says).
+        assert!(!rows.iter().any(|row| row.contains("People")));
         assert!(!rows.iter().any(|row| row.contains("#web")));
         assert!(row_with(&rows, "alice").contains("alice"));
     }
