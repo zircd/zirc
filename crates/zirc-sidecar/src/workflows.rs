@@ -352,7 +352,8 @@ impl Hosted {
 
     /// What a landing CI says passed starts: a `landed` trigger's run, in every workflow.
     fn landed(&mut self, data: &zirc_proto::ci::Data, now: u64) -> Vec<Out> {
-        if data.state.as_deref() != Some("passed") {
+        // A try landed nothing, however it went.
+        if data.tried || data.state.as_deref() != Some("passed") {
             return Vec::new();
         }
         let landing: BTreeMap<String, String> = [
@@ -989,6 +990,10 @@ fn seen(message: Option<&Message>, account: &str, who: Who<'_>) -> Option<Seen> 
             if kind == zirc_proto::ci::LANDING_KIND && account == zirc_proto::ci::NICK =>
         {
             let data = zirc_proto::ci::Data::of(data);
+            // A try isn't a landing, queued, landed or failed.
+            if data.tried {
+                return None;
+            }
             let did = match data.state.as_deref()? {
                 "pending" | "running" => Did::LandingQueued,
                 "passed" => Did::Landed,

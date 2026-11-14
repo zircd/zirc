@@ -2688,6 +2688,24 @@
       ],
       "description": "A target that failed in a landing's build."
     },
+    "CiStackedOn": {
+      "type": "object",
+      "properties": {
+        "branch": {
+          "type": "string",
+          "description": "The branch, on the repository's remote."
+        },
+        "commit": {
+          "type": "string",
+          "description": "Its head, in full, as CI found it."
+        }
+      },
+      "required": [
+        "branch",
+        "commit"
+      ],
+      "description": "A branch a landing's or try's branch was stacked on ([`Data::stacked_on`])."
+    },
     "Request": {
       "oneOf": [
         {
@@ -4799,6 +4817,17 @@
             "$ref": "#/$defs/Step"
           },
           "description": "A landing's steps as they stand ([`crate::card::Step`]): its card shows them."
+        },
+        "try": {
+          "type": "boolean",
+          "description": "A try (`//ops:land --try`): the branch tested as its landing would be, rebased onto\nthe default branch, and never landed, on every event of its build. Its end, passed, is\nat `info`, never `passed`, which counts as landed."
+        },
+        "stacked_on": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CiStackedOn"
+          },
+          "description": "The branches, still to land, whose commits the branch held as CI found it: what it was\ntested on, for a try, and why it failed, for a landing, which CI refuses then, as it\nwould land their commits as its own."
         }
       },
       "description": "What a landing's or deploy's event carries (`ops/say.sh`), each field left out when CI\ndoesn't know it. Every event of one landing's build has the same [`Data::landing`], so the\napps show them as one landing that updates."

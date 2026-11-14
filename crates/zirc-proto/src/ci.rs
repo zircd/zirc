@@ -180,6 +180,26 @@ pub struct Data {
     /// A landing's steps as they stand ([`crate::card::Step`]): its card shows them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<crate::card::Step>,
+    /// A try (`//ops:land --try`): the branch tested as its landing would be, rebased onto
+    /// the default branch, and never landed, on every event of its build. Its end, passed, is
+    /// at `info`, never `passed`, which counts as landed.
+    #[serde(default, rename = "try", skip_serializing_if = "std::ops::Not::not")]
+    pub tried: bool,
+    /// The branches, still to land, whose commits the branch held as CI found it: what it was
+    /// tested on, for a try, and why it failed, for a landing, which CI refuses then, as it
+    /// would land their commits as its own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stacked_on: Vec<StackedOn>,
+}
+
+/// A branch a landing's or try's branch was stacked on ([`Data::stacked_on`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[schemars(rename = "CiStackedOn")]
+pub struct StackedOn {
+    /// The branch, on the repository's remote.
+    pub branch: String,
+    /// Its head, in full, as CI found it.
+    pub commit: String,
 }
 
 /// A target that failed in a landing's build.
@@ -401,6 +421,30 @@ mod tests {
         assert_eq!(
             Data::of(&serde_json::json!("not an object")),
             Data::default()
+        );
+    }
+
+    /// A try, and what a branch was stacked on, as ops/say.sh says them; neither said, it's a
+    /// landing of a branch stacked on nothing, and says so the same way back.
+    #[test]
+    fn reads_a_try_and_its_stack() {
+        let it = Data::of(&serde_json::json!({
+            "state": "info", "try": true,
+            "stacked_on": [{"branch": "api-auth", "commit": "0123456"}],
+        }));
+        assert!(it.tried);
+        assert_eq!(
+            it.stacked_on,
+            [StackedOn {
+                branch: "api-auth".into(),
+                commit: "0123456".into()
+            }]
+        );
+        let landing = Data::of(&serde_json::json!({"state": "passed"}));
+        assert!(!landing.tried && landing.stacked_on.is_empty());
+        assert_eq!(
+            serde_json::to_value(&landing).unwrap(),
+            serde_json::json!({"state": "passed"})
         );
     }
 

@@ -290,8 +290,19 @@ pub fn metadata(message: &Message) -> Option<Value> {
         Event::Custom { kind, data, .. } => {
             let keep: &[&str] = match kind.as_str() {
                 zirc_proto::ci::LANDING_KIND | zirc_proto::ci::DEPLOY_KIND => &[
-                    "landing", "pipeline", "build", "branch", "session", "commit", "state",
-                    "failed", "task", "reverts", "fixes",
+                    "landing",
+                    "pipeline",
+                    "build",
+                    "branch",
+                    "session",
+                    "commit",
+                    "state",
+                    "failed",
+                    "task",
+                    "reverts",
+                    "fixes",
+                    "try",
+                    "stacked_on",
                 ],
                 // Its name, how it stands and who's on it ([`zirc_proto::state::State`]), never
                 // why, which is words.
