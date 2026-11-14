@@ -114,6 +114,53 @@ async fn until_in(home: &Path, channel: &str) {
     .unwrap_or_else(|_| panic!("zircd never joined {channel}"));
 }
 
+/// Until `home`'s zircd hears the server list a direct conversation with `nick`: from then
+/// on a catch-up reads it. One begun before that leaves it out, rightly, and on CI the
+/// next took 7 s and the one after outlasted the wait (build 3353), so the test asked for
+/// what the server didn't have yet and never got to ask again.
+async fn until_listed(home: &Path, nick: &str) {
+    let listed = async {
+        let list = zirc_core::ipc::Request::Conversations { seconds: 1800 };
+        loop {
+            let answer = zirc_core::ipc::request(&zirc_core::paths::socket(home), &list).await;
+            if let Ok(zirc_core::ipc::Response::Conversations { targets }) = answer
+                && targets.iter().any(|target| target == nick)
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    };
+    tokio::time::timeout(WAIT, listed)
+        .await
+        .unwrap_or_else(|_| panic!("the server never listed a conversation with {nick}"));
+}
+
+/// How long `home`'s zircd takes to answer, now: its status, then a read of each of
+/// `targets` as catch-up makes it. A catch-up is those one after another, so this says
+/// whether one conversation is slow or zircd is, whatever it's asked.
+async fn answer_times(home: &Path, targets: &[&str]) -> String {
+    let socket = zirc_core::paths::socket(home);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    let began = std::time::Instant::now();
+    let _ = zirc_core::ipc::request(&socket, &zirc_core::ipc::Request::Status).await;
+    let mut times = format!("status {:?}", began.elapsed());
+    for target in targets {
+        let read = zirc_core::ipc::Request::Read {
+            target: (*target).to_owned(),
+            limit: 200,
+            since: Some(now.saturating_sub(1800)),
+            until: None,
+        };
+        let began = std::time::Instant::now();
+        let _ = zirc_core::ipc::request(&socket, &read).await;
+        write!(times, ", {target} {:?}", began.elapsed()).unwrap();
+    }
+    times
+}
+
 /// Until `home`'s zircd lists a watch without a session: from then on it hears what's said.
 /// Starting one is a task of its own, which a busy machine runs late.
 async fn until_watching(home: &Path) {
@@ -204,8 +251,9 @@ async fn catchup_with(
         .unwrap();
     }
     let tries = tries.into_inner().unwrap();
+    let times = answer_times(home, &["#web", "#ops", "#general", "#web/agents"]).await;
     panic!(
-        "catchup never had {targets:?} in {WAIT:?}, {} catch-ups ended, taking {tries:?}; it had: {last}{seen}",
+        "catchup never had {targets:?} in {WAIT:?}, {} catch-ups ended, taking {tries:?}; zircd answers took: {times}; it had: {last}{seen}",
         tries.len()
     )
 }
@@ -1047,6 +1095,7 @@ async fn catches_up_on_what_people_said_not_on_zircds_events() {
     .await
     .unwrap();
     // Once the server has both: the post in #web and the question as a direct message.
+    until_listed(alpha.path(), "ann-beta").await;
     let machines = [(alpha.path(), "ann-beta"), (beta.path(), "ann-alpha")];
     let (printed, catchup) = catchup_with(alpha.path(), &["#web", "ann-beta"], &machines).await;
     let web = catchup["conversations"]
