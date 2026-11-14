@@ -420,6 +420,11 @@ impl Engine {
     /// Reads back a change its nick posted before, without the card, as kept to rebuild the
     /// engine when its workflow is deployed again.
     pub fn restore_change(&mut self, run: &str, change: &Change, at: u64) {
+        // A run it has already: read back again, as after a reconnect's catch-up, its start
+        // would put it back to its first step and give that again.
+        if matches!(change, Change::Started { .. }) && self.runs.contains_key(run) {
+            return;
+        }
         self.apply(run, change, at);
     }
 

@@ -1024,11 +1024,13 @@ impl Host {
                         }
                     }
                     _ => {
+                        // Heard live, a workflow's own post too: the engine said it, and
+                        // reading it back as history would undo what it did since (build
+                        // 3306's flaky runs each gave their step twice).
                         if let Some(row) = connection::row_of(&line)
                             && ids.insert(&row.msgid)
                         {
-                            let live = !hosted.runs_as(&row.item.account);
-                            outs.extend(hosted.take(&row, live, &who, now));
+                            outs.extend(hosted.take(&row, true, &who, now));
                         }
                     }
                 }

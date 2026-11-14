@@ -771,3 +771,66 @@ async fn a_deployed_workflow_hears_live_where_it_is_and_where_its_invited() {
     let kept = std::fs::read_to_string(dir.path().join(KEPT)).unwrap();
     assert!(kept.contains("#elsewhere"), "{kept}");
 }
+
+#[test]
+fn a_role_step_a_member_is_live_for_is_given_once_when_its_post_is_heard_back() {
+    let mut hosted = Hosted::default();
+    let outs = hosted.take(&triage_deploy(), true, &who, 0);
+    installed(&mut hosted, outs);
+    hosted.heard(&live_list("m3-mac", &[("master-fixer", "fixers")]));
+    hosted.tick(0);
+    let run = row("#ops", "mattias", PRIVMSG, "triage_bot: run");
+    let started = hosted.take(&run, true, &who, 1);
+    let given = |outs: &[Out]| {
+        said(outs)
+            .iter()
+            .filter(|(_, _, text)| text.contains(" → "))
+            .count()
+    };
+    assert_eq!(given(&started), 1, "{:?}", said(&started));
+    // Its own posts, heard back as the server echoes them, give it to nobody again.
+    let mut again = Vec::new();
+    for row in kept(&started) {
+        again.extend(hosted.take(&row, true, &who, 1));
+    }
+    again.extend(hosted.tick(1));
+    assert_eq!(given(&again), 0, "{:?}", said(&again));
+}
+
+#[test]
+fn cis_mention_of_a_role_step_gives_it_once() {
+    let mut hosted = Hosted::default();
+    let outs = hosted.take(&triage_deploy(), true, &who, 0);
+    installed(&mut hosted, outs);
+    hosted.heard(&live_list("m3-mac", &[("master-fixer", "fixers")]));
+    hosted.tick(0);
+    let flaky = zirc(
+        "#ops",
+        "zirc-ci",
+        "ci",
+        Event::Custom {
+            kind: "x-zirc/check".into(),
+            data: serde_json::json!({"state": "warning"}),
+            text: "@triage_bot run".into(),
+        },
+    );
+    // As the host's loop does: what it heard, then a tick, in one go.
+    let mut started = hosted.take(&flaky, true, &who, 1);
+    started.extend(hosted.tick(1));
+    // Then each of its posts read back, as a reconnect's catch-up does, and the member's
+    // machine saying its list again, each followed by a tick, as the loop does.
+    let echoes = kept(&started);
+    let mut all = started;
+    for row in echoes {
+        all.extend(hosted.take(&row, false, &who, 1));
+        all.extend(hosted.tick(1));
+    }
+    hosted.heard(&live_list("m3-mac", &[("master-fixer", "fixers")]));
+    all.extend(hosted.tick(1));
+    let texts: Vec<String> = said(&all).into_iter().map(|(_, _, t)| t).collect();
+    assert_eq!(
+        texts.iter().filter(|t| t.contains(" → ")).count(),
+        1,
+        "{texts:?}"
+    );
+}
