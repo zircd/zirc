@@ -357,6 +357,38 @@ fn an_integrations_event_naming_the_workflow_starts_a_run_and_a_guests_doesnt() 
     assert!(hosted.take(&flaky("m3-mac"), true, &who, 2).is_empty());
 }
 
+#[test]
+fn the_list_has_each_workflow_its_file_and_where_its_runs_stand() {
+    let mut hosted = Hosted::default();
+    assert!(hosted.listed().is_empty());
+    deploys(&mut hosted, "mattias", MASTER);
+    let listed = hosted.listed();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        (listed[0].name.as_str(), listed[0].nick.as_str()),
+        ("master", "master_bot")
+    );
+    assert_eq!(listed[0].by.as_deref(), Some("mattias"));
+    assert_eq!(listed[0].source, MASTER);
+    assert_eq!(listed[0].version, zirc_workflows::version(MASTER));
+    assert!(listed[0].runs.is_empty());
+
+    hosted.take(
+        &zirc("#monorepo", "zirc-ci", "ci", broken("cc-8b60f7")),
+        true,
+        &who,
+        10,
+    );
+    let runs = &hosted.listed()[0].runs;
+    assert_eq!(runs.len(), 1);
+    assert_eq!(
+        (runs[0].run.as_str(), runs[0].step.as_str()),
+        ("master-1", "fix")
+    );
+    assert_eq!(runs[0].to, ["cc-8b60f7"]);
+    assert_eq!(runs[0].since, Some(10));
+}
+
 /// What the host says of a deploy of `source` by `account`, heard live.
 fn deploys(hosted: &mut Hosted, account: &str, source: &str) -> String {
     let outs = hosted.take(&deploy(account, source), true, &who, 0);

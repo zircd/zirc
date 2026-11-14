@@ -410,6 +410,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         .route("/v1/say", post(say))
         .route("/v1/push", get(push_key))
         .route("/v1/server", get(describe))
+        .route(zirc_proto::workflow::LIST_PATH, get(list_workflows))
         .route("/v1/channels", get(list_channels))
         .route("/v1/guests", get(list_guests))
         .route("/v1/guests/unread", get(unread_for_guests))
@@ -1089,6 +1090,17 @@ async fn integration_account(ergo: &Ergo, nick: &str, reset: bool) -> Result<(),
             "changing the passphrase failed".into()
         }))))
     }
+}
+
+/// `GET /v1/workflows`: the workflows the server runs and their runs that aren't finished
+/// ([`crate::workflows::listed`]), and whether it runs them at all.
+async fn list_workflows(State(ergo): State<Arc<Ergo>>) -> Response {
+    let on = *ergo.gateway.runs_workflows().borrow();
+    Json(zirc_proto::workflow::Hosting {
+        on,
+        workflows: crate::workflows::listed(),
+    })
+    .into_response()
 }
 
 /// `POST /v1/say`: an integration's post, as `crate::say` says.

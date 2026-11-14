@@ -42,7 +42,7 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 use zirc_proto::run::{Act, Change, RunEvent, StepAction};
 use zirc_proto::state::State;
-use zirc_proto::workflow::{self, Deploy, Workflow};
+use zirc_proto::workflow::{self, Deploy, Listed, Workflow};
 use zirc_proto::{Event, Message};
 use zirc_workflows::{Actor, Did, Engine, Input, Said};
 
@@ -65,6 +65,27 @@ pub fn is_zircs_own(account: &str) -> bool {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .contains(&account)
+}
+
+/// The workflows the server runs now, as its host last had them ([`Hosted::listed`]): what
+/// the account endpoint lists, which the host keeps as its runs move.
+static LISTED: std::sync::LazyLock<std::sync::RwLock<Vec<Listed>>> =
+    std::sync::LazyLock::new(std::sync::RwLock::default);
+
+/// The workflows the server runs now and their runs that aren't finished; none while
+/// workflows are off.
+#[must_use]
+pub fn listed() -> Vec<Listed> {
+    LISTED
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+fn list(listed: Vec<Listed>) {
+    *LISTED
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = listed;
 }
 
 /// How long a nick's connection waits before connecting again, at first and at most.
@@ -121,6 +142,8 @@ pub enum Out {
 pub struct Candidate {
     workflow: Workflow,
     version: String,
+    /// The file, as deployed.
+    source: String,
     /// The person who deployed it: themselves, or from one of their machines.
     by: String,
 }
@@ -128,6 +151,9 @@ pub struct Candidate {
 /// A workflow running.
 struct Live {
     engine: Engine,
+    /// Its file, as deployed, and which of its files that is.
+    source: String,
+    version: String,
 }
 
 /// The server's workflows, as the history says: no I/O.
@@ -173,6 +199,28 @@ impl Hosted {
     #[must_use]
     pub fn count(&self) -> usize {
         self.live.len()
+    }
+
+    /// The workflows running and their runs that aren't finished, by name: what
+    /// [`zirc_proto::workflow::LIST_PATH`] lists.
+    #[must_use]
+    pub fn listed(&self) -> Vec<Listed> {
+        self.live
+            .iter()
+            .map(|(name, live)| {
+                let workflow = live.engine.workflow();
+                Listed {
+                    name: name.clone(),
+                    nick: workflow.nick.clone(),
+                    description: workflow.description.clone(),
+                    channel: workflow.channel.clone(),
+                    version: live.version.clone(),
+                    by: self.deployers.get(name).cloned(),
+                    source: live.source.clone(),
+                    runs: live.engine.going(),
+                }
+            })
+            .collect()
     }
 
     /// The workflow `nick` runs, if one does.
@@ -383,6 +431,7 @@ impl Hosted {
             (Ok(workflow), true) => vec![Out::Check(Candidate {
                 workflow,
                 version,
+                source: deploy.source.clone(),
                 by,
             })],
             (Ok(workflow), false) => {
@@ -391,6 +440,7 @@ impl Hosted {
                 let candidate = Candidate {
                     workflow,
                     version,
+                    source: deploy.source.clone(),
                     by,
                 };
                 self.read_back.insert(key, candidate);
@@ -410,11 +460,12 @@ impl Hosted {
         let Candidate {
             workflow,
             version,
+            source,
             by,
         } = candidate;
         // Whoever deployed it first keeps it, whoever replaces it since.
         self.deployers.entry(workflow.name.clone()).or_insert(by);
-        let mut engine = Engine::new(workflow.clone(), version);
+        let mut engine = Engine::new(workflow.clone(), version.clone());
         for state in self.states.values() {
             engine.restore_state(state);
         }
@@ -425,7 +476,14 @@ impl Hosted {
             nick: workflow.nick.to_lowercase(),
             channels: workflow.channels(),
         };
-        self.live.insert(workflow.name, Live { engine });
+        self.live.insert(
+            workflow.name,
+            Live {
+                engine,
+                source,
+                version,
+            },
+        );
         *NICKS
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = self
@@ -903,6 +961,7 @@ impl Host {
             }
             info!("workflows are on");
             self.serve(&account, &mut on).await;
+            list(Vec::new());
             info!("workflows were turned off");
         }
     }
@@ -957,6 +1016,7 @@ impl Host {
             self.carry_out(outs, &mut hosted, &mut links, &kept, &hear, account)
                 .await;
             due = hosted.next_due(now);
+            list(hosted.listed());
         }
     }
 

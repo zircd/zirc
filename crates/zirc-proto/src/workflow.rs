@@ -49,6 +49,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::Event;
 use crate::state::Level;
@@ -82,6 +83,73 @@ fn is_channel(channel: &str) -> bool {
 
 /// The longest a step's `says` is, in characters.
 pub const MAX_SAYS: usize = 1000;
+
+/// Where a server's sidecar lists the workflows it runs ([`Hosting`]), for zirc.dev's dashboard.
+pub const LIST_PATH: &str = "/v1/workflows";
+
+/// The workflows a server runs, as [`LIST_PATH`] answers.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "WorkflowHosting")]
+pub struct Hosting {
+    /// Whether the server runs workflows at all: zirc.dev turns them on for an organisation.
+    pub on: bool,
+    /// Those deployed, by name.
+    pub workflows: Vec<Listed>,
+}
+
+/// A workflow a server runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(optional_fields, rename = "WorkflowListed")]
+pub struct Listed {
+    /// Its name.
+    pub name: String,
+    /// The user it runs as.
+    pub nick: String,
+    /// What it's for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Where its runs are posted.
+    pub channel: String,
+    /// Which of its files this is: a short hash of the file.
+    pub version: String,
+    /// Who first deployed it: they, an owner or an admin may replace it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    /// The file, as deployed.
+    pub source: String,
+    /// Its runs that aren't finished, oldest first.
+    pub runs: Vec<Going>,
+}
+
+/// A run that isn't finished, and where it stands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(optional_fields, rename = "WorkflowRun")]
+pub struct Going {
+    /// The run, such as `master-12`.
+    pub run: String,
+    /// The step it's on.
+    pub step: String,
+    /// Who has that step: whoever took it on, or else everyone it went to. Nobody for a wait.
+    pub to: Vec<String>,
+    /// The stage a task is at, among its step's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
+    /// When the step last moved or its holder was last heard of, in unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<u64>,
+}
+
+/// These as TypeScript, for the web app's generated file.
+#[must_use]
+pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
+    vec![
+        Hosting::decl(config),
+        Listed::decl(config),
+        Going::decl(config),
+        format!("const WORKFLOW_LIST_PATH = {LIST_PATH:?};"),
+        format!("const WORKFLOW_MAX_SOURCE = {MAX_SOURCE};"),
+    ]
+}
 
 /// A workflow, as its file says it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

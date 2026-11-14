@@ -460,6 +460,46 @@ impl Engine {
             .collect()
     }
 
+    /// The runs not finished yet and where each stands, oldest first: what a dashboard lists.
+    #[must_use]
+    pub fn going(&self) -> Vec<zirc_proto::workflow::Going> {
+        let mut going: Vec<_> = self
+            .runs
+            .values()
+            .filter(|r| r.finished.is_none())
+            .filter_map(|r| Some((r, r.current()?)))
+            .map(|(r, i)| {
+                let step = &self.workflow.steps[i];
+                let (to, stage, since) = match &r.steps[i] {
+                    Status::Working(work) => (
+                        work.by
+                            .clone()
+                            .map_or_else(|| work.to.clone(), |by| vec![by]),
+                        work.stage
+                            .and_then(|at| step.stages.get(at))
+                            .map(|stage| stage.name.clone()),
+                        Some(work.since),
+                    ),
+                    Status::Held { to, .. } => (to.clone(), None, None),
+                    _ => (Vec::new(), None, None),
+                };
+                zirc_proto::workflow::Going {
+                    run: r.id.clone(),
+                    step: step.id.clone(),
+                    to,
+                    stage,
+                    since,
+                }
+            })
+            .collect();
+        // By number, not by name: master-10 after master-9.
+        going.sort_by_key(|g| {
+            let number = g.run.rsplit('-').next().and_then(|n| n.parse::<u64>().ok());
+            (number, g.run.clone())
+        });
+        going
+    }
+
     /// The run and step answering 👍 or 👎 on a message of `run` would answer: its approval
     /// step, if that's where it stands.
     #[must_use]
