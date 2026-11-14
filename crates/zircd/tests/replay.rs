@@ -92,17 +92,20 @@ async fn after_a_long_gap_a_waiting_session_is_told_zircd_was_away_rather_than_r
         clone,
         session,
     } = alpha;
-    // Stopped for an hour, as a laptop asleep: it was last connected then.
+    // Stopped for an hour and a half, as a laptop asleep: it was last connected then. Said
+    // as 2h, rounded up so the catch-up it names covers it all, however long reconnecting
+    // takes here: from exactly an hour ago, a second's wait made it 2h, not the 1h asked
+    // for (build 3373).
     let machine = machine
         .restart_after(async {
-            let hour_ago = std::time::SystemTime::now()
+            let ago = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs()
-                - 3600;
+                - 5400;
             std::fs::write(
                 zirc_core::paths::replay(&home),
-                format!(r#"{{"alive":{hour_ago},"newest":{{}}}}"#),
+                format!(r#"{{"alive":{ago},"newest":{{}}}}"#),
             )
             .unwrap();
         })
@@ -124,8 +127,8 @@ async fn after_a_long_gap_a_waiting_session_is_told_zircd_was_away_rather_than_r
     };
     assert_eq!(why, Some(Why::Mention));
     assert!(
-        body.starts_with("cc-a: zircd was away from the server for 1h, so 1299 may have"),
+        body.starts_with("cc-a: zircd was away from the server for 2h, so 1299 may have"),
         "{body}"
     );
-    assert!(body.contains("`zirc catchup --since 1h`"), "{body}");
+    assert!(body.contains("`zirc catchup --since 2h`"), "{body}");
 }
