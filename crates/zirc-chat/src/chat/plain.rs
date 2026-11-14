@@ -250,6 +250,62 @@ mod tests {
     }
 
     #[test]
+    fn briefs_an_agents_routine_work_on_one_line() {
+        let intent = parts(
+            Icon::Intent,
+            "checkout",
+            "is about to change",
+            "fix the coupon field's layout shift",
+            &["web/src/checkout/Coupon.tsx"],
+        );
+        assert_eq!(
+            intent.brief().as_deref(),
+            Some("checkout is about to change Coupon.tsx")
+        );
+        let many = parts(
+            Icon::Intent,
+            "checkout",
+            "is about to change",
+            "",
+            &["a.rs", "web/", "c/d.rs"],
+        );
+        assert_eq!(
+            many.brief().as_deref(),
+            Some("checkout is about to change a.rs and 2 more")
+        );
+        let commit = parts(
+            Icon::Commit,
+            "checkout",
+            "committed",
+            "Fix login\n\nmore",
+            &[],
+        );
+        assert_eq!(
+            commit.brief().as_deref(),
+            Some("checkout committed: Fix login")
+        );
+        // What asks something of its reader, talk, and what's one line already keep their form.
+        for icon in [
+            Icon::Post,
+            Icon::Landed,
+            Icon::Failed,
+            Icon::Conflict,
+            Icon::Overlap,
+        ] {
+            assert_eq!(
+                parts(icon, "cc-1", "did", "it", &["a.rs"]).brief(),
+                None,
+                "{icon:?}"
+            );
+        }
+        let joined = Parts {
+            compact: true,
+            ..parts(Icon::Join, "", "alice joined", "", &[])
+        };
+        assert_eq!(joined.brief(), None);
+    }
+
+    #[test]
     fn says_two_changing_a_file_as_one_phrase_with_every_path() {
         let one = parts(
             Icon::Overlap,

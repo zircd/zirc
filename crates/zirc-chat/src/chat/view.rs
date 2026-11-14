@@ -412,7 +412,8 @@ pub struct Parts {
     /// and system event is drawn as a message is, its actor's avatar, name and time heading
     /// a run of their talk, the verb and details as its body, wrapped, never cut with `…`
     /// (the user's decision, 5 Nov). A landing's card has its own layout. Apps draw this
-    /// and don't decide it themselves.
+    /// and don't decide it themselves. Since 14 Nov, Android draws an agent's routine work
+    /// as one line instead, by [`Parts::brief`], the user's choice for it first.
     pub compact: bool,
     /// For a post addressed to an agent session (`cc-598aa1: …`), that session's id: apps
     /// show `→ zirc-chat` ([`super::Chat::session_label`]), and [`Parts::details`] holds
@@ -447,6 +448,53 @@ impl Parts {
             (icon, true) => icon.glyph().to_owned(),
             (icon, false) => format!("{} {}", icon.glyph(), self.verb),
         }
+    }
+
+    /// The event as one muted line, for an app that draws an agent's routine work quietly
+    /// (Android, from 14 Nov 2026, the user's choice): who and what, without the marker,
+    /// which apps draw from [`Icon::glyph`]: `checkout is about to change Coupon.tsx`, a
+    /// path by its file's name and `and 2 more` for the rest; with no paths, the first line
+    /// of its details after a colon, `checkout committed: fix the coupon`. `None` for what
+    /// keeps its full form: people coming and going (already one line), a post (it's talk),
+    /// a landing, a failure, a conflict and an overlap (they ask something of the reader).
+    #[must_use]
+    pub fn brief(&self) -> Option<String> {
+        if self.compact
+            || !matches!(
+                self.icon,
+                Icon::Push | Icon::Commit | Icon::Working | Icon::Intent | Icon::Taking
+            )
+        {
+            return None;
+        }
+        let mut brief = [self.actor.as_str(), self.verb.as_str()]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if let Some(first) = self.paths.first() {
+            let name = first
+                .rsplit('/')
+                .find(|part| !part.is_empty())
+                .unwrap_or(first);
+            brief.push(' ');
+            brief.push_str(name);
+            if self.paths.len() > 1 {
+                brief.push(' ');
+                brief.push_str(&super::more_paths_label(self.paths.len() - 1));
+            }
+        } else if let Some(first) = self
+            .details
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+        {
+            if !brief.is_empty() {
+                brief.push_str(": ");
+            }
+            brief.push_str(first);
+        }
+        (!brief.is_empty()).then_some(brief)
     }
 }
 

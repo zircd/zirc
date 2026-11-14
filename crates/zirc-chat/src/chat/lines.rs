@@ -287,6 +287,10 @@ pub struct SystemLine {
     pub details_links: Vec<RichSpan>,
     /// Whether it's drawn as one quiet line: only people coming and going are.
     pub compact: bool,
+    /// The event as one muted line, for an app that draws an agent's routine work quietly
+    /// ([`Parts::brief`](super::Parts::brief)): `checkout is about to change Coupon.tsx`.
+    /// `None` for what keeps its full form.
+    pub brief: Option<String>,
     /// When the last of a fold happened, on the view's clock, when it's later than the
     /// first: a commit and its push, made one line.
     pub until_clock: Option<String>,
@@ -678,6 +682,7 @@ impl<'a> Layout<'a> {
             details: parts.details.clone(),
             paths: parts.paths.clone(),
             compact: parts.compact,
+            brief: parts.brief(),
             until_clock: (parts.until != parts.time).then(|| self.clock(parts.until)),
             outcome: None,
             card: false,

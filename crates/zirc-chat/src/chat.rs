@@ -161,7 +161,7 @@ pub use names::{
     AVATAR_KEY, Mention, MentionKind, NAME_KEY, PROFILES_PER_ASK, complete_mention, mention_query,
 };
 pub use notify::{Level, Muted, NotifySettings, menu as conversation_menu};
-pub use org::{OrgHeader, members_label};
+pub use org::{OrgHeader, members_label, threads_label};
 pub use people::{GUEST_PREFIX, OP_LABEL, Person, is_guest, machine_label, runs_on};
 pub use plain::{
     APPS_SECTION, NO_OTHER_CHANNELS, PEOPLE_SECTION, QUOTE_MARK, ReactionChip, TO_MARK, UNASSIGNED,

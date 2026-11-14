@@ -3923,6 +3923,29 @@ fn active_now_is_the_agents_taking_something_on_ours_first_then_newest() {
 }
 
 #[test]
+fn a_channels_header_says_its_people_threads_and_topic() {
+    let mut chat = Scene::in_api();
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #web",
+            ":s 353 me = #web :me carol dana",
+            ":s 332 me #web :The web app",
+            ":me!u@h JOIN #web/checkout",
+            ":me!u@h JOIN #web/coupon",
+            ":me!u@h JOIN #quiet",
+        ],
+    );
+    assert_eq!(
+        chat.channel_about("#web").as_deref(),
+        Some("3 members · 2 threads · The web app")
+    );
+    assert_eq!(chat.channel_about("#quiet").as_deref(), Some("1 member"));
+    assert_eq!(chat.channel_about("bob"), None);
+    assert_eq!(threads_label(1), "1 thread");
+}
+
+#[test]
 fn counts_people_never_an_app_whether_or_not_it_has_posted() {
     let mut chat = Scene::in_api();
     feed(

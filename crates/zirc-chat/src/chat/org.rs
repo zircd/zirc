@@ -28,7 +28,43 @@ pub fn members_label(count: usize) -> String {
     }
 }
 
+/// `count` threads, as a channel's header counts them: `1 thread`, `2 threads`.
+#[must_use]
+pub fn threads_label(count: usize) -> String {
+    match count {
+        1 => "1 thread".to_owned(),
+        n => format!("{n} threads"),
+    }
+}
+
 impl Chat {
+    /// What a channel's header says under its name, where its people, threads and the rest
+    /// sit behind a tap on that name (Android, from 14 Nov 2026, the user's choice): how many
+    /// are in it, its threads and its topic, `4 members · 2 threads · The web app`, each
+    /// only when there's any. `None` for anything but a channel, and for one with none.
+    #[must_use]
+    pub fn channel_about(&self, name: &str) -> Option<String> {
+        if !super::is_channel(name) || super::is_group(name) {
+            return None;
+        }
+        let members = self.member_count(name);
+        let threads = self.threads(name).len();
+        let topic = self
+            .conversation(name)
+            .and_then(|channel| channel.topic.as_deref())
+            .map(str::trim)
+            .filter(|topic| !topic.is_empty());
+        let parts: Vec<String> = [
+            (members > 0).then(|| members_label(members)),
+            (threads > 0).then(|| threads_label(threads)),
+            topic.map(str::to_owned),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        (!parts.is_empty()).then(|| parts.join(" · "))
+    }
+
     /// How many people are in the conversation called `name`, as its header counts them:
     /// never machines, agents, apps or guests, as [`Chat::org_header`] counts.
     #[must_use]
