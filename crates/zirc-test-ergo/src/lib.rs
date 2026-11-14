@@ -121,8 +121,16 @@ impl Ergo {
                 r#"{{"127.0.0.1:{port}": {{}}, "127.0.0.1:{ws_port}": {{"websocket": true}}}}"#
             );
 
+            // As fast as zirc's servers let a connection send, not as Ergo's default does (5
+            // lines, then 2 a second, with 16 history reads free): past those, a second
+            // `zirc catchup` on one connection took 7.4 s, and zirc_cli_test's wait ran out
+            // on it in about half the published tree's runs.
+            let rate = zirc_proto::desired::RateLimit::USUAL;
+            let (burst, per_second) = (rate.burst.to_string(), rate.per_second.to_string());
             // Later ones win: the overrides.
             let env: Vec<(String, String)> = [
+                ("ERGO__FAKELAG__BURST_LIMIT", burst.as_str()),
+                ("ERGO__FAKELAG__MESSAGES_PER_WINDOW", per_second.as_str()),
                 ("ERGO__LANGUAGES__ENABLED", "false"),
                 ("ERGO__OPERS__ADMIN__PASSWORD", OPER_PASSWORD_HASH),
                 ("ERGO__NETWORK__NAME", "zirc-test"),

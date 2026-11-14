@@ -157,10 +157,7 @@ fn held() -> Held {
             max_bytes: 16_384,
             max_lines: 200,
         },
-        rate: RateLimit {
-            burst: 50,
-            per_second: 20,
-        },
+        rate: RateLimit::USUAL,
     }
 }
 

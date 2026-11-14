@@ -404,6 +404,16 @@ pub struct RateLimit {
     pub per_second: u32,
 }
 
+impl RateLimit {
+    /// What a server gets unless its settings say otherwise: 50 lines at once, then 20 a
+    /// second. Ergo's own default, 5 and then 2, is for strangers on a public network: a
+    /// catch-up alone is some 16 lines.
+    pub const USUAL: Self = Self {
+        burst: 50,
+        per_second: 20,
+    };
+}
+
 /// Who may read which conversations (`DesiredState::visibility`).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "lowercase")]
