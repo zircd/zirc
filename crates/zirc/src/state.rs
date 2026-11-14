@@ -204,14 +204,40 @@ pub(super) async fn repo_here(socket: &Path) -> Option<String> {
         .map(|repo| repo.channel)
 }
 
-/// A state in a line: `2026-11-05T12:00:00Z #monorepo master is broken: …, said by ci`.
-pub(super) fn line(said: &Said) -> String {
-    format!(
+/// A state in a line: `2026-11-05T12:00:00Z #monorepo master is broken: …, said by ci`, and
+/// for one that isn't fine, how long it has stood and how far its branch has moved since, as
+/// this checkout knows it ([`states::standing`]): `(broken 37h, master 14 commits on)`.
+pub(super) fn line(said: &Said, now: u64) -> String {
+    let mut line = format!(
         "{} {}, said by {}",
         said.time.as_deref().unwrap_or("?"),
         one_line(&said.state.text()),
         said.by
-    )
+    );
+    let branch = states::branch_of(&said.state.name);
+    let moved = said
+        .time
+        .as_deref()
+        .and_then(|time| commits_since(branch, time));
+    if let Some(standing) = states::standing(said, now, moved.map(|commits| (branch, commits))) {
+        line = format!("{line} ({standing})");
+    }
+    line
+}
+
+/// How many commits `origin/<branch>` took since `time`, as this checkout last fetched it:
+/// nothing when it's no branch here, or git can't say.
+fn commits_since(branch: &str, time: &str) -> Option<usize> {
+    let at = zirc_core::time::seconds_at(time)?;
+    let out = std::process::Command::new("git")
+        .args(["rev-list", "--count", &format!("--since={at}")])
+        .arg(format!("refs/remotes/origin/{branch}"))
+        .arg("--")
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    out.status.success().then_some(())?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
 }
 
 async fn show(socket: &Path, args: StateArgs, out: &mut impl Write) -> Result<()> {
@@ -219,6 +245,7 @@ async fn show(socket: &Path, args: StateArgs, out: &mut impl Write) -> Result<()
     let all = read(socket, org.as_deref(), args.limit).await?;
     // In a watched repository, its states alone: another's master isn't this one's.
     let repo = repo_here(socket).await;
+    let now = crate::catchup::now();
     let shown: Vec<&Said> = all
         .iter()
         .filter(|said| repo.as_ref().is_none_or(|repo| &said.state.repo == repo))
@@ -231,7 +258,7 @@ async fn show(socket: &Path, args: StateArgs, out: &mut impl Write) -> Result<()
         if args.json {
             writeln!(out, "{}", serde_json::to_string(&json(said))?)?;
         } else {
-            writeln!(out, "{}", line(said))?;
+            writeln!(out, "{}", line(said, now))?;
             if said.state.level != Level::Ok {
                 let wait = states::wait_hint(&said.state.name);
                 writeln!(out, "  \u{21b3} {wait}")?;
@@ -270,8 +297,9 @@ pub(super) async fn troubled_lines(socket: &Path) -> Vec<String> {
     let Ok(all) = read(socket, None, LOOK_BACK).await else {
         return Vec::new();
     };
+    let now = crate::catchup::now();
     states::troubled(&all)
         .into_iter()
-        .map(|said| format!("state: {}", line(said)))
+        .map(|said| format!("state: {}", line(said, now)))
         .collect()
 }

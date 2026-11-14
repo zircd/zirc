@@ -59,6 +59,36 @@ pub fn troubled(states: &[Said]) -> Vec<&Said> {
         .collect()
 }
 
+/// How long `said` has stood at `now` and how far its branch has moved since, for its line:
+/// `broken 37h, master 14 commits on`, where `moved` is the branch and how many commits it
+/// took since. Nothing for a state that's fine, or one said at no time known. A break that
+/// stood days while master moved on was fixed and never cleared, unseen, on 8 and 10 Nov 2026.
+#[must_use]
+pub fn standing(said: &Said, now: u64, moved: Option<(&str, usize)>) -> Option<String> {
+    if said.state.level == Level::Ok {
+        return None;
+    }
+    let at = crate::time::seconds_at(said.time.as_deref()?)?;
+    let stood = match now.saturating_sub(at) {
+        seconds if seconds < 3600 => format!("{}m", seconds / 60),
+        seconds if seconds < 2 * 86_400 => format!("{}h", seconds / 3600),
+        seconds => format!("{}d", seconds / 86_400),
+    };
+    let mut text = format!("{} {stood}", said.state.level.word());
+    if let Some((branch, commits)) = moved.filter(|(_, commits)| *commits > 0) {
+        let plural = if commits == 1 { "" } else { "s" };
+        text = format!("{text}, {branch} {commits} commit{plural} on");
+    }
+    Some(text)
+}
+
+/// The branch whose commits since a state was said tell how far things have moved: the
+/// state's name, or its first part, as `master` is for `master/e2e`.
+#[must_use]
+pub fn branch_of(name: &str) -> &str {
+    name.split('/').next().unwrap_or(name)
+}
+
 /// What a reader of a state that isn't fine does to wait for it, on one line under it: run
 /// `zirc wait state`, which ends once it's fine, rather than poll `zirc state --check` in a
 /// loop.
@@ -132,6 +162,41 @@ mod tests {
             .map(|said| said.state.name.as_str())
             .collect();
         assert_eq!(names, ["staging", "master"]);
+    }
+
+    #[test]
+    fn a_state_that_isnt_fine_says_how_long_and_how_far() {
+        let said = |level, time: &str| Said {
+            state: state("#monorepo", "master/e2e", level),
+            by: "ci".into(),
+            time: Some(time.into()),
+        };
+        let broken = said(Level::Broken, "2026-11-12T00:00:00.000Z");
+        let at = crate::time::seconds_at("2026-11-12T00:00:00Z").unwrap();
+        assert_eq!(
+            standing(&broken, at + 37 * 3600, Some(("master", 14))).as_deref(),
+            Some("broken 37h, master 14 commits on")
+        );
+        assert_eq!(
+            standing(&broken, at + 5 * 60, Some(("master", 1))).as_deref(),
+            Some("broken 5m, master 1 commit on")
+        );
+        assert_eq!(
+            standing(&broken, at + 3 * 86_400, Some(("master", 0))).as_deref(),
+            Some("broken 3d")
+        );
+        let warning = said(Level::Warning, "2026-11-12T00:00:00.000Z");
+        assert_eq!(
+            standing(&warning, at + 7200, None).as_deref(),
+            Some("warning 2h")
+        );
+        assert_eq!(
+            standing(&said(Level::Ok, "2026-11-12T00:00:00Z"), at, None),
+            None
+        );
+        assert_eq!(standing(&said(Level::Broken, "?"), at, None), None);
+        assert_eq!(branch_of("master/e2e"), "master");
+        assert_eq!(branch_of("ci"), "ci");
     }
 
     #[test]
