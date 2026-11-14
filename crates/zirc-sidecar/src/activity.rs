@@ -539,6 +539,12 @@ pub struct Row {
 /// Rows from `since` (nanoseconds) on, oldest first, after the row `after` when paging, at
 /// most `limit` ([`MOST`] at most).
 ///
+/// With `collapse`, a session's working set that says again, in the same hour, what an earlier
+/// row since `since` said (the same agent, task and data) is left out: most of the store, as
+/// zircd says a working set each time it changes or is asked, and nothing a reader of who
+/// changed what, and when to the hour, needs twice. The Insights page reads 16 days of rows
+/// for its 7-day window, which without it took the web app past its memory.
+///
 /// # Errors
 ///
 /// When the store can't be read.
@@ -547,12 +553,26 @@ pub fn rows(
     since: i64,
     after: i64,
     limit: usize,
+    collapse: bool,
 ) -> rusqlite::Result<Vec<Row>> {
-    let mut statement = connection.prepare_cached(
-        "SELECT id, nanotime, msgid, channel, direct, ergo IS NULL, account, agent, session, \
-                name, tool, kind, level, task, data \
-         FROM rows WHERE nanotime >= ?1 AND id > ?2 ORDER BY id LIMIT ?3",
-    )?;
+    const COLUMNS: &str = "id, nanotime, msgid, channel, direct, ergo IS NULL, account, agent, \
+                           session, name, tool, kind, level, task, data";
+    // The first of each session's like working sets in an hour, counted from `since` so that
+    // every page of one read agrees on which that is.
+    let sql = if collapse {
+        format!(
+            "SELECT {COLUMNS} FROM (
+                 SELECT *, kind = 'working' AND session IS NOT NULL AND ROW_NUMBER() OVER (
+                     PARTITION BY kind, session, agent, task, nanotime / 3600000000000, data
+                     ORDER BY id
+                 ) > 1 AS again
+                 FROM rows WHERE nanotime >= ?1
+             ) WHERE NOT again AND id > ?2 ORDER BY id LIMIT ?3"
+        )
+    } else {
+        format!("SELECT {COLUMNS} FROM rows WHERE nanotime >= ?1 AND id > ?2 ORDER BY id LIMIT ?3")
+    };
+    let mut statement = connection.prepare_cached(&sql)?;
     let rows = statement.query_map(
         params![since, after, i64::try_from(limit.min(MOST)).unwrap_or(0)],
         |row| {
@@ -711,7 +731,7 @@ mod tests {
 
         let mut store = open(&path_for(&path)).unwrap();
         assert_eq!(catch_up(&mut store, &path).unwrap(), 5);
-        let got = rows(&store, 0, 0, 100).unwrap();
+        let got = rows(&store, 0, 0, 100, false).unwrap();
         let kinds: Vec<_> = got.iter().map(|r| r.kind.as_str()).collect();
         assert_eq!(
             kinds,
@@ -738,7 +758,75 @@ mod tests {
         }
         // Read again, nothing new.
         assert_eq!(catch_up(&mut store, &path).unwrap(), 0);
-        assert_eq!(rows(&store, 0, got[1].id, 2).unwrap()[0].id, got[2].id);
+        assert_eq!(
+            rows(&store, 0, got[1].id, 2, false).unwrap()[0].id,
+            got[2].id
+        );
+    }
+
+    #[test]
+    fn collapsing_leaves_out_a_working_set_said_again_in_the_same_hour() {
+        crate::machines::the_tests_machines();
+        let dir = tempfile::tempdir().unwrap();
+        let path = history(dir.path());
+        let hour = 3_600 * SECOND;
+        let working = |session: &str, paths: &[&str]| {
+            zirc(&Message::new(
+                session,
+                Event::Working {
+                    paths: paths.iter().map(|p| (*p).to_string()).collect(),
+                    continued: false,
+                    worktree: None,
+                    branch: Some("login".into()),
+                    part: None,
+                    base: None,
+                    committed: Vec::new(),
+                },
+            ))
+        };
+        let said = [
+            ("m1", 10 * SECOND, working("cc-1", &["a.rs"])),
+            ("m2", 20 * SECOND, working("cc-1", &["a.rs"])), // again: left out
+            ("m3", 30 * SECOND, working("cc-2", &["a.rs"])), // another session
+            ("m4", 40 * SECOND, working("cc-1", &["a.rs", "b.rs"])), // other paths
+            ("m5", 50 * SECOND, working("cc-1", &["a.rs"])), // again: left out
+            ("m6", hour + 10 * SECOND, working("cc-1", &["a.rs"])), // the next hour
+            (
+                "m7",
+                hour + 20 * SECOND,
+                zirc(&Message::new("cc-1", Event::Text { body: "hi".into() })),
+            ),
+        ];
+        for (id, at, line) in &said {
+            add(&path, id, "#api", *at, "ada-mbp", line);
+        }
+        let mut store = open(&path_for(&path)).unwrap();
+        catch_up(&mut store, &path).unwrap();
+        let msgids = |rows: &[Row]| {
+            rows.iter()
+                .map(|r| r.msgid.clone().unwrap())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            rows(&store, 0, 0, 100, false).unwrap().len(),
+            said.len(),
+            "every row unasked"
+        );
+        let all = rows(&store, 0, 0, 100, true).unwrap();
+        assert_eq!(msgids(&all), ["m1", "m3", "m4", "m6", "m7"]);
+        // Page by page, the pages agree on which rows are left out.
+        let mut paged = Vec::new();
+        let mut after = 0;
+        loop {
+            let page = rows(&store, 0, after, 2, true).unwrap();
+            let Some(last) = page.last() else { break };
+            after = last.id;
+            paged.extend(page);
+        }
+        assert_eq!(msgids(&paged), msgids(&all));
+        // Counted from `since`: from the second row on, it's the first of its kind.
+        let from_m2 = rows(&store, 20 * SECOND, 0, 100, true).unwrap();
+        assert_eq!(msgids(&from_m2)[..2], ["m2", "m3"]);
     }
 
     #[test]
@@ -823,7 +911,7 @@ mod tests {
             1,
             "older than the oldest message"
         );
-        let left = rows(&store, 0, 0, 10).unwrap();
+        let left = rows(&store, 0, 0, 10, false).unwrap();
         assert_eq!(left.len(), 2);
         assert!(left[1].live);
         assert_eq!(left[1].kind, zirc_proto::activity::WAKE_KIND);

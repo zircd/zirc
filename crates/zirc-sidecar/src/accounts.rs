@@ -42,6 +42,7 @@
 //!   (`crate::activity`), oldest first, for zirc.dev's dashboard of how its team works
 //!   together: `{"rows": [{"id", "nanotime", "kind", "channel", "account", "session", "level",
 //!   "task", "data", …}]}`, metadata only, never what anyone said; page with the last `id`.
+//!   With `&collapse=true`, a session's working set said again in the same hour is left out.
 //!
 //! - `GET /v1/push`: `{"vapidKey"}`, the key Ergo signs its pushes with (`webpush`), for
 //!   zirc.dev to check the pushes it relays to phones; `null` while push is off.
@@ -913,6 +914,10 @@ struct ActivityQuery {
     /// How many rows at most.
     #[serde(default)]
     limit: Option<usize>,
+    /// Whether to leave out a session's working sets that repeat one in the same hour
+    /// ([`crate::activity::rows`]); `?collapse=true`. A reader that doesn't ask gets every row.
+    #[serde(default)]
+    collapse: bool,
 }
 
 async fn read_activity(
@@ -927,6 +932,7 @@ async fn read_activity(
             query.since,
             query.after,
             query.limit.unwrap_or(crate::activity::MOST),
+            query.collapse,
         )
     })
     .await;
