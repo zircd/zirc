@@ -242,11 +242,7 @@ async fn heard(
                 .collect(),
             // The channels are still worth reading, but say what's missing.
             answer => {
-                let why = match answer {
-                    Ok(Response::Error { message }) => message,
-                    Ok(other) => format!("{other:?}"),
-                    Err(err) => err.to_string(),
-                };
+                let why = refused(answer);
                 eprintln!(
                     "zirc: catchup leaves out direct messages, as zircd couldn't list them: {why}"
                 );
@@ -264,9 +260,18 @@ async fn heard(
                 since: Some(from),
                 until,
             };
-            let Ok(Response::Messages { messages }) = waits(socket, org.as_deref(), request).await
-            else {
-                continue;
+            // One zircd can't read is left out, and said: a conversation missing from a
+            // catchup reads as nothing said in it (`zirc_cli_test`'s direct message, missing
+            // once in about 400 runs with nothing to say why).
+            let messages = match waits(socket, org.as_deref(), request).await {
+                Ok(Response::Messages { messages }) => messages,
+                answer => {
+                    let why = refused(answer);
+                    eprintln!(
+                        "zirc: catchup leaves out {target}, as zircd couldn't read it: {why}"
+                    );
+                    continue;
+                }
             };
             let said: Vec<Said> = messages
                 .iter()
@@ -288,6 +293,15 @@ async fn heard(
         }
     }
     conversations
+}
+
+/// Why zircd didn't give what catchup asked for, as `answer` says.
+fn refused(answer: Result<Response>) -> String {
+    match answer {
+        Ok(Response::Error { message }) => message,
+        Ok(other) => format!("{other:?}"),
+        Err(err) => err.to_string(),
+    }
 }
 
 /// What's found, shaped for reading: mentions of `names` picked out, direct messages
