@@ -1600,6 +1600,20 @@ fn with_why(response: Response, why: Option<Why>) -> Response {
     }
 }
 
+/// Why `response` was told, as [`with_why`] set it.
+fn why_of(response: &Response) -> Option<Why> {
+    match response {
+        Response::Delivery(delivery) => delivery.why,
+        Response::Direct(direct) => direct.why,
+        Response::Overlap(overlap) => overlap.why,
+        Response::LocalOverlap(overlap) => overlap.why,
+        Response::Conflict(conflict) => conflict.why,
+        Response::Reaction(reaction) => reaction.why,
+        Response::Answered(answered) => answered.why,
+        _ => None,
+    }
+}
+
 /// Whether `channel` is the repository channel `repo`'s, or one of its branch or topic
 /// channels (`#api/login`).
 fn in_repo(channel: &str, repo: &str) -> bool {

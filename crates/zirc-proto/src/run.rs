@@ -146,6 +146,26 @@ pub enum Outcome {
     Cancelled,
 }
 
+impl Change {
+    /// Who did it, when someone did: started the run, took a step on, did it, answered it
+    /// or moved its task along, as `machine/session` or a person's nick.
+    #[must_use]
+    pub fn by(&self) -> Option<&str> {
+        match self {
+            Self::Started { by, .. }
+            | Self::Claimed { by, .. }
+            | Self::Done { by, .. }
+            | Self::Answered { by, .. }
+            | Self::Stage { by, .. } => Some(by),
+            Self::Assigned { .. }
+            | Self::Skipped { .. }
+            | Self::Nudged { .. }
+            | Self::Escalated { .. }
+            | Self::Finished { .. } => None,
+        }
+    }
+}
+
 impl RunEvent {
     /// The event that carries it, saying `text`.
     ///
