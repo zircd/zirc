@@ -503,7 +503,7 @@ pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) ->
         item,
         Item::Message { .. } | Item::Notice { .. } | Item::File { .. } | Item::Landing(_)
     );
-    let (nick, text, tone, continues) = columns(who.chat, item, compact);
+    let (nick, text, tone, continues) = columns(who.chat, item, compact, look.zone);
     // A corrected message says so after its words, as in every zirc app.
     let text = if item.said_entry().is_some_and(|entry| entry.edited) {
         format!("{text} {}", zirc_core::chat::EDITED)
@@ -747,6 +747,7 @@ fn entry_of<'a>(item: &Item<'a>) -> Option<&'a Entry> {
         | Item::File { entry, .. }
         | Item::Note { entry, .. } => Some(entry),
         Item::Landing(landing) => Some(landing.entry),
+        Item::Pointer(pointer) => Some(pointer.entry),
         Item::Day(_) | Item::Membership(_) => None,
     }
 }
@@ -777,6 +778,7 @@ fn system_parts(item: &Item<'_>) -> Option<Parts> {
             ..parts.clone()
         }),
         Item::Membership(membership) => Some(membership.parts()),
+        Item::Pointer(pointer) => Some(pointer.parts()),
         _ => None,
     }
 }
@@ -1146,7 +1148,12 @@ pub fn nick_width(conversation: &Conversation) -> usize {
 /// What a line shows in the nick column and as text, how it reads, and whether it carries
 /// on a run. System rows are laid out by [`system_rows`] instead. A notice is headed by its
 /// sender's name, as a message's head names them ([`Chat::speaker`]): zirc's own as zirc.
-fn columns(chat: &Chat, item: &Item<'_>, compact: bool) -> (String, String, Tone, bool) {
+fn columns(
+    chat: &Chat,
+    item: &Item<'_>,
+    compact: bool,
+    zone: Zone,
+) -> (String, String, Tone, bool) {
     match item {
         Item::Message {
             entry,
@@ -1181,14 +1188,21 @@ fn columns(chat: &Chat, item: &Item<'_>, compact: bool) -> (String, String, Tone
         ),
         // An app's post, under its name like anyone's, its outcome's icon in front: in the
         // indent, or compact, before the text.
+        // A card's updates under it, each on its line: the terminal shows them all.
         Item::Landing(landing) => {
             let icon = Some(landing.parts().icon).filter(|icon| *icon != Icon::Post);
+            let plain = std::iter::once(landing.plain())
+                .chain(
+                    landing
+                        .updates
+                        .iter()
+                        .map(|update| update.line(&|at| zirc_core::chat::clock(zone.wall(at)))),
+                )
+                .collect::<Vec<_>>()
+                .join("\n");
             let (text, tone) = match icon {
-                Some(icon) if compact => (
-                    format!("{} {}", icon.glyph(), landing.plain()),
-                    Tone::App(None),
-                ),
-                _ => (landing.plain(), Tone::App(icon)),
+                Some(icon) if compact => (format!("{} {plain}", icon.glyph()), Tone::App(None)),
+                _ => (plain, Tone::App(icon)),
             };
             (landing.entry.from.clone(), text, tone, landing.continues)
         }
@@ -1218,7 +1232,7 @@ fn columns(chat: &Chat, item: &Item<'_>, compact: bool) -> (String, String, Tone
             };
             (mark.into(), text.clone(), tone, false)
         }
-        Item::Day(_) | Item::Event { .. } | Item::Membership(_) => {
+        Item::Day(_) | Item::Event { .. } | Item::Membership(_) | Item::Pointer(_) => {
             (String::new(), String::new(), Tone::Status, false)
         }
     }

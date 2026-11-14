@@ -1214,6 +1214,7 @@ fn shown(item: &Item<'_>) -> String {
         Item::File { file, from, .. } => format!("[file] {from}: {} {}", file.name, file.url),
         Item::Membership(membership) => format!("· {}", membership.text()),
         Item::Landing(landing) => format!("= {:?} {}", landing.outcome, landing.text),
+        Item::Pointer(pointer) => format!("↑ {}", pointer.text()),
         Item::Note { text, .. } => format!("! {text}"),
     }
 }
@@ -7533,6 +7534,7 @@ fn a_long_code_block_shows_its_first_eight_lines_whole_for_highlighting() {
             hidden: 32 + 1,
             open: false,
             code_lines: Some(8),
+            updates: false,
         }
     );
     assert_eq!(more.label(), "Show 33 more lines");

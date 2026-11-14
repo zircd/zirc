@@ -305,6 +305,10 @@ pub struct SystemLine {
     /// so what a press came to shows until the integration posts the card again; `None`
     /// with no card.
     pub card_version: Option<String>,
+    /// For a card's update said further down ([`super::Pointer`]): the card's line's key,
+    /// which apps bring into view when the line is clicked or tapped, as a reply's quote
+    /// does ([`LineQuote::id`]).
+    pub points_to: Option<String>,
 }
 
 /// A card's buttons ([`zirc_proto::card`]): which card, by its sender and id, and the
@@ -546,6 +550,16 @@ impl<'a> Layout<'a> {
                 line
             }
             Item::Landing(landing) => self.landing(&landing),
+            Item::Pointer(pointer) => {
+                let parts = pointer.parts();
+                let mut line = self.said(pointer.entry, LineKind::Event, &pointer.text(), false);
+                line.system = Some(SystemLine {
+                    // Its key is its id: one without, which IRC always gives, has none to jump to.
+                    points_to: pointer.card.id.clone(),
+                    ..self.system(&parts, None)
+                });
+                line
+            }
             Item::File {
                 entry,
                 file,
@@ -688,6 +702,7 @@ impl<'a> Layout<'a> {
             card: false,
             buttons: None,
             card_version: None,
+            points_to: None,
         }
     }
 
@@ -704,10 +719,26 @@ impl<'a> Layout<'a> {
             |line| line.iter().map(|span| span.text.as_str()).collect(),
         );
         let mut line = self.said(entry, LineKind::Landing, &text, landing.continues);
-        line.rich = self.chat.flat(
-            self.chat
-                .drawn(link_blocks(landing.rich(), &landing.links())),
-        );
+        let mut blocks = link_blocks(landing.rich(), &landing.links());
+        // Its updates under it, the earlier ones folded away while there are many.
+        let more = self.chat.trail_more(&line.key, landing.updates.len());
+        let clock = |at| self.clock(at);
+        blocks.extend(super::trail_block(landing.trail(more.as_ref()), &clock));
+        line.rich = self.chat.flat(self.chat.drawn(blocks));
+        line.more = more.map(|more| {
+            let whose = line
+                .speaker
+                .as_ref()
+                .map(|speaker| speaker.detail.clone().unwrap_or(speaker.name.clone()))
+                .unwrap_or_default();
+            LineMore {
+                label: more.label(),
+                spoken: more.spoken(&whose),
+                hidden: count(more.hidden),
+                open: more.open,
+                code_lines: None,
+            }
+        });
         line.link = landing
             .page
             .clone()
@@ -1715,6 +1746,129 @@ mod tests {
             })
         );
         assert_eq!(system.outcome, None);
+    }
+
+    /// What `line`'s rich text says, span by span.
+    fn rich_text(line: &Line) -> String {
+        let mut text = String::new();
+        RichBlock::each_span(&line.rich, &mut |span| text.push_str(&span.text));
+        text
+    }
+
+    #[test]
+    fn a_cards_updates_show_under_it_and_its_latest_is_said_where_it_came() {
+        let mut chat = chat();
+        let post = |chat: &mut Chat, time: &str, id: &str, card: &Card| {
+            let posted = Message::new(
+                "deploy",
+                Event::Custom {
+                    kind: "x-zirc/deploy".into(),
+                    data: card.as_data(),
+                    text: card.title.clone(),
+                },
+            );
+            put(
+                chat,
+                "zirc-deploy",
+                time,
+                id,
+                crate::chat::EntryKind::Zirc(posted),
+            );
+        };
+        let mut now = card(Vec::new());
+        post(&mut chat, "09:00:00", "c1", &now);
+        now.state = State::Running;
+        post(&mut chat, "09:02:00", "c2", &now);
+        put(
+            &mut chat,
+            "bob",
+            "09:03:00",
+            "m1",
+            crate::chat::EntryKind::Message("looks slow".into()),
+        );
+        now.state = State::Failed;
+        now.note = Some("error: timed out".into());
+        post(&mut chat, "09:04:00", "c3", &now);
+        // Only a field changing is no update of its own.
+        now.fields.push(zirc_proto::card::Field {
+            label: "commit".into(),
+            value: "abc1234".into(),
+        });
+        post(&mut chat, "09:05:00", "c4", &now);
+        now.note = Some("retried by mattias".into());
+        post(&mut chat, "09:06:00", "c5", &now);
+        now.state = State::Passed;
+        now.note = None;
+        post(&mut chat, "09:08:00", "c6", &now);
+        let lines = api(&chat);
+        let shown: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
+        assert_eq!(
+            shown,
+            vec![
+                "web · deploy 42 passed",
+                "looks slow",
+                "zirc-deploy updated web · deploy 42: failed → passed ↑",
+            ],
+        );
+        // The card: its last three updates, the first folded away.
+        let card = &lines[0];
+        assert!(
+            rich_text(card).ends_with(
+                "09:04 running → failed · error: timed out\
+                 09:06 failed · retried by mattias\
+                 09:08 failed → passed"
+            ),
+            "{}",
+            rich_text(card)
+        );
+        assert!(!rich_text(card).contains("09:02"));
+        let more = card.more.as_ref().expect("its earlier updates fold away");
+        assert_eq!(
+            (more.label.as_str(), more.hidden, more.open),
+            ("Show 1 earlier update", 1, false)
+        );
+        assert_eq!(more.spoken, "Show 1 earlier update of Deploy's card");
+        chat.toggle_more(&card.key, more.open);
+        let card = &api(&chat)[0];
+        assert!(rich_text(card).contains("09:02 pending → running09:04"));
+        assert_eq!(card.more.as_ref().unwrap().label, "Show fewer updates");
+        // The pointer: a quiet line that jumps to the card.
+        let pointer = lines[2].system.as_ref().unwrap();
+        assert_eq!(pointer.points_to.as_deref(), Some("c1"));
+        assert!(pointer.compact);
+        assert_eq!(pointer.icon, Icon::Landed);
+        assert_eq!(lines[0].system.as_ref().unwrap().points_to, None);
+    }
+
+    #[test]
+    fn a_card_updated_with_nothing_after_it_needs_no_pointer() {
+        let mut chat = chat();
+        let mut now = card(Vec::new());
+        for (time, id, state) in [
+            ("09:00:00", "c1", State::Pending),
+            ("09:01:00", "c2", State::Running),
+        ] {
+            now.state = state;
+            let posted = Message::new(
+                "deploy",
+                Event::Custom {
+                    kind: "x-zirc/deploy".into(),
+                    data: now.as_data(),
+                    text: now.title.clone(),
+                },
+            );
+            put(
+                &mut chat,
+                "zirc-deploy",
+                time,
+                id,
+                crate::chat::EntryKind::Zirc(posted),
+            );
+        }
+        let lines = api(&chat);
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(rich_text(&lines[0]).ends_with("09:01 pending → running"));
+        assert_eq!(lines[0].more, None, "one update shows whole");
     }
 
     #[test]

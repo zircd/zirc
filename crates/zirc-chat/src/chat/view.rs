@@ -21,6 +21,10 @@ pub const EVENT_MARK: &str = "◆";
 pub const RECONNECT_GAP: TimeDelta = TimeDelta::minutes(1);
 
 /// One line of a conversation, as every app shows it.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a view's items live only while it's laid out, and most are landings or messages: boxing a landing would cost each an allocation and save no room"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Item<'a> {
     /// A day starts. [`day_label`] puts it in words.
@@ -86,6 +90,10 @@ pub enum Item<'a> {
     Membership(Membership),
     /// How a landing went, as CI says (`x-zirc/landing`): landed, failed or in conflict.
     Landing(Landing<'a>),
+    /// A card's latest update, where it came, when the card is further up: one quiet line
+    /// that apps jump to the card from ([`Pointer::card`]), so an update to a card that
+    /// scrolled away isn't missed (the user's choice, 14 Nov 2026).
+    Pointer(Pointer<'a>),
     /// A quiet line: a topic, a new nick, someone removed, or what this client says, such as
     /// an error, when the entry is an [`EntryKind::Info`].
     Note {
@@ -129,6 +137,7 @@ impl Item<'_> {
             Self::Day(_) => None,
             Self::Membership(membership) => Some(membership.time),
             Self::Landing(landing) => Some(landing.entry.time),
+            Self::Pointer(pointer) => Some(pointer.entry.time),
             Self::Message { entry, .. }
             | Self::Notice { entry, .. }
             | Self::Action { entry, .. }
@@ -799,13 +808,35 @@ impl<'a> Landing<'a> {
         if !later.failed.is_empty() {
             self.failed = later.failed;
         }
-        // A card is the whole card every time.
+        // A card is the whole card every time; its trail keeps what changed.
+        if let (Some(was), Some(now)) = (&self.card, &later.card)
+            && (was.state != now.state || (now.note.is_some() && was.note != now.note))
+        {
+            self.updates.push(Update {
+                time: later.entry.time,
+                was: was.state,
+                state: now.state,
+                note: now.note.clone(),
+            });
+        }
         if later.card.is_some() {
             self.outcome = later.outcome;
             self.card = later.card;
             self.asking = later.asking;
             self.session = later.session.or(self.session);
         }
+    }
+
+    /// A card's trail as it shows under it: its [`Landing::updates`], oldest first, or
+    /// only the last [`UPDATES_SHOWN`] while `more` folds the rest away
+    /// ([`super::Chat::trail_more`]).
+    #[must_use]
+    pub fn trail(&self, more: Option<&super::More>) -> &[Update] {
+        let skip = match more {
+            Some(more) if !more.open => more.hidden.min(self.updates.len()),
+            _ => 0,
+        };
+        &self.updates[skip..]
     }
 
     /// What its later events share, to fold into its card: a card's sender and id, as the
@@ -1080,6 +1111,134 @@ pub struct Landing<'a> {
     /// Whom an open request (`x-zirc/request`) asks: they answer it with a 👍 or a 👎 on it,
     /// which apps offer them as buttons ([`Landing::asks`]).
     pub asking: Option<String>,
+    /// A card's updates after its first event, oldest first: each later card that changed
+    /// its state or its note. One that changed only its fields or links isn't one of its
+    /// own; the next that is says how the card stands then. Apps show them under the card
+    /// ([`Landing::trail`]), so an update is never a silent change (the user's choice, 14
+    /// Nov 2026).
+    pub updates: Vec<Update>,
+}
+
+/// A card's update, as its trail lists it: `14:02 running → failed · retried by mattias`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Update {
+    /// When it came.
+    pub time: DateTime<Utc>,
+    /// The card's state before it.
+    pub was: State,
+    /// The card's state after it.
+    pub state: State,
+    /// Its note, when it has one: who pressed what and how it went, or an error.
+    pub note: Option<String>,
+}
+
+/// How many of a card's updates show under it before the earlier ones fold away, behind
+/// one "Show N earlier updates" control ([`super::more::updates_label`]).
+pub const UPDATES_SHOWN: usize = 3;
+
+impl Update {
+    /// Its line in a card's trail, `clock` putting its time in words: `14:02 running →
+    /// failed · retried by mattias`, `14:05 failed · retried by mattias` when its state
+    /// didn't change, and `14:07 updated` when neither is worded.
+    #[must_use]
+    pub fn line(&self, clock: &dyn Fn(DateTime<Utc>) -> String) -> String {
+        format!("{} {}", clock(self.time), self.what())
+    }
+
+    /// What it did, after its time: `running → failed · retried by mattias`.
+    fn what(&self) -> String {
+        let word = |state| state_label(state).unwrap_or("info");
+        let mut parts = Vec::new();
+        if self.was != self.state {
+            parts.push(format!("{} → {}", word(self.was), word(self.state)));
+        } else if let Some(state) = state_label(self.state) {
+            parts.push(state.to_owned());
+        }
+        parts.extend(self.note.clone());
+        if parts.is_empty() {
+            return "updated".to_owned();
+        }
+        parts.join(" · ")
+    }
+}
+
+/// A card's latest update, said where it came: [`Item::Pointer`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pointer<'a> {
+    /// The update's event.
+    pub entry: &'a Entry,
+    /// The card's first event, where apps draw the card: its line's key is what a tap on
+    /// the pointer jumps to.
+    pub card: &'a Entry,
+    /// The card's title.
+    pub title: String,
+    /// The update.
+    pub update: Update,
+}
+
+impl Pointer<'_> {
+    /// Its line in parts: a quiet line, its icon the card's state's, `zirc-alerts updated
+    /// web · deploy 42: running → failed ↑`.
+    #[must_use]
+    pub fn parts(&self) -> Parts {
+        let icon = match self.update.state {
+            State::Passed => Icon::Landed,
+            State::Failed => Icon::Failed,
+            State::Warning => Icon::Conflict,
+            State::Info | State::Pending | State::Running | State::Cancelled => Icon::Post,
+        };
+        Parts {
+            icon,
+            actor: self.entry.from.clone(),
+            session: None,
+            owner: None,
+            actor_detail: None,
+            to: None,
+            compact: true,
+            verb: format!("updated {}: {} ↑", self.title, self.update.what()),
+            details: String::new(),
+            paths: Vec::new(),
+            links: Vec::new(),
+            time: self.entry.time,
+            until: self.entry.time,
+        }
+    }
+
+    /// Its line as plain text: `zirc-alerts updated web · deploy 42: running → failed ↑`.
+    #[must_use]
+    pub fn text(&self) -> String {
+        let parts = self.parts();
+        format!("{} {}", parts.actor, parts.verb)
+    }
+}
+
+/// `updates` as a card's trail shows them, `clock` putting times in words: a list, each
+/// its time in bold then what it did. `None` for none.
+#[must_use]
+pub fn trail_block(
+    updates: &[Update],
+    clock: &dyn Fn(DateTime<Utc>) -> String,
+) -> Option<super::Block> {
+    (!updates.is_empty()).then(|| super::Block::List {
+        start: None,
+        items: updates
+            .iter()
+            .map(|update| super::ListItem {
+                task: None,
+                blocks: vec![super::Block::Paragraph(vec![
+                    super::Span {
+                        text: clock(update.time),
+                        bold: true,
+                        ..super::Span::default()
+                    },
+                    super::Span {
+                        text: format!(" {}", update.what()),
+                        ..super::Span::default()
+                    },
+                ])],
+            })
+            .collect(),
+    })
 }
 
 /// An integration's post's row ([`SenderKind::Integration`]): CI saying how a landing or a
@@ -1166,6 +1325,7 @@ fn landing<'a>(entry: &'a Entry, message: &'a Message, continues: bool) -> Optio
         asking: zirc_proto::request::Request::of(&message.event)
             .filter(|request| request.state == zirc_proto::request::State::Open)
             .map(|request| request.by),
+        updates: Vec::new(),
     })
 }
 
@@ -1493,6 +1653,8 @@ pub(crate) fn items<'a>(
     // Each sender's last message's app, by folded nick.
     let mut apps: HashMap<String, Option<&str>> = HashMap::new();
     let mut landings: HashMap<String, usize> = HashMap::new();
+    // Each card's latest update: where its card is, where the update came, and its event.
+    let mut pointers: HashMap<String, (usize, usize, &Entry)> = HashMap::new();
     for (at, entry) in entries.iter().enumerate() {
         if hidden.contains(&at) || entry.is_session_card() || !conversation.shows(entry) {
             continue;
@@ -1530,10 +1692,28 @@ pub(crate) fn items<'a>(
             // not a row of its own, once that message is here.
             EntryKind::Zirc(message) if starts_thread_here(entries, message) => continue,
             EntryKind::Zirc(message) => match landing(entry, message, continues) {
-                Some(landing) => match card(&mut items, &mut landings, landing) {
-                    Some(item) => item,
-                    None => continue,
-                },
+                Some(landing) => {
+                    let key = landing.key();
+                    let updates = |items: &[Item<'a>], at: Option<usize>| {
+                        if let Some(Item::Landing(card)) = at.and_then(|at| items.get(at)) {
+                            card.updates.len()
+                        } else {
+                            0
+                        }
+                    };
+                    let at = key.as_ref().and_then(|key| landings.get(key).copied());
+                    let before = updates(&items, at);
+                    let Some(item) = card(&mut items, &mut landings, landing) else {
+                        // An update the trail lists: the card's latest is said here.
+                        if let (Some(key), Some(at)) = (key, at)
+                            && updates(&items, Some(at)) > before
+                        {
+                            pointers.insert(key, (at, items.len(), entry));
+                        }
+                        continue;
+                    };
+                    item
+                }
                 None => zirc_item(entry, message, continues, owner_name),
             },
             EntryKind::Unreadable(text) => unreadable_item(entry, text, owner_name),
@@ -1566,7 +1746,34 @@ pub(crate) fn items<'a>(
         };
         items.push(item);
     }
+    point(&mut items, pointers.into_values().collect());
     commits_pushed(items)
+}
+
+/// `items` with a [`Pointer`] for each card's latest update in `pointers` (where its card
+/// is, where the update came, and its event), where it came: unless nothing came between
+/// the card and it, as the card is then right there.
+fn point<'a>(items: &mut Vec<Item<'a>>, mut pointers: Vec<(usize, usize, &'a Entry)>) {
+    // From the last, so that inserting one leaves where the others go as it was.
+    pointers.sort_by_key(|(_, here, _)| std::cmp::Reverse(*here));
+    for (at, here, entry) in pointers {
+        if here <= at + 1 {
+            continue;
+        }
+        let Some(Item::Landing(card)) = items.get(at) else {
+            continue;
+        };
+        let (Some(update), Some(title)) = (card.updates.last(), card.card.as_ref()) else {
+            continue;
+        };
+        let pointer = Pointer {
+            entry,
+            card: card.entry,
+            title: title.title.clone(),
+            update: update.clone(),
+        };
+        items.insert(here.min(items.len()), Item::Pointer(pointer));
+    }
 }
 
 /// `items` with only what people said, as a view's "People only" filter shows them:
@@ -1594,7 +1801,7 @@ pub fn people_only<'a>(items: Vec<Item<'a>>, me: &str) -> Vec<Item<'a>> {
                 EntryKind::Zirc(message) => mentions_me(&message.event.human_text()),
                 _ => false,
             },
-            Item::Membership(_) | Item::Landing(_) => false,
+            Item::Membership(_) | Item::Landing(_) | Item::Pointer(_) => false,
         };
         if !keep {
             continue;

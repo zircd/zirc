@@ -206,9 +206,9 @@ pub use thread::{ThreadLink, thread_name};
 pub use titles::{NOTHING_JOINED, NothingJoined};
 pub use typing::{EVERY as TYPING_EVERY, SESSION_TAG, TYPING_TAG, Typist, typing_words};
 pub use view::{
-    EVENT_MARK, Icon, Item, LANDING_KIND, Landing, Membership, Outcome, Parts, RECONNECT_GAP,
-    SenderKind, Stage, ZIRC_LABEL, actor, app_label, day_label, is_system, people_only,
-    sender_kind, shows_sent_from,
+    EVENT_MARK, Icon, Item, LANDING_KIND, Landing, Membership, Outcome, Parts, Pointer,
+    RECONNECT_GAP, SenderKind, Stage, UPDATES_SHOWN, Update, ZIRC_LABEL, actor, app_label,
+    day_label, is_system, people_only, sender_kind, shows_sent_from, trail_block,
 };
 pub use words::{
     ACTIVITY, ACTIVITY_HINT, ADVANCED, ASKING_ZIRC_DEV, ATTACH, BACK, BACK_TO_RESULTS,

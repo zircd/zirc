@@ -40,12 +40,22 @@ pub struct More {
     /// ground, and the control sits in the block's footer beside Copy. `None` when the cut
     /// is in its words, or it's open: the control then has a line of its own under them.
     pub code_lines: Option<usize>,
+    /// Whether it folds a card's earlier updates ([`super::Landing::trail`]) rather than a
+    /// long message's lines: it then says `Show 4 earlier updates`, and `hidden` counts them.
+    pub updates: bool,
 }
 
 impl More {
     /// What the control says: `Show 34 more lines`, `Show 1 more line`, `Show less`.
     #[must_use]
     pub fn label(&self) -> String {
+        if self.updates {
+            return match (self.open, self.hidden) {
+                (true, _) => "Show fewer updates".to_owned(),
+                (false, 1) => "Show 1 earlier update".to_owned(),
+                (false, hidden) => format!("Show {hidden} earlier updates"),
+            };
+        }
         match (self.open, self.hidden) {
             (true, _) => "Show less".to_owned(),
             (false, 1) => "Show 1 more line".to_owned(),
@@ -57,7 +67,8 @@ impl More {
     /// `Show 34 more lines of Maya Chen's agent's message` for `Maya Chen's agent`.
     #[must_use]
     pub fn spoken(&self, whose: &str) -> String {
-        format!("{} of {whose}'s message", self.label())
+        let what = if self.updates { "card" } else { "message" };
+        format!("{} of {whose}'s {what}", self.label())
     }
 
     /// The row the terminal client draws for it, dim, in the text column: `… 34 more lines
@@ -96,6 +107,7 @@ impl super::Chat {
                     hidden,
                     open,
                     code_lines: None,
+                    updates: false,
                 }),
             };
         }
@@ -105,6 +117,7 @@ impl super::Chat {
                 hidden,
                 open,
                 code_lines,
+                updates: false,
             }),
         }
     }
@@ -119,6 +132,22 @@ impl super::Chat {
     /// something in it.
     pub fn open_more(&mut self, key: &str) {
         self.opened.0.insert(key.to_owned(), true);
+    }
+
+    /// The control of a card's trail, the card's key in the view being `key`: `None` while
+    /// all its updates show anyway. Its earlier updates fold away until the person opens
+    /// them, as a long message's lines do ([`super::Chat::toggle_more`]).
+    #[must_use]
+    pub fn trail_more(&self, key: &str, updates: usize) -> Option<More> {
+        let hidden = updates
+            .checked_sub(super::UPDATES_SHOWN)
+            .filter(|n| *n > 0)?;
+        Some(More {
+            hidden,
+            open: self.opened.0.get(key).copied().unwrap_or(false),
+            code_lines: None,
+            updates: true,
+        })
     }
 }
 
