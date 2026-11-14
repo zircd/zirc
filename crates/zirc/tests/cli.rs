@@ -141,11 +141,16 @@ async fn catchup_with(
     machines: &[(&Path, &str)],
 ) -> (String, serde_json::Value) {
     let mut last = String::new();
+    // How long each catch-up took, as it ended: one that outlasts WAIT is the only one
+    // there was, and what it missed at its start is never looked for again.
+    let tries = std::sync::Mutex::new(Vec::new());
     let found = tokio::time::timeout(WAIT, async {
         loop {
+            let began = std::time::Instant::now();
             let printed = zirc(home, &["catchup", "--since", "30m", "--json"])
                 .await
                 .unwrap();
+            tries.lock().unwrap().push(began.elapsed());
             let catchup: serde_json::Value = serde_json::from_str(&printed).unwrap();
             let has = |target: &&str| {
                 catchup["conversations"]
@@ -198,7 +203,11 @@ async fn catchup_with(
         )
         .unwrap();
     }
-    panic!("catchup never had {targets:?}; it had: {last}{seen}")
+    let tries = tries.into_inner().unwrap();
+    panic!(
+        "catchup never had {targets:?} in {WAIT:?}, {} catch-ups ended, taking {tries:?}; it had: {last}{seen}",
+        tries.len()
+    )
 }
 
 fn clone() -> TempDir {
