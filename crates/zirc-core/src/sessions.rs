@@ -130,8 +130,8 @@ pub struct Session {
     /// The branch it works on, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
-    /// The commit of the default branch its work is built on, by its full id, when its
-    /// machine says.
+    /// The commit of the default branch its work is built on, by the start of its id, when
+    /// its machine says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
     /// The paths its work changes since `base`, committed or not.

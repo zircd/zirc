@@ -40,7 +40,7 @@ impl Said {
             worktree,
             branch,
             part: Some(part),
-            base: self.base,
+            base: self.base.as_deref().map(said_base),
             committed: self.committed.into_iter().collect(),
         }
     }
@@ -57,10 +57,15 @@ impl Said {
             nick: nick.to_owned(),
             session: (self.session != WATCHER_SESSION).then_some(self.session),
             branch,
-            base: self.base?,
+            base: said_base(&self.base?),
             changed: self.paths.union(&self.committed).cloned().collect(),
         })
     }
+}
+
+/// A commit as a working set says what it's built on: the start of its id.
+fn said_base(commit: &str) -> String {
+    commit.chars().take(zirc_proto::BASE_DIGITS).collect()
 }
 
 /// What each place's set is.
@@ -162,7 +167,21 @@ impl Daemon {
                 .into_iter()
                 .map(|(place, said)| {
                     let session = said.session().to_owned();
-                    (session, said.event(place, false, zirc_proto::ALONE))
+                    // What it's built on rides along where it fits the line; where it
+                    // doesn't, the paths go without it, and the whole sets say it.
+                    let paths_alone = Said {
+                        base: None,
+                        committed: BTreeSet::new(),
+                        ..said.clone()
+                    };
+                    let event = said.event(place.clone(), false, zirc_proto::ALONE);
+                    let whole = self.signed(&session, event.clone());
+                    let fits = zirc_core::send::fitting_as(&whole, event.clone()).len() == 1;
+                    if fits || paths_alone.paths.is_empty() {
+                        (session, event)
+                    } else {
+                        (session, paths_alone.event(place, false, zirc_proto::ALONE))
+                    }
                 })
                 .collect();
             if events.is_empty() {

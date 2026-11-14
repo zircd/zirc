@@ -259,7 +259,7 @@
                 "string",
                 "null"
               ],
-              "description": "The commit the worktree's work is built on: the newest commit of the remote's\ndefault branch that it has, by its full id. With it, anyone who knows what landed\nsince can tell whether the work is behind a landing. Left out without a remote\ndefault branch, and by machines that predate it."
+              "description": "The commit the worktree's work is built on: the newest commit of the remote's\ndefault branch that it has, by the first [`BASE_DIGITS`] digits of its id, as a\nline has little room. With it, anyone who knows what landed since can tell\nwhether the work is behind a landing. Left out without a remote default branch,\nwhere it doesn't fit, and by machines that predate it."
             },
             "committed": {
               "type": "array",
@@ -1249,7 +1249,7 @@
         },
         "base": {
           "type": "string",
-          "description": "The commit of the default branch its work is built on, by its full id."
+          "description": "The commit of the default branch its work is built on, by the start of its id\n([`zirc_proto::BASE_DIGITS`] digits)."
         },
         "changed": {
           "type": "array",

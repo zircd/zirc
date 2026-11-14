@@ -176,6 +176,7 @@ async fn others_see_what_a_worktrees_work_is_built_on_once_its_committed() {
         .unwrap();
     let fork = String::from_utf8(fork.stdout).unwrap().trim().to_owned();
     assert_eq!(fork.len(), 40, "the worktree left origin/main somewhere");
+    let fork = fork[..zirc_proto::BASE_DIGITS].to_owned();
     // Committed, with one more change not yet: nothing of the commit's is uncommitted, so
     // only what the machine says of its commits tells others of login.rs.
     std::fs::write(login_root.join("login.rs"), "fn login() {}\n").unwrap();

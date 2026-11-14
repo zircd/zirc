@@ -167,6 +167,7 @@ pub fn fitting(session: &str, event: Event) -> Vec<Event> {
 /// The same, for `event` sent as `sender` says, with its name and app label.
 #[must_use]
 pub fn fitting_as(sender: &Message, event: Event) -> Vec<Event> {
+    let event_kind = event.kind();
     match zirc_proto::encode(&from(sender, event.clone())) {
         Ok(_) => vec![event],
         Err(err) => match smaller(sender, event) {
@@ -176,7 +177,7 @@ pub fn fitting_as(sender: &Message, event: Event) -> Vec<Event> {
                 .collect(),
             Smaller::Shorter(event) => fitting_as(sender, event),
             Smaller::Nothing => {
-                tracing::warn!("dropping an event: {err}");
+                tracing::warn!("dropping a {} event: {err}", event_kind);
                 Vec::new()
             }
         },
@@ -196,75 +197,67 @@ enum Smaller {
 /// The shortest text worth keeping before giving up on cutting it further.
 const SHORTEST: usize = 16;
 
-/// A working set made smaller: its paths and committed paths halved as one list, the paths
-/// first, or its one path shortened.
+/// A working set made smaller, its paths never for what it's built on: a set that says
+/// both says them apart, the paths as a set without them fits; then each list is halved, and
+/// one path too long is said as its directory. What the work is built on is the first to go
+/// when its own part doesn't fit.
 fn smaller_working(event: Event) -> Smaller {
-    match event {
-        Event::Working {
-            paths,
-            continued,
-            worktree,
-            branch,
-            part,
-            base,
-            committed,
-        } if paths.len() + committed.len() > 1 => {
-            let half = paths.len().midpoint(committed.len());
-            let (first, second) = paths.split_at(half.min(paths.len()));
-            let (first_committed, second_committed) =
-                committed.split_at(half.saturating_sub(paths.len()));
-            Smaller::Split(vec![
-                Event::Working {
-                    paths: first.to_vec(),
-                    continued,
-                    worktree: worktree.clone(),
-                    branch: branch.clone(),
-                    part,
-                    base: base.clone(),
-                    committed: first_committed.to_vec(),
-                },
-                Event::Working {
-                    paths: second.to_vec(),
-                    continued: true,
-                    worktree,
-                    branch,
-                    part,
-                    base,
-                    committed: second_committed.to_vec(),
-                },
-            ])
+    let Event::Working {
+        paths,
+        continued,
+        worktree,
+        branch,
+        part,
+        base,
+        committed,
+    } = event
+    else {
+        return Smaller::Nothing;
+    };
+    let said = |paths, continued, base, committed| Event::Working {
+        paths,
+        continued,
+        worktree: worktree.clone(),
+        branch: branch.clone(),
+        part,
+        base,
+        committed,
+    };
+    if !paths.is_empty() && (base.is_some() || !committed.is_empty()) {
+        return Smaller::Split(vec![
+            said(paths, continued, None, Vec::new()),
+            said(Vec::new(), true, base, committed),
+        ]);
+    }
+    // One list is left: the paths, or the committed ones with what they're built on.
+    let own = !paths.is_empty();
+    let list = if own { paths } else { committed };
+    let again = |list: Vec<String>, continued, base| {
+        if own {
+            said(list, continued, None, Vec::new())
+        } else {
+            said(Vec::new(), continued, base, list)
         }
-        // One path too long for a line beside its worktree's and branch's names: its
-        // directory, which still overlaps whatever is changed in it. Dropping it would leave
-        // its set a part short, which readers ignore whole.
-        Event::Working {
-            mut paths,
-            continued,
-            worktree,
-            branch,
-            part,
-            base,
-            mut committed,
-        } if paths
-            .iter()
-            .chain(&committed)
-            .any(|path| path.trim_end_matches('/').contains('/')) =>
-        {
-            for path in paths.iter_mut().chain(&mut committed) {
-                let whole = path.trim_end_matches('/');
-                *path = format!("{}/", &whole[..whole.rfind('/').unwrap_or_default()]);
-            }
-            Smaller::Shorter(Event::Working {
-                paths,
-                continued,
-                worktree,
-                branch,
-                part,
-                base,
-                committed,
-            })
-        }
-        _ => Smaller::Nothing,
+    };
+    if list.len() > 1 {
+        let (first, second) = list.split_at(list.len() / 2);
+        return Smaller::Split(vec![
+            again(first.to_vec(), continued, base),
+            again(second.to_vec(), true, None),
+        ]);
+    }
+    // One path too long for a line beside its worktree's and branch's names: its directory,
+    // which still overlaps whatever is changed in it. Dropping it would leave its set a
+    // part short, which readers ignore whole.
+    if let Some(path) = list.first().map(|path| path.trim_end_matches('/'))
+        && let Some(cut) = path.rfind('/')
+    {
+        return Smaller::Shorter(again(vec![format!("{}/", &path[..cut])], continued, base));
+    }
+    match (base, list.is_empty()) {
+        (Some(_), true) => Smaller::Split(Vec::new()),
+        (Some(_), false) => Smaller::Shorter(again(list, continued, None)),
+        (None, _) => Smaller::Nothing,
     }
 }
 
@@ -631,40 +624,66 @@ mod tests {
     }
 
     #[test]
-    fn splits_a_working_sets_committed_paths_with_its_base_on_every_part() {
-        let paths: Vec<String> = (0..3).map(|i| format!("src/dirty_{i}.rs")).collect();
-        let committed: Vec<String> = (0..40).map(|i| format!("src/module_{i}/file.rs")).collect();
-        let events = decoded(&encode(
-            "cc-1",
-            Event::Working {
-                paths: paths.clone(),
-                continued: false,
-                worktree: Some("one".into()),
-                branch: Some("login".into()),
-                part: None,
-                base: Some("b".repeat(40)),
-                committed: committed.clone(),
-            },
-        ));
-        assert!(events.len() > 1);
-        let (mut all_paths, mut all_committed) = (Vec::new(), Vec::new());
-        for (i, event) in events.into_iter().enumerate() {
-            let Event::Working {
-                paths,
-                continued,
-                base,
-                committed,
-                ..
-            } = event
-            else {
-                panic!("not a working set")
+    fn says_what_a_working_set_is_built_on_apart_from_its_paths() {
+        /// A part: its paths, whether it continues, its base and its committed paths.
+        type Part = (Vec<String>, bool, Option<String>, Vec<String>);
+        let base = "b".repeat(zirc_proto::BASE_DIGITS);
+        let working = |paths: &[String], base: Option<&str>, committed: &[String]| Event::Working {
+            paths: paths.to_vec(),
+            continued: false,
+            worktree: Some("wizardly-bell-f60983".into()),
+            branch: Some("android-polish".into()),
+            part: Some([1, 1]),
+            base: base.map(str::to_owned),
+            committed: committed.to_vec(),
+        };
+        // A sender with a name, a picture and a tool, as agent sessions have: little room.
+        let mut sender = Message::new("cc-1531f8", working(&[], None, &[]));
+        sender.name = Some("android-release".into());
+        sender.avatar = Some("rocket".into());
+        sender.tool = Some("claude-code".into());
+        let parts = |event: Event| -> Vec<Part> {
+            fitting_as(&sender, event)
+                .into_iter()
+                .map(|event| match event {
+                    Event::Working {
+                        paths,
+                        continued,
+                        base,
+                        committed,
+                        ..
+                    } => (paths, continued, base, committed),
+                    other => panic!("not a working set: {other:?}"),
+                })
+                .collect()
+        };
+        // Paths are said as they are without what the work is built on, never coarser for
+        // it, which follows in a part of its own: 0.1.53 said a file as its directory, or
+        // dropped the set, to make room for it.
+        for paths in [
+            vec!["src/a.rs".to_owned()],
+            vec!["oss/crates/zirc-core/src/send.rs".to_owned()],
+            (0..9).map(|i| format!("src/dirty_{i}.rs")).collect(),
+        ] {
+            let with = parts(working(&paths, Some(&base), &[]));
+            let without = parts(working(&paths, None, &[]));
+            let said = |parts: &[Part]| -> Vec<(Vec<String>, bool)> {
+                let own = parts.iter().filter(|part| !part.0.is_empty());
+                own.map(|part| (part.0.clone(), part.1)).collect()
             };
-            assert_eq!(continued, i > 0);
-            assert_eq!(base, Some("b".repeat(40)));
-            all_paths.extend(paths);
-            all_committed.extend(committed);
+            assert_eq!(said(&with), said(&without), "{paths:?}");
+            let bases: Vec<&String> = with.iter().filter_map(|part| part.2.as_ref()).collect();
+            assert_eq!(bases, [&base], "{paths:?}");
         }
-        assert_eq!((all_paths, all_committed), (paths, committed));
+        // Committed paths go with what it's built on, which is said once, after the paths.
+        let paths = vec!["a.rs".to_owned()];
+        let committed: Vec<String> = (0..12).map(|i| format!("m{i}.rs")).collect();
+        let said = parts(working(&paths, Some(&base), &committed));
+        assert_eq!(said[0], (paths, false, None, vec![]));
+        let all: Vec<String> = said.iter().flat_map(|part| part.3.clone()).collect();
+        assert_eq!(all, committed);
+        assert_eq!(said.iter().filter(|part| part.2.is_some()).count(), 1);
+        assert!(said[1..].iter().all(|part| part.1 && part.0.is_empty()));
     }
 
     #[test]

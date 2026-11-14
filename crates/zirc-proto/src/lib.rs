@@ -122,6 +122,11 @@ pub const VERSION: u32 = 1;
 /// The organisation-wide channel, which every member and machine is in.
 pub const ORG_CHANNEL: &str = "#general";
 
+/// How many digits of a commit's id a working set says what it's built on by
+/// ([`Event::Working`]'s `base`): enough to name one commit of a repository, in a line whose
+/// sender, worktree and branch leave some 60 bytes.
+pub const BASE_DIGITS: usize = 12;
+
 /// The longest PRIVMSG body we write. IRC lines are 512 bytes including the sender's
 /// prefix, the command, the target and CRLF, so the body gets what's left with some room.
 pub const MAX_BODY_BYTES: usize = 400;
@@ -186,9 +191,10 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         part: Option<[u32; 2]>,
         /// The commit the worktree's work is built on: the newest commit of the remote's
-        /// default branch that it has, by its full id. With it, anyone who knows what landed
-        /// since can tell whether the work is behind a landing. Left out without a remote
-        /// default branch, and by machines that predate it.
+        /// default branch that it has, by the first [`BASE_DIGITS`] digits of its id, as a
+        /// line has little room. With it, anyone who knows what landed since can tell
+        /// whether the work is behind a landing. Left out without a remote default branch,
+        /// where it doesn't fit, and by machines that predate it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         base: Option<String>,
         /// The paths the worktree's own commits since `base` change, beyond `paths`: with

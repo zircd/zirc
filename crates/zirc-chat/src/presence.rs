@@ -148,7 +148,8 @@ pub struct Built {
     /// The branch checked out there, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
-    /// The commit of the default branch its work is built on, by its full id.
+    /// The commit of the default branch its work is built on, by the start of its id
+    /// ([`zirc_proto::BASE_DIGITS`] digits).
     pub base: String,
     /// The paths its work changes since `base`, committed or not, sorted.
     pub changed: Vec<String>,
@@ -499,6 +500,10 @@ impl Presence {
         // A set split over several parts has its committed paths split over them too.
         let mut place = place;
         place.committed.append(&mut known.committed);
+        // And says what it's built on in one of them.
+        if place.base.is_none() {
+            place.base = known.base.take();
+        }
         *known = place;
         set.extend(paths);
         sets.retain(|_, (place, paths)| !paths.is_empty() || !place.committed.is_empty());
@@ -514,6 +519,17 @@ impl Presence {
         let members = self.working.entry(channel.to_owned()).or_default();
         let sets = members.entry(nick.to_owned()).or_default();
         let key = (place.worktree.clone(), place.branch.clone());
+        // Said without what it's built on, which didn't fit the line beside its paths: that
+        // stays as the machine last said it.
+        let mut place = place;
+        if !paths.is_empty()
+            && place.base.is_none()
+            && place.committed.is_empty()
+            && let Some((known, _)) = sets.get(&key)
+        {
+            place.base.clone_from(&known.base);
+            place.committed.clone_from(&known.committed);
+        }
         if paths.is_empty() && place.committed.is_empty() {
             sets.remove(&key);
         } else {
