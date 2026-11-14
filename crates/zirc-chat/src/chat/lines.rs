@@ -266,10 +266,13 @@ pub struct SystemLine {
     pub details: String,
     /// The paths it's about, set in monospace.
     pub paths: Vec<String>,
-    /// Whether its lead, paths and details read as one phrase, wrapped together: a file two
-    /// sessions are changing, `! also changing a.rs with cc-1`. Apps draw them so, and
-    /// never decide it from the icon.
-    pub one_phrase: bool,
+    /// The theme role its marker, the start of [`SystemLine::lead`], is drawn in
+    /// ([`Icon::tone`]): `warning` for a conflict or a file two are changing. The rest of the
+    /// lead is `muted`. Apps look it up; they never decide it from the icon.
+    pub marker_tone: String,
+    /// The theme role its details are drawn in ([`Icon::words_tone`]): `muted` for an
+    /// agent's routine progress, `body` for the rest.
+    pub details_tone: String,
     /// Whether its paths are listed under its words, one a line, the first
     /// [`SHOWN_PATHS`](super::SHOWN_PATHS) and a "Show N more"
     /// ([`show_more_paths_label`](super::show_more_paths_label)) for the rest.
@@ -289,7 +292,8 @@ pub struct SystemLine {
     pub compact: bool,
     /// The event as one muted line, for an app that draws an agent's routine work quietly
     /// ([`Parts::brief`](super::Parts::brief)): `checkout is about to change Coupon.tsx`.
-    /// `None` for what keeps its full form.
+    /// `None` for what keeps its full form: what someone has reacted to, and everything in
+    /// an agent's own conversation ([`Chat::agent_lines`]). Apps draw it as it says.
     pub brief: Option<String>,
     /// When the last of a fold happened, on the view's clock, when it's later than the
     /// first: a commit and its push, made one line.
@@ -406,7 +410,9 @@ impl Chat {
         let Some(conversation) = self.conversation(name) else {
             return Vec::new();
         };
-        Layout::new(self, conversation, offset, HashMap::new()).lines(people_only)
+        let mut lines = Layout::new(self, conversation, offset, HashMap::new()).lines(people_only);
+        settle_briefs(&mut lines);
+        lines
     }
 
     /// The agent session `name`'s conversation (`<machine>/<session>`) as its lines: its
@@ -446,6 +452,22 @@ impl Chat {
             last.clone_from(&line.room);
         }
         lines
+    }
+}
+
+/// Heads again a line carrying on a run from a brief one ([`Conversation::brief`]), as a
+/// brief line has no avatar or name for it to carry on from, so no app decides it.
+fn settle_briefs(lines: &mut [Line]) {
+    let mut after_brief = false;
+    for line in lines {
+        let brief = line
+            .system
+            .as_ref()
+            .is_some_and(|system| system.brief.is_some());
+        if after_brief && !brief {
+            line.continues = false;
+        }
+        after_brief = brief;
     }
 }
 
@@ -546,7 +568,7 @@ impl<'a> Layout<'a> {
                 if parts.icon == Icon::Post && !parts.details.is_empty() {
                     self.body(&mut line, super::rich(&parts.details));
                 }
-                line.system = Some(self.system(&parts, parts.session.clone()));
+                line.system = Some(self.system(&parts, parts.session.clone(), line.id.as_deref()));
                 line
             }
             Item::Landing(landing) => self.landing(&landing),
@@ -556,7 +578,7 @@ impl<'a> Layout<'a> {
                 line.system = Some(SystemLine {
                     // Its key is its id: one without, which IRC always gives, has none to jump to.
                     points_to: pointer.card.id.clone(),
-                    ..self.system(&parts, None)
+                    ..self.system(&parts, None, line.id.as_deref())
                 });
                 line
             }
@@ -576,7 +598,7 @@ impl<'a> Layout<'a> {
                 let key = self.keys.next(membership.time.timestamp_millis());
                 let mut line = self.blank(key, None, membership.time, LineKind::Membership);
                 line.text = membership.text();
-                line.system = Some(self.system(&membership.parts(), None));
+                line.system = Some(self.system(&membership.parts(), None, None));
                 line
             }
         }
@@ -670,17 +692,17 @@ impl<'a> Layout<'a> {
         line.more = more;
     }
 
-    /// A system line from `parts`, about the agent session `session`, if any.
-    fn system(&self, parts: &Parts, session: Option<String>) -> SystemLine {
+    /// A system line from `parts`, about the agent session `session`, if any, said as the
+    /// message `id`.
+    fn system(&self, parts: &Parts, session: Option<String>, id: Option<&str>) -> SystemLine {
         let lead = parts.lead();
-        let one_phrase = parts.icon == Icon::Overlap && !parts.paths.is_empty();
-        let paths_listed = !one_phrase && !parts.paths.is_empty();
-        let details_apart = !one_phrase
-            && !lead.is_empty()
+        let paths_listed = !parts.paths.is_empty();
+        let details_apart = !lead.is_empty()
             && !parts.details.is_empty()
             && (paths_listed || parts.details.contains('\n'));
         SystemLine {
-            one_phrase,
+            marker_tone: parts.icon.tone().to_owned(),
+            details_tone: parts.icon.words_tone().to_owned(),
             paths_listed,
             details_apart,
             icon: parts.icon,
@@ -696,7 +718,7 @@ impl<'a> Layout<'a> {
             details: parts.details.clone(),
             paths: parts.paths.clone(),
             compact: parts.compact,
-            brief: parts.brief(),
+            brief: self.conversation.brief(parts, id),
             until_clock: (parts.until != parts.time).then(|| self.clock(parts.until)),
             outcome: None,
             card: false,
@@ -754,7 +776,11 @@ impl<'a> Layout<'a> {
             card: card_line.is_some(),
             buttons: self.buttons(landing, &version),
             card_version: landing.card.as_ref().map(|_| version),
-            ..self.system(&parts, landing.session.map(str::to_owned))
+            ..self.system(
+                &parts,
+                landing.session.map(str::to_owned),
+                line.id.as_deref(),
+            )
         });
         line
     }
@@ -1534,14 +1560,82 @@ mod tests {
         assert_eq!(about.details, "tidy the form");
         assert_eq!(about.paths, ["web/src"]);
         // Its paths are listed under what it's for, which starts a line of its own.
-        assert!(about.paths_listed && about.details_apart && !about.one_phrase);
+        assert!(about.paths_listed && about.details_apart);
+        assert_eq!(
+            (about.marker_tone.as_str(), about.details_tone.as_str()),
+            ("muted", "body")
+        );
         // A commit's line has no paths, and its details follow its lead.
         let made = lines[0].system.as_ref().unwrap();
-        assert!(!made.paths_listed && !made.details_apart && !made.one_phrase);
+        assert!(!made.paths_listed && !made.details_apart);
     }
 
     #[test]
-    fn a_push_of_several_commits_lists_them_apart_and_overlap_is_one_phrase() {
+    fn the_core_says_which_lines_are_brief_and_heads_the_run_after_one() {
+        let mut reacted = chat();
+        let intent = |summary: &str| {
+            named(
+                "cc-1",
+                "checkout",
+                Event::Intent {
+                    paths: vec!["web/src".into()],
+                    summary: summary.into(),
+                    expires: None,
+                    lasts: None,
+                },
+            )
+        };
+        let said = named("cc-1", "checkout", text("all done"));
+        feed(
+            &mut reacted,
+            &[
+                &at(
+                    "09:00:00",
+                    Some("e1"),
+                    &zirc("me-mbp", "#api", &intent("one")),
+                ),
+                &at(
+                    "09:01:00",
+                    Some("e2"),
+                    &zirc("me-mbp", "#api", &intent("two")),
+                ),
+                &at("09:02:00", Some("e3"), &zirc("me-mbp", "#api", &said)),
+                "@time=2026-10-30T09:03:00.000Z;+draft/react=👀;+draft/reply=e2 :bob!u@h TAGMSG #api",
+            ],
+        );
+        let lines = api(&reacted);
+        let brief = |at: usize| lines[at].system.as_ref().unwrap().brief.is_some();
+        // Routine work is brief until someone reacts to it (the user's choice, 14 Nov 2026).
+        assert!(brief(0), "{lines:#?}");
+        assert!(!brief(1), "a reacted-to line is whole: {lines:#?}");
+        // What follows a brief line heads itself; what follows a whole one carries on.
+        assert!(!lines[1].continues && lines[2].continues, "{lines:#?}");
+        let mut unreacted = chat();
+        feed(
+            &mut unreacted,
+            &[
+                &at(
+                    "09:00:00",
+                    Some("e1"),
+                    &zirc("me-mbp", "#api", &intent("one")),
+                ),
+                &at("09:02:00", Some("e3"), &zirc("me-mbp", "#api", &said)),
+            ],
+        );
+        let lines = api(&unreacted);
+        assert!(!lines[1].continues, "{lines:#?}");
+        // In the agent's own conversation, its work is whole.
+        let own = unreacted.agent_lines("me-mbp/cc-1", utc());
+        assert!(
+            own.iter()
+                .filter_map(|line| line.system.as_ref())
+                .all(|system| system.brief.is_none()),
+            "{own:#?}"
+        );
+    }
+
+    #[test]
+    fn a_push_of_several_commits_lists_them_apart() {
         let mut chat = chat();
         let push = named(
             "cc-1",

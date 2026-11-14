@@ -1354,17 +1354,18 @@ fn row_line(app: &App, row: &Row, nick_width: usize, width: u16) -> Line<'static
     }
 }
 
-/// A body row's `text` in `style`, but for the line saying two are changing one file, whose
-/// `!` alone is in the warning colour.
+/// A body row's `text` in `style`, but for an event's lead, whose marker alone is in its
+/// icon's tone ([`Icon::tone`]), as every app draws it.
 fn lead_spans(app: &App, text: &str, tone: Tone, style: Style) -> Vec<Span<'static>> {
-    let glyph = Icon::Overlap.glyph();
-    match (tone, text.strip_prefix(glyph)) {
-        (Tone::Lead(Icon::Overlap), Some(rest)) => vec![
-            Span::styled(glyph, icon_style(app, Icon::Overlap)),
+    if let Tone::Lead(icon) = tone
+        && let Some(rest) = text.strip_prefix(icon.glyph())
+    {
+        return vec![
+            Span::styled(icon.glyph(), icon_style(app, icon)),
             Span::styled(rest.to_owned(), style),
-        ],
-        _ => vec![Span::styled(text.to_owned(), style)],
+        ];
     }
+    vec![Span::styled(text.to_owned(), style)]
 }
 
 /// The shortest rule worth drawing before what's new.
@@ -1463,15 +1464,17 @@ fn text_styles(app: &App, nick: &str, tone: Tone) -> (Style, Style) {
         Tone::Message | Tone::Notice | Tone::App(None) => nick_style(app, nick.trim_matches('-')),
         Tone::App(Some(icon)) | Tone::Lead(icon) => icon_style(app, icon),
         Tone::Info => fg(theme.error),
-        Tone::Action | Tone::Status | Tone::Path | Tone::Quote => fg(theme.muted),
+        Tone::Action | Tone::Status | Tone::Path | Tone::Quote | Tone::Details(_) => {
+            fg(theme.muted)
+        }
     };
     let text_style = match tone {
-        // Two changing one file: only its `!` warns ([`lead_spans`]), the words are a body's.
-        Tone::Message | Tone::App(_) | Tone::Lead(Icon::Overlap) => fg(theme.body),
+        Tone::Message | Tone::App(_) => fg(theme.body),
         Tone::Action => fg(theme.body).add_modifier(Modifier::ITALIC),
         Tone::Notice => fg(theme.warning),
-        Tone::Lead(icon) => icon_style(app, icon),
-        Tone::Status | Tone::Quote => fg(theme.muted),
+        // Its marker in its icon's tone ([`lead_spans`]), its words muted, as every app.
+        Tone::Lead(_) | Tone::Status | Tone::Quote => fg(theme.muted),
+        Tone::Details(icon) => fg(theme.role(icon.words_tone()).unwrap_or(theme.body)),
         Tone::Path => fg(theme.muted).add_modifier(Modifier::DIM),
         Tone::Info => fg(theme.error),
     };
@@ -3522,9 +3525,10 @@ mod tests {
         {
             app.handle(line);
         }
-        // The stream says it once, as a message: the `!` and zirc-chat's phrase, the path in it.
+        // The stream says it once, as a message: the `!`, who else, then the path listed
+        // under it, as every event's are (the user's choice, 14 Nov 2026).
         let (rows, _) = draw(&app, 120, 36);
-        let said = row_with(&rows, "! also changing web/src/api/client.ts with checkout");
+        let said = row_with(&rows, "! checkout is also changing");
         assert_eq!(
             rows.iter()
                 .filter(|row| row.contains("also changing"))
@@ -3532,11 +3536,18 @@ mod tests {
             1,
             "{rows:#?}"
         );
-        assert!(!said.contains("·"), "{said}");
+        assert!(!said.contains("·") && !said.contains("client.ts"), "{said}");
+        let at = rows
+            .iter()
+            .position(|row| row.contains("! checkout is also changing"));
+        assert!(
+            rows[at.unwrap() + 1].contains("web/src/api/client.ts"),
+            "{rows:#?}"
+        );
         // On one line, IRC's way.
         app.compact = true;
         let (rows, _) = draw(&app, 120, 36);
-        row_with(&rows, "also changing web/src/api/client.ts with checkout");
+        row_with(&rows, "checkout is also changing web/src/api/client.ts");
         app.compact = false;
 
         // Its card: Now, then what it's changing with others.

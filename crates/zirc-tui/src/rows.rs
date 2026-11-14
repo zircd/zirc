@@ -275,6 +275,9 @@ pub enum Tone {
     /// An event's lead, zirc-chat's `Parts::lead`: its marker and what it did, in its
     /// icon's colour.
     Lead(Icon),
+    /// An event's details, what it was, in the core's tone for them
+    /// ([`Icon::words_tone`]).
+    Details(Icon),
     /// What a one-line system row is about, wrapped.
     Status,
     /// The paths a system row is about.
@@ -783,16 +786,16 @@ fn system_parts(item: &Item<'_>) -> Option<Parts> {
     }
 }
 
-/// `item` as one quiet line, when it's an agent's routine work in `look`'s conversation: the core's
-/// brief (the user's choice, 14 Nov 2026). `None` for anything else, for everything in an
-/// agent's own conversation, where its work is whole, and in IRC's way (`compact`), which
-/// says every event whole on its line, as it always has. What follows a brief line heads
-/// itself again: there's no header for it to carry on from.
+/// `item` as one quiet line, as the core says ([`Conversation::brief`]): an agent's routine
+/// work, unless someone has reacted to it or it's an agent's own conversation. `None` too in
+/// IRC's way (`compact`), which says every event whole on its line, as it always has. What
+/// follows a brief line heads itself again: there's no header for it to carry on from.
 fn brief_of(look: &Look<'_>, item: &Item<'_>) -> Option<String> {
-    if look.compact || zirc_core::chat::agent(&look.conversation.name).is_some() {
+    if look.compact {
         return None;
     }
-    system_parts(item)?.brief()
+    let id = entry_of(item).and_then(|entry| entry.id.as_deref());
+    look.conversation.brief(&system_parts(item)?, id)
 }
 
 /// Marks a system row's `rows` as mentioning us when it does, as a message's are.
@@ -840,7 +843,6 @@ fn system_rows(
     // everything is in the IRC display mode, its icon in front. Anything else is drawn as a
     // message: its actor's header, unless it carries on their run, then its body.
     let one_line = compact || parts.compact || brief.is_some();
-    let phrase = parts.phrase();
     let agent = agent.map(|agent| Agent {
         detail: if one_line {
             String::new()
@@ -898,7 +900,7 @@ fn system_rows(
         // Its body: zirc-chat's lead, the marker and what it did, then what it was, all
         // wrapped, never cut.
         let mut lines = Vec::new();
-        for (text, tone) in body(parts, phrase.as_deref()) {
+        for (text, tone) in body(parts) {
             if text.is_empty() {
                 continue;
             }
@@ -919,7 +921,7 @@ fn system_rows(
         links,
     };
     rows.extend(lines.into_iter().map(|(line, tone)| text_row(line, tone)));
-    if !compact && brief.is_none() && phrase.is_none() && !parts.paths.is_empty() {
+    if !compact && brief.is_none() && !parts.paths.is_empty() {
         rows.push(text_row(
             (paths_line(&parts.paths, text_width), Vec::new()),
             Tone::Path,
@@ -928,22 +930,12 @@ fn system_rows(
 }
 
 /// An event's body as a message draws it: zirc-chat's lead, the marker and what it did, then
-/// its details, what it was; or the marker and its `phrase` ([`Parts::phrase`]), when it's
-/// said as one.
-fn body(parts: &Parts, phrase: Option<&str>) -> [(String, Tone); 2] {
-    match phrase {
-        Some(phrase) => [
-            (
-                format!("{} {phrase}", parts.icon.glyph()),
-                Tone::Lead(parts.icon),
-            ),
-            (String::new(), Tone::Message),
-        ],
-        None => [
-            (parts.lead(), Tone::Lead(parts.icon)),
-            (parts.details.clone(), Tone::Message),
-        ],
-    }
+/// its details, what it was, in the core's tone for them ([`Icon::words_tone`]).
+fn body(parts: &Parts) -> [(String, Tone); 2] {
+    [
+        (parts.lead(), Tone::Lead(parts.icon)),
+        (parts.details.clone(), Tone::Details(parts.icon)),
+    ]
 }
 
 /// A one-line system row's words, `said`, and the width to wrap them in, `text_width` less

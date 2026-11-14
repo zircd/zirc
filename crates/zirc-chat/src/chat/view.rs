@@ -356,6 +356,27 @@ impl Icon {
         }
     }
 
+    /// The theme role an event's details are drawn in: an agent's routine progress in
+    /// `muted`, as quieter than what's said; the rest in `body` (the user's choice, 14 Nov
+    /// 2026). An app looks the role up; it never decides it from the icon.
+    #[must_use]
+    pub fn words_tone(self) -> &'static str {
+        match self {
+            Self::Working => "muted",
+            Self::Landed
+            | Self::Failed
+            | Self::Conflict
+            | Self::Overlap
+            | Self::Push
+            | Self::Commit
+            | Self::Intent
+            | Self::Taking
+            | Self::Join
+            | Self::Leave
+            | Self::Post => "body",
+        }
+    }
+
     /// What every app draws for it, one character wide. A conflict is a warning, `⚠`.
     #[must_use]
     pub fn glyph(self) -> &'static str {

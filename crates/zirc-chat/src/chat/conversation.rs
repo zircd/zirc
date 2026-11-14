@@ -591,6 +591,18 @@ impl Conversation {
         })
     }
 
+    /// `parts`, said as the message `id`, as one quiet line, when every app draws it so: an
+    /// agent's routine work ([`super::Parts::brief`]), but never once someone has reacted to
+    /// it, nor in an agent's own conversation, where its work is what there is to read (the
+    /// user's choice, 14 Nov 2026). The one rule; no app decides it.
+    #[must_use]
+    pub fn brief(&self, parts: &super::Parts, id: Option<&str>) -> Option<String> {
+        if agent(&self.name).is_some() || id.is_some_and(|id| !self.reactions(id).is_empty()) {
+            return None;
+        }
+        parts.brief()
+    }
+
     /// The reactions to the message with id `id`.
     #[must_use]
     pub fn reactions(&self, id: &str) -> &[Reaction] {

@@ -115,6 +115,20 @@ pub fn both_changing_words(others: &[String], same_lines: bool) -> (String, Stri
     }
 }
 
+/// What the stream's row says above the path it lists, others named first as `others`:
+/// `checkout is also changing`, `checkout and 2 others are changing the same lines of` (the
+/// user's choice, 14 Nov 2026). Its path is listed under it, as every event's are.
+#[must_use]
+pub fn both_changing_row_words(others: &[String], same_lines: bool) -> String {
+    let are = if others.len() > 1 { "are" } else { "is" };
+    let doing = if same_lines {
+        "changing the same lines of"
+    } else {
+        "also changing"
+    };
+    format!("{} {are} {doing}", names(others))
+}
+
 /// The one phrase a file both changing is said in, as a card, a people row's caption and a
 /// list draw it: `!` in warning, `also changing`, the path in mono, then `with checkout`,
 /// all one line. Ready to draw and send as it is: every app reads this record, the phones
@@ -420,7 +434,7 @@ impl Chat {
             .filter(|changer| !is(changer, &from))
             .map(|changer| changer.name.clone())
             .collect();
-        let (verb, details) = both_changing_words(&others, item.same_lines);
+        let verb = both_changing_row_words(&others, item.same_lines);
         let mut message = Message::new(
             joined
                 .session
@@ -431,9 +445,8 @@ impl Chat {
                 data: serde_json::json!({
                     "path": item.path,
                     "verb": verb,
-                    "details": details,
                 }),
-                text: format!("{verb} {} {details}", item.path),
+                text: format!("{verb} {}", item.path),
             },
         );
         message.name.clone_from(&joined.session_name);
@@ -487,5 +500,9 @@ pub(super) fn row_words(event: &Event) -> Option<(String, String, String)> {
         return None;
     }
     let word = |name: &str| data.get(name)?.as_str().map(str::to_owned);
-    Some((word("verb")?, word("details")?, word("path")?))
+    Some((
+        word("verb")?,
+        word("details").unwrap_or_default(),
+        word("path")?,
+    ))
 }

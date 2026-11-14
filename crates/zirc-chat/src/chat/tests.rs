@@ -849,19 +849,21 @@ fn two_sessions_on_one_machine_are_both_changing_a_file() {
     let rows = both_rows(&chat);
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].session.as_deref(), Some("cc-2"));
+    // Who first, then what, its path listed under it as every event's are (the user's
+    // choice, 14 Nov 2026).
     assert_eq!(
         (rows[0].lead().as_str(), rows[0].details.as_str()),
-        ("! also changing", "with cc-1")
+        ("! cc-1 is also changing", "")
     );
     assert_eq!(rows[0].paths, ["a.rs"]);
-    // Drawn as one phrase, its path inside it, not listed under it.
     let drawn = chat.lines("#api", chrono::FixedOffset::east_opt(0).unwrap(), false);
     let overlap = drawn
         .iter()
         .filter_map(|line| line.system.as_ref())
         .find(|system| system.icon == Icon::Overlap)
         .expect("an overlap row");
-    assert!(overlap.one_phrase && !overlap.paths_listed && !overlap.details_apart);
+    assert!(overlap.paths_listed && !overlap.details_apart);
+    assert_eq!(overlap.marker_tone, "warning");
     assert_eq!(api(&chat).unread, 0, "it's no news to count or notify");
 
     // It clears when one stops, and the row stays.
