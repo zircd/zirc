@@ -719,9 +719,13 @@ impl<'a> Layout<'a> {
             |line| line.iter().map(|span| span.text.as_str()).collect(),
         );
         let mut line = self.said(entry, LineKind::Landing, &text, landing.continues);
-        let mut blocks = link_blocks(landing.rich(), &landing.links());
-        // Its updates under it, the earlier ones folded away while there are many.
-        let more = self.chat.trail_more(&line.key, landing.updates.len());
+        // Its updates under it, the earlier ones folded away while there are many, and a
+        // done card's steps on one line, until the person opens them.
+        let more = self
+            .chat
+            .trail_more(&line.key, landing.updates.len(), landing.folds_steps());
+        let steps = more.is_none_or(|more| more.open || more.steps.is_none());
+        let mut blocks = link_blocks(landing.rich_steps(steps), &landing.links());
         let clock = |at| self.clock(at);
         blocks.extend(super::trail_block(landing.trail(more.as_ref()), &clock));
         line.rich = self.chat.flat(self.chat.drawn(blocks));
@@ -1693,6 +1697,7 @@ mod tests {
             fields: Vec::new(),
             links: Vec::new(),
             actions,
+            steps: Vec::new(),
             note: None,
         }
     }

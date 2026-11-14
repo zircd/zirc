@@ -1652,6 +1652,7 @@ impl Engine {
             fields,
             links: Vec::new(),
             actions: Vec::new(),
+            steps: Vec::new(),
             note: run
                 .finished
                 .as_ref()

@@ -177,6 +177,9 @@ pub struct Data {
     /// On a deploy's event: the apps this event says were deployed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deployed: Vec<String>,
+    /// A landing's steps as they stand ([`crate::card::Step`]): its card shows them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<crate::card::Step>,
 }
 
 /// A target that failed in a landing's build.
@@ -308,7 +311,7 @@ pub fn landing_card(data: &serde_json::Value, text: &str) -> Option<Card> {
         .collect::<Vec<_>>()
         .join(" ");
     let note = note.trim_end_matches([' ', ':']);
-    let card = Card {
+    let mut card = Card {
         id: id.to_owned(),
         title: crate::clip(&title, 80),
         state,
@@ -316,8 +319,14 @@ pub fn landing_card(data: &serde_json::Value, text: &str) -> Option<Card> {
         fields,
         links,
         actions,
+        steps: data.steps,
         note: (!note.is_empty()).then(|| crate::clip(note, 120)),
     };
+    // Steps CI said wrongly, or too many to fit, leave the card without them, not without
+    // a card.
+    if card.validate().is_err() {
+        card.steps.clear();
+    }
     card.validate().ok().map(|()| card)
 }
 
@@ -412,6 +421,29 @@ mod tests {
                 .collect::<Vec<_>>(),
             [("branch", "report-block-core"), ("build", "1620")]
         );
+    }
+
+    /// Its steps go on its card as CI says them; ones that don't fit leave the card without
+    /// steps rather than without a card.
+    #[test]
+    fn a_landings_steps_are_on_its_card() {
+        let mut data = serde_json::json!({
+            "landing": "monorepo/7", "build": "7", "state": "running", "session": "cc-1",
+            "branch": "step-cards", "subject": "Landing cards show CI's steps as they go",
+            "url": "https://buildkite.com/zirc/monorepo/builds/7",
+            "steps": [
+                {"name": "Rebase onto master", "state": "passed", "detail": "onto 43cdc6e", "secs": 15},
+                {"name": "Work out affected targets", "state": "passed", "detail": "214 targets", "secs": 22},
+                {"name": "Build and test", "state": "running", "done": 81, "of": 214, "secs": 89},
+                {"name": "Fast-forward master", "state": "pending"},
+            ],
+        });
+        let card = landing_card(&data, "build 7: Build and test").unwrap();
+        assert_eq!(card.steps.len(), 4);
+        assert_eq!(card.steps[2].done, Some(81));
+        data["steps"][0]["name"] = serde_json::json!("x".repeat(40));
+        let card = landing_card(&data, "build 7: Build and test").unwrap();
+        assert!(card.steps.is_empty());
     }
 
     /// Landed, it's a passed card with no buttons; an event without a landing or state, such

@@ -6907,6 +6907,139 @@ fn a_card_is_one_row_its_later_events_update() {
     assert_eq!(spoken(&cards[1].card_line().unwrap()), "Their deploy");
 }
 
+/// `message` from deploybot in #api: a live one as its TAGMSG, else as a multiline PRIVMSG,
+/// as a card with steps is longer than a line.
+fn posted(message: &Message) -> String {
+    if message.is_live() {
+        return zirc("deploybot", message);
+    }
+    format!(
+        ":deploybot!u@h PRIVMSG #api :{}",
+        zirc_proto::encode_up_to(message, 4096).unwrap()
+    )
+}
+
+/// What `rich` says, as its debug form does: enough to find words in.
+fn spoken_blocks(rich: &[RichBlock]) -> String {
+    format!("{rich:?}")
+}
+
+/// A build's card, `state`, with its steps as they stand: rebased, then building `done` of
+/// 214 targets, then the push still to come.
+fn stepped(state: &str, done: u32, live: bool) -> Message {
+    let steps = serde_json::json!([
+        { "name": "Rebase onto master", "state": "passed", "detail": "onto 43cdc6e", "secs": 15 },
+        { "name": "Build and test", "state": if done == 214 { "passed" } else { "running" },
+          "done": done, "of": 214, "secs": 130 },
+        { "name": "Fast-forward master", "state": if state == "passed" { "passed" } else { "pending" } },
+    ]);
+    let mut message = carded(
+        &serde_json::json!({ "id": "monorepo/7", "title": "Step cards", "state": state, "steps": steps }),
+        "build 7",
+    );
+    if live {
+        message.level = Some(zirc_proto::Level::Debug);
+    }
+    message
+}
+
+#[test]
+fn a_cards_steps_show_each_on_its_line_and_fold_once_its_done() {
+    let mut chat = chat();
+    feed(
+        &mut chat,
+        &[":me!u@h JOIN #api", &posted(&stepped("running", 81, false))],
+    );
+    let cards = landing_cards(&chat);
+    let blocks = cards[0].rich();
+    let Block::Paragraph(steps) = &blocks[1] else {
+        panic!("{blocks:?}")
+    };
+    assert_eq!(
+        spoken(steps),
+        "✓ Rebase onto master · onto 43cdc6e · 0:15\n\
+         ◐ Build and test · ▰▰▰▱▱▱▱▱▱▱ 81 / 214 · 2:10\n\
+         ○ Fast-forward master"
+    );
+    assert!(
+        steps
+            .iter()
+            .any(|span| span.bold && span.text == "Build and test")
+    );
+    let line = |chat: &Chat| {
+        chat.lines("#api", chrono::FixedOffset::east_opt(0).unwrap(), false)
+            .into_iter()
+            .find(|line| line.system.as_ref().is_some_and(|system| system.card))
+            .unwrap()
+    };
+    assert_eq!(line(&chat).more, None, "a running card shows all its steps");
+    // Landed, its steps fold into one line, until opened.
+    feed(&mut chat, &[&posted(&stepped("passed", 214, false))]);
+    let landed = line(&chat);
+    let more = landed.more.clone().unwrap();
+    assert_eq!((more.label.as_str(), more.open), ("Show 3 steps", false));
+    assert!(
+        spoken_blocks(&landed.rich).contains("3 steps · 2:25"),
+        "{:?}",
+        landed.rich
+    );
+    chat.toggle_more(&landed.key, false);
+    let open = line(&chat);
+    assert_eq!(open.more.unwrap().label, "Hide steps");
+    assert!(spoken_blocks(&open.rich).contains("Fast-forward master"));
+    assert!(!spoken_blocks(&landed.rich).contains("Fast-forward master"));
+}
+
+#[test]
+fn a_cards_live_updates_fold_into_it_quietly_and_only_the_latest_is_kept() {
+    let mut chat = chat();
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #api",
+            &posted(&stepped("running", 0, false)),
+            ":alice!u@h PRIVMSG #api :lunch?",
+        ],
+    );
+    let unread = |chat: &Chat| chat.conversation("#api").unwrap().unread;
+    let before = unread(&chat);
+    let rows = |chat: &Chat| {
+        chat.items(chat.conversation("#api").unwrap(), |time| time.date_naive())
+            .len()
+    };
+    let rows_before = rows(&chat);
+    // Each goes as a TAGMSG, out of history.
+    let live = posted(&stepped("running", 40, true));
+    assert!(live.contains(" TAGMSG #api"), "{live}");
+    feed(&mut chat, &[&live, &posted(&stepped("running", 81, true))]);
+    let cards = landing_cards(&chat);
+    assert_eq!(cards[0].card.as_ref().unwrap().steps[1].done, Some(81));
+    assert!(cards[0].updates.is_empty(), "no trail line");
+    assert_eq!(unread(&chat), before, "nothing unread");
+    assert_eq!(
+        rows(&chat),
+        rows_before,
+        "no row, nor a pointer to the card"
+    );
+    let kept = chat.conversation("#api").unwrap().entries.iter();
+    assert_eq!(kept.filter(|entry| entry.live_card().is_some()).count(), 1);
+    // A live update of a card that isn't here is nothing.
+    let mut other = stepped("running", 5, true);
+    if let Event::Custom { data, .. } = &mut other.event {
+        data["card"]["id"] = "monorepo/8".into();
+    }
+    feed(&mut chat, &[&posted(&other)]);
+    assert_eq!(landing_cards(&chat).len(), 1);
+    // How it ends is said in history, and is in the trail.
+    feed(&mut chat, &[&posted(&stepped("passed", 214, false))]);
+    let cards = landing_cards(&chat);
+    assert_eq!(cards[0].updates.len(), 1);
+    assert_eq!(
+        cards[0].card.as_ref().unwrap().state,
+        zirc_proto::card::State::Passed
+    );
+}
+
 fn says(session: &str, name: &str, body: &str) -> Message {
     let mut message = Message::new(session, Event::Text { body: body.into() });
     message.name = Some(name.into());
@@ -7541,6 +7674,7 @@ fn a_long_code_block_shows_its_first_eight_lines_whole_for_highlighting() {
             open: false,
             code_lines: Some(8),
             updates: false,
+            steps: None,
         }
     );
     assert_eq!(more.label(), "Show 33 more lines");

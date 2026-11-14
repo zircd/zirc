@@ -196,6 +196,24 @@ impl Entry {
         }
     }
 
+    /// The id of the card it updates, when it's a live update of one ([`Message::is_live`]):
+    /// how the card's steps stand now, out of history. It folds into the card further up,
+    /// and is never a row, a preview or anything unread; only the latest of a card's is
+    /// kept ([`super::Chat::add`]).
+    #[must_use]
+    pub fn live_card(&self) -> Option<&str> {
+        match &self.kind {
+            EntryKind::Zirc(message) if message.is_live() => match &message.event {
+                zirc_proto::Event::Custom { data, .. } => data
+                    .get(zirc_proto::card::KEY)
+                    .and_then(|card| card.get("id"))
+                    .and_then(serde_json::Value::as_str),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     /// Whether it's an agent session's title card (`x-zirc/session`): what that session's
     /// card shows ([`super::Chat::agent_card`]), never something said. It's no row of a
     /// conversation, no preview and nothing unread.

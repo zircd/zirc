@@ -284,6 +284,7 @@ impl Request {
             fields,
             links: Vec::new(),
             actions: Vec::<Action>::new(),
+            steps: Vec::new(),
             note: Some(clip(&note, 120)),
         }
     }

@@ -151,6 +151,18 @@ impl Say {
         } else {
             None
         };
+        // A live card update, how its steps stand now, goes as a TAGMSG, whose tags have
+        // room for little: its card and landing are all that folds into the card.
+        let data = match (level, data.get(zirc_proto::card::KEY)) {
+            (Some(zirc_proto::Level::Debug), Some(card)) => {
+                let mut slim = serde_json::json!({ zirc_proto::card::KEY: card });
+                if let Some(landing) = data.get("landing") {
+                    slim["landing"] = landing.clone();
+                }
+                slim
+            }
+            _ => data,
+        };
         let mut message = Message::new(
             session,
             Event::Custom {
@@ -194,6 +206,10 @@ pub enum Failed {
 }
 
 const WITHIN: Duration = Duration::from_secs(8);
+
+/// The most a live event's [`zirc_proto::EVENT_TAG`] holds, in bytes: IRCv3 gives a
+/// message's client tags 4094, the tag's name and `=` among them.
+const MAX_TAG: usize = 4094 - 16;
 
 /// Connects as `config`'s account, joins the channel, sends `message` and leaves.
 ///
@@ -251,6 +267,16 @@ async fn deliver(
 ///
 /// [`Failed::TooLong`] when it doesn't fit even so; [`Failed::Send`] when the connection broke.
 pub fn send(client: &Client, channel: &str, message: &Message) -> Result<(), Failed> {
+    // What's only true now goes as a TAGMSG, out of the channel's history.
+    if message.is_live() {
+        let payload = zirc_proto::payload(message).map_err(|_| Failed::TooLong)?;
+        if payload.len() > MAX_TAG {
+            return Err(Failed::TooLong);
+        }
+        let mut line = zirc_irc::Line::new("TAGMSG", [channel]);
+        line.tags = vec![(zirc_proto::EVENT_TAG.to_owned(), Some(payload))];
+        return client.send(line).map_err(|e| Failed::Send(e.to_string()));
+    }
     let sent = if let Ok(body) = zirc_proto::encode(message) {
         client.privmsg(channel, &body)
     } else {
@@ -331,6 +357,29 @@ mod tests {
         assert!(ci("x-zirc/session", "x", json!({})).message().is_err());
         assert!(ci("x-zirc/decision", "x", json!({})).message().is_err());
         assert!(ci("x-acme/deploy", "x", json!({})).message().is_ok());
+    }
+
+    #[test]
+    fn a_live_landing_update_carries_only_its_card() {
+        let mut say = ci(
+            zirc_proto::ci::LANDING_KIND,
+            "cc-1: build 7: Build and test",
+            json!({
+                "landing": "monorepo/7", "build": "7", "state": "running", "session": "cc-1",
+                "branch": "step-cards", "subject": "Landing cards show CI's steps as they go",
+                "steps": [{"name": "Build and test", "state": "running", "done": 81, "of": 214}],
+            }),
+        );
+        say.level = Some(zirc_proto::Level::Debug);
+        let message = say.message().unwrap();
+        assert!(message.is_live());
+        let Event::Custom { data, .. } = &message.event else {
+            unreachable!()
+        };
+        assert_eq!(data["landing"], "monorepo/7");
+        assert_eq!(data["card"]["steps"][0]["done"], 81);
+        assert!(data.get("steps").is_none() && data.get("branch").is_none());
+        assert!(zirc_proto::payload(&message).unwrap().len() <= MAX_TAG);
     }
 
     #[test]

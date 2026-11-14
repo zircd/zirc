@@ -703,9 +703,17 @@ impl<'a> Landing<'a> {
     /// else is what it said without the session, its addresses links.
     #[must_use]
     pub fn rich(&self) -> Vec<super::Block> {
+        self.rich_steps(true)
+    }
+
+    /// [`Landing::rich`], a card's steps each on its line when `steps`, else folded into
+    /// one, `7 steps · 7:48`, as a done card's are until the person opens them
+    /// ([`Landing::folds_steps`]).
+    #[must_use]
+    pub fn rich_steps(&self, steps: bool) -> Vec<super::Block> {
         let links = self.links();
         if let Some(card) = &self.card {
-            return card_blocks(card, self.card_line().unwrap_or_default());
+            return card_blocks(card, self.card_line().unwrap_or_default(), steps);
         }
         // Apps draw the landing's state in the row's circle, so its words leave their mark
         // out: `fix-login · build 771 · landed · ✓ production updated`.
@@ -809,7 +817,9 @@ impl<'a> Landing<'a> {
             self.failed = later.failed;
         }
         // A card is the whole card every time; its trail keeps what changed.
+        // A live update says only how its steps stand: it's never one the trail lists.
         if let (Some(was), Some(now)) = (&self.card, &later.card)
+            && !later.live
             && (was.state != now.state || (now.note.is_some() && was.note != now.note))
         {
             self.updates.push(Update {
@@ -825,6 +835,16 @@ impl<'a> Landing<'a> {
             self.asking = later.asking;
             self.session = later.session.or(self.session);
         }
+    }
+
+    /// How many steps its card folds into one line until the person opens them: a card
+    /// that's done and went well, or was stopped, its steps all said (the user's choice, 14
+    /// Nov 2026). `None` while it runs, once it failed or needs a look, or without steps.
+    #[must_use]
+    pub fn folds_steps(&self) -> Option<usize> {
+        let card = self.card.as_ref()?;
+        (matches!(card.state, State::Passed | State::Cancelled) && !card.steps.is_empty())
+            .then_some(card.steps.len())
     }
 
     /// A card's trail as it shows under it: its [`Landing::updates`], oldest first, or
@@ -1117,6 +1137,9 @@ pub struct Landing<'a> {
     /// ([`Landing::trail`]), so an update is never a silent change (the user's choice, 14
     /// Nov 2026).
     pub updates: Vec<Update>,
+    /// Whether its event was live ([`Message::is_live`]): only how a card's steps stand now,
+    /// out of history. It folds into its card, but is never an update of the trail.
+    pub live: bool,
 }
 
 /// A card's update, as its trail lists it: `14:02 running → failed · retried by mattias`.
@@ -1326,7 +1349,28 @@ fn landing<'a>(entry: &'a Entry, message: &'a Message, continues: bool) -> Optio
             .filter(|request| request.state == zirc_proto::request::State::Open)
             .map(|request| request.by),
         updates: Vec::new(),
+        live: message.is_live(),
     })
+}
+
+/// Whether `entry` is a card's live update ([`Entry::live_card`]), which its card in
+/// `items`, where `landings` says it is, then takes in: nothing does when it isn't there.
+fn fold_live<'a>(
+    items: &mut [Item<'a>],
+    landings: &HashMap<String, usize>,
+    entry: &'a Entry,
+) -> bool {
+    if entry.live_card().is_none() {
+        return false;
+    }
+    if let EntryKind::Zirc(message) = &entry.kind
+        && let Some(update) = landing(entry, message, false)
+        && let Some(at) = update.key().and_then(|key| landings.get(&key).copied())
+        && let Some(Item::Landing(card)) = items.get_mut(at)
+    {
+        card.absorb(update);
+    }
+    true
 }
 
 /// `landing`'s item: a card of its own, or `None` when it's a later event of a landing or
@@ -1366,7 +1410,7 @@ fn state_label(state: State) -> Option<&'static str> {
 
 /// A card as rich text: `line`, its title and state; each field, its label bold and its
 /// value as Markdown; its links in a row; and its note, in italics.
-fn card_blocks(card: &Card, line: Vec<super::Span>) -> Vec<super::Block> {
+fn card_blocks(card: &Card, line: Vec<super::Span>, steps: bool) -> Vec<super::Block> {
     let span = |text: String| super::Span {
         text,
         ..super::Span::default()
@@ -1384,6 +1428,13 @@ fn card_blocks(card: &Card, line: Vec<super::Span>) -> Vec<super::Block> {
             }
         }
         blocks.push(super::Block::Paragraph(spans));
+    }
+    if !card.steps.is_empty() {
+        blocks.push(super::Block::Paragraph(if steps {
+            steps_spans(&card.steps)
+        } else {
+            vec![span(steps_summary(&card.steps))]
+        }));
     }
     if !card.links.is_empty() {
         let mut spans = Vec::new();
@@ -1407,6 +1458,95 @@ fn card_blocks(card: &Card, line: Vec<super::Span>) -> Vec<super::Block> {
         }]));
     }
     blocks
+}
+
+/// A card's steps, one a line: its mark, its name, then what it says, its progress and how
+/// long it took, each after a `·`: `✓ Rebase onto master · onto 43cdc6e · 0:15`,
+/// `◐ Build and test · ▰▰▰▰▱▱▱▱▱▱ 81 / 214 · 2:10`. Its name is bold while it runs.
+fn steps_spans(steps: &[zirc_proto::card::Step]) -> Vec<super::Span> {
+    let mut spans = Vec::new();
+    for (i, step) in steps.iter().enumerate() {
+        let newline = if i == 0 { "" } else { "\n" };
+        spans.push(super::Span {
+            text: format!("{newline}{} ", step_mark(step.state)),
+            ..super::Span::default()
+        });
+        spans.push(super::Span {
+            text: step.name.clone(),
+            bold: step.state == State::Running,
+            ..super::Span::default()
+        });
+        let mut said = Vec::new();
+        if let Some(detail) = &step.detail {
+            said.push(detail.clone());
+        }
+        if let (Some(done), Some(of)) = (step.done, step.of) {
+            said.push(format!("{} {done} / {of}", progress_bar(done, of)));
+        }
+        if let Some(secs) = step.secs {
+            said.push(took(secs));
+        }
+        if !said.is_empty() {
+            spans.push(super::Span {
+                text: format!(" · {}", said.join(" · ")),
+                ..super::Span::default()
+            });
+        }
+    }
+    spans
+}
+
+/// A step's mark: `✓` passed, `✗` failed, `◐` running, `–` skipped or stopped, `⚠` needs a
+/// look, `○` not yet.
+fn step_mark(state: State) -> &'static str {
+    match state {
+        State::Passed => "✓",
+        State::Failed => "✗",
+        State::Running => "◐",
+        State::Cancelled => "–",
+        State::Warning => "⚠",
+        State::Info | State::Pending => "○",
+    }
+}
+
+/// How many cells [`progress_bar`] has.
+const BAR_CELLS: usize = 10;
+
+/// `done` of `of` as a bar of [`BAR_CELLS`] cells, `▰▰▰▰▱▱▱▱▱▱`: drawn as text, so every
+/// app, the terminal's too, shows the same.
+fn progress_bar(done: u32, of: u32) -> String {
+    let full = if of == 0 {
+        BAR_CELLS
+    } else {
+        usize::try_from(u64::from(done.min(of)) * BAR_CELLS as u64 / u64::from(of))
+            .unwrap_or(BAR_CELLS)
+    };
+    "▰".repeat(full) + &"▱".repeat(BAR_CELLS - full)
+}
+
+/// `secs` as a stopwatch says it: `0:15`, `7:48`, `1:02:09`.
+fn took(secs: u32) -> String {
+    let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
+/// A done card's steps on one line: `7 steps · 7:48`, the time all of them took, when they
+/// say.
+fn steps_summary(steps: &[zirc_proto::card::Step]) -> String {
+    let count = match steps.len() {
+        1 => "1 step".to_owned(),
+        n => format!("{n} steps"),
+    };
+    let secs: Vec<u32> = steps.iter().filter_map(|step| step.secs).collect();
+    if secs.is_empty() {
+        count
+    } else {
+        format!("{count} · {}", took(secs.iter().sum()))
+    }
 }
 
 /// The first address `text` gives for a build's page.
@@ -1656,7 +1796,10 @@ pub(crate) fn items<'a>(
     // Each card's latest update: where its card is, where the update came, and its event.
     let mut pointers: HashMap<String, (usize, usize, &Entry)> = HashMap::new();
     for (at, entry) in entries.iter().enumerate() {
-        if hidden.contains(&at) || entry.is_session_card() || !conversation.shows(entry) {
+        // A card's live update, its steps as they stand now, folds into its card, which
+        // is further up; it's never a row of its own, nor the card's latest said here.
+        let skip = hidden.contains(&at) || entry.is_session_card() || !conversation.shows(entry);
+        if fold_live(&mut items, &landings, entry) || skip {
             continue;
         }
         let date = day(entry.time);

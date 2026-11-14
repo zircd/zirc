@@ -2524,6 +2524,57 @@
       ],
       "description": "Who may press a button, as apps show it: the integration decides."
     },
+    "Step": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "At most 32 characters."
+        },
+        "state": {
+          "$ref": "#/$defs/State",
+          "description": "How it stands: [`State::Pending`] until it starts, [`State::Cancelled`] when it was\nskipped; [`State::Info`] when it doesn't say."
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "At most 32 characters beside it, such as `onto 43cdc6e` or `//web:e2e`."
+        },
+        "done": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How much of it is done, of [`Step::of`]: apps draw a bar and `81 / 214`."
+        },
+        "of": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How much there is to do, such as 214 targets."
+        },
+        "secs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many seconds it took, or has taken so far."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "description": "A step of what a card is about, such as a build's \"Build and test\"."
+    },
     "CiFailed": {
       "type": "object",
       "properties": {
@@ -4412,6 +4463,13 @@
           },
           "description": "At most 3 buttons."
         },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "description": "At most 10, in order: what it's doing and has done, such as a build's phases. Apps\ndraw them under the fields, and fold them into one line once the card is done."
+        },
         "note": {
           "type": [
             "string",
@@ -4547,6 +4605,13 @@
             "type": "string"
           },
           "description": "On a deploy's event: the apps this event says were deployed."
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "description": "A landing's steps as they stand ([`crate::card::Step`]): its card shows them."
         }
       },
       "description": "What a landing's or deploy's event carries (`ops/say.sh`), each field left out when CI\ndoesn't know it. Every event of one landing's build has the same [`Data::landing`], so the\napps show them as one landing that updates."

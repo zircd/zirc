@@ -43,12 +43,22 @@ pub struct More {
     /// Whether it folds a card's earlier updates ([`super::Landing::trail`]) rather than a
     /// long message's lines: it then says `Show 4 earlier updates`, and `hidden` counts them.
     pub updates: bool,
+    /// How many steps a done card folds into one line ([`super::Landing::folds_steps`]): it
+    /// then says `Show 7 steps`, and opening it shows its earlier updates too.
+    pub steps: Option<usize>,
 }
 
 impl More {
     /// What the control says: `Show 34 more lines`, `Show 1 more line`, `Show less`.
     #[must_use]
     pub fn label(&self) -> String {
+        if let Some(steps) = self.steps {
+            return match (self.open, steps) {
+                (true, _) => "Hide steps".to_owned(),
+                (false, 1) => "Show 1 step".to_owned(),
+                (false, steps) => format!("Show {steps} steps"),
+            };
+        }
         if self.updates {
             return match (self.open, self.hidden) {
                 (true, _) => "Show fewer updates".to_owned(),
@@ -67,7 +77,11 @@ impl More {
     /// `Show 34 more lines of Maya Chen's agent's message` for `Maya Chen's agent`.
     #[must_use]
     pub fn spoken(&self, whose: &str) -> String {
-        let what = if self.updates { "card" } else { "message" };
+        let what = if self.updates || self.steps.is_some() {
+            "card"
+        } else {
+            "message"
+        };
         format!("{} of {whose}'s {what}", self.label())
     }
 
@@ -108,6 +122,7 @@ impl super::Chat {
                     open,
                     code_lines: None,
                     updates: false,
+                    steps: None,
                 }),
             };
         }
@@ -118,6 +133,7 @@ impl super::Chat {
                 open,
                 code_lines,
                 updates: false,
+                steps: None,
             }),
         }
     }
@@ -134,19 +150,19 @@ impl super::Chat {
         self.opened.0.insert(key.to_owned(), true);
     }
 
-    /// The control of a card's trail, the card's key in the view being `key`: `None` while
-    /// all its updates show anyway. Its earlier updates fold away until the person opens
-    /// them, as a long message's lines do ([`super::Chat::toggle_more`]).
+    /// The control of a card, the card's key in the view being `key`: `None` while all its
+    /// updates and steps show anyway. Its earlier updates fold away, and so do its `steps`
+    /// once it's done ([`super::Landing::folds_steps`]), until the person opens them, as a
+    /// long message's lines do ([`super::Chat::toggle_more`]).
     #[must_use]
-    pub fn trail_more(&self, key: &str, updates: usize) -> Option<More> {
-        let hidden = updates
-            .checked_sub(super::UPDATES_SHOWN)
-            .filter(|n| *n > 0)?;
-        Some(More {
+    pub fn trail_more(&self, key: &str, updates: usize, steps: Option<usize>) -> Option<More> {
+        let hidden = updates.saturating_sub(super::UPDATES_SHOWN);
+        (hidden > 0 || steps.is_some()).then(|| More {
             hidden,
             open: self.opened.0.get(key).copied().unwrap_or(false),
             code_lines: None,
             updates: true,
+            steps,
         })
     }
 }

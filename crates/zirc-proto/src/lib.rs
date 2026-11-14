@@ -1094,6 +1094,7 @@ pub fn frame_typescript(config: &ts_rs::Config) -> Vec<String> {
         card::Card::decl(config),
         card::Field::decl(config),
         card::Link::decl(config),
+        card::Step::decl(config),
         card::Action::decl(config),
         card::Who::decl(config),
         card::State::decl(config),

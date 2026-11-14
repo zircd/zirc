@@ -668,6 +668,7 @@ fn a_card_stays_small_enough_to_draw() {
             .collect(),
         links: Vec::new(),
         actions: Vec::new(),
+        steps: Vec::new(),
         note: None,
     };
     assert!(card.validate().is_err());

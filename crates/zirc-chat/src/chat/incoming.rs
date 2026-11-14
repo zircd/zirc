@@ -299,7 +299,9 @@ impl Chat {
             // Nor is anything else only true now, such as what a session wants of a lease,
             // which zircd says again live when an app joins: never history, and no row
             // unless the person asked to see everything in this conversation.
+            // A card's live update is the exception: it folds into its card.
             if message.is_live()
+                && entry.live_card().is_none()
                 && self
                     .conversation(&name)
                     .is_none_or(|conversation| conversation.threshold > Level::Debug)
@@ -417,6 +419,12 @@ impl Chat {
         .then(|| entry.id.clone())
         .flatten();
         let copy = fresh.then(|| entry.clone());
+        // Only a card's latest live update counts: it says all its steps.
+        if let Some(card) = entry.live_card() {
+            self.conversations[at].entries.retain(|earlier| {
+                earlier.live_card() != Some(card) || !earlier.from.eq_ignore_ascii_case(&entry.from)
+            });
+        }
         if !self.conversations[at].insert(entry, self.options.max_entries) {
             return;
         }

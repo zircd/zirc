@@ -46,6 +46,11 @@ pub struct Card {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<Action>>", optional)]
     pub actions: Vec<Action>,
+    /// At most 10, in order: what it's doing and has done, such as a build's phases. Apps
+    /// draw them under the fields, and fold them into one line once the card is done.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<Step>>", optional)]
+    pub steps: Vec<Step>,
     /// One line under it all, such as who pressed what and how it went, or an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
@@ -91,6 +96,31 @@ pub struct Link {
     pub label: String,
     /// An `https://` address, at most 300 characters.
     pub url: String,
+}
+
+/// A step of what a card is about, such as a build's "Build and test".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(optional_fields, rename = "CardStep")]
+pub struct Step {
+    /// At most 32 characters.
+    pub name: String,
+    /// How it stands: [`State::Pending`] until it starts, [`State::Cancelled`] when it was
+    /// skipped; [`State::Info`] when it doesn't say.
+    #[serde(default, skip_serializing_if = "is_default")]
+    #[ts(as = "Option<State>", optional)]
+    pub state: State,
+    /// At most 32 characters beside it, such as `onto 43cdc6e` or `//web:e2e`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    /// How much of it is done, of [`Step::of`]: apps draw a bar and `81 / 214`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub done: Option<u32>,
+    /// How much there is to do, such as 214 targets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub of: Option<u32>,
+    /// How many seconds it took, or has taken so far.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secs: Option<u32>,
 }
 
 /// A button. Pressing it reaches the integration that posted the card, which decides
@@ -159,6 +189,22 @@ impl Card {
         at_most("fields", self.fields.len(), 8)?;
         at_most("links", self.links.len(), 4)?;
         at_most("actions", self.actions.len(), 3)?;
+        at_most("steps", self.steps.len(), 10)?;
+        for step in &self.steps {
+            within("a step's name", &step.name, 32)?;
+            if step.name.trim().is_empty() {
+                return Err("a step has no name".to_owned());
+            }
+            if let Some(detail) = &step.detail {
+                within("a step's detail", detail, 32)?;
+            }
+            if step
+                .done
+                .is_some_and(|done| step.of.is_none_or(|of| done > of))
+            {
+                return Err("a step has done more than its of".to_owned());
+            }
+        }
         for field in &self.fields {
             within("a field's label", &field.label, 24)?;
             within("a field's value", &field.value, 120)?;
@@ -472,6 +518,33 @@ mod tests {
     }
 
     #[test]
+    fn steps_are_named_short_and_count_up_to_what_there_is() {
+        let step = |json: serde_json::Value| -> Step { serde_json::from_value(json).unwrap() };
+        let mut card = landing();
+        card.steps = vec![
+            step(
+                serde_json::json!({"name": "Rebase onto master", "state": "passed", "detail": "onto 43cdc6e", "secs": 15}),
+            ),
+            step(
+                serde_json::json!({"name": "Build and test", "state": "running", "done": 81, "of": 214, "secs": 130}),
+            ),
+            step(serde_json::json!({"name": "Fast-forward master"})),
+        ];
+        assert_eq!(card.validate(), Ok(()));
+        assert_eq!(card.steps[2].state, State::Info);
+        card.steps[1].done = Some(215);
+        assert_eq!(
+            card.validate(),
+            Err("a step has done more than its of".into())
+        );
+        card.steps[1].done = Some(81);
+        card.steps[0].name = " ".into();
+        assert_eq!(card.validate(), Err("a step has no name".into()));
+        card.steps = vec![card.steps[1].clone(); 11];
+        assert_eq!(card.validate(), Err("it has 11 steps, more than 10".into()));
+    }
+
+    #[test]
     fn a_card_or_button_that_doesnt_say_is_info_and_for_members() {
         let card: Card = serde_json::from_value(serde_json::json!({
             "id": "deploy/42",
@@ -573,6 +646,7 @@ mod tests {
                     confirm: Some(long(120)),
                 })
                 .into(),
+            steps: Vec::new(),
             note: Some(long(120)),
         };
         // Every count and length at its limit is too much in all: the size is what binds.

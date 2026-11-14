@@ -270,6 +270,7 @@ mod tests {
                 fields: Vec::new(),
                 links: Vec::new(),
                 actions: Vec::new(),
+                steps: Vec::new(),
                 note: None,
             },
         };
