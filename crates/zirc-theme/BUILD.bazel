@@ -77,7 +77,7 @@ filegroup(
     srcs = glob(["art/android/**"]),
 )
 
-# art/favicon.svg, which follows prefers-color-scheme, art/favicon.ico (16, 32, 48) and
+# art/favicon.svg, one look for light and dark tabs alike, art/favicon.ico (16, 32, 48) and
 # art/apple-touch-icon.png (180).
 filegroup(
     name = "favicons",
