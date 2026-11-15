@@ -48,7 +48,7 @@ filegroup(
 )
 
 # The wordmark, a braided hash and zirc, and the icons drawn from its mark, that braid set
-# in a cut stone, made from tokens.json and
+# in a stone of one colour, made from tokens.json and
 # checked in under art/; zirc-theme-art's test fails when it's out of date. Rewrite it with:
 #   bazel run //crates/zirc-theme-art
 filegroup(
@@ -62,7 +62,7 @@ filegroup(
     srcs = glob(["art/wordmark-*.svg"]),
 )
 
-# App icons, 16 to 1024 px: art/icons/zirc-<mode>-<size>.png on a square ground, and for
+# App icons, 16 to 1024 px: art/icons/zirc-<mode>-<size>.png, a rounded square, and for
 # macOS, on Apple's template, art/icons/macos/zirc-<variant>-<size>.png and
 # art/icons/zirc-<variant>.icns, the variant dark, light or tinted; and for iOS and Google
 # Play's listing, which cut it to their own shape, the stone to every edge, without an alpha
