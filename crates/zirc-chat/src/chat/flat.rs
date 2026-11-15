@@ -133,6 +133,35 @@ pub struct RichCell {
 pub const TASK_MARKERS: [&str; 2] = ["☐", "☑"];
 
 impl RichBlock {
+    /// Every run of spans in `blocks`, in order, to change: a paragraph's, a heading's, a
+    /// table cell's, a stub's, quotes' and lists' followed into.
+    pub fn each_run_mut(blocks: &mut [Self], each: &mut impl FnMut(&mut Vec<RichSpan>)) {
+        for block in blocks {
+            match block {
+                Self::Paragraph { spans } | Self::Heading { spans, .. } => each(spans),
+                Self::Table { head, rows, .. } => {
+                    for row in std::iter::once(head).chain(rows) {
+                        for cell in &mut row.cells {
+                            each(&mut cell.spans);
+                        }
+                    }
+                }
+                Self::Quote { blocks } => Self::each_run_mut(blocks, each),
+                Self::Items { items, .. } => {
+                    for item in items {
+                        Self::each_run_mut(&mut item.blocks, each);
+                    }
+                }
+                Self::Trail { stubs } => {
+                    for stub in stubs {
+                        each(&mut stub.spans);
+                    }
+                }
+                Self::Code { .. } | Self::Rule => {}
+            }
+        }
+    }
+
     /// Every span in `blocks`, in order, quotes', lists' and tables' followed into; a code
     /// block has none.
     pub fn each_span<'a>(blocks: &'a [Self], each: &mut impl FnMut(&'a RichSpan)) {
@@ -192,6 +221,12 @@ pub struct RichSpan {
     #[ts(optional)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<CodeRef>,
+    /// A sealed part of the message ([`Chat::sealed_parts`]), drawn as a chip: this span's
+    /// text, the lock and its words or its value once revealed. A click reveals or hides it
+    /// ([`Chat::toggle_sealed_in`]), and the message's menu copies it ([`Chat::sealed_value`]).
+    #[ts(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sealed: Option<super::SealedSpan>,
 }
 
 /// What a [`RichSpan`] is.
@@ -402,6 +437,7 @@ impl Reader<'_> {
             me,
             media,
             code: None,
+            sealed: None,
         }
     }
 

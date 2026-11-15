@@ -344,6 +344,8 @@ mod tests {
 pub struct Words {
     /// A conversation's menu and its confirm button: `Leave`.
     pub leave: String,
+    /// A sealed part's chip, to show its value: `Reveal`. `hide` hides it again.
+    pub reveal: String,
     /// What a direct message's menu says instead: `Close`, also what shuts a bar or a card.
     pub close: String,
     /// What an ended conversation's menu says: `Hide`.
@@ -538,6 +540,7 @@ pub struct Words {
 pub fn words() -> Words {
     Words {
         leave: menu::LEAVE.to_owned(),
+        reveal: super::sealing::REVEAL.to_owned(),
         close: menu::CLOSE.to_owned(),
         hide: menu::HIDE.to_owned(),
         star: menu::STAR.to_owned(),

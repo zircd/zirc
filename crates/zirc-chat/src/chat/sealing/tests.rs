@@ -184,3 +184,58 @@ fn replies_with_a_sealed_part() {
     assert_eq!(lines[0].tag(REPLY), Some("01jbx7abcdef"));
     assert!(lines[0].tag(TAG).is_some());
 }
+
+#[test]
+fn draws_a_sealed_part_as_a_chip_apps_reveal_and_copy() {
+    let mut alice = chat("alice", vec![key()]);
+    let mut bob = chat("bob", vec![key()]);
+    bob.receive(heard(&mut alice, "the key is ||sk_test_1||, keep it"));
+    let line = |bob: &Chat| {
+        bob.lines("#api", chrono::FixedOffset::east_opt(0).unwrap(), false)
+            .into_iter()
+            .find(|line| line.text.starts_with("the key is"))
+            .unwrap()
+    };
+    let chip = |line: &crate::chat::lines::Line| {
+        let mut chips = Vec::new();
+        RichBlock::each_span(&line.rich, &mut |span| {
+            if let Some(sealed) = &span.sealed {
+                chips.push((span.text.clone(), sealed.clone()));
+            }
+        });
+        chips
+    };
+
+    // Plain words though it is, it comes as spans, its chip among them.
+    let drawn = line(&bob);
+    assert_eq!(drawn.text, "the key is 🔒 sealed, keep it");
+    assert_eq!(
+        chip(&drawn),
+        [(
+            format!("{LOCK} {SEALED}"),
+            SealedSpan {
+                message: "01jbx7abcdef".into(),
+                number: 1,
+                state: SealedState::Hidden
+            }
+        )]
+    );
+    // Copy takes the value without revealing it.
+    assert_eq!(
+        bob.sealed_value("01jbx7abcdef", 1).as_deref(),
+        Some("sk_test_1")
+    );
+    assert_eq!(bob.sealed_value("01jbx7abcdef", 2), None);
+    assert_eq!(bob.sealed_numbers("01jbx7abcdef"), [1]);
+
+    bob.toggle_sealed_in("01jbx7abcdef");
+    let drawn = line(&bob);
+    assert_eq!(chip(&drawn)[0].0, "🔒 sk_test_1");
+    assert_eq!(chip(&drawn)[0].1.state, SealedState::Revealed);
+
+    // Without the key, it's said so, and Copy has nothing.
+    let mut keyless = chat("carol", Vec::new());
+    keyless.receive(heard(&mut alice, "the key is ||sk_test_1||"));
+    assert_eq!(chip(&line(&keyless))[0].1.state, SealedState::NoKey);
+    assert_eq!(keyless.sealed_value("01jbx7abcdef", 1), None);
+}

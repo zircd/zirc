@@ -541,6 +541,7 @@ impl<'a> Layout<'a> {
                 let mut line = self.said(entry, LineKind::Chat, text, continues);
                 line.sent_from = sent_from.filter(|_| show_sent_from).map(str::to_owned);
                 self.body(&mut line, entry.rich());
+                self.sealed(&mut line, entry);
                 line
             }
             Item::Notice {
@@ -661,6 +662,22 @@ impl<'a> Layout<'a> {
             quote: self.quote(entry),
             ..self.blank(key, Some(entry), entry.time, kind)
         }
+    }
+
+    /// `line`, `entry`'s, with its sealed parts as chips: in spans though its words are
+    /// plain, and its text, which apps copy, as [`Chat::sealed_text`] says it.
+    fn sealed(&self, line: &mut Line, entry: &Entry) {
+        if entry.sealed.is_none() {
+            return;
+        }
+        line.text = self.chat.sealed_text(entry, &line.text);
+        if line.rich.is_empty() {
+            line.rich = self.chat.flat_in(
+                &self.conversation.name,
+                self.chat.body(&line.key, entry.rich(), line.mention).blocks,
+            );
+        }
+        self.chat.seal_spans(entry, &mut line.rich);
     }
 
     /// `line`'s words as `blocks`, drawn and cut when long, with its control: none when

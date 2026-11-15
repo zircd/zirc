@@ -10,10 +10,16 @@
 use std::cell::Cell;
 use std::collections::HashSet;
 
+use serde::Serialize;
+use ts_rs::TS;
+
 use zirc_proto::sealed::{CLIENT_TAGS_MAX, PLACEHOLDER, TAG};
 
 use super::sending::tag_opening;
-use super::{CLIENT_TAG, Chat, Entry, EntryKind, Line, REPLY, agent, formatted, kind_of};
+use super::{
+    CLIENT_TAG, Chat, Entry, EntryKind, Line, REPLY, RichBlock, RichSpan, RichSpanKind, agent,
+    formatted, kind_of,
+};
 use crate::sealed::{
     Context, Key, NONCE_LEN, Opened, SealError, open_message, seal_message, split,
 };
@@ -23,6 +29,52 @@ pub const LOCK: &str = "🔒";
 
 /// What a hidden part says.
 pub const SEALED: &str = "sealed";
+
+/// What shows a hidden part's value.
+pub const REVEAL: &str = "Reveal";
+
+/// The Settings page of the organisation's keys ([`super::SettingsKind::Sealed`]).
+pub const SEALED_MESSAGES: &str = "Sealed messages";
+
+/// What the page says sealed parts are.
+pub const SEALED_EXPLAINED: &str = "A part of a message between || markers goes sealed with \
+     your organisation's key: only devices holding it can read it, never the server. Get the \
+     key from a teammate in person or on a call, never in a message, and paste it here.";
+
+/// The page's field for a key.
+pub const PASTE_KEY: &str = "Paste a key";
+
+/// The page's button that adds it.
+pub const ADD_KEY: &str = "Add key";
+
+/// The heading over the keys this device holds.
+pub const KEYS_HERE: &str = "Keys on this device";
+
+/// What the page says with no key yet.
+pub const NO_KEYS_HERE: &str =
+    "None yet: sealed parts show locked here, and this device can't send them";
+
+/// What marks the key that seals: the newest.
+pub const SEALS_WITH: &str = "seals";
+
+/// The menu item that copies a sealed part's value, numbered when a message has several.
+pub const COPY_SEALED: &str = "Copy sealed part";
+
+/// What's said once a key is added, by its organisation and id.
+#[must_use]
+pub fn key_added(org: &str, id: &str) -> String {
+    format!("Added {org}'s key {id}: sealed parts open here, and this device seals with it")
+}
+
+/// The menu item for copying part `number` of a message with `parts`.
+#[must_use]
+pub fn copy_sealed_label(number: u32, parts: usize) -> String {
+    if parts > 1 {
+        format!("{COPY_SEALED} {number}")
+    } else {
+        COPY_SEALED.to_owned()
+    }
+}
 
 /// What a part says on a device without the key it was sealed with.
 pub const SEALED_NO_KEY: &str = "sealed, and this device has no key for it";
@@ -67,7 +119,9 @@ impl SealedTag {
 }
 
 /// What a sealed part is on this device.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
 pub enum SealedState {
     /// It opens here, and shows as [`SEALED`] until revealed.
     Hidden,
@@ -77,6 +131,21 @@ pub enum SealedState {
     NoKey,
     /// It doesn't open with the key it names: changed, or moved.
     Failed,
+}
+
+/// A sealed part as a span of a line's words carries it ([`RichSpan::sealed`]): which
+/// message and part it is, to reveal or copy, and what it is here. The span's text is what
+/// it shows after the [`LOCK`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct SealedSpan {
+    /// The message's id, which [`Chat::toggle_sealed_in`] and [`Chat::sealed_value`] take.
+    pub message: String,
+    /// Which part, from 1.
+    pub number: u32,
+    /// What it is here: only a hidden or revealed part offers Reveal (or Hide) and Copy.
+    pub state: SealedState,
 }
 
 /// One sealed part of a message, as every app draws it.
@@ -201,6 +270,100 @@ impl Chat {
                 self.sealing.revealed.insert((id.clone(), number));
             }
         }
+    }
+
+    /// [`Chat::toggle_sealed`] for the message `id`: its chip was clicked or tapped.
+    pub fn toggle_sealed_in(&mut self, id: &str) {
+        if let Some(entry) = self.sealed_entry(id) {
+            self.toggle_sealed(&entry);
+        }
+    }
+
+    /// The value of part `number` of the message `id`, for its menu's Copy, whether revealed
+    /// or not: `None` when it doesn't open here.
+    #[must_use]
+    pub fn sealed_value(&self, id: &str, number: u32) -> Option<String> {
+        let entry = self.sealed_entry(id)?;
+        let tag = entry.sealed.as_ref()?;
+        let at = usize::try_from(number).ok()?.checked_sub(1)?;
+        let opened = open_message(
+            &self.sealing.keys,
+            &Context {
+                target: &tag.target,
+            },
+            &tag.value,
+        )?;
+        match opened.into_iter().nth(at)? {
+            Opened::Value(value) => Some(value),
+            Opened::NoKey | Opened::Failed => None,
+        }
+    }
+
+    /// The message `id`, with sealed parts, in whichever conversation holds it.
+    fn sealed_entry(&self, id: &str) -> Option<Entry> {
+        self.conversations
+            .iter()
+            .flat_map(|conversation| &conversation.entries)
+            .find(|entry| entry.id.as_deref() == Some(id) && entry.sealed.is_some())
+            .cloned()
+    }
+
+    /// The parts of the message `id` that open here, by number, for its menu's Copy.
+    #[must_use]
+    pub fn sealed_numbers(&self, id: &str) -> Vec<u32> {
+        self.sealed_entry(id)
+            .map(|entry| self.sealed_parts(&entry))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|part| matches!(part.state, SealedState::Hidden | SealedState::Revealed))
+            .filter_map(|part| u32::try_from(part.number).ok())
+            .collect()
+    }
+
+    /// `rich`, `entry`'s words as spans, with each `[sealed]` its parts stand for a chip
+    /// ([`RichSpan::sealed`]).
+    pub(super) fn seal_spans(&self, entry: &Entry, rich: &mut [RichBlock]) {
+        let parts = self.sealed_parts(entry);
+        let message = entry.id.clone().unwrap_or_default();
+        let mut parts = parts.into_iter();
+        RichBlock::each_run_mut(rich, &mut |spans| {
+            let mut sealed = Vec::with_capacity(spans.len());
+            for span in spans.drain(..) {
+                if span.kind != RichSpanKind::Text || !span.text.contains(PLACEHOLDER) {
+                    sealed.push(span);
+                    continue;
+                }
+                let mut rest = span.text.as_str();
+                while let Some(at) = rest.find(PLACEHOLDER) {
+                    let Some(part) = parts.next() else {
+                        break;
+                    };
+                    if at > 0 {
+                        sealed.push(RichSpan {
+                            text: rest[..at].to_owned(),
+                            ..span.clone()
+                        });
+                    }
+                    sealed.push(RichSpan {
+                        text: format!("{LOCK} {}", part.text),
+                        sealed: Some(SealedSpan {
+                            message: message.clone(),
+                            number: u32::try_from(part.number).unwrap_or(u32::MAX),
+                            state: part.state,
+                        }),
+                        ..span.clone()
+                    });
+                    rest = &rest[at + PLACEHOLDER.len()..];
+                }
+                if !rest.is_empty() {
+                    sealed.push(RichSpan {
+                        text: rest.to_owned(),
+                        ..span.clone()
+                    });
+                }
+            }
+            *spans = sealed;
+        });
     }
 
     /// Hides every part revealed: the person looked away, or picked another message.

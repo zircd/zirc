@@ -180,8 +180,10 @@ pub use rich::{
 pub use run::{Here, Ran};
 pub use scroll::{SCROLL_RULES, ScrollRules, Splice, splices};
 pub use sealing::{
-    CANT_SEAL_HERE, LOCK, NO_KEY_TO_SEAL, SEALED, SEALED_FAILED, SEALED_NO_KEY, SEALS_IN_ONE,
-    SEALS_ONLY_SAYING, SealedPart, SealedState, SealedTag, no_random, seals,
+    ADD_KEY, CANT_SEAL_HERE, COPY_SEALED, KEYS_HERE, LOCK, NO_KEY_TO_SEAL, NO_KEYS_HERE, PASTE_KEY,
+    REVEAL, SEALED, SEALED_EXPLAINED, SEALED_FAILED, SEALED_MESSAGES, SEALED_NO_KEY, SEALS_IN_ONE,
+    SEALS_ONLY_SAYING, SEALS_WITH, SealedPart, SealedSpan, SealedState, SealedTag,
+    copy_sealed_label, key_added, no_random, seals,
 };
 pub use search::{
     Hit, HitPart, SEARCH_OLDER, SEARCHING_OLDER, Search, SearchHit, SearchView, ServerQuery,

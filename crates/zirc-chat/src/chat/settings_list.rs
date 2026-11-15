@@ -61,6 +61,9 @@ pub enum SettingsKind {
     Status,
     /// Muting the organisation: nothing of it notifies.
     Mute,
+    /// The organisation's keys for sealed parts of messages this device holds, and adding
+    /// one a teammate handed over ([`super::sealing`]).
+    Sealed,
     /// Inviting people to the organisation, on zirc.dev's page for it: an owner's or an
     /// admin's alone. A row that opens the page, with nothing of its own to show.
     Invite,
@@ -221,13 +224,14 @@ pub fn settings_group_title(group: SettingsGroup, org: &str) -> String {
 
 impl SettingsKind {
     /// Every kind, in the order Settings lists them.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Profile,
         Self::Organisations,
         Self::DeleteAccount,
         Self::OrgProfile,
         Self::Status,
         Self::Mute,
+        Self::Sealed,
         Self::Invite,
         Self::Notifications,
         Self::Appearance,
@@ -242,7 +246,7 @@ impl SettingsKind {
     pub fn group(self) -> SettingsGroup {
         match self {
             Self::Profile | Self::Organisations | Self::DeleteAccount => SettingsGroup::Account,
-            Self::OrgProfile | Self::Status | Self::Mute | Self::Invite => {
+            Self::OrgProfile | Self::Status | Self::Mute | Self::Sealed | Self::Invite => {
                 SettingsGroup::Organisation
             }
             Self::Notifications
@@ -264,6 +268,7 @@ impl SettingsKind {
             Self::OrgProfile => "Profile here",
             Self::Status => "Status",
             Self::Mute => "Mute",
+            Self::Sealed => super::sealing::SEALED_MESSAGES,
             Self::Invite => INVITE_PEOPLE,
             Self::Notifications => "Notifications",
             Self::Appearance => "Appearance",
@@ -285,6 +290,7 @@ impl SettingsKind {
             Self::OrgProfile => "org-profile",
             Self::Status => "status",
             Self::Mute => "mute",
+            Self::Sealed => "sealed",
             Self::Invite => "invite",
             Self::Notifications => "notifications",
             Self::Appearance => "appearance",
@@ -313,8 +319,9 @@ impl SettingsKind {
                 signed_in && app != SettingsApp::Web
             }
             // Who may ask a machine's agents is its zircd's, which only a computer has (the
-            // user's choice, 11 Nov 2026), as is a server of one's own.
-            Self::Agents | Self::Server => app == SettingsApp::Desktop,
+            // user's choice, 11 Nov 2026), as is a server of one's own. Keys for sealed parts
+            // are any device's, but the web's and the phones' page come with their sealed parts.
+            Self::Agents | Self::Server | Self::Sealed => app == SettingsApp::Desktop,
             Self::Appearance | Self::Privacy => true,
         }
     }
@@ -360,6 +367,7 @@ mod tests {
                 OrgProfile,
                 Status,
                 Mute,
+                Sealed,
                 Notifications,
                 Appearance,
                 Agents,
@@ -383,6 +391,7 @@ mod tests {
             kinds(SettingsApp::Desktop, false),
             [
                 Organisations,
+                Sealed,
                 Notifications,
                 Appearance,
                 Agents,
