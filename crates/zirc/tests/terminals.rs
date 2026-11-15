@@ -83,21 +83,18 @@ async fn run(home: &Path, args: &[&str]) -> anyhow::Result<String> {
     Ok(String::from_utf8(out)?)
 }
 
-/// Henrik's `zirc who`, and, when it lacks Raj's set, as it did on CI now and then (flaky-73,
-/// flaky-75), what each machine knew then and a moment later: which lost it, and for how long.
-async fn who_noting_a_missing_set(henrik: &Machine, raj: &Machine) -> String {
-    let who = henrik.zirc(&["who"]).await;
-    if !who.contains("cc-91b7 is changing tests/e2e/harness.rs") {
-        eprintln!("henrik's who lacks raj's set:\n{who}");
-        eprintln!(
-            "henrik's, as JSON:\n{}",
-            henrik.zirc(&["who", "--json"]).await
-        );
-        eprintln!("raj's own:\n{}", raj.zirc(&["who", "--json"]).await);
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        eprintln!("henrik's, a second later:\n{}", henrik.zirc(&["who"]).await);
+/// What Henrik's `zirc intend` says, and, when it leaves out Raj's working set, as it did on
+/// CI now and then (flaky-73, 75, 77), what Henrik knew just before and just after: whether
+/// the set was missing then, or there and left out.
+async fn intending_noting_a_missing_set(henrik: &Machine, intent: &[&str]) -> String {
+    let before = henrik.zirc(&["who", "--json"]).await;
+    let said = henrik.zirc(intent).await;
+    if !said.contains("cc-91b7 is changing tests/e2e/harness.rs") {
+        eprintln!("henrik's intend left out raj's set:\n{said}");
+        eprintln!("henrik's who just before, as JSON:\n{before}");
+        eprintln!("and just after:\n{}", henrik.zirc(&["who", "--json"]).await);
     }
-    who
+    said
 }
 
 async fn until(machine: &Machine, args: &[&str], has: &str) {
@@ -219,7 +216,7 @@ async fn the_terminals_are_as_stored() {
         "-m",
         "reconnect test: bind port 0",
     ];
-    let said = henrik.zirc(&intent).await;
+    let said = intending_noting_a_missing_set(&henrik, &intent).await;
     coordinate.typed(
         "zirc intend --session cc-7d3a tests/e2e/reconnect.rs tests/e2e/harness.rs -m \"reconnect test: bind port 0\"",
         &said,
@@ -227,8 +224,7 @@ async fn the_terminals_are_as_stored() {
     watch.printed(&heard(&mut lines).await);
     henrik.edit("tests/e2e/harness.rs", "pub const RETRIES: u32 = 2;\n");
     watch.printed(&heard(&mut lines).await);
-    let who = who_noting_a_missing_set(&henrik, &raj).await;
-    coordinate.typed("zirc who", &who);
+    coordinate.typed("zirc who", &henrik.zirc(&["who"]).await);
     terminals.push(("coordinate", coordinate));
 
     // Raj's agent needs main-fix to land first: it says so, then watches, and is called back
