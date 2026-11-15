@@ -415,6 +415,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
             zirc_proto::workflow::LIST_PATH,
             get(list_workflows).post(deploy_workflow),
         )
+        .route(zirc_proto::workflow::RUNS_PATH, get(workflow_runs))
         .route("/v1/channels", get(list_channels))
         .route("/v1/guests", get(list_guests))
         .route("/v1/guests/unread", get(unread_for_guests))
@@ -897,6 +898,52 @@ async fn find_messages(State(ergo): State<Arc<Ergo>>, Query(search): Query<Searc
     .await;
     match found {
         Ok(Ok(messages)) => Json(json!({"messages": messages})).into_response(),
+        Ok(Err(failure)) => history_failed(failure),
+        Err(failure) => history_failed(failure),
+    }
+}
+
+/// What `GET /v1/workflows/<name>/runs` is asked.
+#[derive(Deserialize)]
+struct RunsQuery {
+    /// Where the page starts: the page before's `before`.
+    #[serde(default)]
+    before: Option<String>,
+}
+
+/// `GET /v1/workflows/<name>/runs`: a page of the workflow's ended runs, read back from the
+/// history of its channel ([`crate::workflows::runs`]).
+async fn workflow_runs(
+    State(ergo): State<Arc<Ergo>>,
+    Path(name): Path<String>,
+    Query(query): Query<RunsQuery>,
+) -> Response {
+    let before = match query.before.as_deref().map(str::parse::<i64>) {
+        None => None,
+        Some(Ok(before)) => Some(before),
+        Some(Err(_)) => {
+            return error(
+                StatusCode::BAD_REQUEST,
+                "before",
+                "before is a page's cursor",
+            );
+        }
+    };
+    let (workflows, _) = crate::workflows::listed();
+    let Some(workflow) = workflows.into_iter().find(|w| w.name == name) else {
+        return error(
+            StatusCode::NOT_FOUND,
+            "workflow",
+            format!("no workflow {name}"),
+        );
+    };
+    let history = ergo.history.clone();
+    let page = tokio::task::spawn_blocking(move || {
+        crate::workflows::runs::page(&history, &workflow.channel, &workflow.nick, before)
+    })
+    .await;
+    match page {
+        Ok(Ok(page)) => Json(page).into_response(),
         Ok(Err(failure)) => history_failed(failure),
         Err(failure) => history_failed(failure),
     }

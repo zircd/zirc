@@ -167,6 +167,22 @@ pub struct Listed {
 /// How many of a workflow's ended runs [`Listed::ended`] lists.
 pub const MAX_ENDED: usize = 20;
 
+/// Where a workflow's ended runs are read back from the server's history a page at a time,
+/// the latest first, at most [`MAX_ENDED`] a page: `{name}` is the workflow's, and
+/// `?before=` a page's [`Runs::before`] for the page after it.
+pub const RUNS_PATH: &str = "/v1/workflows/{name}/runs";
+
+/// A page of a workflow's ended runs, as [`RUNS_PATH`] answers.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(optional_fields, rename = "WorkflowRuns")]
+pub struct Runs {
+    /// The runs, the latest first.
+    pub runs: Vec<Ended>,
+    /// Where the page of older runs starts, when there are more: what `?before=` takes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<String>,
+}
+
 /// A run that has ended, and how.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(optional_fields, rename = "WorkflowEnded")]
@@ -175,11 +191,25 @@ pub struct Ended {
     pub run: String,
     /// How it ended.
     pub outcome: crate::run::Outcome,
-    /// Why, in a few words, when it said.
+    /// Why, in a few words, when it said: for a run that failed at `step`, why that step
+    /// failed. A run that ended before the step was sent apart names it here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
-    /// When it started, in unix seconds.
-    pub started: u64,
+    /// The step it failed at, when it failed at one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<String>,
+    /// What it was given.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(as = "Option<BTreeMap<String, String>>", optional)]
+    pub inputs: BTreeMap<String, String>,
+    /// What its steps handed back, a later step's over an earlier's of the same name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(as = "Option<BTreeMap<String, String>>", optional)]
+    pub outputs: BTreeMap<String, String>,
+    /// When it started, in unix seconds; unknown for a run read back from history that
+    /// doesn't go back as far.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started: Option<u64>,
     /// When it ended, in unix seconds.
     pub ended: u64,
 }
@@ -200,6 +230,13 @@ pub struct Going {
     /// When the step last moved or its holder was last heard of, in unix seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub since: Option<u64>,
+    /// What it was given.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(as = "Option<BTreeMap<String, String>>", optional)]
+    pub inputs: BTreeMap<String, String>,
+    /// When it started, in unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started: Option<u64>,
 }
 
 /// These as TypeScript, for the web app's generated file.
@@ -210,6 +247,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Listed::decl(config),
         Going::decl(config),
         Ended::decl(config),
+        Runs::decl(config),
         crate::run::Outcome::decl(config),
         Refused::decl(config),
         Deploying::decl(config),
@@ -217,6 +255,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const WORKFLOW_LIST_PATH = {LIST_PATH:?};"),
         format!("const WORKFLOW_MAX_SOURCE = {MAX_SOURCE};"),
         format!("const WORKFLOW_MAX_ENDED = {MAX_ENDED};"),
+        format!("const WORKFLOW_RUNS_PATH = {RUNS_PATH:?};"),
         Workflow::decl(config),
         Input::decl(config),
         OneFails::decl(config),

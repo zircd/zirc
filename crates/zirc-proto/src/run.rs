@@ -128,9 +128,13 @@ pub enum Change {
     Finished {
         /// How.
         outcome: Outcome,
-        /// Why, in a few words.
+        /// Why, in a few words: for a run that failed at a step, why that step failed.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         why: Option<String>,
+        /// The step it failed at, when it failed at one ([`failed_at`] says them together).
+        /// Older events leave it out and name the step in `why`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        step: Option<String>,
     },
 }
 
@@ -145,6 +149,12 @@ pub enum Outcome {
     Failed,
     /// An approver said no, or someone cancelled it.
     Cancelled,
+}
+
+/// What's said of a run that failed at `step` because of `why`.
+#[must_use]
+pub fn failed_at(step: &str, why: &str) -> String {
+    format!("`{step}` failed: {why}")
 }
 
 impl Change {

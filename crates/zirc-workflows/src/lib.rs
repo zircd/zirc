@@ -357,12 +357,40 @@ struct Run {
     escalated: Vec<bool>,
     /// Who last did a step, whom a wait's nudge asks.
     last: Option<String>,
-    finished: Option<(Outcome, Option<String>)>,
+    finished: Option<Ending>,
     /// When it started, and when it ended, in unix seconds.
     started: u64,
     ended: Option<u64>,
     /// For a run that is one holder's part of a step given to several ([`Step::each`]).
     part: Option<Part>,
+}
+
+/// How a run ended ([`Change::Finished`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Ending {
+    outcome: Outcome,
+    why: Option<String>,
+    /// The step it failed at, when it failed at one.
+    step: Option<String>,
+}
+
+impl Ending {
+    /// How `change` says a run ended, if it's its end.
+    fn of(change: &Change) -> Option<Self> {
+        let Change::Finished { outcome, why, step } = change else {
+            return None;
+        };
+        let (outcome, why, step) = (*outcome, why.clone(), step.clone());
+        Some(Self { outcome, why, step })
+    }
+
+    /// Why it ended, said whole: the step it failed at with why.
+    fn said(&self) -> Option<String> {
+        match (&self.step, &self.why) {
+            (Some(step), Some(why)) => Some(zirc_proto::run::failed_at(step, why)),
+            (_, why) => why.clone(),
+        }
+    }
 }
 
 /// One holder's part of a step given to several: a run of its own under the run the step is
@@ -381,6 +409,9 @@ struct Part {
 /// step's id, and whose it is.
 const PART: &str = "each:";
 
+/// Why a run failed at a step nobody may do.
+const NOBODY: &str = "nobody may do it";
+
 fn part_by(parent: &str, step: &str, each: &str) -> String {
     format!("{PART}{parent}:{step}:{each}")
 }
@@ -392,6 +423,17 @@ fn part_of(by: &str) -> Option<(&str, &str, &str)> {
 }
 
 impl Run {
+    /// What its steps handed back, a later step's over an earlier's of the same name.
+    fn outputs(&self) -> BTreeMap<String, String> {
+        let mut outputs = BTreeMap::new();
+        for status in &self.steps {
+            if let Status::Done(handed) = status {
+                outputs.extend(handed.clone());
+            }
+        }
+        outputs
+    }
+
     /// The step it's on: the first neither done nor skipped; for a part, its one step.
     fn current(&self) -> Option<usize> {
         let open = |s: &Status| !matches!(s, Status::Done(_) | Status::Skipped);
@@ -668,6 +710,8 @@ impl Engine {
                     to,
                     stage,
                     since,
+                    inputs: r.inputs.clone(),
+                    started: Some(r.started),
                 }
             })
             .collect();
@@ -694,12 +738,15 @@ impl Engine {
             .values()
             .filter(|r| r.part.is_none())
             .filter_map(|r| {
-                let (outcome, why) = r.finished.clone()?;
+                let ending = r.finished.clone()?;
                 Some(zirc_proto::workflow::Ended {
                     run: r.id.clone(),
-                    outcome,
-                    why,
-                    started: r.started,
+                    outcome: ending.outcome,
+                    why: ending.why,
+                    step: ending.step,
+                    inputs: r.inputs.clone(),
+                    outputs: r.outputs(),
+                    started: Some(r.started),
                     ended: r.ended?,
                 })
             })
@@ -1160,10 +1207,7 @@ impl Engine {
                     return;
                 }
             }
-            Act::Fail { why } => {
-                let why = Some(format!("`{step_id}` failed: {why}"));
-                return self.finish(&run_id, Outcome::Failed, why, said);
-            }
+            Act::Fail { why } => return self.fail_at(&run_id, &step_id, why, said),
             _ => {
                 return refuse(
                     said,
@@ -1428,8 +1472,7 @@ impl Engine {
             return;
         }
         let Some(role) = step.fallback.as_ref().filter(|_| !run.escalated[i]) else {
-            let why = Some(format!("`{}` stalled {at}", step.id));
-            return self.finish(id, Outcome::Failed, why, said);
+            return self.fail_at(id, &step.id, format!("stalled {at}"), said);
         };
         // The fallback joins whoever had it, who may still finish it.
         let fallback = self.fallback(role, &work.tried);
@@ -1561,8 +1604,7 @@ impl Engine {
             return self.say(id, change, text, said);
         }
         if to.is_empty() {
-            let why = Some(format!("`{}` has nobody to do it", step.id));
-            return self.finish(id, Outcome::Failed, why, said);
+            return self.fail_at(id, &step.id, NOBODY.to_owned(), said);
         }
         let text = given(id, step, &to, says);
         let change = Change::Assigned {
@@ -1585,8 +1627,7 @@ impl Engine {
     ) {
         let each = Self::each_of(run, step);
         if each.is_empty() {
-            let why = Some(format!("`{}` has nobody to do it", step.id));
-            return self.finish(id, Outcome::Failed, why, said);
+            return self.fail_at(id, &step.id, NOBODY.to_owned(), said);
         }
         let text = format!(
             "`{id}` · `{}` goes to each of {}, a run of its own for each: {}",
@@ -1623,13 +1664,17 @@ impl Engine {
         let going = all.iter().filter(|r| r.finished.is_none()).count();
         let failed: Vec<String> = all
             .iter()
-            .filter(|r| matches!(r.finished, Some((Outcome::Failed | Outcome::Cancelled, _))))
+            .filter(|r| {
+                r.finished
+                    .as_ref()
+                    .is_some_and(|e| e.outcome != Outcome::Done)
+            })
             .filter_map(|r| r.part.as_ref().map(|whose| whose.each.clone()))
             .collect();
         let at_once = self.workflow.when_one_fails == Some(OneFails::Stop);
         if !failed.is_empty() && (going == 0 || at_once) {
-            let why = Some(format!("`{}` failed for {}", step.id, failed.join(", ")));
-            self.finish(id, Outcome::Failed, why, said);
+            let why = format!("the parts for {} failed", failed.join(", "));
+            self.fail_at(id, &step.id, why, said);
             return false;
         }
         if going > 0 {
@@ -1660,16 +1705,32 @@ impl Engine {
     }
 
     fn finish(&mut self, id: &str, outcome: Outcome, why: Option<String>, said: &mut Vec<Said>) {
+        let step = None;
+        self.end(id, Ending { outcome, why, step }, said);
+    }
+
+    /// Fails run `id` at `step`, because of `why`.
+    fn fail_at(&mut self, id: &str, step: &str, why: String, said: &mut Vec<Said>) {
+        let ending = Ending {
+            outcome: Outcome::Failed,
+            why: Some(why),
+            step: Some(step.to_owned()),
+        };
+        self.end(id, ending, said);
+    }
+
+    fn end(&mut self, id: &str, ending: Ending, said: &mut Vec<Said>) {
         let text = format!(
             "`{id}` {}{}",
-            match outcome {
+            match ending.outcome {
                 Outcome::Done => "is done",
                 Outcome::Failed => "failed",
                 Outcome::Cancelled => "was cancelled",
             },
-            why.as_deref().map(|w| format!(": {w}")).unwrap_or_default()
+            ending.said().map(|w| format!(": {w}")).unwrap_or_default()
         );
-        self.say(id, Change::Finished { outcome, why }, text, said);
+        let Ending { outcome, why, step } = ending;
+        self.say(id, Change::Finished { outcome, why, step }, text, said);
         // A run that ends takes its parts still going with it; a part that ends may be the
         // last its run waited for.
         let parts: Vec<String> = self
@@ -1721,8 +1782,8 @@ impl Engine {
         let Some(run) = self.runs.get_mut(id) else {
             return;
         };
-        if let Change::Finished { outcome, why } = change {
-            run.finished = Some((*outcome, why.clone()));
+        if let Some(ending) = Ending::of(change) {
+            run.finished = Some(ending);
             run.ended = Some(at);
             return;
         }
@@ -1857,10 +1918,10 @@ impl Engine {
     /// Run `id`'s card, as it stands.
     fn card(&self, id: &str) -> Card {
         let run = &self.runs[id];
-        let state = match run.finished {
-            Some((Outcome::Done, _)) => CardState::Passed,
-            Some((Outcome::Failed, _)) => CardState::Failed,
-            Some((Outcome::Cancelled, _)) => CardState::Cancelled,
+        let state = match run.finished.as_ref().map(|e| e.outcome) {
+            Some(Outcome::Done) => CardState::Passed,
+            Some(Outcome::Failed) => CardState::Failed,
+            Some(Outcome::Cancelled) => CardState::Cancelled,
             None if run.steps.iter().all(|s| *s == Status::Ahead) => CardState::Pending,
             None if run.work().is_some_and(|(_, w)| w.nudged) => CardState::Warning,
             None => CardState::Running,
@@ -1914,8 +1975,8 @@ impl Engine {
             note: run
                 .finished
                 .as_ref()
-                .and_then(|(_, why)| why.as_deref())
-                .map(|why| clip(why, 120)),
+                .and_then(Ending::said)
+                .map(|why| clip(&why, 120)),
         })
     }
 }

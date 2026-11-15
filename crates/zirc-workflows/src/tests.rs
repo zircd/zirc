@@ -288,7 +288,7 @@ fn a_quiet_step_is_nudged_then_escalated_then_fails() {
     let failed = e.handle(Input::Tick, 91 * MIN);
     assert_eq!(
         texts(&failed),
-        ["`master-1` failed: `fix` stalled since working (fix-web-unit)"]
+        ["`master-1` failed: `fix` failed: stalled since working (fix-web-unit)"]
     );
 }
 
@@ -1223,7 +1223,12 @@ fn each_part_is_followed_on_its_own_and_the_run_goes_on_when_all_are_done() {
             ended[0].started,
             ended[0].ended
         ),
-        ("rollout-1", zirc_proto::run::Outcome::Done, 0, 18 * MIN)
+        (
+            "rollout-1",
+            zirc_proto::run::Outcome::Done,
+            Some(0),
+            18 * MIN
+        )
     );
 }
 
@@ -1242,8 +1247,18 @@ fn when_one_fails_the_others_carry_on_unless_the_file_says_stop() {
         act(session("cc-android"), "rollout-1.2", "build", done(&[])),
         2 * MIN,
     ));
-    assert!(last.contains(&"`rollout-1` failed: `build` failed for cc-ios".to_owned()));
+    assert!(
+        last.contains(
+            &"`rollout-1` failed: `build` failed: the parts for cc-ios failed".to_owned()
+        )
+    );
     assert!(e.running().is_empty());
+    // Listed, the step it failed at is apart from why.
+    let ended = &e.ended()[0];
+    assert_eq!(
+        (ended.step.as_deref(), ended.why.as_deref()),
+        (Some("build"), Some("the parts for cc-ios failed"))
+    );
 
     let stop = ROLLOUT.replace(
         "channel = \"#apps\"",
@@ -1251,7 +1266,11 @@ fn when_one_fails_the_others_carry_on_unless_the_file_says_stop() {
     );
     let (mut e, _) = rollout(&stop);
     let ended = fail(&mut e);
-    assert!(ended.contains(&"`rollout-1` failed: `build` failed for cc-ios".to_owned()));
+    assert!(
+        ended.contains(
+            &"`rollout-1` failed: `build` failed: the parts for cc-ios failed".to_owned()
+        )
+    );
     assert!(ended.contains(&"`rollout-1.2` was cancelled: `rollout-1` ended".to_owned()));
     assert!(e.running().is_empty());
 }
