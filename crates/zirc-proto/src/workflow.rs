@@ -269,6 +269,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Level::decl(config),
         // What a builder of the file offers, as the rules here have it.
         list("WORKFLOW_STATE_FIELDS", &STATE_FIELDS),
+        record("WORKFLOW_HINTS", HINTS),
         list("WORKFLOW_SAID_FIELDS", &SAID_FIELDS),
         list("WORKFLOW_REACTION_FIELDS", &REACTION_FIELDS),
         list("WORKFLOW_LANDED_FIELDS", &LANDED_FIELDS),
@@ -277,6 +278,153 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const WORKFLOW_MAX_EACH = {MAX_EACH};"),
         format!("const WORKFLOW_EACH = {EACH:?};"),
     ]
+}
+
+/// What a builder of a workflow's file says of each part of it, for whoever is new to them:
+/// each section (`section.<name>`), the comments a file opens with (`notes`), and each field,
+/// by its key in the file, a step's as `step.<key>` and a trigger's as `on.<key>`. A few words
+/// each, as a hint beside its label.
+pub const HINTS: &[(&str, &str)] = &[
+    (
+        "section.workflow",
+        "Who it runs as, where it posts and listens, and how its runs share it.",
+    ),
+    (
+        "section.input",
+        "What each run is given when it starts. Steps read them as {name}.",
+    ),
+    (
+        "section.roles",
+        "Named groups of people and agent sessions that steps go to, or fall back to.",
+    ),
+    (
+        "section.on",
+        "What starts a run. Naming its nick always does; each trigger starts one on its own.",
+    ),
+    (
+        "section.step",
+        "What a run does, in order. Each step goes to someone, waits or posts, and the run \
+         moves on once it's done.",
+    ),
+    (
+        "notes",
+        "The comments at the top of its file: what to know before changing it.",
+    ),
+    (
+        "name",
+        "Lowercase letters, digits and -. Deploying the same name replaces it.",
+    ),
+    (
+        "description",
+        "What it's for, in a few words, shown on its card.",
+    ),
+    (
+        "nick",
+        "The user it runs as. Mentioning it starts a run: @nick run <input>=<value>.",
+    ),
+    (
+        "channel",
+        "Where each run's card is posted, and kept up to date as it goes.",
+    ),
+    (
+        "follow",
+        "More channels it listens in for its triggers. Inviting it to one adds it too.",
+    ),
+    (
+        "one_run_per",
+        "While a run given this input's value is going, starting another with the same \
+         value starts none.",
+    ),
+    (
+        "when_one_fails",
+        "For a step given to several at once: whether the others carry on when one fails, \
+         or the run stops.",
+    ),
+    (
+        "on.kind",
+        "A state being said, a time coming round, words said or a reaction where it \
+         listens, or a landing that changes some paths.",
+    ),
+    (
+        "on.state",
+        "A state the team says, such as master, and the level that starts a run.",
+    ),
+    (
+        "on.every",
+        "An interval such as 1d or 1w, on a day and at a time in UTC if you like.",
+    ),
+    (
+        "on.said",
+        "Words a person or an integration says where it listens.",
+    ),
+    (
+        "on.reaction",
+        "A reaction a person puts on a message where it listens.",
+    ),
+    (
+        "on.landed",
+        "Paths a landing changes: a directory covers everything under it.",
+    ),
+    (
+        "on.inputs",
+        "What each run it starts is given, from what started it.",
+    ),
+    (
+        "step.kind",
+        "A task is work handed back with outputs; an approve, a person's 👍 or 👎; a wait \
+         holds until a state is said; a post says something and goes on.",
+    ),
+    (
+        "step.id",
+        "How later steps refer to it: {id.output} reads what it handed back.",
+    ),
+    (
+        "step.who",
+        "inputs.<name> for whoever an input names, role:<name> for a role, or a nick. \
+         Several at once each get a run of their own.",
+    ),
+    ("step.approver", "The person whose 👍 or 👎 it waits for."),
+    (
+        "step.until",
+        "The state it waits for, and the level that lets the run go on.",
+    ),
+    (
+        "step.when",
+        "A condition on inputs and earlier outputs, such as fix.cause != flaky. Without \
+         one, it always runs.",
+    ),
+    (
+        "step.says",
+        "What it tells whoever does it. {input} and {step.output} are filled in.",
+    ),
+    (
+        "step.outputs",
+        "What it hands back, by name: later steps read them as {id.name}.",
+    ),
+    (
+        "step.irreversible",
+        "A yes to what can't be undone counts only after a moment, in which a no still \
+         stops it.",
+    ),
+    (
+        "step.stages",
+        "Progress the workflow follows from what its session does, such as pushing or \
+         landing, without its saying so.",
+    ),
+    (
+        "step.quiet",
+        "Quiet past its nudge, whoever has it is asked how it goes; past that, it's handed \
+         to the fallback role, or the run fails.",
+    ),
+];
+
+/// `pairs` as a TypeScript record named `name`.
+fn record(name: &str, pairs: &[(&str, &str)]) -> String {
+    let pairs: Vec<String> = pairs.iter().map(|(k, v)| format!("{k:?}: {v:?}")).collect();
+    format!(
+        "const {name}: Readonly<Record<string, string>> = {{ {} }};",
+        pairs.join(", ")
+    )
 }
 
 /// `values` as a TypeScript constant named `name`.
@@ -1472,6 +1620,16 @@ impl Deploy {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_hint_is_said_once_and_briefly() {
+        let keys: BTreeSet<&str> = HINTS.iter().map(|(key, _)| *key).collect();
+        assert_eq!(keys.len(), HINTS.len());
+        assert!(
+            HINTS.iter().all(|(_, hint)| hint.len() <= 200),
+            "a hint is a few words"
+        );
+    }
 
     fn every(every: &str, at: Option<&str>, day: Option<&str>) -> Trigger {
         Trigger {
