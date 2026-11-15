@@ -36,6 +36,8 @@ zirc-test-irc = { path = "crates/zirc-test-irc" }
 # builds for the web client's wasm; the randomness comes from whoever calls it. The mobile
 # core's Web Push uses them too.
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+hkdf = "0.12"
+p256 = { version = "0.13", default-features = false, features = ["ecdh", "std"] }
 anyhow = "1"
 base64 = "0.22"
 # Times in the terminal client, in the local time zone.

@@ -6,8 +6,8 @@ use ring::rand::{SecureRandom as _, SystemRandom};
 
 use crate::secrets::Secrets;
 pub use zirc_chat::sealed::{
-    Context, KEY_LEN, Key, KeyError, MARKER, NONCE_LEN, Opened, SealError, Split, open_message,
-    split,
+    Context, DeviceKey, KEY_LEN, Key, KeyError, MARKER, NONCE_LEN, Opened, SealError, Split,
+    open_message, split,
 };
 
 /// Why a key couldn't be made or parts sealed.
@@ -73,6 +73,26 @@ fn random<const N: usize>() -> Result<[u8; N], Error> {
         .fill(&mut bytes)
         .map_err(|_| Error::NoRandom)?;
     Ok(bytes)
+}
+
+/// What a device's key pair for being handed the organisation's key is kept as, in its
+/// store.
+pub const DEVICE_SECRET: &str = "sealed-device";
+
+/// This device's key pair for being handed organisations' keys ([`DeviceKey`]): the one
+/// `secrets` keeps, or a new one, kept there. `None` when the system gives no randomness
+/// or the store refuses it, and the device isn't handed keys.
+#[must_use]
+pub fn device_key(secrets: &dyn Secrets) -> Option<DeviceKey> {
+    if let Some(kept) = secrets
+        .get(DEVICE_SECRET)
+        .and_then(|text| DeviceKey::parse(&text))
+    {
+        return Some(kept);
+    }
+    let made = DeviceKey::new(fill)?;
+    secrets.set(DEVICE_SECRET, &made.export()).ok()?;
+    Some(made)
 }
 
 /// Where zircd and the `zirc` CLI keep the organisations' keys: `secrets.toml` in zirc's

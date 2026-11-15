@@ -252,6 +252,7 @@ impl Session {
                     let replies = self.app.handle(line);
                     self.send(replies);
                 }
+                self.keep_received_keys();
                 // Scrolled back to the top of what's held, a page of history that came in
                 // short of two screens asks for the one before it.
                 let older = self.app.older_if_near_top();
@@ -402,6 +403,22 @@ impl Session {
     /// Asks zirc.dev, without waiting, what our account is now, after the server refused it:
     /// when the person changed their handle elsewhere, the sign-in kept here is renamed and
     /// [`Session::network`] connects as it. The sign-in may already have been renamed here.
+    /// Keeps a key a teammate's device handed this one, in the store `zirc team-key` and the
+    /// other apps read, for the next time too.
+    fn keep_received_keys(&mut self) {
+        let received = self.app.chat.take_received_keys();
+        let Some(home) = self.app.site.as_ref().and_then(|site| site.home.clone()) else {
+            return;
+        };
+        if received.is_empty() {
+            return;
+        }
+        let secrets = zirc_core::secrets::system(&home);
+        for key in received {
+            let _ = zirc_core::sealed::Keys::new(secrets.as_ref()).add(&key);
+        }
+    }
+
     fn renew(&mut self) {
         let (Some(site), Some(sasl)) =
             (self.app.site.clone(), self.supervisor.config().sasl.clone())

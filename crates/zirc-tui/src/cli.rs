@@ -161,6 +161,11 @@ impl Cli {
                     app.chat.random = zirc_core::sealed::fill;
                     app.chat
                         .set_keys(zirc_core::sealed::Keys::new(secrets.as_ref()).of(&org));
+                    // And it's handed the key by a teammate's device when it has none.
+                    if let Some(device) = zirc_core::sealed::device_key(secrets.as_ref()) {
+                        // Not connected yet: nothing to ask.
+                        let _ = app.chat.set_device(device);
+                    }
                     orgs.push((org, app, config));
                 }
                 let zircd = zirc_core::paths::socket(home);

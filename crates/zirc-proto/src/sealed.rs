@@ -15,6 +15,40 @@ use serde::{Deserialize, Serialize};
 /// The client tag sealed parts travel in, named as `+zirc.dev/client` is.
 pub const TAG: &str = "+zirc.dev/sealed";
 
+/// The client tag a device without the organisation's key asks for it with, in its channel
+/// ([`crate::ORG_CHANNEL`]), on a `TAGMSG`: an [`Ask`]'s JSON.
+pub const ASK_TAG: &str = "+zirc.dev/seal-ask";
+
+/// The client tag a device holding the key answers an [`Ask`] with, on a `TAGMSG` to the
+/// asker alone: a [`Grant`]'s JSON.
+pub const GRANT_TAG: &str = "+zirc.dev/seal-grant";
+
+/// A device asking for the organisation's newest key.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct Ask {
+    /// The asking device's public key for this, base64url of its uncompressed P-256 point.
+    pub p: String,
+    /// The id of the key it saw a part sealed with, if that's what it lacks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub k: Option<String>,
+}
+
+/// The organisation's newest key, encrypted to the device that asked.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct Grant {
+    /// The key's id.
+    pub k: String,
+    /// The public key it's encrypted to, the asker's, so another device knows it isn't
+    /// its own.
+    pub p: String,
+    /// The sender's one-off public key, base64url of its uncompressed P-256 point.
+    pub e: String,
+    /// The nonce, base64url of 12 bytes.
+    pub n: String,
+    /// The key's string, encrypted, base64url.
+    pub c: String,
+}
+
 /// What a message's text says where a part was sealed.
 pub const PLACEHOLDER: &str = "[sealed]";
 

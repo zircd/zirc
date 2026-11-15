@@ -178,6 +178,9 @@ impl Chat {
         if self.typing_tag(line) {
             return Vec::new();
         }
+        if let Some(lines) = self.sealing_tag(line) {
+            return lines;
+        }
         let from = nick_of(line);
         let target = line.params.first().map_or("", String::as_str);
         if self.support_tag(line, from, target) {

@@ -220,7 +220,12 @@ impl Chat {
             }
         }
         let mut lines = match line.command.as_str() {
-            "PRIVMSG" | "NOTICE" => self.message(&line, history),
+            "PRIVMSG" | "NOTICE" => {
+                let mut lines = self.message(&line, history);
+                // A part sealed with a key this device lacks: it asks for the key.
+                lines.extend(self.ask_for_sealed(&line));
+                lines
+            }
             "TAGMSG" => self.tagmsg(&line),
             "BATCH" | "CHATHISTORY" => self.batch(&line),
             "JOIN" | "PART" | "KICK" | "QUIT" | "NICK" | "TOPIC" => self.membership(&line, history),

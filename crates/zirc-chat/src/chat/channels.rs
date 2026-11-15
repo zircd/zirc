@@ -398,6 +398,10 @@ impl Chat {
         }
         // The real names of those already here, which extended-join won't say.
         lines.push(Line::new("WHO", [channel, &format!("%tnfhar,{WHO_TOKEN}")]));
+        // In the organisation's channel, a device without its key asks for it.
+        if channel.eq_ignore_ascii_case(super::ORG_CHANNEL) {
+            lines.extend(self.ask_for_key(None));
+        }
         if self.link.as_ref().is_some_and(|l| l.chathistory) {
             lines.push(self.catch_up(channel));
         }

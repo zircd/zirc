@@ -1,18 +1,26 @@
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::*;
 use crate::chat::{Here, Link, Options, Ran};
 use crate::command::Command;
-use crate::sealed::KEY_LEN;
+use crate::sealed::{DeviceKey, KEY_LEN};
 
 fn key() -> Key {
     Key::new("acme", [7; KEY_LEN])
 }
 
-/// Nonces that differ, as random ones would.
+/// Bytes that differ from call to call, as random ones would: xorshift's, from a seed the
+/// tests share.
 fn counting(bytes: &mut [u8]) -> bool {
-    static NEXT: AtomicU8 = AtomicU8::new(0);
-    bytes.fill(NEXT.fetch_add(1, Ordering::Relaxed));
+    static STATE: AtomicU64 = AtomicU64::new(0x9e37_79b9_7f4a_7c15);
+    for byte in bytes {
+        let mut x = STATE.load(Ordering::Relaxed);
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        STATE.store(x, Ordering::Relaxed);
+        *byte = x.to_le_bytes()[0];
+    }
     true
 }
 
@@ -238,4 +246,113 @@ fn draws_a_sealed_part_as_a_chip_apps_reveal_and_copy() {
     keyless.receive(heard(&mut alice, "the key is ||sk_test_1||"));
     assert_eq!(chip(&line(&keyless))[0].1.state, SealedState::NoKey);
     assert_eq!(keyless.sealed_value("01jbx7abcdef", 1), None);
+}
+
+fn in_general(chat: &mut Chat) -> Vec<Line> {
+    let me = chat.me().to_owned();
+    chat.receive(format!(":{me}!u@h JOIN #general").parse().unwrap())
+}
+
+/// `line`, from `source`, as the server passes it on, with the account it says.
+fn from(mut line: Line, source: &str, account: Option<&str>) -> Line {
+    line.source = Some(source.to_owned());
+    if let Some(account) = account {
+        line.tags.push(("account".into(), Some(account.into())));
+    }
+    line
+}
+
+fn tagged(lines: Vec<Line>, tag: &str) -> Option<Line> {
+    lines.into_iter().find(|line| line.tag(tag).is_some())
+}
+
+#[test]
+fn a_new_device_is_handed_the_key_by_one_holding_it() {
+    use zirc_proto::sealed::{ASK_TAG, GRANT_TAG};
+    let mut alice = chat("alice", vec![key()]);
+    in_general(&mut alice);
+    let mut bob = chat("bob", Vec::new());
+    bob.set_device(DeviceKey::from_bytes([3; 32]).unwrap());
+
+    // Joining the organisation's channel without a key, it asks.
+    let ask = tagged(in_general(&mut bob), ASK_TAG).expect("an ask");
+    assert_eq!(ask.command, "TAGMSG");
+    assert_eq!(ask.params, ["#general"]);
+    let answer =
+        tagged(alice.receive(from(ask, "bob!u@h", Some("bob"))), GRANT_TAG).expect("an answer");
+    assert_eq!(answer.params, ["bob"]);
+    // The key itself, the 43 characters after `zirc-key1-acme-`: longer than any nonce, whose
+    // test bytes can say the same as a stretch of it.
+    assert!(!answer.to_string().contains(&key().export()[15..58]));
+
+    bob.receive(from(answer, "alice!u@h", Some("alice")));
+    assert_eq!(bob.take_received_keys(), [key()]);
+    assert!(bob.can_seal());
+    assert!(bob.take_received_keys().is_empty());
+    // It says so, quietly, where it's looked at.
+    let said = bob
+        .conversations
+        .iter()
+        .flat_map(|conversation| &conversation.entries)
+        .any(|entry| format!("{:?}", entry.kind).contains("Sealed parts open here now"));
+    assert!(said);
+}
+
+#[test]
+fn hands_the_key_only_to_a_members_device_that_asked() {
+    use zirc_proto::sealed::{ASK_TAG, GRANT_TAG};
+    let mut alice = chat("alice", vec![key()]);
+    in_general(&mut alice);
+    let ask_of = |nick: &str| {
+        let mut asker = chat(nick, Vec::new());
+        asker.set_device(DeviceKey::from_bytes([3; 32]).unwrap());
+        tagged(in_general(&mut asker), ASK_TAG).unwrap()
+    };
+    // Not signed in to an account, or a machine: no answer.
+    for (nick, source, account) in [
+        ("dan", "dan!u@h", None),
+        ("ada-mbp", "ada-mbp!u@machine/ada", Some("ada-mbp")),
+    ] {
+        let answered = alice.receive(from(ask_of(nick), source, account));
+        assert!(tagged(answered, GRANT_TAG).is_none(), "{nick}");
+    }
+    // Asked for a key that isn't the newest: only the newest is handed out.
+    let mut older: Line = ask_of("eve");
+    let mut ask: zirc_proto::sealed::Ask =
+        serde_json::from_str(older.tag(ASK_TAG).unwrap()).unwrap();
+    ask.k = Some(Key::new("acme", [9; KEY_LEN]).id());
+    older.tags = vec![(ASK_TAG.into(), Some(serde_json::to_string(&ask).unwrap()))];
+    assert!(
+        tagged(
+            alice.receive(from(older, "eve!u@h", Some("eve"))),
+            GRANT_TAG
+        )
+        .is_none()
+    );
+
+    // An answer nobody asked for is passed over: a key can't be pressed on a device.
+    let mut carol = chat("carol", Vec::new());
+    let device = DeviceKey::from_bytes([4; 32]).unwrap();
+    carol.set_device(device.clone());
+    let value = crate::sealed::grant(&key(), &device.public(), [5; 32], [6; 12]).unwrap();
+    let mut pressed = Line::new("TAGMSG", ["carol"]);
+    pressed.tags = vec![(GRANT_TAG.into(), Some(value))];
+    carol.receive(from(pressed, "mallory!u@h", Some("mallory")));
+    assert!(carol.take_received_keys().is_empty());
+    assert!(!carol.can_seal());
+}
+
+#[test]
+fn asks_for_the_key_a_part_was_sealed_with() {
+    use zirc_proto::sealed::ASK_TAG;
+    let mut alice = chat("alice", vec![key()]);
+    let mut bob = chat("bob", Vec::new());
+    in_general(&mut bob);
+    bob.set_device(DeviceKey::from_bytes([3; 32]).unwrap());
+    let asked = bob.receive(heard(&mut alice, "the key is ||sk_test_1||"));
+    let ask = tagged(asked, ASK_TAG).expect("an ask for its key");
+    let ask: zirc_proto::sealed::Ask = serde_json::from_str(ask.tag(ASK_TAG).unwrap()).unwrap();
+    assert_eq!(ask.k, Some(key().id()));
+    // Once a connection.
+    assert!(tagged(bob.receive(heard(&mut alice, "again ||sk_2||")), ASK_TAG).is_none());
 }

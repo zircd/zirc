@@ -8,12 +8,12 @@
 //! look away ([`Chat::hide_sealed`]).
 
 use std::cell::Cell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use ts_rs::TS;
-
-use zirc_proto::sealed::{CLIENT_TAGS_MAX, PLACEHOLDER, TAG};
+use zirc_proto::sealed::{ASK_TAG, Ask, CLIENT_TAGS_MAX, GRANT_TAG, PLACEHOLDER, Sealed, TAG};
 
 use super::sending::tag_opening;
 use super::{
@@ -21,7 +21,8 @@ use super::{
     formatted, kind_of,
 };
 use crate::sealed::{
-    Context, Key, NONCE_LEN, Opened, SealError, open_message, seal_message, split,
+    Context, DeviceKey, Key, NONCE_LEN, Opened, SealError, grant, open_grant, open_message,
+    seal_message, split,
 };
 
 /// What stands before a sealed part, in every app.
@@ -56,6 +57,13 @@ pub const NO_KEYS_HERE: &str =
 
 /// What marks the key that seals: the newest.
 pub const SEALS_WITH: &str = "seals";
+
+/// What a device says once it's handed the organisation's key, by a teammate's.
+pub const KEY_RECEIVED: &str = "Sealed parts open here now: a teammate's device handed this one \
+     the organisation's key";
+
+/// How long a device waits before answering the same device's ask again.
+const ANSWER_AGAIN_AFTER: chrono::TimeDelta = chrono::TimeDelta::minutes(1);
 
 /// The menu item that copies a sealed part's value, numbered when a message has several.
 pub const COPY_SEALED: &str = "Copy sealed part";
@@ -165,6 +173,17 @@ pub struct SealedPart {
 pub(super) struct Sealing {
     keys: Vec<Key>,
     revealed: HashSet<(String, usize)>,
+    /// This device's key pair for being handed the key, which the app keeps; none in an app
+    /// that isn't handed keys.
+    device: Option<DeviceKey>,
+    /// Whether an ask is out, for an answer to be taken.
+    asking: bool,
+    /// What's been asked for this connection, by key id (empty for any), so it's asked once.
+    asked: HashSet<String>,
+    /// Keys handed over, for the app to keep ([`Chat::take_received_keys`]).
+    received: Vec<Key>,
+    /// When each asking device, by its public key, was last answered.
+    answered: HashMap<String, DateTime<Utc>>,
 }
 
 /// Randomness for an app that has none to give: none, so it doesn't seal.
@@ -184,6 +203,148 @@ impl Chat {
     /// keeps them, in the system's secret store.
     pub fn set_keys(&mut self, keys: Vec<Key>) {
         self.sealing.keys = keys;
+    }
+
+    /// This device's key pair for being handed the organisation's key, which the app keeps
+    /// in its secret store: with it, the chat asks for the key in the organisation's channel
+    /// when it has none, or lacks one a part was sealed with, and takes the answer.
+    /// Answers the ask to send, when it's already in the channel and has no key.
+    pub fn set_device(&mut self, device: DeviceKey) -> Vec<Line> {
+        self.sealing.device = Some(device);
+        self.ask_for_key(None)
+    }
+
+    /// The keys a teammate's device handed this one since last asked, for the app to keep
+    /// as its own, the newest first.
+    pub fn take_received_keys(&mut self) -> Vec<Key> {
+        std::mem::take(&mut self.sealing.received)
+    }
+
+    /// The `TAGMSG` asking the organisation's channel for its newest key, or the one with id
+    /// `id`, as this device lacks it; none when it has it, has asked already, has no device
+    /// key or isn't in the channel.
+    pub(super) fn ask_for_key(&mut self, id: Option<&str>) -> Vec<Line> {
+        let Some(device) = &self.sealing.device else {
+            return Vec::new();
+        };
+        let joined = self
+            .conversation(super::ORG_CHANNEL)
+            .is_some_and(|conversation| conversation.joined);
+        let has = match id {
+            Some(id) => self.sealing.keys.iter().any(|key| key.id() == id),
+            None => !self.sealing.keys.is_empty(),
+        };
+        if !joined || has || !self.sealing.asked.insert(id.unwrap_or_default().to_owned()) {
+            return Vec::new();
+        }
+        let ask = Ask {
+            p: device.public(),
+            k: id.map(str::to_owned),
+        };
+        let Ok(value) = serde_json::to_string(&ask) else {
+            return Vec::new();
+        };
+        self.sealing.asking = true;
+        let mut line = Line::new("TAGMSG", [super::ORG_CHANNEL]);
+        line.tags = vec![(ASK_TAG.to_owned(), Some(value))];
+        vec![line]
+    }
+
+    /// The ask for the key a received message's sealed parts need, if this device lacks it.
+    pub(super) fn ask_for_sealed(&mut self, line: &Line) -> Vec<Line> {
+        let needed = line
+            .tag(TAG)
+            .and_then(Sealed::from_tag)
+            .and_then(|sealed| sealed.parts.into_iter().next())
+            .map(|part| part.k);
+        match needed {
+            Some(id) => self.ask_for_key(Some(&id)),
+            None => Vec::new(),
+        }
+    }
+
+    /// A `TAGMSG`'s ask or answer for the key, handled: what to send, or `None` when it's
+    /// neither.
+    pub(super) fn sealing_tag(&mut self, line: &Line) -> Option<Vec<Line>> {
+        if let Some(value) = line.tag(ASK_TAG) {
+            return Some(self.answer_ask(line, value));
+        }
+        let value = line.tag(GRANT_TAG)?;
+        self.take_grant(line, value);
+        Some(Vec::new())
+    }
+
+    /// Hands the asker the newest key, encrypted to its device: only a member's own device,
+    /// signed in to an account, never a guest or a machine, and only that key.
+    fn answer_ask(&mut self, line: &Line, value: &str) -> Vec<Line> {
+        let from = super::nick_of(line);
+        let target = line.params.first().map_or("", String::as_str);
+        let Some(key) = self.sealing.keys.first().cloned() else {
+            return Vec::new();
+        };
+        let Ok(ask) = serde_json::from_str::<Ask>(value) else {
+            return Vec::new();
+        };
+        let member = line
+            .tag("account")
+            .is_some_and(|account| !account.is_empty() && account != "*")
+            && !self.is_guest(from)
+            && super::owner_by_host(line).is_none();
+        let now = (self.clock)();
+        let lately = self
+            .sealing
+            .answered
+            .get(&ask.p)
+            .is_some_and(|at| now - *at < ANSWER_AGAIN_AFTER);
+        if from.eq_ignore_ascii_case(&self.me)
+            || !target.eq_ignore_ascii_case(super::ORG_CHANNEL)
+            || !member
+            || lately
+            || ask.k.as_ref().is_some_and(|id| *id != key.id())
+        {
+            return Vec::new();
+        }
+        // A one-off key's bytes are rarely not a key: a few tries.
+        let random = self.random;
+        let made = (0..4).find_map(|_| {
+            let (mut ephemeral, mut nonce) = ([0; 32], [0; NONCE_LEN]);
+            (random(&mut ephemeral) && random(&mut nonce))
+                .then(|| grant(&key, &ask.p, ephemeral, nonce))
+                .flatten()
+        });
+        let Some(value) = made else {
+            return Vec::new();
+        };
+        self.sealing.answered.insert(ask.p, now);
+        let mut line = Line::new("TAGMSG", [from]);
+        line.tags = vec![(GRANT_TAG.to_owned(), Some(value))];
+        vec![line]
+    }
+
+    /// Keeps the key an answer to our own ask hands this device, saying so once.
+    fn take_grant(&mut self, line: &Line, value: &str) {
+        let to_me = line
+            .params
+            .first()
+            .is_some_and(|target| target.eq_ignore_ascii_case(&self.me));
+        let Some(device) = self
+            .sealing
+            .device
+            .as_ref()
+            .filter(|_| to_me && self.sealing.asking)
+        else {
+            return;
+        };
+        let Some(key) = open_grant(device, value) else {
+            return;
+        };
+        if self.sealing.keys.contains(&key) {
+            return;
+        }
+        self.sealing.asking = false;
+        self.sealing.keys.insert(0, key.clone());
+        self.sealing.received.push(key);
+        self.note(KEY_RECEIVED.to_owned());
     }
 
     /// Whether this device holds a key to seal with.

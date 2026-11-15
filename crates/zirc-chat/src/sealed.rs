@@ -380,6 +380,141 @@ pub fn open_message(keys: &[Key], context: &Context, value: &str) -> Option<Vec<
     )
 }
 
+/// What a grant's key is derived and bound with: its use and version.
+const GRANT_LABEL: &[u8] = b"zirc-seal-grant1";
+
+/// A device's own key pair for being handed the organisation's key: P-256, apart from the
+/// key it signs in with, which can only sign. Its secret is never shown, as a [`Key`]'s.
+#[derive(Clone, PartialEq, Eq)]
+pub struct DeviceKey(p256::SecretKey);
+
+impl std::fmt::Debug for DeviceKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("DeviceKey").field(&self.public()).finish()
+    }
+}
+
+impl DeviceKey {
+    /// The key made of 32 random bytes; `None` for the rare bytes that aren't a P-256 key.
+    #[must_use]
+    pub fn from_bytes(bytes: [u8; 32]) -> Option<Self> {
+        p256::SecretKey::from_bytes(&bytes.into()).ok().map(Self)
+    }
+
+    /// One made with `random`, trying again past bytes that aren't a key; `None` when
+    /// `random` gives none.
+    #[must_use]
+    pub fn new(random: fn(&mut [u8]) -> bool) -> Option<Self> {
+        for _ in 0..8 {
+            let mut bytes = [0; 32];
+            if !random(&mut bytes) {
+                return None;
+            }
+            if let Some(key) = Self::from_bytes(bytes) {
+                return Some(key);
+            }
+        }
+        None
+    }
+
+    /// Its public half, as an [`Ask`](zirc_proto::sealed::Ask) carries it.
+    #[must_use]
+    pub fn public(&self) -> String {
+        public_text(&self.0.public_key())
+    }
+
+    /// The string a store keeps it as: base64url of its secret.
+    #[must_use]
+    pub fn export(&self) -> String {
+        URL_SAFE_NO_PAD.encode(self.0.to_bytes())
+    }
+
+    /// The key a store kept ([`DeviceKey::export`]).
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        let bytes = URL_SAFE_NO_PAD.decode(text.trim()).ok()?;
+        Self::from_bytes(bytes.try_into().ok()?)
+    }
+}
+
+fn public_text(key: &p256::PublicKey) -> String {
+    use p256::elliptic_curve::sec1::ToEncodedPoint as _;
+    URL_SAFE_NO_PAD.encode(key.to_encoded_point(false).as_bytes())
+}
+
+fn public_of(text: &str) -> Option<p256::PublicKey> {
+    p256::PublicKey::from_sec1_bytes(&URL_SAFE_NO_PAD.decode(text).ok()?).ok()
+}
+
+/// The AES-256 key a grant from `ephemeral` to `to` is encrypted with: HKDF-SHA256 over
+/// their shared secret, salted with both public keys.
+fn grant_cipher(shared: &p256::ecdh::SharedSecret, ephemeral: &str, to: &str) -> Option<Aes256Gcm> {
+    let salt = [ephemeral.as_bytes(), to.as_bytes()].concat();
+    let mut key = [0; KEY_LEN];
+    shared
+        .extract::<Sha256>(Some(&salt))
+        .expand(GRANT_LABEL, &mut key)
+        .ok()?;
+    Some(Aes256Gcm::new(&key.into()))
+}
+
+/// `key`, encrypted to the device whose public key is `to`, with a one-off key made of
+/// `ephemeral` and a `nonce`, both random: a [`Grant`](zirc_proto::sealed::Grant)'s
+/// `+zirc.dev/seal-grant` value. `None` when `to` isn't a public key.
+#[must_use]
+pub fn grant(key: &Key, to: &str, ephemeral: [u8; 32], nonce: [u8; NONCE_LEN]) -> Option<String> {
+    let recipient = public_of(to)?;
+    let ephemeral = DeviceKey::from_bytes(ephemeral)?;
+    let shared = p256::ecdh::diffie_hellman(ephemeral.0.to_nonzero_scalar(), recipient.as_affine());
+    let sender = ephemeral.public();
+    let cipher = grant_cipher(&shared, &sender, to)?;
+    let sealed = cipher
+        .encrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: key.export().as_bytes(),
+                aad: GRANT_LABEL,
+            },
+        )
+        .ok()?;
+    serde_json::to_string(&zirc_proto::sealed::Grant {
+        k: key.id(),
+        p: to.to_owned(),
+        e: sender,
+        n: URL_SAFE_NO_PAD.encode(nonce),
+        c: URL_SAFE_NO_PAD.encode(sealed),
+    })
+    .ok()
+}
+
+/// The key a `+zirc.dev/seal-grant` value hands `device`: `None` when it's to another
+/// device, or doesn't open, or isn't the key it says it is.
+#[must_use]
+pub fn open_grant(device: &DeviceKey, value: &str) -> Option<Key> {
+    let grant: zirc_proto::sealed::Grant = serde_json::from_str(value).ok()?;
+    if grant.p != device.public() {
+        return None;
+    }
+    let sender = public_of(&grant.e)?;
+    let shared = p256::ecdh::diffie_hellman(device.0.to_nonzero_scalar(), sender.as_affine());
+    let cipher = grant_cipher(&shared, &grant.e, &grant.p)?;
+    let nonce = URL_SAFE_NO_PAD.decode(&grant.n).ok()?;
+    if nonce.len() != NONCE_LEN {
+        return None;
+    }
+    let text = cipher
+        .decrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: &URL_SAFE_NO_PAD.decode(&grant.c).ok()?,
+                aad: GRANT_LABEL,
+            },
+        )
+        .ok()?;
+    let key = Key::parse(std::str::from_utf8(&text).ok()?).ok()?;
+    (key.id() == grant.k).then_some(key)
+}
+
 #[cfg(test)]
 mod tests {
     use zirc_proto::sealed::CLIENT_TAGS_MAX;
@@ -520,6 +655,26 @@ mod tests {
             seal_message(&key(7), &ACME, &small, nonces(), 50),
             Err(SealError::TooLong)
         );
+    }
+
+    #[test]
+    fn hands_its_key_to_one_device_alone() {
+        let device = DeviceKey::from_bytes([3; 32]).unwrap();
+        let other = DeviceKey::from_bytes([4; 32]).unwrap();
+        let value = grant(&key(7), &device.public(), [5; 32], [6; NONCE_LEN]).unwrap();
+        assert!(!value.contains(&key(7).export()[18..30]), "{value}");
+        assert_eq!(open_grant(&device, &value), Some(key(7)));
+        assert_eq!(open_grant(&other, &value), None);
+        // Kept and read back, it's the same device.
+        assert_eq!(DeviceKey::parse(&device.export()), Some(device.clone()));
+        // Changed, it doesn't open.
+        let mut changed: zirc_proto::sealed::Grant = serde_json::from_str(&value).unwrap();
+        changed.k = key(8).id();
+        assert_eq!(
+            open_grant(&device, &serde_json::to_string(&changed).unwrap()),
+            None
+        );
+        assert_eq!(grant(&key(7), "not a key", [5; 32], [6; NONCE_LEN]), None);
     }
 
     #[test]
