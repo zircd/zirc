@@ -46,6 +46,13 @@ impl Chat {
         self.divider.as_deref()
     }
 
+    /// The New line came on screen, or the pill over the messages was closed: the pill has said
+    /// its piece, and goes for good, not back as the person reads on down past the line. It
+    /// shows again only for a newer divider, as what arrives while they're further up starts.
+    pub fn saw_divider(&mut self) {
+        self.divider_seen.clone_from(&self.divider);
+    }
+
     /// Says whether the person is reading the conversation shown at its end. What arrives
     /// while they aren't is [`Chat::unseen`], from a New divider it starts.
     pub fn scrolled(&mut self, at_end: bool) {

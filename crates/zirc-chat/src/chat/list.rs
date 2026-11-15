@@ -1201,7 +1201,8 @@ pub struct Unseen {
     pub label: String,
     /// The pill's over the messages, while the divider is above the screen: `↑ 28 new`, a
     /// tap going up to the first of them. A conversation opens at its newest message, so
-    /// what's new is above it.
+    /// what's new is above it. Empty once the New line has been on screen, or the pill
+    /// closed ([`Chat::saw_divider`]): then there's no pill.
     pub above: String,
     /// The button's, which takes the person down to the newest: `↓ 28 new`.
     pub short: String,
@@ -1231,7 +1232,11 @@ impl Chat {
                 "{count} new {messages} since {}",
                 super::card_time(wall(since), wall((self.clock)()))
             ),
-            above: format!("↑ {count} new"),
+            above: if self.divider_seen.as_deref() == Some(id) {
+                String::new()
+            } else {
+                format!("↑ {count} new")
+            },
             short: format!("↓ {count} new"),
         })
     }

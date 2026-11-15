@@ -1,6 +1,7 @@
 //! How every app's message list scrolls, decided once: how near its end counts as reading
 //! at the end, so what arrives follows and the list stays at the end as it changes size, and
-//! how near its top the page of history before is asked for, so it's in before it's reached.
+//! how near its top the page of history before is asked for, so it's in before it's reached,
+//! and how far from its end the ↓ button comes, to take the person back down.
 //! In the units each app lays out in: points on Apple's, dp on Android, CSS pixels on the
 //! web; the terminal client's rows count `pin_within` as none, as a row is a line.
 
@@ -11,6 +12,9 @@ pub struct ScrollRules {
     pub pin_within: f32,
     /// Within this many screenfuls of the top, the page before is asked for.
     pub older_within_screens: f32,
+    /// From this many screenfuls up from the end, the ↓ button shows, a bare arrow: nearer,
+    /// the newest is a flick away (the user's choice, 15 Nov 2026).
+    pub down_from_screens: f32,
 }
 
 /// Forty points is a short line and a half: a list nudged up by a resize, or a scroll that
@@ -19,6 +23,7 @@ pub struct ScrollRules {
 pub const SCROLL_RULES: ScrollRules = ScrollRules {
     pin_within: 40.0,
     older_within_screens: 2.0,
+    down_from_screens: 1.0,
 };
 
 impl ScrollRules {
@@ -26,6 +31,12 @@ impl ScrollRules {
     #[must_use]
     pub fn at_end(&self, from_end: f32) -> bool {
         from_end <= self.pin_within
+    }
+
+    /// Whether a list `from_end` from its end, `screen` tall, shows the ↓ button.
+    #[must_use]
+    pub fn shows_down(&self, from_end: f32, screen: f32) -> bool {
+        from_end >= screen * self.down_from_screens
     }
 
     /// Whether a list `from_top` from its top, `screen` tall, should ask for the page before.
@@ -151,6 +162,12 @@ mod tests {
         assert!(SCROLL_RULES.at_end(0.0));
         assert!(SCROLL_RULES.at_end(40.0));
         assert!(!SCROLL_RULES.at_end(41.0));
+    }
+
+    #[test]
+    fn down_shows_a_screen_from_the_end() {
+        assert!(!SCROLL_RULES.shows_down(799.0, 800.0));
+        assert!(SCROLL_RULES.shows_down(800.0, 800.0));
     }
 
     #[test]

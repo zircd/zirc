@@ -508,6 +508,9 @@ pub struct Chat {
     /// Where the "New" divider goes in the conversation shown: the first message it hadn't
     /// read when it was shown ([`Chat::divider`]).
     divider: Option<String>,
+    /// The divider whose pill has said its piece: the New line came on screen, or the pill
+    /// was closed ([`Chat::saw_divider`]). A newer divider's pill shows again.
+    divider_seen: Option<String>,
     /// Where the person reads the conversation shown: the apps say, [`Chat::scrolled`].
     reading: Reading,
     /// Whether anyone is looking at the conversation shown: not while the app shows another
@@ -666,6 +669,7 @@ impl Chat {
             show_on_join: None,
             first_shown: false,
             divider: None,
+            divider_seen: None,
             reading: Reading::AtEnd,
             looking: true,
             in_front: true,

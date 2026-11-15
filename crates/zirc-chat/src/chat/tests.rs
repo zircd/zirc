@@ -6238,6 +6238,10 @@ fn counts_whats_new_from_the_divider_and_what_comes_while_reading_further_up() {
             short: "↓ 2 new".to_owned(),
         })
     );
+    // The New line on screen, the pill's said its piece: it goes, the rest stays.
+    chat.saw_divider();
+    assert_eq!(chat.unseen(wall).unwrap().above, "");
+    assert_eq!(chat.unseen(wall).unwrap().count, 2);
     // On a clock an hour ahead, the time is its own.
     let ahead = |at: DateTime<Utc>| (at + chrono::Duration::hours(1)).naive_utc();
     assert_eq!(
@@ -6257,6 +6261,8 @@ fn counts_whats_new_from_the_divider_and_what_comes_while_reading_further_up() {
         (one.label.as_str(), one.short.as_str()),
         ("1 new message since Fri 11:20", "↓ 1 new")
     );
+    // A newer divider's pill shows again.
+    assert_eq!(one.above, "↑ 1 new");
 }
 
 #[test]
