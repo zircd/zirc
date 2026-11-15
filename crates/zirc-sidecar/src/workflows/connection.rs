@@ -567,7 +567,11 @@ mod tests {
         let (_todo, doing) = mpsc::unbounded_channel();
         tokio::spawn(run(config, channels, read.clone(), doing, hear));
         let (seen, unseen) = caught(&mut heard, &mut read).await;
-        assert_eq!(texts(&seen)[..2], ["before", "live"]);
+        // What it had seen, in the history's order, which for lines of one millisecond, as
+        // `live` and the bot's answer to it often are, is the server's (build 3569 had the
+        // answer first): so each is looked for, not where.
+        assert_eq!(texts(&seen).first(), Some(&"before"));
+        assert!(texts(&seen).contains(&"live"), "{:?}", texts(&seen));
         // Its own words after what it last heard are new too: the host knows them for its own.
         assert_eq!(texts(&unseen).last(), Some(&"meanwhile"));
         assert!(!texts(&unseen).contains(&"live"));
