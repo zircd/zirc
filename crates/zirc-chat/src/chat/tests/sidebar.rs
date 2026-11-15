@@ -848,3 +848,47 @@ fn each_tab_says_whats_new_in_it_and_opening_one_shows_its_tab() {
     chat.set_tab(SidebarSection::Channels);
     assert_eq!(chat.tab(), SidebarSection::Channels);
 }
+
+#[test]
+fn an_empty_conversation_says_no_messages_yet_once_its_history_is_in() {
+    let mut chat = super::chat();
+    connected(&mut chat);
+    let says = |chat: &Chat, name: &str| {
+        let rows = chat.sidebar_list(&all());
+        let row = row(&rows, name);
+        (row.preview.clone(), row.placeholder, row.when.clone())
+    };
+    // Its history on its way: nothing yet, so a row doesn't say it's empty and then change.
+    assert_eq!(says(&chat, "#api"), (None, false, None));
+    feed(&mut chat, &[":s BATCH +e chathistory #api", ":s BATCH -e"]);
+    assert_eq!(
+        says(&chat, "#api"),
+        (Some(crate::chat::NO_MESSAGES.to_owned()), true, None)
+    );
+    // A direct message alike.
+    chat.open("bob");
+    assert_eq!(says(&chat, "bob"), (None, false, None));
+    feed(&mut chat, &[":s BATCH +b chathistory bob", ":s BATCH -b"]);
+    assert_eq!(
+        says(&chat, "bob"),
+        (Some(crate::chat::NO_MESSAGES.to_owned()), true, None)
+    );
+    // A room under its channel says nothing under its name.
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #api/fix-login",
+            ":s BATCH +r chathistory #api/fix-login",
+            ":s BATCH -r",
+        ],
+    );
+    assert_eq!(says(&chat, "#api/fix-login"), (None, false, None));
+    // Once something's said, it's what's previewed.
+    feed(&mut chat, &[":bob!u@h PRIVMSG #api :hello"]);
+    let (preview, placeholder, when) = says(&chat, "#api");
+    assert_eq!(
+        (preview.as_deref(), placeholder),
+        (Some("bob: hello"), false)
+    );
+    assert!(when.is_some());
+}

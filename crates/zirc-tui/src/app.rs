@@ -343,6 +343,8 @@ pub enum Side {
         /// For a person, what was said last and when, as zirc-chat's list says them:
         /// `bob: yeah exactly`, `5m`.
         preview: Option<(String, String)>,
+        /// Whether `preview` is zirc-chat's `No messages yet`, with no time: drawn faint.
+        placeholder: bool,
         /// For an agent session at work, what it's taking on, after its name in place of
         /// what was said.
         note: Option<String>,
@@ -534,10 +536,12 @@ impl App {
         // WhatsApp and Discord list them; for an agent at work, what it's taking on.
         let private = row.direct_kind.is_some();
         let previews = private || row.depth == 0;
+        // Nothing said in it yet: zirc-chat's `No messages yet`, with no time.
+        let when = row.when.or_else(|| row.placeholder.then(String::new));
         let preview = row
             .preview
             .filter(|_| previews)
-            .zip(row.when.filter(|_| previews));
+            .zip(when.filter(|_| previews));
         let note = row.note.filter(|_| private);
         Some(Side::Row {
             label,
@@ -547,6 +551,7 @@ impl App {
             agent,
             muted: row.muted,
             preview,
+            placeholder: row.placeholder,
             note,
             presence: row.presence.filter(|_| private),
             unread: row.unread,

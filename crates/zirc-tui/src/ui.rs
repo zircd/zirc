@@ -824,6 +824,16 @@ fn note_columns(note: &str, room: usize) -> (String, String) {
     (format!("{said}{}", " ".repeat(gap)), String::new())
 }
 
+/// What was said last in a list row, muted; zirc-chat's `No messages yet` in its stead,
+/// faint.
+fn said_style(theme: &Theme, placeholder: bool) -> Style {
+    if placeholder {
+        fg(theme.faint)
+    } else {
+        fg(theme.muted)
+    }
+}
+
 /// A row of the list down the left, `width` columns wide.
 fn side_line(app: &App, row: Side, width: usize) -> Line<'static> {
     match row {
@@ -864,6 +874,7 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
         agent,
         muted,
         preview,
+        placeholder,
         note,
         presence,
         unread,
@@ -924,6 +935,7 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
     // What was said last, dimmed after the name, and when, at the right, where there's room.
     let room = width.saturating_sub(lead_width + name.width() + count.width() + 1);
     // The pill pads itself, so the time needs no space before it.
+    let said_style = said_style(theme, placeholder && note.is_none());
     let (said, when) = match note {
         Some(note) => note_columns(&note, room),
         None => preview_columns(preview, room, false),
@@ -936,7 +948,6 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
     } else {
         fg(theme.muted)
     };
-    let said_style = fg(theme.muted);
     let count_style = fg(theme.on_badge).bg(colour(theme.badge));
     if unread {
         spans[0] = Span::styled("▎", fg(theme.text));

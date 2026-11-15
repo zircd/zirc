@@ -252,6 +252,7 @@
   --zirc-text: #12161C;
   --zirc-body: #2F3743;
   --zirc-muted: #5B6573;
+  --zirc-faint: #808894;
   --zirc-rule: #E1E5EB;
   --zirc-rule-strong: #BCC4CE;
   --zirc-signal: #0B63C7;
@@ -302,6 +303,7 @@
     --zirc-text: #E6EAF0;
     --zirc-body: #C2C9D3;
     --zirc-muted: #8C96A5;
+    --zirc-faint: #66707E;
     --zirc-rule: #222A36;
     --zirc-rule-strong: #36415A;
     --zirc-signal: #7AA7FF;
@@ -352,6 +354,7 @@
   --zirc-text: #E6EAF0;
   --zirc-body: #C2C9D3;
   --zirc-muted: #8C96A5;
+  --zirc-faint: #66707E;
   --zirc-rule: #222A36;
   --zirc-rule-strong: #36415A;
   --zirc-signal: #7AA7FF;

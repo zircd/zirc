@@ -526,6 +526,9 @@ pub struct Theme {
     pub body: Rgb,
     /// Times, labels, and what matters less.
     pub muted: Rgb,
+    /// What stands in for something that isn't there, fainter than [`Theme::muted`]: an
+    /// empty conversation's `No messages yet`. Never what has to be read.
+    pub faint: Rgb,
     /// Lines between things.
     pub rule: Rgb,
     /// Lines that need to show: a focused input, a selection.
@@ -638,13 +641,14 @@ impl Theme {
 
     /// Every role, by its name in `tokens.json`, and its colour.
     #[must_use]
-    pub fn roles(&self) -> [(&'static str, Rgb); 43] {
+    pub fn roles(&self) -> [(&'static str, Rgb); 44] {
         [
             ("ground", self.ground),
             ("panel", self.panel),
             ("text", self.text),
             ("body", self.body),
             ("muted", self.muted),
+            ("faint", self.faint),
             ("rule", self.rule),
             ("rule-strong", self.rule_strong),
             ("signal", self.signal),
@@ -1104,6 +1108,7 @@ struct Colors {
     text: Pair,
     body: Pair,
     muted: Pair,
+    faint: Pair,
     rule: Pair,
     rule_strong: Pair,
     signal: Pair,
@@ -1169,6 +1174,7 @@ static THEMES: LazyLock<(Theme, Theme)> = LazyLock::new(|| {
             text: pick(c.text),
             body: pick(c.body),
             muted: pick(c.muted),
+            faint: pick(c.faint),
             rule: pick(c.rule),
             rule_strong: pick(c.rule_strong),
             signal: pick(c.signal),

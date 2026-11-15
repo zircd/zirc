@@ -202,7 +202,7 @@ pub use sharing::{
     SHARE_PICTURE_DEFAULT, SHARE_PICTURE_HINT, name_preview, name_shown, picture_preview,
     picture_shown,
 };
-pub use sidebar::{ALL_MESSAGES, ListKind, ListOptions, ListRow};
+pub use sidebar::{ALL_MESSAGES, ListKind, ListOptions, ListRow, NO_MESSAGES};
 pub use speaker::{
     AGENT_TAG, APP_TAG, Avatar, Speaker, YOU, agent_avatar, agent_label, agent_name, agent_session,
     app_name, possessive, sender_text, tool_mark,

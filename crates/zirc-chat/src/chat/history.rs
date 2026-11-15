@@ -150,6 +150,13 @@ impl Chat {
         ))
     }
 
+    /// Whether a page of the history of the conversation called `name` is on its way: what
+    /// it holds may not be all there is to show yet.
+    #[must_use]
+    pub fn history_coming(&self, name: &str) -> bool {
+        self.gaps.contains_key(&fold(super::target(name)))
+    }
+
     /// Whether the conversation called `name` may have older history than it holds, which
     /// [`Chat::older`] asks for: until a page comes back short, short of as much as a
     /// conversation keeps, with the server's history.

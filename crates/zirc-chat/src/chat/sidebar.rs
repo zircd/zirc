@@ -30,6 +30,10 @@ use super::{
 /// ([`ListOptions::direct_limit`]): it shows them all.
 pub const ALL_MESSAGES: &str = "All messages";
 
+/// What a channel's or a direct message's row says under its name, faint, while nothing's
+/// been said in it ([`ListRow::placeholder`]).
+pub const NO_MESSAGES: &str = "No messages yet";
+
 /// What a row of the sidebar is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -127,8 +131,13 @@ pub struct ListRow {
     pub presence: Option<Presence>,
     /// That a person in a direct message is away, after their name ([`away_label`]).
     pub away_label: Option<String>,
-    /// The newest thing said in it, or under it for a channel, as every list previews it.
+    /// The newest thing said in it, or under it for a channel, as every list previews it;
+    /// [`NO_MESSAGES`] for a conversation whose history came back with nothing said
+    /// ([`ListRow::placeholder`]).
     pub preview: Option<String>,
+    /// Whether [`ListRow::preview`] is [`NO_MESSAGES`], drawn faint: nothing's been said in
+    /// it. Never while its history is on its way, so a row doesn't say so and then change.
+    pub placeholder: bool,
     /// When that was, as the list says it ([`ago_short`]): `5m`, `3h`.
     pub when: Option<String>,
     /// When something was last said in it, in milliseconds since 1970.
@@ -195,6 +204,7 @@ impl ListRow {
             presence: None,
             away_label: None,
             preview: None,
+            placeholder: false,
             when: None,
             latest_ms: None,
             rooms: 0,
@@ -342,8 +352,29 @@ impl Chat {
         }
         for row in &mut list {
             row.settle_names();
+            if self.says_no_messages(row) {
+                row.preview = Some(NO_MESSAGES.to_owned());
+                row.placeholder = true;
+            }
         }
         list
+    }
+
+    /// Whether `row` says [`NO_MESSAGES`] under its name: a channel's or a direct message's
+    /// own row, with nothing to preview or note, once what the server has of it is here:
+    /// none of its history on its way, and connected, or its history known to go back no
+    /// further. A room under its channel says nothing.
+    fn says_no_messages(&self, row: &ListRow) -> bool {
+        let Some(conversation) = self.conversation(&row.name) else {
+            return false;
+        };
+        row.kind == ListKind::Conversation
+            && (row.depth == 0 || row.direct)
+            && row.preview.is_none()
+            && row.note.is_none()
+            && self.last_said(&row.name).is_none()
+            && !self.history_coming(&row.name)
+            && (self.link.is_some() || conversation.beginning)
     }
 
     /// Your machines' rows: each of our machines online that needs us, with its agent
