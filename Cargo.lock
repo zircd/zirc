@@ -5203,7 +5203,7 @@ dependencies = [
 
 [[package]]
 name = "zirc"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "anyhow",
  "clap",
@@ -5220,7 +5220,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-chat"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -5239,7 +5239,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-core"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "chrono",
  "jaq-core",
@@ -5266,7 +5266,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-irc"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "futures-util",
  "thiserror 2.0.21",
@@ -5283,7 +5283,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-line"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "base64 0.22.1",
  "thiserror 2.0.21",
@@ -5292,7 +5292,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-media-worker"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "anyhow",
  "axum",
@@ -5311,7 +5311,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-proto"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "base64 0.22.1",
  "schemars",
@@ -5323,7 +5323,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-remote"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "anyhow",
  "clap",
@@ -5341,7 +5341,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-server"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "anyhow",
  "axum",
@@ -5372,7 +5372,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-sidecar"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -5403,7 +5403,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-test-ergo"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "base64 0.22.1",
  "ring",
@@ -5417,7 +5417,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-test-irc"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "tokio",
  "zirc-irc",
@@ -5426,7 +5426,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-theme"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "serde",
  "serde_json",
@@ -5435,7 +5435,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-tui"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5458,7 +5458,7 @@ dependencies = [
 
 [[package]]
 name = "zirc-workflows"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "ring",
  "serde_json",
@@ -5468,7 +5468,7 @@ dependencies = [
 
 [[package]]
 name = "zircd"
-version = "0.1.54"
+version = "0.1.55"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
