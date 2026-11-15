@@ -90,6 +90,11 @@ pub struct AgentHeader {
     pub heard: String,
     /// Whether it's at work right now.
     pub active: bool,
+    /// The one line every app's header says under its handle, after the here dot while
+    /// [`Self::active`]: what it's doing while it's at it ([`Self::now`]), else
+    /// [`Self::heard`]; a teammate's agent's says whose it is first, `Maya Chen's agent ·
+    /// Last heard 3m ago`, where ours needs no `Your agent`: its AGENT tag says it.
+    pub line: String,
 }
 
 /// One of a machine's agent sessions, as the top of the machine's thread lists it, ready to
@@ -240,14 +245,27 @@ impl Chat {
     /// What the header of the conversation with the agent session `name` says under its
     /// name, for every session whether or not it registered a title: what it's doing now
     /// (marker and words, as [`AgentCard::now`]) and when it was heard, `Active now` or
-    /// `Last heard 3m ago`. `None` for any other conversation.
+    /// `Last heard 3m ago`, and the one line of them every app draws
+    /// ([`AgentHeader::line`]). `None` for any other conversation.
     #[must_use]
     pub fn agent_header(&self, name: &str) -> Option<AgentHeader> {
         let (nick, session) = agent(name)?;
         let now = (self.clock)();
         let doing = self.doing_now(nick, session, now);
         let (heard, active) = self.heard_line(nick, session, doing.active, now);
+        let line = if doing.active {
+            doing.line()
+        } else {
+            match self.whose(nick) {
+                Some((owner, _)) if !owner.eq_ignore_ascii_case(self.me()) => {
+                    let whose = super::agent_name(None, &self.owner_name(&owner)).0;
+                    format!("{whose} · {heard}")
+                }
+                _ => heard.clone(),
+            }
+        };
         Some(AgentHeader {
+            line,
             now: doing.line(),
             lead: doing.lead,
             paths: doing.paths,

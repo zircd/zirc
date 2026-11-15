@@ -368,11 +368,20 @@ fn a_header_has_the_now_line_for_an_untitled_session_too() {
     assert_eq!(header.now, "⟶ the login page · 2h");
     assert_eq!(header.heard, "Active now");
     assert!(header.active);
-    // One that said nothing: nothing in progress.
+    // Every app's one line: at work, what it's doing.
+    assert_eq!(header.line, "⟶ the login page · 2h");
+    // One that said nothing: nothing in progress, and its line when it was heard, with no
+    // "Your agent": its AGENT tag says it.
     let quiet = chat.agent_header("me-mbp/cc-9").unwrap();
     assert_eq!(
         (quiet.now.as_str(), quiet.heard.as_str(), quiet.active),
         ("Nothing in progress", "Not heard yet", false)
+    );
+    assert_eq!(quiet.line, "Not heard yet");
+    // A teammate's says whose it is first.
+    assert_eq!(
+        chat.agent_header("bob-laptop/cc-2").unwrap().line,
+        "Bob Lee's agent · Not heard yet"
     );
     assert_eq!(chat.agent_header("bob"), None);
 }
