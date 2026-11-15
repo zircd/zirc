@@ -152,9 +152,9 @@ pub use lines::{
 };
 pub use list::{
     AGENTS_ROOM, ActiveCard, Agent, AppMember, AppRow, BADGE_MOST, Badges, ChannelGroup,
-    DirectKind, DirectRow, MachineRow, PersonRow, ROOM_QUIET_AFTER, SHOW_LABEL, Shelf, ShowChoice,
-    SidebarSection, SidebarTab, THREAD_ACTIVE_FOR, Thread, Unseen, agents_room, badge_label,
-    home_channel, room_label, room_parts,
+    DirectKind, DirectRow, ENDED_FOLD_AFTER, MachineRow, PersonRow, ROOM_QUIET_AFTER, SHOW_LABEL,
+    Shelf, ShowChoice, SidebarSection, SidebarTab, THREAD_ACTIVE_FOR, Thread, Unseen, agents_room,
+    badge_label, home_channel, room_label, room_parts,
 };
 pub use members::{MemberMachine, MemberRow, MemberSession};
 pub use more::{CODE_LINES, More, PROSE_LINES, Shown, cut};

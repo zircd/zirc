@@ -3305,10 +3305,10 @@ mod tests {
             "@+zirc.dev/client=tui PRIVMSG me-laptop :cc-1531f8 run them again"
         );
         let (rows, _) = draw(&app, 120, 16);
-        assert!(row_with(&rows, "AGENT").contains("cc-1531f8 · you AGENT"));
+        assert!(row_with(&rows, "AGENT").contains("cc-1531f8 AGENT"));
         row_with(&rows, "tests pass");
         assert!(
-            rows.last().unwrap().starts_with("cc-1531f8 · you ›"),
+            rows.last().unwrap().starts_with("cc-1531f8 ›"),
             "{}",
             rows.last().unwrap()
         );
@@ -3336,7 +3336,7 @@ mod tests {
         }
         let listed: Vec<String> = app.listed().map(|(_, c)| app.chat.title(&c.name)).collect();
         // Channels A–Z, then direct messages newest first, agent sessions among them.
-        assert_eq!(listed, ["#api", "#web", "bob", "cc-77aa01 · you", "alice"]);
+        assert_eq!(listed, ["#api", "#web", "bob", "cc-77aa01", "alice"]);
         let screen = Rect::new(0, 0, 100, 16);
         // The list under the switch.
         let side = |rows: &[String], under: usize| -> Vec<String> {
@@ -3370,7 +3370,7 @@ mod tests {
                 "▎● bob hi       now 1",
                 // A session by what it goes by, its tool's mark in front in its colour; the
                 // list too narrow here for its preview.
-                "▎⚙ cc-77aa01 · you  1",
+                "▎⚙ cc-77aa01        1",
                 " alice",
             ]
         );

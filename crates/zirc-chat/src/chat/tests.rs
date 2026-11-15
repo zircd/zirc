@@ -3429,7 +3429,7 @@ fn files_what_our_agents_say_by_session() {
     assert_eq!(said(first).len(), 1);
     assert_eq!(first.unread, 1);
     assert_eq!(first.mentions, 1, "a private message counts as a mention");
-    assert_eq!(chat.title("me-mbp/cc-1531f8"), "cc-1531f8 · you");
+    assert_eq!(chat.title("me-mbp/cc-1531f8"), "cc-1531f8");
     assert_eq!(chat.title("me-mbp"), "Your agents · me-mbp");
     assert_eq!(chat.title("bob-mbp"), "bob · bob-mbp");
     assert_eq!(chat.title("#api"), "#api");
@@ -4294,7 +4294,7 @@ fn lists_each_direct_conversation_on_its_own_newest_first() {
     let agent = &chat.direct_rows()[0];
     assert_eq!(agent.title, "cc-1");
     assert_eq!(agent.owner.as_deref(), Some("you"));
-    assert_eq!(agent.label(), "cc-1 · you");
+    assert_eq!(agent.label(), "cc-1");
     assert!(agent.mine && agent.presence.is_none());
     assert!(matches!(agent.avatars[..], [Avatar::Agent { .. }]));
     let bob = chat

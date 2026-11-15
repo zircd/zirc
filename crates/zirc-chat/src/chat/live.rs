@@ -5,7 +5,7 @@
 //! the list's `N ended`, its conversation kept. A machine whose zircd predates the lists
 //! says none, and its sessions fold as they always did, once quiet for a day.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, TimeDelta, Utc};
 use zirc_proto::session::{LIVE_GRACE_SECS, Live};
@@ -23,6 +23,8 @@ pub(super) struct MachineLive {
     at: DateTime<Utc>,
     /// Since when it's been gone from the server, or unknown to be here, if it has.
     gone: Option<DateTime<Utc>>,
+    /// The sessions it has stopped listing, each with when its list first left it out.
+    ended: BTreeMap<String, DateTime<Utc>>,
 }
 
 /// How long after its machine left, or since we connected without hearing from it, its
@@ -39,13 +41,24 @@ impl Chat {
         if self.live.get(&key).is_some_and(|known| known.at > at) {
             return;
         }
+        let sessions: BTreeSet<String> = live.sessions.into_iter().collect();
+        // What it listed before and doesn't now ended now; what's listed again lives on.
+        let mut ended = BTreeMap::new();
+        if let Some(known) = self.live.get(&key) {
+            ended.clone_from(&known.ended);
+            for gone in known.sessions.difference(&sessions) {
+                ended.entry(gone.clone()).or_insert(at);
+            }
+        }
+        ended.retain(|session, _| !sessions.contains(session));
         self.live.insert(
             key,
             MachineLive {
                 nick: nick.to_owned(),
-                sessions: live.sessions.into_iter().collect(),
+                sessions,
                 at,
                 gone: None,
+                ended,
             },
         );
     }
@@ -97,6 +110,24 @@ impl Chat {
                 let nick = super::agent(here).map_or(here, |(nick, _)| nick);
                 self.machine(nick).map(|(_, nick)| nick)
             })
+    }
+
+    /// When the agent session `session` on the machine `nick` ended, as far as its machine
+    /// says: when its list first left it out, or when the machine's grace ran out after it
+    /// left the server. `None` while it's live, or when nobody knows when it ended.
+    #[must_use]
+    pub fn session_ended_at(&self, nick: &str, session: &str) -> Option<DateTime<Utc>> {
+        if self.session_live(nick, session) != Some(false) {
+            return None;
+        }
+        let known = self.live.get(&fold(nick))?;
+        known.ended.get(session).copied().or_else(|| {
+            known
+                .sessions
+                .contains(session)
+                .then(|| known.gone.map(|since| since + grace()))
+                .flatten()
+        })
     }
 
     /// Whether the agent session `name`, `<machine>/<session>`, has ended

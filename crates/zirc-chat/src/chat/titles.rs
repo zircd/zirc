@@ -41,8 +41,8 @@ impl Chat {
     /// The conversation called `name` as every app shows it in its list: a channel as named,
     /// a person by the name they show as, `Carol Danvers`, as their messages are headed
     /// ([`Chat::shown_name`]), one of our machines as its owner and its own name,
-    /// `mattias · mbp`, and one of its agent sessions by what it goes by and whose,
-    /// `checkout · you`; a guest as [`Chat::guest_name`] names them; and, to its guest, their
+    /// `mattias · mbp`; one of our agent sessions by what it goes by, `checkout`, and a
+    /// teammate's by that and whose, `checkout · Maya Chen`; a guest as [`Chat::guest_name`] names them; and, to its guest, their
     /// room of their own as the public channel beside it ([`Chat::our_room_beside`]).
     #[must_use]
     pub fn title(&self, name: &str) -> String {
@@ -60,16 +60,21 @@ impl Chat {
             None => nick.to_owned(),
         };
         match agent(name) {
-            // An agent session by what it goes by, and whose: `checkout · Maya Chen`.
+            // An agent session by what it goes by: ours alone, `checkout`, as its AGENT tag
+            // and our list say it's ours; a teammate's with whose, `checkout · Maya Chen`.
             Some((nick, session)) => {
                 let owner = self
                     .machine(nick)
                     .map_or_else(|| self.owner_of(nick).to_owned(), |(owner, _)| owner);
-                format!(
-                    "{} · {}",
-                    self.session_label(session),
-                    self.owner_name(&owner)
-                )
+                if owner.eq_ignore_ascii_case(&self.me) {
+                    self.session_label(session)
+                } else {
+                    format!(
+                        "{} · {}",
+                        self.session_label(session),
+                        self.owner_name(&owner)
+                    )
+                }
             }
             None if is_group(name) => self.group_title(name),
             None if is_channel(name) => name.to_owned(),

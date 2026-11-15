@@ -697,6 +697,10 @@ pub struct ChannelGroup {
 /// [`DirectRow::folded`].
 pub const ROOM_QUIET_AFTER: chrono::TimeDelta = chrono::TimeDelta::hours(1);
 
+/// How long after an agent session ended, as its machine says, its direct-message row folds
+/// away, unless something in it is unread (the user's choice, 15 Nov 2026).
+pub const ENDED_FOLD_AFTER: chrono::TimeDelta = chrono::TimeDelta::minutes(10);
+
 /// How long after something was last said in a room under its channel it counts as an
 /// active thread, as Discord archives a quiet thread after a day by default: see
 /// [`Chat::is_quiet_thread`].
@@ -757,13 +761,14 @@ pub struct DirectRow {
 }
 
 impl DirectRow {
-    /// Its row's words on one line: an agent session by what it goes by and whose it is,
-    /// `zirc-chat · Bob Lee`; anyone else by its title.
+    /// Its row's words on one line: a teammate's agent session by what it goes by and whose
+    /// it is, `zirc-chat · Bob Lee`; one of ours by what it goes by alone, as only ours are
+    /// listed among the direct messages; anyone else by its title.
     #[must_use]
     pub fn label(&self) -> String {
         match &self.owner {
-            Some(owner) => format!("{} · {owner}", self.title),
-            None => self.title.clone(),
+            Some(owner) if !self.mine => format!("{} · {owner}", self.title),
+            _ => self.title.clone(),
         }
     }
 }
@@ -1006,6 +1011,13 @@ impl Chat {
             let active = row.latest.max(self.heard(nick, session_id));
             row.folded = self.session_live(nick, session_id) != Some(true)
                 && self.quiet(&row.name, row.unread, active);
+            // Ended, it says so where its time was, and folds soon after.
+            if let Some(ended) = self.session_ended_at(nick, session_id) {
+                row.when = Some(super::live::ENDED.to_owned());
+                row.folded = row.folded
+                    || (self.quiet(&row.name, row.unread, None)
+                        && (self.clock)() - ended >= ENDED_FOLD_AFTER);
+            }
         } else if row.kind == DirectKind::Machine
             && let Some((owner, _)) = self.whose(&row.name)
         {

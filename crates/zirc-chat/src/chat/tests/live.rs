@@ -298,3 +298,41 @@ fn a_session_chip_knows_the_machine_that_runs_it() {
         .collect();
     assert_eq!(machines, [Some("dana-x1"), Some("me-mbp")]);
 }
+
+#[test]
+fn an_ended_session_says_so_and_folds_ten_minutes_later_unless_unread() {
+    let mut chat = with_mbp();
+    feed(
+        &mut chat,
+        &[
+            &zirc("me-mbp", &live(&["cc-1"])),
+            &dm("me-mbp", "cc-1", "done, have a look", 1),
+        ],
+    );
+    // Its machine stops listing it at 12:02: ended then.
+    feed(
+        &mut chat,
+        &[&format!(
+            "@time=2026-10-30T12:02:00.000Z {}",
+            zirc("me-mbp", &live(&[]))
+        )],
+    );
+    assert_eq!(
+        chat.session_ended_at("me-mbp", "cc-1"),
+        Some(Utc.with_ymd_and_hms(2026, 10, 30, 12, 2, 0).unwrap())
+    );
+    chat.clock = || Utc.with_ymd_and_hms(2026, 10, 30, 12, 5, 0).unwrap();
+    let listed = rows(&chat);
+    let row = find(&listed, "me-mbp/cc-1").expect("listed while unread");
+    // Where its time was, it says it ended; ours, it goes by its name alone.
+    assert_eq!(row.when.as_deref(), Some(crate::chat::live::ENDED));
+    assert!(!row.title.contains(" · "), "{}", row.title);
+    // Unread, it stays past the ten minutes; read, it folds.
+    chat.clock = || Utc.with_ymd_and_hms(2026, 10, 30, 12, 13, 0).unwrap();
+    assert!(find(&rows(&chat), "me-mbp/cc-1").is_some());
+    let _ = chat.mark_read("me-mbp/cc-1");
+    assert!(find(&rows(&chat), "me-mbp/cc-1").is_none());
+    // Listed again, it lives on, with no end.
+    feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-1"]))]);
+    assert_eq!(chat.session_ended_at("me-mbp", "cc-1"), None);
+}
