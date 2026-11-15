@@ -233,8 +233,13 @@ pub struct Thread {
     pub mentions: usize,
     /// What its row counts ([`Chat::badge`]).
     pub badge: usize,
-    /// The newest thing said in it ([`Chat::preview`]).
+    /// That count as its badge says it, `3`, `99+` ([`badge_label`]); `None` for none.
+    pub badge_label: Option<String>,
+    /// The newest thing said in it ([`Chat::preview`]), or [`super::NO_MESSAGES`] once its
+    /// history came back with nothing said ([`Thread::placeholder`]).
     pub preview: Option<String>,
+    /// Whether [`Thread::preview`] is [`super::NO_MESSAGES`], drawn faint.
+    pub placeholder: bool,
     /// When that was, as the list says it ([`super::ago_short`]): `5m`, `3h`.
     pub when: Option<String>,
     /// The server's id for the message in the channel it was started from, when one was
@@ -684,7 +689,8 @@ pub struct ChannelGroup {
     pub badge: usize,
     /// When something was last said in it or its rooms.
     pub latest: Option<DateTime<Utc>>,
-    /// The newest thing said in it or its rooms, as its row previews it ([`Chat::preview`]).
+    /// The newest thing said in the repository's channel itself, as its row previews it
+    /// ([`Chat::preview`]): its rooms preview their own, on their rows under it.
     pub preview: Option<String>,
     /// When that was, as the list says it ([`super::ago_short`]): `5m`, `3h`.
     pub when: Option<String>,
@@ -833,9 +839,9 @@ impl Chat {
         }
         for group in &mut groups {
             group.guests = self.guest_rooms_of(&group.name, &known);
-            let names =
-                std::iter::once(group.name.as_str()).chain(group.rooms.iter().map(String::as_str));
-            (group.preview, group.when) = self.row_preview(names);
+            // Its own: each room previews itself under it, so no line shows twice (the
+            // user's choice, 15 Nov 2026).
+            (group.preview, group.when) = self.row_preview([group.name.as_str()]);
         }
         self.order(&mut groups, |group| (&group.name, group.latest));
         groups
@@ -892,6 +898,7 @@ impl Chat {
             .map(|name| {
                 let (unread, mentions, latest) = self.counts(&name);
                 let (preview, when) = self.row_preview([name.as_str()]);
+                let placeholder = preview.is_none() && self.nothing_said(&name);
                 Thread {
                     of: started
                         .iter()
@@ -900,11 +907,15 @@ impl Chat {
                     replies: self.replies(&name),
                     title: room_label(&name).unwrap_or_else(|| name.clone()),
                     badge: self.badge(&name),
+                    badge_label: Some(self.badge(&name))
+                        .filter(|&badge| badge > 0)
+                        .map(badge_label),
                     bold: self.is_unread(&name),
                     latest_ms: latest.map(|at| at.timestamp_millis()),
                     unread,
                     mentions,
-                    preview,
+                    preview: preview.or_else(|| placeholder.then(|| super::NO_MESSAGES.to_owned())),
+                    placeholder,
                     when,
                     name,
                 }

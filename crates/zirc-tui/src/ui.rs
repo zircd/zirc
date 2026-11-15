@@ -3854,12 +3854,13 @@ mod tests {
                 .map(|row| row.split('│').next().unwrap().trim_end().to_owned())
                 .collect::<Vec<_>>()
         };
-        // The room under its repository's channel, the channels A–Z.
+        // The room under its repository's channel, the channels A–Z; the channel previews
+        // its own words, not its room's.
         assert_eq!(
             side(&app),
             [
                 " Channels",
-                "▎#api bob: r… 30m 1",
+                "▎#api cc-12:… 58m 1",
                 "   └ login",
                 "▎#web bob: depl… 57m"
             ]
@@ -3874,7 +3875,7 @@ mod tests {
                 " Starred",
                 " #web* bob: dep… 57m",
                 " Channels",
-                "▎#api bob: r… 30m 1"
+                "▎#api cc-12:… 58m 1"
             ]
         );
         let (rows, _) = draw(&app, 100, 16);

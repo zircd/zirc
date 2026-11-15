@@ -30,8 +30,8 @@ use super::{
 /// ([`ListOptions::direct_limit`]): it shows them all.
 pub const ALL_MESSAGES: &str = "All messages";
 
-/// What a channel's or a direct message's row says under its name, faint, while nothing's
-/// been said in it ([`ListRow::placeholder`]).
+/// What a channel's, a thread's or a direct message's row says under its name, faint, while
+/// nothing's been said in it ([`ListRow::placeholder`]).
 pub const NO_MESSAGES: &str = "No messages yet";
 
 /// What a row of the sidebar is.
@@ -360,21 +360,25 @@ impl Chat {
         list
     }
 
-    /// Whether `row` says [`NO_MESSAGES`] under its name: a channel's or a direct message's
-    /// own row, with nothing to preview or note, once what the server has of it is here:
-    /// none of its history on its way, and connected, or its history known to go back no
-    /// further. A room under its channel says nothing.
+    /// Whether `row` says [`NO_MESSAGES`] under its name: a channel's, a room's under its
+    /// channel or a direct message's, with nothing to preview or note
+    /// ([`Chat::nothing_said`]).
     fn says_no_messages(&self, row: &ListRow) -> bool {
-        let Some(conversation) = self.conversation(&row.name) else {
-            return false;
-        };
-        row.kind == ListKind::Conversation
-            && (row.depth == 0 || row.direct)
+        matches!(row.kind, ListKind::Conversation | ListKind::Room)
             && row.preview.is_none()
             && row.note.is_none()
-            && self.last_said(&row.name).is_none()
-            && !self.history_coming(&row.name)
-            && (self.link.is_some() || conversation.beginning)
+            && self.nothing_said(&row.name)
+    }
+
+    /// Whether nothing's been said in the conversation called `name`, as far as the server
+    /// says: none of its history on its way, and connected, or its history known to go back
+    /// no further. So a row never says [`NO_MESSAGES`] and then changes as history comes.
+    pub(super) fn nothing_said(&self, name: &str) -> bool {
+        self.conversation(name).is_some_and(|conversation| {
+            self.last_said(name).is_none()
+                && !self.history_coming(name)
+                && (self.link.is_some() || conversation.beginning)
+        })
     }
 
     /// Your machines' rows: each of our machines online that needs us, with its agent

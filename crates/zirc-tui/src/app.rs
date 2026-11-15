@@ -532,16 +532,12 @@ impl App {
         } else {
             row.title
         };
-        // After a direct message's name, and a channel's, what was said last and when, as
-        // WhatsApp and Discord list them; for an agent at work, what it's taking on.
+        // After a name, a thread's under its channel too, what was said last in it and when,
+        // as chat apps list them; for an agent at work, what it's taking on.
         let private = row.direct_kind.is_some();
-        let previews = private || row.depth == 0;
         // Nothing said in it yet: zirc-chat's `No messages yet`, with no time.
         let when = row.when.or_else(|| row.placeholder.then(String::new));
-        let preview = row
-            .preview
-            .filter(|_| previews)
-            .zip(when.filter(|_| previews));
+        let preview = row.preview.zip(when);
         let note = row.note.filter(|_| private);
         Some(Side::Row {
             label,

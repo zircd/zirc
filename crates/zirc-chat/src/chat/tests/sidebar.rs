@@ -396,8 +396,10 @@ fn a_channels_row_is_bold_for_itself_not_its_rooms_which_are_bold_for_themselves
     let api = row(&rows, "#api");
     assert!(!api.unread && api.opens && api.joined);
     assert_eq!((api.badge, api.rooms), (0, 1));
-    assert_eq!(api.preview.as_deref(), Some("bob: me: look"));
+    // What's said in a room is its own row's preview, not its channel's.
+    assert_ne!(api.preview.as_deref(), Some("bob: me: look"));
     let login = row(&rows, "#api/login");
+    assert_eq!(login.preview.as_deref(), Some("bob: me: look"));
     assert_eq!(
         (login.kind, login.depth, login.title.as_str()),
         (ListKind::Room, 1, "login")
@@ -873,7 +875,7 @@ fn an_empty_conversation_says_no_messages_yet_once_its_history_is_in() {
         says(&chat, "bob"),
         (Some(crate::chat::NO_MESSAGES.to_owned()), true, None)
     );
-    // A room under its channel says nothing under its name.
+    // A room under its channel, a thread, alike, and in its channel's Threads list.
     feed(
         &mut chat,
         &[
@@ -882,7 +884,15 @@ fn an_empty_conversation_says_no_messages_yet_once_its_history_is_in() {
             ":s BATCH -r",
         ],
     );
-    assert_eq!(says(&chat, "#api/fix-login"), (None, false, None));
+    assert_eq!(
+        says(&chat, "#api/fix-login"),
+        (Some(crate::chat::NO_MESSAGES.to_owned()), true, None)
+    );
+    let thread = &chat.threads("#api")[0];
+    assert_eq!(
+        (thread.preview.as_deref(), thread.placeholder),
+        (Some(crate::chat::NO_MESSAGES), true)
+    );
     // Once something's said, it's what's previewed.
     feed(&mut chat, &[":bob!u@h PRIVMSG #api :hello"]);
     let (preview, placeholder, when) = says(&chat, "#api");
@@ -891,4 +901,33 @@ fn an_empty_conversation_says_no_messages_yet_once_its_history_is_in() {
         (Some("bob: hello"), false)
     );
     assert!(when.is_some());
+}
+
+#[test]
+fn a_channel_previews_its_own_words_and_each_thread_its_own() {
+    let mut chat = super::chat();
+    connected(&mut chat);
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #api/fix-login",
+            "@time=2026-10-30T11:00:00.000Z :bob!u@h PRIVMSG #api :shipping at 3",
+            "@time=2026-10-30T11:30:00.000Z :carol!u@h PRIVMSG #api/fix-login :retried with a 30s cap",
+        ],
+    );
+    let rows = chat.sidebar_list(&all());
+    // The channel's own line, though its thread's is newer: no line shows on two rows.
+    assert_eq!(
+        row(&rows, "#api").preview.as_deref(),
+        Some("bob: shipping at 3")
+    );
+    let thread = row(&rows, "#api/fix-login");
+    assert_eq!(
+        (thread.preview.as_deref(), thread.when.as_deref()),
+        (Some("carol: retried with a 30s cap"), Some("30m"))
+    );
+    assert_eq!(
+        chat.threads("#api")[0].preview.as_deref(),
+        Some("carol: retried with a 30s cap")
+    );
 }
