@@ -4734,6 +4734,13 @@
           ],
           "description": "The session that queued it, whom the text names."
         },
+        "machine": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The nick of the machine [`Data::session`] runs on: a session's id is unique only on\nits machine, so the machine and the session together say whose landing it is."
+        },
         "repo": {
           "type": [
             "string",

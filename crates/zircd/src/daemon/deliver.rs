@@ -388,6 +388,12 @@ impl Daemon {
         if let ControlFlow::Break(settled) = self.why_awaited(delivery, channel, session, &names) {
             return settled;
         }
+        // CI's landing or deploy for another machine's session is no news to one of ours of
+        // the same id: a session's id is unique only on its machine. What's waited on by its
+        // branch or build woke it above.
+        if session.is_some() && ci_for_another_machine(delivery, me) {
+            return None;
+        }
         // A workflow saying what the session itself did, took a step on or finished it, is
         // no news to it, as its own posts aren't: a fixer closing three runs at once woke
         // itself six times with them and tripped the wake breaker (14 Nov 2026). What it
@@ -710,6 +716,18 @@ impl Daemon {
     }
 }
 
+/// Whether `delivery` is CI's landing or deploy for a session on a machine other than `me`,
+/// as its data's `machine` says. An older CI's event names no machine: never another's.
+fn ci_for_another_machine(delivery: &Delivery, me: &str) -> bool {
+    let Event::Custom { kind, data, .. } = &delivery.message.event else {
+        return false;
+    };
+    (kind == zirc_proto::ci::LANDING_KIND || kind == zirc_proto::ci::DEPLOY_KIND)
+        && zirc_proto::ci::Data::of(data)
+            .machine
+            .is_some_and(|machine| !machine.eq_ignore_ascii_case(me))
+}
+
 /// Whether `name`, as a workflow says who did something or who a step is for, is
 /// `session`: the session alone, or as `machine/session`.
 pub(super) fn names_session(name: &str, session: &str) -> bool {
@@ -725,4 +743,35 @@ pub(super) fn names_session(name: &str, session: &str) -> bool {
 fn under_way(message: &Message, data: &serde_json::Value) -> bool {
     let data = zirc_proto::ci::Data::of(data);
     message.is_live() || (data.state.as_deref() == Some("running") && !data.steps.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// CI's landing for `session` on `machine`, or naming no machine, as an older CI's does.
+    fn landing(machine: Option<&str>) -> Delivery {
+        let mut data = serde_json::json!({ "session": "cc-1", "state": "passed" });
+        if let Some(machine) = machine {
+            data["machine"] = machine.into();
+        }
+        let event = Event::Custom {
+            kind: zirc_proto::ci::LANDING_KIND.into(),
+            data,
+            text: "cc-1: landed web as abc1234".into(),
+        };
+        Delivery::new("#api", zirc_proto::ci::NICK, Message::new("ci", event))
+    }
+
+    #[test]
+    fn a_landing_names_its_sessions_machine() {
+        assert!(ci_for_another_machine(
+            &landing(Some("bob-laptop")),
+            "me-mbp"
+        ));
+        assert!(!ci_for_another_machine(&landing(Some("ME-MBP")), "me-mbp"));
+        // An older CI names no machine, or an empty one: never another's.
+        assert!(!ci_for_another_machine(&landing(None), "me-mbp"));
+        assert!(!ci_for_another_machine(&landing(Some("")), "me-mbp"));
+    }
 }

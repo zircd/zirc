@@ -138,6 +138,10 @@ pub struct Data {
     /// The session that queued it, whom the text names.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
+    /// The nick of the machine [`Data::session`] runs on: a session's id is unique only on
+    /// its machine, so the machine and the session together say whose landing it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine: Option<String>,
     /// The repository's web address.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repo: Option<String>,
@@ -225,6 +229,7 @@ impl Data {
             &mut it.branch,
             &mut it.subject,
             &mut it.session,
+            &mut it.machine,
             &mut it.repo,
             &mut it.commit,
             &mut it.url,

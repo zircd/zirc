@@ -360,14 +360,21 @@ fn is_activity_of(nick: &str, session: &str, entry: &Entry) -> bool {
     if entry.from.eq_ignore_ascii_case(nick) && message.session == session {
         return true;
     }
-    // CI says a landing or deploy from its own nick, and names the session that queued it.
+    // CI says a landing or deploy from its own nick, and names the session that queued it,
+    // and its machine: a session's id is unique only on its machine. An older CI's event
+    // names no machine, and goes by the session alone.
     match &message.event {
         Event::Custom { kind, data, .. }
             if (kind == ci::LANDING_KIND || kind == ci::DEPLOY_KIND)
                 && super::sender_kind(&entry.from, entry.owner.as_deref())
                     == SenderKind::Integration =>
         {
-            ci::Data::of(data).session.as_deref() == Some(session)
+            let data = ci::Data::of(data);
+            data.session.as_deref() == Some(session)
+                && data
+                    .machine
+                    .as_deref()
+                    .is_none_or(|machine| machine.eq_ignore_ascii_case(nick))
         }
         _ => false,
     }

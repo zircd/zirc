@@ -385,3 +385,46 @@ fn a_header_has_the_now_line_for_an_untitled_session_too() {
     );
     assert_eq!(chat.agent_header("bob"), None);
 }
+
+#[test]
+fn a_landing_for_another_machines_session_of_the_same_id_is_not_ours() {
+    let mut chat = scene();
+    hear_checkout(&mut chat);
+    let on = |machine: &str, text: &str| {
+        let mut message = landing("cc-1", text);
+        if let Event::Custom { data, .. } = &mut message.event {
+            data["machine"] = machine.into();
+        }
+        message
+    };
+    feed(
+        &mut chat,
+        &[
+            &say(
+                "#api",
+                "zirc-ci",
+                "10:50:00",
+                &on("bob-laptop", "cc-1: landed theirs as fff"),
+            ),
+            &say(
+                "#api",
+                "zirc-ci",
+                "10:51:00",
+                &on("me-mbp", "cc-1: landed ours as aaa"),
+            ),
+        ],
+    );
+    let got: Vec<String> = lines(&chat, "me-mbp/cc-1")
+        .into_iter()
+        .map(|(_, text)| text)
+        .collect();
+    // CI names the machine too: bob's cc-1 landing is his session's, not ours.
+    assert!(
+        got.iter().any(|text| text.contains("landed ours")),
+        "{got:?}"
+    );
+    assert!(
+        !got.iter().any(|text| text.contains("landed theirs")),
+        "{got:?}"
+    );
+}
