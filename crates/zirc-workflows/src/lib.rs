@@ -1337,7 +1337,10 @@ impl Engine {
             .position(|s| s.on == Signal::LandingQueued);
         let detail = detail.map(str::to_owned);
         if let Some(j) = reached {
-            if j + 1 == step.stages.len() {
+            // The last stage is the task done, unless it has outputs to hand back: then it
+            // waits there for them, as a fixer's cause= came after the run had ended
+            // ("there's no run going") on every fix that landed.
+            if j + 1 == step.stages.len() && step.outputs.is_empty() {
                 let text = format!(
                     "`{id}` · `{}`: {}{}, so it's done",
                     step.id,
@@ -2070,6 +2073,16 @@ fn how_to_answer(id: &str, step: &Step) -> String {
         StepKind::Approve => format!(
             " Answer with 👍 or 👎, or `zirc step answer {id} {} yes`.",
             step.id
+        ),
+        _ if !step.stages.is_empty() && !step.outputs.is_empty() => format!(
+            " I'll follow along from what you say, push and land; once it lands, hand back with \
+             `zirc step done {id} {} {}`.",
+            step.id,
+            step.outputs
+                .iter()
+                .map(|output| format!("{output}=<…>"))
+                .collect::<Vec<_>>()
+                .join(" ")
         ),
         _ if !step.stages.is_empty() => format!(
             " I'll follow along from what you say, push and land; `zirc step done {id} {}` \

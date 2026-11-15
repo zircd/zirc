@@ -676,8 +676,9 @@ pub struct Step {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback: Option<String>,
     /// For a task: how it goes, each stage reached on what the workflow sees of whoever has
-    /// it, without their saying so. Reaching the last is the task done; a failed landing goes
-    /// back to the stage before the one its landing reached.
+    /// it, without their saying so. Reaching the last is the task done, unless it has
+    /// `outputs`: then it waits there for them, handed back with `zirc step done`. A failed
+    /// landing goes back to the stage before the one its landing reached.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stages: Vec<Stage>,
     /// For an approval: a yes counts only after [`crate::request::HOLD_SECONDS`], which a no

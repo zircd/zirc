@@ -177,8 +177,8 @@ fn a_broken_master_goes_to_its_owner() {
         [
             "started `master-1`",
             "`master-1` · `fix` → @cc-8b60f7: Master is broken (//:check fails): fix it. \
-             I'll follow along from what you say, push and land; `zirc step done master-1 \
-             fix` finishes it another way."
+             I'll follow along from what you say, push and land; once it lands, hand back \
+             with `zirc step done master-1 fix cause=<…>`."
         ]
     );
     let assigned = runs(&said).pop().unwrap();
@@ -204,10 +204,24 @@ fn the_owner_moves_it_along_by_what_they_do() {
         step(Did::LandingQueued, Some("build 3081"), 4 * MIN),
         ["`master-1` · `fix`: landing (build 3081)"]
     );
+    // Landed, a step with outputs waits for them: the fixer's cause= is handed back after.
     assert_eq!(
         step(Did::Landed, Some("build 3081"), 20 * MIN),
+        ["`master-1` · `fix`: landed (build 3081)"]
+    );
+    let back = e.handle(
+        act(
+            owner(),
+            "master-1",
+            "fix",
+            done(&[("cause", "a stale cache")]),
+        ),
+        21 * MIN,
+    );
+    assert_eq!(
+        texts(&back),
         [
-            "`master-1` · `fix`: landed (build 3081), so it's done",
+            "m3-mac/cc-8b60f7 finished `fix` of `master-1`",
             "skipped `tell` of `master-1`",
             "`master-1` waits until master is ok"
         ]
@@ -218,6 +232,24 @@ fn the_owner_moves_it_along_by_what_they_do() {
         ["`green` of `master-1`: it is", "`master-1` is done"]
     );
     assert_eq!(runs(&green)[1].card.state, CardState::Passed);
+}
+
+#[test]
+fn a_task_with_nothing_to_hand_back_is_done_at_its_last_stage() {
+    // The master workflow's fix alone, with nothing to hand back.
+    let fix_only = MASTER.split("\n[[step]]\nid = \"tell\"").next().unwrap();
+    let source = fix_only.replace("outputs = [\"cause\"]\n", "");
+    assert_ne!(
+        source, fix_only,
+        "the fixture names its outputs as this expects"
+    );
+    let mut e = engine(&source);
+    e.handle(broken("cc-8b60f7"), 0);
+    let landed = e.handle(did(owner(), Did::Landed, Some("build 7")), MIN);
+    assert_eq!(
+        texts(&landed)[0],
+        "`master-1` · `fix`: landed (build 7), so it's done"
+    );
 }
 
 #[test]
@@ -324,6 +356,10 @@ fn anything_they_say_keeps_it_from_being_quiet() {
 fn a_wait_nudges_whoever_did_the_step_before() {
     let mut e = running();
     e.handle(did(owner(), Did::Landed, Some("build 9")), MIN);
+    e.handle(
+        act(owner(), "master-1", "fix", done(&[("cause", "x")])),
+        MIN,
+    );
     let nudged = e.handle(Input::Tick, 21 * MIN);
     assert_eq!(
         texts(&nudged),
@@ -618,10 +654,7 @@ fn with_several_runs_what_they_do_moves_the_one_it_names() {
         ["`master-1` · `fix`: working (fix-master-1)"]
     );
     let landed = texts(&e.handle(landing(Did::Landed, "3345", "fix-master-1"), 5));
-    assert_eq!(
-        landed[0],
-        "`master-1` · `fix`: landed (build 3345), so it's done"
-    );
+    assert_eq!(landed[0], "`master-1` · `fix`: landed (build 3345)");
     assert!(
         landed.iter().all(|line| !line.contains("master-2")),
         "{landed:?}"
@@ -646,10 +679,7 @@ fn whoever_had_it_may_still_finish_it_after_it_escalates() {
         }
     );
     let landed = e.handle(did(owner(), Did::Landed, None), 46 * MIN);
-    assert_eq!(
-        texts(&landed)[0],
-        "`master-1` · `fix`: landed, so it's done"
-    );
+    assert_eq!(texts(&landed)[0], "`master-1` · `fix`: landed");
 }
 
 #[test]
