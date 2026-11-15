@@ -92,20 +92,46 @@ pub async fn start() -> Option<Running> {
     start_with(|_| {}).await
 }
 
+/// How many times a server is started on fresh ports: one Ergo found it couldn't listen
+/// on (`bind: address already in use`, build 3569), as another process can take a free port
+/// before Ergo does. [`zirc_test_ergo::Ergo::start_with`] tries again the same way.
+const ATTEMPTS: usize = 3;
+
 /// The same, its options changed by `change` first.
-pub async fn start_with(change: impl FnOnce(&mut Options)) -> Option<Running> {
+pub async fn start_with(change: impl Fn(&mut Options)) -> Option<Running> {
     let Some((ergo, ergo_config)) = ergo() else {
         eprintln!("ZIRC_ERGO isn't set, so there's no Ergo to start: run it with Bazel");
         return None;
     };
+    for attempt in 1..=ATTEMPTS {
+        match started(&change, &ergo, &ergo_config).await {
+            Ok(running) => return Some(running),
+            // Ergo's own reason is in its log, above: a port taken, as a config it can't
+            // load would be every time, which the last attempt says.
+            Err(ended) if attempt < ATTEMPTS && ended.contains("Ergo stopped") => {
+                eprintln!("Ergo stopped as it started ({ended}): again, on other ports");
+            }
+            Err(ended) => panic!("the server stopped before it answered: {ended}"),
+        }
+    }
+    unreachable!("the last attempt panics or returns")
+}
+
+/// A server on a fresh data directory and ports, once it takes requests; why it stopped
+/// first, otherwise.
+async fn started(
+    change: &impl Fn(&mut Options),
+    ergo: &Path,
+    ergo_config: &Path,
+) -> Result<Running, String> {
     let data = tempfile::tempdir().unwrap();
-    let mut options = options(data.path(), ergo, ergo_config);
+    let mut options = options(data.path(), ergo.to_owned(), ergo_config.to_owned());
     change(&mut options);
     let task = tokio::spawn(zirc_server::run::run(options.clone()));
     for _ in 0..200 {
         if task.is_finished() {
             let ended = task.await.expect("the server's task");
-            panic!("the server stopped before it answered: {ended:?}");
+            return Err(format!("{ended:?}"));
         }
         if let Ok(secrets) = Secrets::read(&options.data) {
             let accounts = Client::new(
@@ -115,7 +141,7 @@ pub async fn start_with(change: impl FnOnce(&mut Options)) -> Option<Running> {
             if admin::list(&accounts).await.is_ok() {
                 let https = format!("http://{}", options.web_listen.unwrap());
                 let irc = options.public_irc_port;
-                return Some(Running {
+                return Ok(Running {
                     options,
                     accounts,
                     https,

@@ -316,7 +316,7 @@ async fn images_are_resized_by_imgproxy_reading_them_beside_the_server() {
     let Some(server) = common::start_with(|options| {
         options.beside_listen = Some(([127, 0, 0, 1], beside).into());
         options.beside_url = format!("http://127.0.0.1:{beside}");
-        options.imgproxy = Some(imgproxy);
+        options.imgproxy = Some(imgproxy.clone());
     })
     .await
     else {
@@ -391,7 +391,7 @@ async fn videos_play_from_copies_the_worker_makes_when_first_asked_for() {
     let Some(server) = common::start_with(|options| {
         options.beside_listen = Some(([127, 0, 0, 1], beside).into());
         options.beside_url = format!("http://127.0.0.1:{beside}");
-        options.media_worker = Some(worker);
+        options.media_worker = Some(worker.clone());
     })
     .await
     else {
