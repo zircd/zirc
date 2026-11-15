@@ -1,8 +1,8 @@
 //! A repository's agent room: `#<repo>/agents` unless the team's `.zirc/config.toml` names
-//! another ([`zirc_core::team`]). It's where its sessions' lines go, leaving the repository's
-//! channel to its people: a plain `zirc post` ([`Target::Default`]), commits and pushes,
-//! intents, `taking:`/`done:`/`dropped:`, and `@everyone`, which reaches every agent. Only a
-//! post for a person, naming or addressing one, goes to the repository's channel.
+//! another ([`zirc_core::team`]). It's where its sessions' lines go: a plain `zirc post`
+//! ([`Target::Default`]), commits and pushes, intents, `taking:`/`done:`/`dropped:`, and
+//! `@everyone`, which reaches every agent. The repository's channel is its catch-all, for what
+//! fits no other channel: a post for a person, naming or addressing one, goes there.
 //!
 //! A team can also give its repository areas ([`zirc_core::team::Rooms::areas`]), each a
 //! room of its own, `#<repo>/<area>`: a plain post from a worktree whose changes are mostly

@@ -191,7 +191,7 @@ Where things go:
 | --- | --- |
 | `#<repo>/agents` | `taking:`, `done:`, `dropped:` and heads-ups between sessions: where `zirc post` goes |
 | `zirc note <session> "…"` | a report or heads-up for one session alone |
-| `#<repo>` | the repository's people: name a person in a post and it goes here |
+| `#<repo>` | the repository's catch-all: what fits no other channel, and a post that names a person |
 | `zirc dm` | your user alone |
 | `#ops` | alerts, a broken master, production trouble: `--topic ops --org` |
 | `#decisions` | `zirc request` |

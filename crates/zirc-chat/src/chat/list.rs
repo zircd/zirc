@@ -155,7 +155,7 @@ pub struct ActiveCard {
 
 /// The room under a repository's channel where its agents' lines go, `#<repo>/agents`,
 /// unless the team's config names another (zirc-core's `team`): leaving the repository's
-/// channel to its people. What's said there counts as the repository's ([`home_channel`]),
+/// channel as its catch-all. What's said there counts as the repository's ([`home_channel`]),
 /// and apps join it with the repository's channel.
 pub const AGENTS_ROOM: &str = zirc_proto::AGENTS_ROOM;
 
