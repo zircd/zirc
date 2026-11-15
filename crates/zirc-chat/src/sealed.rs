@@ -252,6 +252,40 @@ fn closing(bytes: &[u8], run: usize) -> Option<usize> {
     None
 }
 
+/// `text` with its selection from byte `start` to `end` between [`MARKER`]s, as the
+/// composer's lock wraps it: the text, and the same words selected after, inside the
+/// markers. With nothing selected, the markers at the cursor, the cursor between them. A
+/// selection already between markers has them taken off again.
+#[must_use]
+pub fn wrap_part(text: &str, start: usize, end: usize) -> (String, usize, usize) {
+    let fit = |at: usize| {
+        let mut at = at.min(text.len());
+        while !text.is_char_boundary(at) {
+            at -= 1;
+        }
+        at
+    };
+    let (start, end) = (fit(start.min(end)), fit(start.max(end)));
+    let marker = MARKER.len();
+    let wrapped = text[..start].ends_with(MARKER) && text[end..].starts_with(MARKER) && start < end;
+    if wrapped {
+        let unwrapped = format!(
+            "{}{}{}",
+            &text[..start - marker],
+            &text[start..end],
+            &text[end + marker..]
+        );
+        return (unwrapped, start - marker, end - marker);
+    }
+    let wrapped = format!(
+        "{}{MARKER}{}{MARKER}{}",
+        &text[..start],
+        &text[start..end],
+        &text[end..]
+    );
+    (wrapped, start + marker, end + marker)
+}
+
 /// Why parts couldn't be sealed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SealError {
@@ -655,6 +689,24 @@ mod tests {
             seal_message(&key(7), &ACME, &small, nonces(), 50),
             Err(SealError::TooLong)
         );
+    }
+
+    #[test]
+    fn the_lock_wraps_the_selection_or_takes_its_markers_off() {
+        // Selected: wrapped, the same words still selected.
+        assert_eq!(
+            wrap_part("the key is sk_1 ok", 11, 15),
+            ("the key is ||sk_1|| ok".to_owned(), 13, 17)
+        );
+        // Nothing selected: the markers at the cursor, the cursor between them.
+        assert_eq!(wrap_part("key: ", 5, 5), ("key: ||||".to_owned(), 7, 7));
+        // Pressed again: unwrapped.
+        assert_eq!(
+            wrap_part("the key is ||sk_1|| ok", 13, 17),
+            ("the key is sk_1 ok".to_owned(), 11, 15)
+        );
+        // Backwards, past the end or inside a character: where it can be.
+        assert_eq!(wrap_part("é", 9, 1), ("||é||".to_owned(), 2, 4));
     }
 
     #[test]

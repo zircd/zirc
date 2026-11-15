@@ -7,7 +7,7 @@ use ring::rand::{SecureRandom as _, SystemRandom};
 use crate::secrets::Secrets;
 pub use zirc_chat::sealed::{
     Context, DeviceKey, KEY_LEN, Key, KeyError, MARKER, NONCE_LEN, Opened, SealError, Split,
-    open_message, split,
+    open_message, split, wrap_part,
 };
 
 /// Why a key couldn't be made or parts sealed.

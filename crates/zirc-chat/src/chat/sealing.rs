@@ -34,6 +34,9 @@ pub const SEALED: &str = "sealed";
 /// What shows a hidden part's value.
 pub const REVEAL: &str = "Reveal";
 
+/// The composer's lock, which puts the selection between `||` markers to seal it.
+pub const SEAL: &str = "Seal (||…||)";
+
 /// The Settings page of the organisation's keys ([`super::SettingsKind::Sealed`]).
 pub const SEALED_MESSAGES: &str = "Sealed messages";
 

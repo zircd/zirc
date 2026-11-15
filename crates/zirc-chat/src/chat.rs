@@ -181,8 +181,8 @@ pub use run::{Here, Ran};
 pub use scroll::{SCROLL_RULES, ScrollRules, Splice, splices};
 pub use sealing::{
     ADD_KEY, CANT_SEAL_HERE, COPY_SEALED, KEYS_HERE, LOCK, NO_KEY_TO_SEAL, NO_KEYS_HERE, PASTE_KEY,
-    REVEAL, SEALED, SEALED_EXPLAINED, SEALED_FAILED, SEALED_MESSAGES, SEALED_NO_KEY, SEALS_IN_ONE,
-    SEALS_ONLY_SAYING, SEALS_WITH, SealedPart, SealedSpan, SealedState, SealedTag,
+    REVEAL, SEAL, SEALED, SEALED_EXPLAINED, SEALED_FAILED, SEALED_MESSAGES, SEALED_NO_KEY,
+    SEALS_IN_ONE, SEALS_ONLY_SAYING, SEALS_WITH, SealedPart, SealedSpan, SealedState, SealedTag,
     copy_sealed_label, key_added, no_random, seals,
 };
 pub use search::{
