@@ -180,9 +180,16 @@ impl Ergo {
     pub fn restart(&mut self) {
         // Stopped as an upgrade stops it, so it finishes writing what it took to its history
         // first: killed, a message heard live just before could be gone after (build 3581).
-        let _ = Command::new("kill")
-            .args(["-TERM", &self.child.id().to_string()])
+        // By the shell's own kill, as CI's image has no kill command (build 3586), and killed
+        // after all if it hasn't ended in a while, so a restart never waits forever.
+        let _ = Command::new("sh")
+            .args(["-c", &format!("kill -TERM {}", self.child.id())])
             .status();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while matches!(self.child.try_wait(), Ok(None)) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let _ = self.child.kill();
         let _ = self.child.wait();
         let before = self.log().matches(&Self::listening(self.port)).count();
         self.child = run(&self.binary, self.dir.path(), &self.env);
