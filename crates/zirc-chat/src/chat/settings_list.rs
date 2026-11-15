@@ -319,9 +319,11 @@ impl SettingsKind {
                 signed_in && app != SettingsApp::Web
             }
             // Who may ask a machine's agents is its zircd's, which only a computer has (the
-            // user's choice, 11 Nov 2026), as is a server of one's own. Keys for sealed parts
-            // are any device's, but the web's and the phones' page come with their sealed parts.
-            Self::Agents | Self::Server | Self::Sealed => app == SettingsApp::Desktop,
+            // user's choice, 11 Nov 2026), as is a server of one's own.
+            Self::Agents | Self::Server => app == SettingsApp::Desktop,
+            // Keys are any device's, for any server; the phones' page comes with their
+            // sealed parts.
+            Self::Sealed => app != SettingsApp::Phone,
             Self::Appearance | Self::Privacy => true,
         }
     }
@@ -384,7 +386,7 @@ mod tests {
         // person blocks.
         assert_eq!(
             kinds(SettingsApp::Web, true),
-            [Profile, Appearance, Privacy]
+            [Profile, Sealed, Appearance, Privacy]
         );
         // Before signing in, nothing of zirc.dev's but signing in, with Organisations.
         assert_eq!(
