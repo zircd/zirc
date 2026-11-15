@@ -6026,11 +6026,14 @@ fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
                     "#web".to_owned()
                 ]
             ),
-            // People's, newest first; our agent's under its machine, in Machines.
-            (Shelf::Direct, vec!["dave".to_owned(), "bob".to_owned()]),
+            // People's and our agent's, newest first.
             (
-                Shelf::Machines,
-                vec!["me-mbp".to_owned(), "  me-mbp/cc-1".to_owned()]
+                Shelf::Direct,
+                vec![
+                    "me-mbp/cc-1".to_owned(),
+                    "dave".to_owned(),
+                    "bob".to_owned()
+                ]
             ),
         ]
     );

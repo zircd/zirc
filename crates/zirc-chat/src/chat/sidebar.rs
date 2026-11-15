@@ -18,12 +18,12 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::conversation::{ChannelTitle, Kind, agent, fold};
+use super::conversation::{ChannelTitle, Kind, fold};
 use super::face::Face;
 use super::list::{ChannelGroup, DirectKind, DirectRow, Shelf, SidebarSection};
 use super::{
     Attendance, Avatar, BROWSE_CHANNELS, Chat, NEW_CHANNEL, Presence, ago_short, away_label,
-    badge_label, is_group, room_label, runs_on,
+    badge_label, is_group, room_label,
 };
 
 /// What the row after the first few direct messages says, where an app lists only those
@@ -276,13 +276,9 @@ impl Chat {
         let shown = self.selected().name.clone();
         let working = self.working_tasks();
         let groups = self.listed_channel_groups();
-        // Machines' threads and agent sessions are under Machines, by their machine, and not
-        // in the direct messages too: a conversation shows once.
-        let online = self.our_machines();
-        let (beside_machines, directs): (Vec<DirectRow>, Vec<DirectRow>) = self
-            .listed_direct_rows(&working, &online)
-            .into_iter()
-            .partition(|row| matches!(row.kind, DirectKind::Agent | DirectKind::Machine));
+        // Agent sessions and machines' threads are direct messages among people's, newest
+        // first (the user's choice, 15 Nov 2026).
+        let directs = self.listed_direct_rows(&self.our_machines());
         let mut list = Vec::new();
 
         let mut starred = Vec::new();
@@ -311,7 +307,7 @@ impl Chat {
                 } else {
                     &row.name
                 };
-                self.tab_of(name) == tab
+                SidebarSection::of(name) == tab
             });
         }
         list.extend(self.sidebar_part(Shelf::Starred, starred, &shown));
@@ -343,9 +339,6 @@ impl Chat {
 
         let direct = self.direct_part(&directs, &working, *options);
         list.extend(self.sidebar_part(Shelf::Direct, direct, &shown));
-
-        let machines = self.machines_part(&online, &beside_machines, &working, &shown);
-        list.extend(self.sidebar_part(Shelf::Machines, machines, &shown));
 
         if let Some(tab) = options.tab {
             list.retain(|row| tab.has(row.shelf));
@@ -381,63 +374,6 @@ impl Chat {
         })
     }
 
-    /// Your machines' rows: each of our machines online that needs us, with its agent
-    /// sessions under it.
-    fn machines_part(
-        &self,
-        online: &[String],
-        beside_machines: &[DirectRow],
-        working: &HashMap<String, (String, String)>,
-        shown: &str,
-    ) -> Vec<ListRow> {
-        // Our machines online, then any other with something listed: one of ours offline, or
-        // a teammate's, by its sessions or its thread.
-        let mut all: Vec<String> = online.to_vec();
-        for row in beside_machines {
-            let nick = agent(&row.name).map_or(row.name.as_str(), |(nick, _)| nick);
-            if !all.iter().any(|known| known.eq_ignore_ascii_case(nick)) {
-                all.push(nick.to_owned());
-            }
-        }
-        let online = &all;
-        // A machine that runs on another of ours online (a CI job's host on its warm agent's)
-        // is drawn under it, with its own sessions one step in; else it's a machine of its own.
-        let parent_of = |nick: &str| {
-            runs_on(self.machine_owner(nick), self.realname(nick))
-                .and_then(|host| online.iter().find(|m| m.eq_ignore_ascii_case(&host)))
-                .filter(|host| !self.is_starred(host))
-        };
-        // A machine of ours that's connected is always listed. Any other only while it needs
-        // us: an agent session listed under it, its thread unread or shown, or a machine
-        // under it that is.
-        let connected = self.our_machines();
-        let mut machines = Vec::new();
-        let needs_us = |nick: &str, rows: &[ListRow]| {
-            connected.iter().any(|m| m.eq_ignore_ascii_case(nick))
-                || rows.iter().any(|row| !row.name.eq_ignore_ascii_case(nick))
-                || self.is_unread(nick)
-                || self.badge(nick) > 0
-                || shown.eq_ignore_ascii_case(nick)
-        };
-        for nick in online.iter().filter(|nick| parent_of(nick).is_none()) {
-            let mut rows = self.machine_rows(nick, 0, beside_machines, working);
-            if !self.is_starred(nick) {
-                for child in online.iter().filter(|child| {
-                    parent_of(child).is_some_and(|host| host.eq_ignore_ascii_case(nick))
-                }) {
-                    let under = self.machine_rows(child, 1, beside_machines, working);
-                    if needs_us(child, &under) {
-                        rows.extend(under);
-                    }
-                }
-            }
-            if needs_us(nick, &rows) {
-                machines.extend(rows);
-            }
-        }
-        machines
-    }
-
     /// The agent sessions at work, ours and our teammates', by folded conversation name:
     /// the conversation's name and what it's taking on ([`Chat::active_now`]).
     fn working_tasks(&self) -> HashMap<String, (String, String)> {
@@ -448,15 +384,13 @@ impl Chat {
     }
 
     /// The direct messages the sidebar lists, newest first: every one of [`Chat::direct_rows`]
-    /// but our machine's thread with nothing said in it yet. An agent session is listed while
-    /// it's live or was active within [`super::ROOM_QUIET_AFTER`], whether or not anything
-    /// was said with it; one quiet longer ([`DirectRow::folded`]) isn't listed at all: Jump
-    /// to… and search still find it, and it's back once it's opened or it's active again.
-    fn listed_direct_rows(
-        &self,
-        working: &HashMap<String, (String, String)>,
-        online: &[String],
-    ) -> Vec<DirectRow> {
+    /// a person's, a group's or a guest's; an agent session's or a machine's thread only once
+    /// something's been said in it, there and not in a channel (the user's choice, 15 Nov
+    /// 2026), as an agent that exists but never wrote to us is nothing to read. An agent
+    /// session quiet for longer than [`super::ROOM_QUIET_AFTER`] ([`DirectRow::folded`])
+    /// isn't listed either: Jump to… and search still find it, and it's back once it's opened
+    /// or says something again. The one shown is always listed.
+    fn listed_direct_rows(&self, online: &[String]) -> Vec<DirectRow> {
         let shown = &self.selected().name;
         let said = |name: &str| {
             self.conversation(name)
@@ -466,29 +400,15 @@ impl Chat {
             .direct_rows()
             .into_iter()
             .filter(|row| {
-                let ours = match row.kind {
-                    // Live or active within the hour; else gone, though it still claims a
-                    // task: a claim never dropped mustn't list it until its machine says it
-                    // ended, and then not.
-                    DirectKind::Agent => return !row.folded,
-                    DirectKind::Machine if row.mine => false,
-                    _ => return true,
-                };
-                ours || said(&row.name) || shown.eq_ignore_ascii_case(&row.name)
+                shown.eq_ignore_ascii_case(&row.name)
+                    || match row.kind {
+                        DirectKind::Agent => said(&row.name) && !row.folded,
+                        DirectKind::Machine => said(&row.name),
+                        DirectKind::Person | DirectKind::Group => true,
+                    }
             })
             .filter(|row| !self.left_out(row, online))
             .collect();
-        // Our live sessions, from their first watch, and those at work within the hour,
-        // though nothing's been said with them yet.
-        let live = self.live_sessions(|nick| self.ours(nick));
-        for name in working.values().map(|(name, _)| name).chain(&live) {
-            if !rows.iter().any(|row| row.name.eq_ignore_ascii_case(name)) {
-                let row = self.direct_row(name.clone());
-                if !row.folded {
-                    rows.push(row);
-                }
-            }
-        }
         rows.sort_by_cached_key(|row| (std::cmp::Reverse(row.latest), fold(&row.name)));
         rows
     }
@@ -674,87 +594,6 @@ impl Chat {
             ..ListRow::new(ListKind::Conversation, part, row.label())
         }
         .counting(row.badge)
-    }
-
-    /// A machine's rows in Your machines, `depth` deep: its own row, unless it's starred and
-    /// so under Starred, then its agent sessions listed, newest first, one step in, by what
-    /// each goes by.
-    fn machine_rows(
-        &self,
-        nick: &str,
-        depth: u8,
-        beside_machines: &[DirectRow],
-        working: &HashMap<String, (String, String)>,
-    ) -> Vec<ListRow> {
-        let starred = self.is_starred(nick);
-        let mut rows = Vec::new();
-        if !starred {
-            rows.push(ListRow {
-                depth,
-                ..self.machine_list_row(nick.to_owned())
-            });
-        }
-        let depth = depth + u8::from(!starred);
-        rows.extend(
-            beside_machines
-                .iter()
-                .filter(|row| {
-                    row.kind == DirectKind::Agent
-                        && !self.is_starred(&row.name)
-                        && agent(&row.name).is_some_and(|(of, _)| of.eq_ignore_ascii_case(nick))
-                })
-                .map(|row| ListRow {
-                    depth,
-                    title: row.title.clone(),
-                    ..self.direct_list_row(row, Shelf::Machines, working)
-                }),
-        );
-        rows
-    }
-
-    /// One of our online machines' row in Your machines, by the machine's own name: it opens
-    /// the thread with it, made when it's first opened.
-    fn machine_list_row(&self, nick: String) -> ListRow {
-        // A teammate's by whose it is too, as its row always said: `bob · laptop`.
-        let (owner, machine) = self
-            .whose(&nick)
-            .unwrap_or_else(|| (self.me.clone(), nick.clone()));
-        let mine = owner.eq_ignore_ascii_case(&self.me);
-        let title = if mine {
-            machine
-        } else {
-            format!("{} · {machine}", self.owner_name(&owner))
-        };
-        let online = self
-            .our_machines()
-            .iter()
-            .any(|m| m.eq_ignore_ascii_case(&nick))
-            || self.standing(&nick).presence() == Presence::Here;
-        let preview = self.preview(&nick);
-        let badge = self.badge(&nick);
-        ListRow {
-            opens: true,
-            direct: true,
-            joined: true,
-            muted: self.is_muted(&nick),
-            unread: self.is_unread(&nick),
-            direct_kind: Some(DirectKind::Machine),
-            faces: vec![self.face(&Self::agents_avatar())],
-            presence: Some(if online {
-                Presence::Here
-            } else {
-                Presence::Gone
-            }),
-            when: preview
-                .as_ref()
-                .map(|preview| ago_short(preview.at, (self.clock)())),
-            preview: preview.map(|preview| preview.text),
-            latest_ms: self.last_said(&nick).map(|at| at.timestamp_millis()),
-            mine,
-            name: nick,
-            ..ListRow::new(ListKind::Conversation, Shelf::Machines, title)
-        }
-        .counting(badge)
     }
 
     /// The direct messages' rows, what's starred left out: all of them, or, with a limit,

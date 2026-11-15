@@ -119,152 +119,58 @@ fn a_part_with_nothing_in_it_is_left_out() {
 }
 
 #[test]
-fn a_machine_running_on_another_of_ours_is_drawn_under_it() {
-    let mut chat = Scene::in_api();
-    feed(
-        &mut chat,
-        &[
-            ":ci-1!u@machine/me JOIN #api me :me",
-            ":build-2301!u@machine/me JOIN #api me :me on ci-1",
-            ":build-77!u@machine/me JOIN #api me :me on ci-9",
-            ":mbp!u@machine/me JOIN #api me :me",
-            ":idle!u@machine/me JOIN #api me :me",
-            // ci-1 has nothing of its own, but build-2301 under it does.
-            ":build-2301!u@machine/me PRIVMSG me :tests green",
-            ":build-77!u@machine/me PRIVMSG me :tests green",
-            ":mbp!u@machine/me PRIVMSG me :hi",
-        ],
-    );
-    let rows = chat.sidebar_list(&all());
-    let machines: Vec<(&str, u8)> = rows
-        .iter()
-        .filter(|row| row.shelf == Shelf::Machines && row.kind == ListKind::Conversation)
-        .map(|row| (row.name.as_str(), row.depth))
-        .collect();
-    // build-2301 is under ci-1; build-77's host isn't online, so it stands alone; idle,
-    // with nothing under it or unread, is listed as it's connected.
-    assert_eq!(
-        machines,
-        [
-            ("build-77", 0),
-            ("ci-1", 0),
-            ("build-2301", 1),
-            ("idle", 0),
-            ("mbp", 0)
-        ]
-    );
-    assert_eq!(
-        chat.whose("build-2301"),
-        Some(("me".into(), "build-2301".into()))
-    );
-}
-
-#[test]
-fn our_online_machines_are_under_machines_by_name_while_connected() {
-    let mut chat = Scene::in_api();
-    feed(
-        &mut chat,
-        &[
-            ":me-ci-2277!u@machine/me JOIN #api",
-            ":me-mbp!u@machine/me JOIN #api",
-            ":alice-mbp!u@machine/alice JOIN #api",
-            ":bob!u@h PRIVMSG me :hi",
-        ],
-    );
-    // Online, though with no session at work and nothing unread: listed, alice's not.
-    let rows = chat.sidebar_list(&all());
-    assert_eq!(
-        headings(&rows),
-        [Shelf::Channels, Shelf::Direct, Shelf::Machines]
-    );
-    assert_eq!(row(&rows, "me-mbp").shelf, Shelf::Machines);
-    assert!(!rows.iter().any(|r| r.name == "alice-mbp"));
-    feed(
-        &mut chat,
-        &[
-            ":me-ci-2277!u@machine/me PRIVMSG me :deployed",
-            &dm("me-mbp", "cc-1", "on it", 1),
-        ],
-    );
-    let rows = chat.sidebar_list(&all());
-    assert_eq!(
-        headings(&rows),
-        [Shelf::Channels, Shelf::Direct, Shelf::Machines]
-    );
-    let machines: Vec<(&str, &str)> = rows
-        .iter()
-        .filter(|row| {
-            row.shelf == Shelf::Machines && row.kind == ListKind::Conversation && row.depth == 0
-        })
-        .map(|row| (row.name.as_str(), row.title.as_str()))
-        .collect();
-    assert_eq!(
-        machines,
-        [("me-ci-2277", "me-ci-2277"), ("me-mbp", "me-mbp")]
-    );
-    let ci = row(&rows, "me-ci-2277");
-    assert!(ci.opens && ci.direct && ci.mine);
-    assert_eq!(ci.direct_kind, Some(DirectKind::Machine));
-    assert_eq!(ci.presence, Some(Presence::Here));
-
-    // Offline once it leaves, as it's online only while it's in a channel we're in: still
-    // under Machines while its thread is unread, its dot gone.
-    feed(&mut chat, &[":me-ci-2277!u@machine/me QUIT :done"]);
-    let rows = chat.sidebar_list(&all());
-    let ci = row(&rows, "me-ci-2277");
-    assert_eq!(
-        (ci.shelf, ci.presence),
-        (Shelf::Machines, Some(Presence::Gone))
-    );
-}
-
-#[test]
-fn an_online_machines_agent_sessions_are_under_it_the_quiet_ones_left_out() {
+fn agents_and_machines_are_direct_messages_once_they_have_said_something() {
     let mut chat = Scene::in_api();
     feed(
         &mut chat,
         &[
             ":me-mbp!u@machine/me JOIN #api",
             ":me-ci-9!u@machine/me JOIN #api",
+            // cc-2 only posts in a channel: that never lists it.
+            &format!(
+                "@time=2026-10-30T11:00:00.000Z {}",
+                zirc("me-mbp", &taking("cc-2", "the login page"))
+            ),
             &dm("me-mbp", "cc-1", "on it", 1),
-            &dm("me-laptop", "cc-2", "elsewhere", 1),
+            &dm("me-laptop", "cc-3", "elsewhere", 1),
         ],
     );
     quiet_agent(&mut chat, "me-mbp", "cc-old");
     let rows = chat.sidebar_list(&all());
-    let machines: Vec<String> = lines(&rows)
-        .into_iter()
-        .filter(|line| line.contains("Machines"))
-        .collect();
-    assert_eq!(
-        machines,
-        [
-            "Heading Machines Machines",
-            "Conversation Machines me-ci-9",
-            "Conversation Machines me-mbp",
-            "  Conversation Machines cc-1",
-            // An offline machine of ours, by the session that said something.
-            "Conversation Machines me-laptop",
-            "  Conversation Machines cc-2",
-        ]
-    );
-    // ci-9, with nothing under it and nothing unread, is listed as it's connected; cc-old,
-    // quiet for over an hour, isn't.
-    assert_eq!(row(&rows, "me-mbp/cc-1").shelf, Shelf::Machines);
-    assert!(!listed(&chat, "me-mbp/cc-old"));
-    // A session on a machine that isn't online is under it too.
-    assert_eq!(row(&rows, "me-laptop/cc-2").shelf, Shelf::Machines);
-
-    // Opened, the quiet one is back under its machine till something else is.
-    let at = chat.position("me-mbp/cc-old").unwrap();
-    let _ = chat.select(at);
-    assert_eq!(row(&chat.sidebar_list(&all()), "me-mbp/cc-old").depth, 1);
-    // And a machine with something unread is listed with nothing under it.
+    // No Machines part: the switch's halves are Channels and Messages.
+    assert_eq!(headings(&rows), [Shelf::Channels, Shelf::Direct]);
+    // The sessions that wrote to us, among the direct messages, on their own rows.
+    for name in ["me-mbp/cc-1", "me-laptop/cc-3"] {
+        let agent = row(&rows, name);
+        assert_eq!(
+            (agent.shelf, agent.depth, agent.direct_kind),
+            (Shelf::Direct, 0, Some(DirectKind::Agent))
+        );
+    }
+    // Online machines with nothing said in their threads, a session that only posted in a
+    // channel, and one quiet for over an hour aren't listed.
+    for name in ["me-mbp", "me-ci-9", "me-mbp/cc-2", "me-mbp/cc-old"] {
+        assert!(!listed(&chat, name), "{name}");
+    }
+    // A machine's thread is, once something's said in it.
     feed(
         &mut chat,
         &[":me-ci-9!u@machine/me PRIVMSG me :build green"],
     );
-    assert!(listed(&chat, "me-ci-9"));
+    let rows = chat.sidebar_list(&all());
+    let ci = row(&rows, "me-ci-9");
+    assert_eq!(
+        (ci.shelf, ci.direct_kind),
+        (Shelf::Direct, Some(DirectKind::Machine))
+    );
+    assert!(ci.opens && ci.direct && ci.mine);
+    // Opened, the quiet one is listed till something else is.
+    let at = chat.position("me-mbp/cc-old").unwrap();
+    let _ = chat.select(at);
+    assert_eq!(
+        row(&chat.sidebar_list(&all()), "me-mbp/cc-old").shelf,
+        Shelf::Direct
+    );
 }
 
 /// Whether a direct message called `name` is anywhere in the sidebar.
@@ -286,7 +192,8 @@ fn a_builds_machine_leaves_the_sidebar_a_while_after_it_goes_offline() {
     );
     let _ = chat.mark_read("build-2301");
     let _ = chat.mark_read("laptop");
-    // Gone, with nothing unread and nothing under it, neither is listed under Machines.
+    // Gone, with nothing unread: both are listed, as they wrote to us; a build's machine
+    // only till its grace is up, any other as a person's direct message is.
     feed(
         &mut chat,
         &[
@@ -294,13 +201,15 @@ fn a_builds_machine_leaves_the_sidebar_a_while_after_it_goes_offline() {
             "@time=2026-10-30T11:50:00.000Z :laptop!u@machine/me QUIT :asleep",
         ],
     );
-    assert!(!listed(&chat, "build-2301"));
-    assert!(!listed(&chat, "laptop"));
+    assert!(listed(&chat, "build-2301"));
+    assert!(listed(&chat, "laptop"));
     chat.clock = || {
         chrono::Utc
-            .with_ymd_and_hms(2026, 10, 30, 12, 4, 0)
+            .with_ymd_and_hms(2026, 10, 30, 12, 10, 0)
             .unwrap()
     };
+    assert!(!listed(&chat, "build-2301"));
+    assert!(listed(&chat, "laptop"));
     // With something unread, it's back.
     feed(
         &mut chat,
@@ -576,7 +485,7 @@ fn quiet_agent_sessions_that_ended_leave_the_direct_messages_till_opened() {
     let opened = row(&rows, "me-mini/cc-2");
     assert_eq!(
         (opened.shelf, opened.direct_kind),
-        (Shelf::Machines, Some(DirectKind::Agent))
+        (Shelf::Direct, Some(DirectKind::Agent))
     );
     assert!(!listed(&chat, "me-mini/cc-3"));
 }
@@ -673,7 +582,7 @@ fn a_direct_limit_lists_that_many_then_all_messages() {
 }
 
 #[test]
-fn an_agent_at_work_has_its_direct_row_with_its_task() {
+fn an_agent_at_work_that_wrote_to_us_has_its_direct_row_with_its_task() {
     let mut chat = busy();
     feed(
         &mut chat,
@@ -693,39 +602,30 @@ fn an_agent_at_work_has_its_direct_row_with_its_task() {
         ],
     );
     let rows = chat.sidebar_list(&all());
-    // Ours is under its machine, which is online, by what it goes by alone.
+    // Ours, among the direct messages, with what it's taking on.
     let ours = row(&rows, "me-mbp/cc-1");
-    assert_eq!(ours.shelf, Shelf::Machines);
+    assert_eq!(ours.shelf, Shelf::Direct);
     assert_eq!(ours.direct_kind, Some(DirectKind::Agent));
     assert_eq!(ours.note.as_deref(), Some("the login page"));
     assert!(ours.mine);
-    assert_eq!(ours.title, "cc-1");
     assert_eq!(ours.faces.len(), 1);
-    // A teammate's agent at work is listed too, with nothing said with it yet.
-    let theirs = row(&rows, "bob-laptop/cc-9");
-    assert_eq!(theirs.note.as_deref(), Some("billing"));
-    assert!(!theirs.mine);
-    // Under Machines, by bob's laptop; the direct messages are people's alone.
-    assert_eq!(theirs.shelf, Shelf::Machines);
-    let laptop = row(&rows, "bob-laptop");
-    assert!(laptop.title.ends_with(" · bob-laptop"), "{laptop:?}");
+    // A teammate's agent at work that never wrote to us isn't listed, nor is its machine.
+    assert!(!listed(&chat, "bob-laptop/cc-9"));
+    assert!(!listed(&chat, "bob-laptop"));
     let direct: Vec<_> = rows
         .iter()
         .filter(|r| r.shelf == Shelf::Direct && r.kind == ListKind::Conversation)
         .map(|r| r.name.as_str())
         .collect();
-    assert_eq!(direct, ["carol", "bob"]);
+    assert_eq!(direct, ["me-mbp/cc-1", "carol", "bob"]);
 }
 
 #[test]
-fn our_machines_thread_is_under_machines_online_or_not() {
+fn our_machines_thread_is_a_direct_message_once_something_is_said_in_it() {
     let mut chat = busy();
-    // Without anything said, it's listed under Machines once, as it's connected, and not
-    // in the direct messages.
+    // Connected, with nothing said: not listed.
     feed(&mut chat, &[":me-mbp!u@machine/me JOIN #api"]);
-    let rows = chat.sidebar_list(&all());
-    assert_eq!(row(&rows, "me-mbp").shelf, Shelf::Machines);
-    assert_eq!(rows.iter().filter(|r| r.name == "me-mbp").count(), 1);
+    assert!(!listed(&chat, "me-mbp"));
     feed(
         &mut chat,
         &[&dm(
@@ -737,14 +637,13 @@ fn our_machines_thread_is_under_machines_online_or_not() {
     );
     let rows = chat.sidebar_list(&all());
     let thread = row(&rows, "me-mbp");
-    assert_eq!(thread.shelf, Shelf::Machines);
+    assert_eq!(thread.shelf, Shelf::Direct);
     assert_eq!(rows.iter().filter(|r| r.name == "me-mbp").count(), 1);
-    // Offline, it's still under Machines, its dot gone.
+    // Offline, it's still listed, its dot gone.
     feed(&mut chat, &[":me-mbp!u@machine/me QUIT :bye"]);
     let rows = chat.sidebar_list(&all());
     let thread = row(&rows, "me-mbp");
-    assert_eq!(thread.shelf, Shelf::Machines);
-    assert_eq!(thread.presence, Some(Presence::Gone));
+    assert_eq!(thread.shelf, Shelf::Direct);
     assert_eq!(thread.kind, ListKind::Conversation);
     assert_eq!(thread.direct_kind, Some(DirectKind::Machine));
     assert!(thread.mine && thread.direct);
@@ -808,7 +707,7 @@ fn each_tab_lists_its_own_parts_and_whats_starred_in_it() {
     );
     assert_eq!(
         SidebarSection::ALL.map(SidebarSection::label),
-        ["Channels", "Messages", "Machines"]
+        ["Channels", "Messages"]
     );
 }
 
@@ -826,7 +725,7 @@ fn each_tab_says_whats_new_in_it_and_opening_one_shows_its_tab() {
         tabs.iter()
             .map(|tab| (tab.label.as_str(), tab.chosen))
             .collect::<Vec<_>>(),
-        [("Channels", true), ("Messages", false), ("Machines", false)]
+        [("Channels", true), ("Messages", false)]
     );
     // carol's message is unread and counted: a direct message counts everything.
     let messages = mark(&chat, SidebarSection::Direct);

@@ -716,16 +716,15 @@ fn org_line(app: &App, org: &OrgHeader, width: usize) -> Line<'static> {
 }
 
 /// A part of the switch where its word doesn't fit: `#` for Channels, an envelope for
-/// Messages, a keyboard for Machines.
+/// Messages.
 fn tab_glyph(section: zirc_core::chat::SidebarSection) -> &'static str {
     match section {
         zirc_core::chat::SidebarSection::Channels => "#",
         zirc_core::chat::SidebarSection::Direct => "✉",
-        zirc_core::chat::SidebarSection::Machines => "⌨",
     }
 }
 
-/// The `Channels | Messages | Machines` switch, `width` columns wide, each half centred in its own:
+/// The `Channels | Messages` switch, `width` columns wide, each half centred in its own:
 /// the one shown reversed, the other bold while something in it is unread, with its count.
 fn tabs_line(app: &App, tabs: &[zirc_core::chat::SidebarTab], width: usize) -> Line<'static> {
     let theme = app.theme;
@@ -2006,6 +2005,16 @@ mod tests {
             .unwrap_or_else(|| panic!("no row with {text:?} in\n{}", rows.join("\n")))
     }
 
+    /// Where the sidebar's heading `label` is drawn, as a column and row to click: its own
+    /// row, not the switch's half of the same name above it.
+    fn heading_at(rows: &[String], label: &str) -> (u16, u16) {
+        let y = rows
+            .iter()
+            .position(|row| row.split('│').next().unwrap().trim_end() == format!(" {label}"))
+            .unwrap_or_else(|| panic!("no heading {label:?} in\n{}", rows.join("\n")));
+        (1, u16::try_from(y).unwrap())
+    }
+
     /// Where `text` is drawn on the screen, as a column and row to click.
     fn place_of(rows: &[String], text: &str) -> (u16, u16) {
         let (y, row) = rows
@@ -2603,18 +2612,15 @@ mod tests {
         };
         // By where it is among the conversations, the server's first.
         assert_eq!(at("#web"), Some(Target::Conversation(2)));
-        // The switch's parts show theirs, by their signs as the list is narrow here; under it
-        // a section's heading folds it.
+        // The switch's halves show theirs, by their words, which fit with two; under it a
+        // section's heading folds it.
         assert_eq!(
-            at("✉"),
+            at("Messages"),
             Some(Target::Tab(zirc_core::chat::SidebarSection::Direct))
         );
+        let (x, y) = heading_at(&rows, "Channels");
         assert_eq!(
-            at("⌨"),
-            Some(Target::Tab(zirc_core::chat::SidebarSection::Machines))
-        );
-        assert_eq!(
-            at("Channels"),
+            target_at(&app, screen, x, y),
             Some(Target::Shelf(zirc_core::chat::Shelf::Channels))
         );
         assert_eq!(at("alice op"), Some(Target::Member("alice".into())));
@@ -3329,8 +3335,8 @@ mod tests {
             app.handle(line.parse().unwrap());
         }
         let listed: Vec<String> = app.listed().map(|(_, c)| app.chat.title(&c.name)).collect();
-        // Channels A–Z, direct messages newest first, then machines' agent sessions.
-        assert_eq!(listed, ["#api", "#web", "bob", "alice", "cc-77aa01 · you"]);
+        // Channels A–Z, then direct messages newest first, agent sessions among them.
+        assert_eq!(listed, ["#api", "#web", "bob", "cc-77aa01 · you", "alice"]);
         let screen = Rect::new(0, 0, 100, 16);
         // The list under the switch.
         let side = |rows: &[String], under: usize| -> Vec<String> {
@@ -3352,29 +3358,20 @@ mod tests {
                 " Browse channels",
             ]
         );
-        // Its Messages: the direct messages newest first, every conversation on its own.
+        // Its Messages: the direct messages newest first, every conversation on its own, our
+        // agent's among them as it wrote to us.
         app.chat.set_tab(zirc_core::chat::SidebarSection::Direct);
         let (rows, _) = draw(&app, screen.width, screen.height);
         assert_eq!(
-            side(&rows, 3),
+            side(&rows, 4),
             [
                 " Direct messages",
                 // What a person last said, dimmed, and when; their presence in front.
                 "▎● bob hi       now 1",
-                " alice",
-            ]
-        );
-        // Its Machines: our machines, as the laptop is in #api, each with its sessions under it.
-        app.chat.set_tab(zirc_core::chat::SidebarSection::Machines);
-        let (rows, _) = draw(&app, screen.width, screen.height);
-        assert_eq!(
-            side(&rows, 3),
-            [
-                " Machines",
-                " ● me-laptop",
                 // A session by what it goes by, its tool's mark in front in its colour; the
                 // list too narrow here for its preview.
-                "▎  ⚙ cc-77aa01      1",
+                "▎⚙ cc-77aa01 · you  1",
+                " alice",
             ]
         );
         app.chat.set_tab(zirc_core::chat::SidebarSection::Direct);
@@ -3402,8 +3399,7 @@ mod tests {
         assert!(!cell.modifier.contains(Modifier::BOLD));
         // And no pip.
         assert_eq!(buffer.backend().buffer()[(x - 1, y)].symbol(), " ");
-        // Our agent's session, under Machines.
-        app.chat.set_tab(zirc_core::chat::SidebarSection::Machines);
+        // Our agent's session, among the direct messages, as it wrote to us.
         let (rows, _) = draw(&app, screen.width, screen.height);
         let (x, y) = place_of(&rows, "⚙ cc-77aa01");
         assert_ne!(
@@ -3426,7 +3422,7 @@ mod tests {
     }
 
     #[test]
-    fn heads_the_list_with_the_org_and_lists_agents_at_work_as_direct_messages() {
+    fn heads_the_list_with_the_org_and_leaves_agents_that_never_wrote_to_us_out() {
         let mut app = app();
         app.chat.set_org_name(Some("Acme"));
         let taking = |session: &str, task: &str| {
@@ -3453,8 +3449,7 @@ mod tests {
             app.handle(line.parse().unwrap());
         }
         let screen = Rect::new(0, 0, 100, 16);
-        // The agents are in the switch's Machines.
-        app.chat.set_tab(zirc_core::chat::SidebarSection::Machines);
+        app.chat.set_tab(zirc_core::chat::SidebarSection::Direct);
         let (rows, _) = draw(&app, screen.width, screen.height);
         let side: Vec<&str> = rows
             .iter()
@@ -3463,18 +3458,15 @@ mod tests {
         // The organisation and its people on top, as zirc-chat says them.
         let people = app.chat.org_header().members;
         assert_eq!(side[1], format!(" Acme · {people} members"));
-        // No Agents section: under Machines, each agent at work on its own row, under its
-        // machine, what it's taking on after its name.
-        assert!(!side.iter().any(|row| row.contains("Agents")), "{side:?}");
-        let direct = side.iter().position(|row| *row == " Machines").unwrap();
-        let ours = side.iter().position(|row| row.contains("⚙ cc-1")).unwrap();
-        let bobs = side.iter().position(|row| row.contains("⚙ cc-9")).unwrap();
-        assert!(ours > direct && bobs > direct, "{side:?}");
-        assert!(side[ours].contains("CI"), "{side:?}");
-        assert!(side[bobs].contains("billi"), "cut to fit: {side:?}");
-        // A click on it opens ours.
-        let target = target_at(&app, screen, 3, u16::try_from(ours).unwrap());
-        assert_eq!(target, Some(Target::Agent("me-laptop/cc-1".into())));
+        // Agents at work that only posted in a channel aren't direct messages (the user's
+        // choice, 15 Nov 2026): no row of theirs, and no Machines.
+        assert!(
+            !side.iter().any(|row| row.contains("cc-1")
+                || row.contains("cc-9")
+                || row.contains("Machines")),
+            "{side:?}"
+        );
+        assert!(side.iter().any(|row| row.contains("bob")), "{side:?}");
     }
 
     #[test]
@@ -3490,8 +3482,8 @@ mod tests {
         row_with(&rows, "#quiet");
         // A click on Channels folds it away: only what's new in it, or shown, stays, and its
         // heading says there's more.
-        let (x, y) = place_of(&rows, " Channels");
-        let _ = app.pointer(click, target_at(&app, screen, x + 1, y));
+        let (x, y) = heading_at(&rows, "Channels");
+        let _ = app.pointer(click, target_at(&app, screen, x, y));
         let (rows, _) = draw(&app, screen.width, screen.height);
         row_with(&rows, " Channels ▸");
         row_with(&rows, "#api");

@@ -39,9 +39,10 @@ pub struct ShowChoice {
 pub const SHOW_LABEL: &str = "Show";
 
 /// Which part of the sidebar a conversation is in: every app's sidebar shows one at a time,
-/// under a `Channels | Messages | Machines` switch ([`Chat::tab`]), as Discord keeps a
-/// server's channels apart from the direct messages. [`SidebarSection::of`] tells channels
-/// from the rest by name alone; [`Chat::tab_of`] knows machines and agent sessions too.
+/// under a `Channels | Messages` switch ([`Chat::tab`]), as Discord keeps a server's channels
+/// apart from the direct messages. [`SidebarSection::of`] tells them apart by name alone.
+/// Agent sessions and machines' threads are direct messages, among people's (the user's
+/// choice, 15 Nov 2026).
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TS,
 )]
@@ -51,11 +52,9 @@ pub enum SidebarSection {
     /// The server's channels, with their rooms and their guests' rooms.
     #[default]
     Channels,
-    /// Direct messages: with people, groups ([`is_group`]) and guests.
+    /// Direct messages: with people, groups ([`is_group`]), guests, agent sessions
+    /// ([`agent`]) and machines' threads.
     Direct,
-    /// Machines, ours and our teammates', online or not, each with its agent sessions
-    /// ([`agent`]) under it, and its own thread.
-    Machines,
 }
 
 /// One half of the sidebar's `Channels | Messages` switch, as every app draws it
@@ -81,17 +80,15 @@ pub struct SidebarTab {
 
 impl SidebarSection {
     /// Each, in the order the switch shows them.
-    pub const ALL: [Self; 3] = [Self::Channels, Self::Direct, Self::Machines];
+    pub const ALL: [Self; 2] = [Self::Channels, Self::Direct];
 
-    /// What its switch says, in every app: `Channels`, `Messages`, `Machines`. Where the
-    /// sidebar is too narrow for the words, apps draw each one's icon: `#`, a speech bubble,
-    /// a laptop.
+    /// What its switch says, in every app: `Channels`, `Messages`. Where the sidebar is too
+    /// narrow for the words, apps draw each one's icon: `#`, a speech bubble.
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             Self::Channels => "Channels",
             Self::Direct => "Messages",
-            Self::Machines => "Machines",
         }
     }
 
@@ -103,7 +100,6 @@ impl SidebarSection {
             Shelf::Starred => true,
             Shelf::Channels => self == Self::Channels,
             Shelf::Direct => self == Self::Direct,
-            Shelf::Machines => self == Self::Machines,
         }
     }
 
@@ -1073,16 +1069,13 @@ pub enum Shelf {
     Starred,
     /// The channels, each repository's with its rooms, alphabetically.
     Channels,
-    /// Direct messages: people and groups, newest first.
+    /// Direct messages: people, groups, agent sessions and machines' threads, newest first.
     Direct,
-    /// Our own machines that are online, with a conversation or not, by name: see
-    /// [`Chat::our_machines`].
-    Machines,
 }
 
 impl Shelf {
-    /// The part's name, as every app heads it: `Starred`, `Channels`, `Direct messages`,
-    /// `Machines`. Where room is short, such as a tab bar, direct messages are
+    /// The part's name, as every app heads it: `Starred`, `Channels`, `Direct messages`.
+    /// Where room is short, such as a tab bar, direct messages are
     /// [`DIRECT_SHORT`](super::DIRECT_SHORT).
     #[must_use]
     pub const fn label(self) -> &'static str {
@@ -1090,7 +1083,6 @@ impl Shelf {
             Self::Starred => "Starred",
             Self::Channels => "Channels",
             Self::Direct => "Direct messages",
-            Self::Machines => "Machines",
         }
     }
 }
@@ -1154,17 +1146,6 @@ impl Chat {
         self.tab = tab;
     }
 
-    /// The part of the sidebar's switch the conversation called `name` is under: a machine's
-    /// thread and an agent session's are under Machines.
-    #[must_use]
-    pub fn tab_of(&self, name: &str) -> SidebarSection {
-        match SidebarSection::of(name) {
-            SidebarSection::Channels => SidebarSection::Channels,
-            _ if agent(name).is_some() || self.whose(name).is_some() => SidebarSection::Machines,
-            _ => SidebarSection::Direct,
-        }
-    }
-
     /// The sidebar's switch: each section, in order, with what's new in it.
     #[must_use]
     pub fn tabs(&self) -> Vec<SidebarTab> {
@@ -1174,7 +1155,7 @@ impl Chat {
                 let (unread, badge) = self
                     .conversations
                     .iter()
-                    .filter(|c| c.kind != Kind::Server && self.tab_of(&c.name) == section)
+                    .filter(|c| c.kind != Kind::Server && SidebarSection::of(&c.name) == section)
                     .fold((false, 0usize), |(unread, badge), c| {
                         (
                             unread || self.is_unread(&c.name),

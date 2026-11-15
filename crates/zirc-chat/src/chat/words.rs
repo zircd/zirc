@@ -7,7 +7,7 @@
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::{Shelf, agent_card, finder, notify::menu, plain, search, settings_list, speaker};
+use super::{agent_card, finder, notify::menu, plain, search, settings_list, speaker};
 
 /// What the composer says while it replies, before who it answers: `Replying to` bob.
 pub const REPLYING_TO: &str = "Replying to";
@@ -153,8 +153,8 @@ pub const NICKNAME_NOTE: &str = "Your name on the server, which people @.";
 /// [`ACTIVITY`]'s empty line.
 pub const NOTHING_YET: &str = "Nothing yet";
 
-/// Machines' empty line.
-pub const NO_AGENTS: &str = "No agents at work";
+/// A person's machines, as a heading on their card.
+pub const MACHINES: &str = "Machines";
 
 /// The channel list's empty line, once connected.
 pub const NO_CHANNELS: &str = "No channels yet.";
@@ -303,17 +303,8 @@ mod tests {
     #[test]
     fn names_the_sidebar_parts_as_every_app_does() {
         use super::super::Shelf;
-        let names = [
-            Shelf::Starred,
-            Shelf::Channels,
-            Shelf::Direct,
-            Shelf::Machines,
-        ]
-        .map(Shelf::label);
-        assert_eq!(
-            names,
-            ["Starred", "Channels", "Direct messages", "Machines"]
-        );
+        let names = [Shelf::Starred, Shelf::Channels, Shelf::Direct].map(Shelf::label);
+        assert_eq!(names, ["Starred", "Channels", "Direct messages"]);
         assert_eq!(BROWSE_CHANNELS, "Browse channels");
         assert_eq!(DIRECT_SHORT, "DMs");
     }
@@ -452,8 +443,7 @@ pub struct Words {
     pub jump_to: String,
     /// What the quick switcher's empty field says, and what opens it: `Jump to…`.
     pub jump_to_prompt: String,
-    /// A person's machines, as a heading on their card: `Machines`, the sidebar's name
-    /// for them.
+    /// A person's machines, as a heading on their card: `Machines`.
     pub machines: String,
     /// The button that opens a menu of what else can be done: `More`.
     pub more: String,
@@ -472,8 +462,6 @@ pub struct Words {
     pub nickname: String,
     /// Under the nickname's field: `Your name on the server, which people @.`
     pub nickname_note: String,
-    /// Machines' empty line: `No agents at work`.
-    pub no_agents: String,
     /// The channel list's empty line: `No channels yet.`.
     pub no_channels: String,
     /// Direct messages' empty line: `No direct messages yet`.
@@ -594,7 +582,7 @@ pub fn words() -> Words {
         invite_people: INVITE_PEOPLE.to_owned(),
         jump_to: JUMP_TO.to_owned(),
         jump_to_prompt: JUMP_TO_PROMPT.to_owned(),
-        machines: Shelf::Machines.label().to_owned(),
+        machines: MACHINES.to_owned(),
         more: MORE.to_owned(),
         more_people_only: MORE_PEOPLE_ONLY.to_owned(),
         name: NAME.to_owned(),
@@ -603,7 +591,6 @@ pub fn words() -> Words {
         new_tag: NEW_TAG.to_owned(),
         nickname: NICKNAME.to_owned(),
         nickname_note: NICKNAME_NOTE.to_owned(),
-        no_agents: NO_AGENTS.to_owned(),
         no_channels: NO_CHANNELS.to_owned(),
         no_directs: NO_DIRECTS.to_owned(),
         no_emoji: crate::emoji::NO_MATCH.to_owned(),

@@ -37,15 +37,13 @@ fn with_mbp() -> Scene {
 }
 
 #[test]
-fn a_session_is_listed_from_its_first_watch_before_it_says_anything() {
+fn a_session_is_known_from_its_first_watch_and_listed_once_it_writes_to_us() {
     let mut chat = with_mbp();
     assert!(find(&rows(&chat), "me-mbp/cc-new").is_none());
     feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-new"]))]);
     assert_eq!(chat.session_live("me-mbp", "cc-new"), Some(true));
-    let rows = rows(&chat);
-    let row = find(&rows, "me-mbp/cc-new").expect("listed");
-    assert_eq!(row.shelf, Shelf::Machines);
-    assert_eq!(row.kind, ListKind::Conversation);
+    // Live, but it hasn't written to us: no row (the user's choice, 15 Nov 2026).
+    assert!(find(&rows(&chat), "me-mbp/cc-new").is_none());
     assert!(chat.agents().contains(&"me-mbp/cc-new".to_owned()));
     // The People list has it under its machine, and its card says it's here.
     let people = chat.people_rows("#api");
@@ -59,6 +57,14 @@ fn a_session_is_listed_from_its_first_watch_before_it_says_anything() {
     let header = chat.agent_header("me-mbp/cc-new").unwrap();
     assert_eq!(header.heard, "Active now");
     assert!(header.active);
+    // Once it writes to us, it's a direct message.
+    feed(&mut chat, &[&dm("me-mbp", "cc-new", "on it", 1)]);
+    let rows = rows(&chat);
+    let row = find(&rows, "me-mbp/cc-new").expect("listed");
+    assert_eq!(
+        (row.shelf, row.kind),
+        (Shelf::Direct, ListKind::Conversation)
+    );
     // The list itself is no line of the channel.
     assert!(
         !chat
@@ -174,20 +180,20 @@ fn the_list_is_the_same_before_and_after_a_machine_says_which_sessions_are_live(
     );
     let _ = chat.mark_read("me-mbp/cc-new");
     chat.clock = || noon() + chrono::Duration::minutes(10);
-    let machines = |chat: &Chat| -> Vec<String> {
+    let agents = |chat: &Chat| -> Vec<String> {
         rows(chat)
             .into_iter()
-            .filter(|row| row.shelf == Shelf::Machines && row.kind == ListKind::Conversation)
+            .filter(|row| row.direct_kind == Some(DirectKind::Agent))
             .map(|row| row.name)
             .collect()
     };
-    let before = machines(&chat);
-    assert_eq!(before, ["me-mbp", "me-mbp/cc-new"]);
+    let before = agents(&chat);
+    assert_eq!(before, ["me-mbp/cc-new"]);
     feed(&mut chat, &[&zirc("me-mbp", &live(&[]))]);
-    assert_eq!(machines(&chat), before);
-    // An hour after it was last active, it goes; its machine, still connected, stays.
+    assert_eq!(agents(&chat), before);
+    // An hour after it was last active, it goes.
     chat.clock = || noon() + chrono::Duration::minutes(61);
-    assert_eq!(machines(&chat), ["me-mbp"]);
+    assert!(agents(&chat).is_empty());
 }
 
 #[test]

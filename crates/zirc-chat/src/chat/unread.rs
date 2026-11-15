@@ -28,7 +28,7 @@ impl Chat {
         self.selected = at;
         // Opened from anywhere, Jump to… or a notification, the sidebar shows its section.
         if self.conversations[at].kind != Kind::Server {
-            self.tab = self.tab_of(&self.conversations[at].name.clone());
+            self.tab = super::SidebarSection::of(&self.conversations[at].name);
         }
         self.reading = Reading::AtEnd;
         self.first_shown = false;
