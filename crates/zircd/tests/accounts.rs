@@ -1213,16 +1213,24 @@ async fn states_go_to_ops_name_their_repository_and_wake_their_owner() {
         panic!("not said");
     };
     next_state(&mut owner).await;
-    let read = Request::Read {
-        target: "#ops".into(),
-        limit: 50,
-        since: None,
-        until: None,
-    };
-    let Ok(Response::Messages { messages }) = ask(&mbp, read).await else {
-        panic!("not read");
-    };
-    let now = zirc_core::states::current(&messages);
+    // Read from Ergo's history, which it stores behind what it delivers: heard live, the line
+    // can still be missing from it a moment (build 3631), so it's read until it's there.
+    let now = eventually("master ok in #ops's history", || async {
+        let read = Request::Read {
+            target: "#ops".into(),
+            limit: 50,
+            since: None,
+            until: None,
+        };
+        let Ok(Response::Messages { messages }) = ask(&mbp, read).await else {
+            panic!("not read");
+        };
+        let now = zirc_core::states::current(&messages);
+        now.iter()
+            .all(|said| said.state.level == Level::Ok)
+            .then_some(now)
+    })
+    .await;
     assert_eq!(now.len(), 1);
     assert_eq!(now[0].state.level, Level::Ok);
     assert_eq!(now[0].by, "ci");
