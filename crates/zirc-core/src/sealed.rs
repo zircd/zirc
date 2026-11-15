@@ -60,6 +60,13 @@ pub fn seal_message(
     )?)
 }
 
+/// Fills `bytes` with the system's randomness, saying whether it could: what the apps give
+/// their chat to seal with ([`zirc_chat::chat::Chat::random`]).
+#[must_use]
+pub fn fill(bytes: &mut [u8]) -> bool {
+    SystemRandom::new().fill(bytes).is_ok()
+}
+
 fn random<const N: usize>() -> Result<[u8; N], Error> {
     let mut bytes = [0; N];
     SystemRandom::new()
@@ -74,6 +81,17 @@ fn random<const N: usize>() -> Result<[u8; N], Error> {
 #[must_use]
 pub fn machine_store(home: &std::path::Path) -> crate::secrets::File {
     crate::secrets::File(crate::paths::secrets(home))
+}
+
+/// What's said in the organisation's channel once someone makes `org` a new key with id
+/// `id`: that it's there, never the key.
+#[must_use]
+pub fn new_key_reminder(org: &str, id: &str) -> String {
+    format!(
+        "made {org} a new key for sealed parts ({id}). Get it from whoever made it, in person \
+         or on a call, and add it on each of your devices; if someone who held the old key \
+         left, change what was sealed with it"
+    )
 }
 
 /// What zircd and the CLI say when this machine has no key for `org`.
@@ -171,11 +189,7 @@ mod tests {
 
     use super::*;
 
-    const ACME: Context = Context {
-        org: "acme",
-        target: "#api",
-        sender: "alice",
-    };
+    const ACME: Context = Context { target: "#api" };
 
     #[test]
     fn keeps_each_organisations_keys_newest_first() {

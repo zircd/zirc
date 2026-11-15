@@ -10,9 +10,8 @@
 //!   may hold several, so history sealed with an older one still opens. Its id, base64url
 //!   of the first 8 bytes of its SHA-256, says in each part which key opens it.
 //! - **The cipher** is AES-256-GCM with a random 96-bit nonce for each part. Its associated
-//!   data names the organisation, where the message was sent, who sent it and the part's
-//!   place in it ([`Context`]), so a part moved to another channel, sender or place fails to
-//!   open.
+//!   data names the key's organisation, where the message was sent and the part's place in
+//!   it ([`Context`]), so a part moved to another channel or place fails to open.
 //!
 //! The randomness comes from whoever calls this, as the browser and the other apps each have
 //! their own: `zirc_core::sealed` brings the system's.
@@ -156,23 +155,22 @@ fn checksum(org: &str, key: &str) -> String {
     check
 }
 
-/// Where a message was said, which its sealed parts are bound to.
+/// Where a message was said, which its sealed parts are bound to, with the organisation of
+/// the key that seals them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Context<'a> {
-    /// The organisation.
-    pub org: &'a str,
-    /// The channel or nick it was sent to.
+    /// The channel or nick it was sent to, as its PRIVMSG names it.
     pub target: &'a str,
-    /// The account that sent it.
-    pub sender: &'a str,
 }
 
 impl Context<'_> {
-    /// The associated data for the part at `index`. IRC's names don't care about case, and
-    /// none has a NUL in it.
-    fn aad(&self, index: usize) -> Vec<u8> {
+    /// The associated data for the part at `index`, sealed with `key`. IRC's names don't
+    /// care about case, and none has a NUL in it. Not the sender: an app doesn't know the
+    /// account the server tags its own lines with, and anyone holding the key can seal as
+    /// anyone anyway.
+    fn aad(&self, key: &Key, index: usize) -> Vec<u8> {
         let mut aad = LABEL.to_vec();
-        for name in [self.org, self.target, self.sender] {
+        for name in [key.org.as_str(), self.target] {
             aad.push(0);
             aad.extend(name.to_lowercase().bytes());
         }
@@ -280,7 +278,7 @@ pub fn seal(
     nonce: [u8; NONCE_LEN],
     part: &str,
 ) -> Part {
-    let aad = context.aad(index);
+    let aad = context.aad(key, index);
     let sealed = Aes256Gcm::new(&key.bytes.into())
         .encrypt(
             Nonce::from_slice(&nonce),
@@ -334,8 +332,8 @@ pub enum Opened {
     Value(String),
     /// This device has no key with the id it names.
     NoKey,
-    /// It doesn't open with the key it names: it was changed, or moved to another channel,
-    /// sender or place.
+    /// It doesn't open with the key it names: it was changed, or moved to another channel or
+    /// place.
     Failed,
 }
 
@@ -346,7 +344,7 @@ pub fn open(keys: &[Key], context: &Context, index: usize, part: &Part) -> Opene
     let Some(key) = keys.iter().find(|key| key.id() == part.k) else {
         return Opened::NoKey;
     };
-    let aad = context.aad(index);
+    let aad = context.aad(key, index);
     let opened = URL_SAFE_NO_PAD
         .decode(&part.n)
         .ok()
@@ -388,11 +386,7 @@ mod tests {
 
     use super::*;
 
-    const ACME: Context = Context {
-        org: "acme",
-        target: "#api",
-        sender: "alice",
-    };
+    const ACME: Context = Context { target: "#api" };
 
     fn key(byte: u8) -> Key {
         Key::new("acme", [byte; KEY_LEN])
@@ -459,11 +453,7 @@ mod tests {
             ])
         );
         // Names are compared as IRC compares them, without case.
-        let shouted = Context {
-            org: "ACME",
-            target: "#API",
-            sender: "Alice",
-        };
+        let shouted = Context { target: "#API" };
         assert_eq!(
             open_message(&[key(7)], &shouted, &value).unwrap()[0],
             Opened::Value("sk_test_123".into())
@@ -484,25 +474,17 @@ mod tests {
     fn wont_open_a_part_changed_or_moved() {
         let value = sealed(&["first", "second"]);
         let opened = |context: &Context, value: &str| open_message(&[key(7)], context, value);
-        for elsewhere in [
-            Context {
-                target: "#ops",
-                ..ACME
-            },
-            Context {
-                sender: "mallory",
-                ..ACME
-            },
-            Context {
-                org: "globex",
-                ..ACME
-            },
-        ] {
-            assert_eq!(
-                opened(&elsewhere, &value),
-                Some(vec![Opened::Failed, Opened::Failed])
-            );
-        }
+        let elsewhere = Context { target: "#ops" };
+        assert_eq!(
+            opened(&elsewhere, &value),
+            Some(vec![Opened::Failed, Opened::Failed])
+        );
+        // The same bytes as another organisation's key.
+        let globex = Key::new("globex", [7; KEY_LEN]);
+        assert_eq!(
+            open_message(&[globex], &ACME, &value),
+            Some(vec![Opened::Failed, Opened::Failed])
+        );
 
         let mut parts = Sealed::from_tag(&value).unwrap();
         // Swapped places.

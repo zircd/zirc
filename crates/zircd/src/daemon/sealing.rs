@@ -28,12 +28,7 @@ impl Daemon {
         let key = Keys::new(&store)
             .sealing(org)
             .ok_or_else(|| anyhow::anyhow!(no_key(org)))?;
-        let account = self.account.clone().unwrap_or_default();
-        let context = Context {
-            org,
-            target: channel,
-            sender: &account,
-        };
+        let context = Context { target: channel };
         // A reply's tag, and the `;` between it and this one.
         let taken = reply.map_or(0, |id| REPLY_TAG.len() + 1 + id.len() + 1);
         let room = CLIENT_TAGS_MAX.saturating_sub(taken);
@@ -45,18 +40,16 @@ impl Daemon {
     /// Opens part `part`, from 1, of the message `message` names ([`zirc_core::ipc::Request::Unseal`]).
     pub(super) fn unseal(&self, message: &str, part: usize) -> Result<Response> {
         let said = self.recent.find(message)?;
-        let Some(sealing) = &said.sealed else {
+        let Some(sealed) = &said.sealed else {
             anyhow::bail!("{} has no sealed parts", said.id);
         };
         let org = &self.org.name;
         let store = machine_store(&self.home);
         let keys = Keys::new(&store).of(org);
         let context = Context {
-            org,
             target: &said.target,
-            sender: &sealing.account,
         };
-        let opened = open_message(&keys, &context, &sealing.value).unwrap_or_default();
+        let opened = open_message(&keys, &context, sealed).unwrap_or_default();
         let count = opened.len();
         let Some(opened) = part
             .checked_sub(1)
@@ -76,7 +69,7 @@ impl Daemon {
                 said.id
             ),
             Opened::Failed => anyhow::bail!(
-                "{}'s part {part} couldn't be opened: it was changed, or moved to another channel or sender",
+                "{}'s part {part} couldn't be opened: it was changed, or moved to another channel",
                 said.id
             ),
         }

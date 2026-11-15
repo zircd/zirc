@@ -101,6 +101,21 @@ impl Chat {
                     .map_or_else(|| said::TAKES_NO_MESSAGES.to_owned(), |note| note.text),
             ),
             Command::Say(_) | Command::Me(_) if !joined => note(said::JOIN_FIRST),
+            // Nothing between || markers goes unsealed: sealed in a new message or a reply,
+            // refused anywhere else.
+            Command::Say(text) if super::seals(&text) => match (here.editing, here.replying) {
+                (Some(_), _) => note(super::SEALS_ONLY_SAYING),
+                (None, to) => match self.say_sealed(name, &text, to) {
+                    Ok(lines) if to.is_some() => Ran::Replied(lines),
+                    Ok(lines) => Ran::Send(lines),
+                    Err(why) => note(why),
+                },
+            },
+            Command::Me(text) | Command::Reply(Some(text)) | Command::Msg { text, .. }
+                if super::seals(&text) =>
+            {
+                note(super::SEALS_ONLY_SAYING)
+            }
             Command::Say(text) => match (here.editing, here.replying) {
                 (Some(id), _) => Ran::Edited(self.say_edit(name, id, &text)),
                 (None, Some(id)) => Ran::Replied(self.say_reply(name, id, &text)),

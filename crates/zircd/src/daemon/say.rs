@@ -275,8 +275,7 @@ impl Daemon {
             });
             self.recent.heard(id, channel, from, session, about);
             if let Some(sealed) = line.tag(zirc_proto::sealed::TAG) {
-                let account = self.account.clone().unwrap_or_default();
-                self.recent.sealed(id, sealed, &account);
+                self.recent.sealed(id, sealed);
             }
             if let Some(message) = message {
                 if matches!(message.event, Event::Text { .. }) {
@@ -394,8 +393,7 @@ impl Daemon {
                 Some(zirc_core::ipc::Reacted::of(delivery)),
             );
             if let Some(sealed) = &delivery.sealed {
-                let account = delivery.account.as_deref().unwrap_or_default();
-                self.recent.sealed(id, sealed, account);
+                self.recent.sealed(id, sealed);
             }
         }
     }

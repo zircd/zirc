@@ -63,6 +63,7 @@ pub(crate) async fn team_key(
                 key.id(),
                 key.export()
             )?;
+            tell_org(socket, &org, &key, out).await?;
         }
         TeamKey::Add => {
             let mut text = String::new();
@@ -124,6 +125,31 @@ pub(crate) async fn team_key(
                 bail!("this machine holds no key {id} for {org}: `zirc team-key list` lists them");
             }
         }
+    }
+    Ok(())
+}
+
+/// Says in `org`'s channel that it has the new key `key`, without it, so teammates know to
+/// add it; says here if it couldn't.
+async fn tell_org(socket: &Path, org: &str, key: &Key, out: &mut impl Write) -> Result<()> {
+    let request = Request::Post {
+        repo: crate::client::here(None)?,
+        session: crate::args::session_or_user(None),
+        text: zirc_core::sealed::new_key_reminder(org, &key.id()),
+        to: zirc_core::ipc::Target::Org,
+        app: None,
+        everyone: false,
+        force: true,
+        reply: None,
+    };
+    match crate::client::ask_in(socket, Some(org), request).await {
+        Ok(Response::Channel { channel, .. }) => {
+            writeln!(out, "told {channel} there's a new key, without it")?;
+        }
+        Ok(_) | Err(_) => writeln!(
+            out,
+            "couldn't tell {org}'s channel there's a new key: tell your teammates yourself"
+        )?,
     }
     Ok(())
 }

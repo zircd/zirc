@@ -64,6 +64,7 @@ mod rich;
 mod roster;
 mod run;
 mod scroll;
+mod sealing;
 mod search;
 mod seek;
 mod sending;
@@ -178,6 +179,10 @@ pub use rich::{
 };
 pub use run::{Here, Ran};
 pub use scroll::{SCROLL_RULES, ScrollRules, Splice, splices};
+pub use sealing::{
+    CANT_SEAL_HERE, LOCK, NO_KEY_TO_SEAL, SEALED, SEALED_FAILED, SEALED_NO_KEY, SEALS_IN_ONE,
+    SEALS_ONLY_SAYING, SealedPart, SealedState, SealedTag, no_random, seals,
+};
 pub use search::{
     Hit, HitPart, SEARCH_OLDER, SEARCHING_OLDER, Search, SearchHit, SearchView, ServerQuery,
     highlights, switch_rank,
@@ -447,6 +452,10 @@ enum Reading {
 pub struct Chat {
     /// What time it is, replaceable in tests: [`crate::clock::now`] unless replaced.
     pub clock: fn() -> DateTime<Utc>,
+    /// Fills its bytes with random ones for sealing, saying whether it could: the system's,
+    /// which each app gives, as this crate runs in the browser too. [`no_random`] unless
+    /// given, and nothing is sealed.
+    pub random: fn(&mut [u8]) -> bool,
     options: Options,
     me: String,
     server: String,
@@ -509,6 +518,8 @@ pub struct Chat {
     locked: bool,
     /// The long messages the person opened or cut again ([`Chat::toggle_more`]).
     opened: more::Opened,
+    /// The keys for sealed parts, and the parts revealed ([`Chat::set_keys`]).
+    sealing: sealing::Sealing,
     /// Puts received multiline messages back together, before anything else sees them.
     multiline: Batches,
     sent_batches: u64,
@@ -629,6 +640,7 @@ impl Chat {
     pub fn new(nick: &str, server: &str, joins: Vec<String>, options: Options) -> Self {
         Self {
             clock: crate::clock::now,
+            random: no_random,
             options,
             me: nick.to_owned(),
             server: server.to_owned(),
@@ -657,6 +669,7 @@ impl Chat {
             in_front: true,
             locked: false,
             opened: more::Opened::default(),
+            sealing: sealing::Sealing::default(),
             multiline: Batches::default(),
             sent_batches: 0,
             presence: PresenceMap::default(),

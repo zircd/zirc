@@ -1299,16 +1299,9 @@ struct Seen {
     session: Option<String>,
     /// What it is, for a reaction to it, when it was a message heard in a channel.
     about: Option<zirc_core::ipc::Reacted>,
-    /// Its sealed parts, for `zirc unseal`, when it has some.
-    sealed: Option<Sealing>,
-}
-
-/// A message's sealed parts, as it came: the `+zirc.dev/sealed` tag's value, and the account
-/// that sent it, which they're bound to (empty for none).
-#[derive(Debug, Clone)]
-struct Sealing {
-    value: String,
-    account: String,
+    /// Its sealed parts, the `+zirc.dev/sealed` tag's value, for `zirc unseal`, when it has
+    /// some.
+    sealed: Option<String>,
 }
 
 /// The messages heard lately, newest last.
@@ -1337,13 +1330,10 @@ impl Recent {
         }
     }
 
-    /// Keeps the sealed parts `value` of the message `id`, which `account` sent, heard last.
-    fn sealed(&mut self, id: &str, value: &str, account: &str) {
+    /// Keeps the sealed parts `value` of the message `id` heard last.
+    fn sealed(&mut self, id: &str, value: &str) {
         if let Some(said) = self.0.iter_mut().rev().find(|said| said.id == id) {
-            said.sealed = Some(Sealing {
-                value: value.to_owned(),
-                account: account.to_owned(),
-            });
+            said.sealed = Some(value.to_owned());
         }
     }
 

@@ -157,6 +157,10 @@ impl Cli {
                         slug: org.clone(),
                         home: Some(home.to_path_buf()),
                     });
+                    // Sealed parts open with the organisation's keys this machine holds.
+                    app.chat.random = zirc_core::sealed::fill;
+                    app.chat
+                        .set_keys(zirc_core::sealed::Keys::new(secrets.as_ref()).of(&org));
                     orgs.push((org, app, config));
                 }
                 let zircd = zirc_core::paths::socket(home);

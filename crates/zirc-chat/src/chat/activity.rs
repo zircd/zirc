@@ -259,6 +259,7 @@ impl Chat {
                 reply_to: None,
                 formatted: None,
                 edited: false,
+                sealed: None,
             };
             hits.push(Hit {
                 kind: ActivityKind::Reaction,

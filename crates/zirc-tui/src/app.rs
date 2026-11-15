@@ -1136,6 +1136,8 @@ impl App {
             None => None,
         };
         let name = fold(&self.current().name);
+        // What was revealed in the message picked before hides again.
+        self.chat.hide_sealed();
         self.picked = next.map(|at| (name, ids[at].clone()));
         match self.picked().map(str::to_owned) {
             Some(id) => self.keep_in_view(&id),
@@ -1246,7 +1248,7 @@ impl App {
     fn reply_to(&mut self, id: String) {
         self.stop_editing();
         self.replying = Some((fold(&self.current().name), id));
-        self.picked = None;
+        self.let_go();
     }
 
     /// Whether the next line sent corrects a message of ours in the conversation shown.
@@ -1270,7 +1272,7 @@ impl App {
             return;
         };
         self.replying = None;
-        self.picked = None;
+        self.let_go();
         let end = text.len();
         self.input.replace(text, end);
         self.editing = Some((fold(&name), id));
@@ -1398,7 +1400,8 @@ impl App {
         else {
             return;
         };
-        let text = copy_text(entry);
+        // Sealed parts as shown: their values only once revealed.
+        let text = self.chat.sealed_text(entry, &copy_text(entry));
         let (copied, said) = if link {
             match first_link(&text) {
                 Some(link) => (Some(link.to_owned()), "copied its link"),
@@ -1413,9 +1416,37 @@ impl App {
         self.flash = Some(said.to_owned());
     }
 
+    /// Reveals the picked message's sealed parts, or hides them again.
+    fn reveal(&mut self) {
+        let Some(id) = self.picked() else {
+            return;
+        };
+        let Some(entry) = self
+            .current()
+            .entries
+            .iter()
+            .find(|entry| entry.id.as_deref() == Some(id))
+            .cloned()
+        else {
+            return;
+        };
+        if self.chat.sealed_parts(&entry).is_empty() {
+            self.flash = Some("no sealed parts in it".to_owned());
+        } else {
+            self.chat.toggle_sealed(&entry);
+        }
+    }
+
+    /// Lets go of the picked message, hiding any sealed part revealed in it.
+    fn let_go(&mut self) {
+        self.picked.take();
+        self.chat.hide_sealed();
+    }
+
     /// Takes in a key while a message is picked and nothing's typed: ↑ and ↓ pick another,
     /// `r` starts a reply to it, `e` corrects it when it's ours, `y` copies it and `l` its
-    /// link. Returns what to send, if it was one of those.
+    /// link, `s` shows or hides its sealed parts. Returns what to send, if it was one of
+    /// those.
     fn picked_key(&mut self, key: KeyEvent) -> Option<Vec<Line>> {
         match key.code {
             KeyCode::Up => return Some(self.pick(-1)),
@@ -1432,6 +1463,7 @@ impl App {
             }
             KeyCode::Char('y') => self.copy(false),
             KeyCode::Char('l') => self.copy(true),
+            KeyCode::Char('s') => self.reveal(),
             _ => return None,
         }
         Some(Vec::new())
@@ -1481,7 +1513,7 @@ impl App {
         if !matches!(key.code, KeyCode::Char('y' | 'Y')) {
             return Vec::new();
         }
-        self.picked = None;
+        self.let_go();
         self.chat
             .trim(&trimming.target, &trimming.id, trimming.reason.as_deref())
     }
@@ -1613,7 +1645,7 @@ impl App {
             // then the message picked, and else marks the conversation shown read.
             KeyCode::Esc if shift => return Action::Send(self.chat.mark_all_read()),
             KeyCode::Esc if self.editing() || self.replying().is_some() => self.stop_composing(),
-            KeyCode::Esc if self.picked().is_some() => self.picked = None,
+            KeyCode::Esc if self.picked().is_some() => self.let_go(),
             KeyCode::Esc => {
                 let name = self.current().name.clone();
                 return Action::Send(self.chat.mark_read(&name));
@@ -1970,7 +2002,7 @@ impl App {
             }
             Ran::Replied(lines) => {
                 self.replying = None;
-                self.picked = None;
+                self.let_go();
                 lines
             }
             Ran::Reacted { emoji, lines } => {

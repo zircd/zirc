@@ -96,6 +96,9 @@ pub struct Entry {
     /// Whether its author corrected it since ([`super::Chat::say_edit`]): what it says now
     /// is the correction's.
     pub edited: bool,
+    /// Its sealed parts, each a `[sealed]` in its text, when it has some
+    /// ([`super::Chat::sealed_parts`]).
+    pub sealed: Option<super::SealedTag>,
 }
 
 /// What a reply answers, as apps show it above the reply, as `↪ bob: first line…`, and jump
@@ -161,6 +164,7 @@ impl Entry {
             reply_to: None,
             formatted: None,
             edited: false,
+            sealed: None,
         }
     }
 

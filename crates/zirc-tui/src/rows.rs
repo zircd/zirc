@@ -436,9 +436,16 @@ pub fn fingerprint(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) 
         _ => None,
     };
     let new = look.divider.is_some_and(|id| holds(item, id));
+    // Revealing a sealed part, or a key for it arriving, draws it anew.
+    let sealed: Vec<_> = entry
+        .map(|entry| look.who.chat.sealed_parts(entry))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|part| part.state)
+        .collect();
     let _ = write!(
         hashing,
-        "{item:?}{:?}{new}{quote:?}{chips:?}{pressed:?}",
+        "{item:?}{:?}{new}{quote:?}{chips:?}{pressed:?}{sealed:?}",
         before.and_then(|before| look.minute(before)),
     );
     hashing.0.finish()
@@ -1154,7 +1161,8 @@ fn columns(
             ..
         } => (
             entry.from.clone(),
-            (*text).to_owned(),
+            // A sealed part as `🔒 sealed`, or its value once revealed.
+            chat.sealed_text(entry, text),
             if sender_kind(&entry.from, entry.owner.as_deref()) == SenderKind::Integration {
                 Tone::App(None)
             } else {

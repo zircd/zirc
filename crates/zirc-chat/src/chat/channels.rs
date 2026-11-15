@@ -253,6 +253,7 @@ impl Chat {
             reply_to: None,
             formatted: None,
             edited: false,
+            sealed: None,
         };
         let mut lines = Vec::new();
         match line.command.as_str() {
@@ -356,6 +357,7 @@ impl Chat {
                     reply_to: None,
                     formatted: None,
                     edited: false,
+                    sealed: None,
                 };
                 self.push(at, entry);
             }

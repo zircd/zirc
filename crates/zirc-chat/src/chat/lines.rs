@@ -1254,6 +1254,7 @@ mod tests {
             reply_to: None,
             formatted: None,
             edited: false,
+            sealed: None,
         };
         chat.conversations[at].entries.push(entry);
     }

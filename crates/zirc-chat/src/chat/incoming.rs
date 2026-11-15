@@ -267,6 +267,7 @@ impl Chat {
                 .map(str::to_owned),
             formatted: formatted_text(&entry, param(1)),
             edited: false,
+            sealed: super::SealedTag::of(line),
             kind: entry,
             history,
         };
@@ -275,8 +276,6 @@ impl Chat {
         }
         if let EntryKind::Zirc(message) = &entry.kind {
             self.learn_said(&name, &entry.from, entry.time, message);
-        }
-        if let EntryKind::Zirc(message) = &entry.kind {
             // Intents and claims count from when they were said. A working set, never in
             // history, is never replaced by an older one, and is never an entry: who is
             // changing what is known from [`Chat::presence`].

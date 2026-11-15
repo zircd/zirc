@@ -1786,7 +1786,7 @@ fn status_left(app: &App) -> Line<'static> {
         spans.push(Span::styled(format!("  · {copied}"), fg(theme.ok)));
     } else if app.picked().is_some() && app.input.text().is_empty() {
         spans.push(Span::styled(
-            "  · ↑/↓ pick, y copies, l its link, e edits yours, Esc lets go",
+            "  · ↑/↓ pick, y copies, l its link, e edits yours, s unseals, Esc lets go",
             hint,
         ));
     }
@@ -2894,6 +2894,86 @@ mod tests {
         assert!(!row_with(&rows, "irc.zirc.test · ").contains("copies"));
         key(&mut app, KeyCode::Char('y'));
         assert_eq!(app.input.text(), "y");
+    }
+
+    #[test]
+    fn shows_a_sealed_part_locked_until_s_reveals_it() {
+        use zirc_core::sealed::{Context, KEY_LEN, Key, seal_message};
+        let key = Key::new("acme", [7; KEY_LEN]);
+        let sealed = seal_message(
+            &key,
+            &Context { target: "#api" },
+            &["sk_test_1".to_owned()],
+            4094,
+        )
+        .unwrap();
+        let mut app = app();
+        let _ = app.select(1);
+        app.chat.set_keys(vec![key]);
+        app.handle(
+            format!(
+                "@msgid=m8;time=2026-10-30T11:04:00.000Z;+zirc.dev/sealed={sealed} \
+                 :bob!u@h PRIVMSG #api :the key is [sealed]"
+            )
+            .parse()
+            .unwrap(),
+        );
+        let screen = Rect::new(0, 0, 120, 20);
+        app.view = scrollback_size(&app, screen);
+        // The lock takes two cells, the second drawn blank.
+        let shown = |app: &App| {
+            let (rows, _) = draw(app, screen.width, screen.height);
+            row_with(&rows, "the key is").replace("🔒  ", "🔒 ")
+        };
+        assert!(
+            shown(&app).contains("the key is 🔒 sealed"),
+            "{}",
+            shown(&app)
+        );
+
+        app.key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
+        app.key(KeyEvent::from(KeyCode::Char('s')));
+        assert!(
+            shown(&app).contains("the key is 🔒 sk_test_1"),
+            "{}",
+            shown(&app)
+        );
+        app.key(KeyEvent::from(KeyCode::Char('y')));
+        assert_eq!(
+            app.take_clipboard().as_deref(),
+            Some("the key is 🔒 sk_test_1")
+        );
+        // Let go of, it hides again.
+        app.key(KeyEvent::from(KeyCode::Esc));
+        assert!(
+            shown(&app).contains("the key is 🔒 sealed"),
+            "{}",
+            shown(&app)
+        );
+        assert!(!shown(&app).contains("sk_test_1"));
+    }
+
+    #[test]
+    fn wont_send_a_part_it_cant_seal() {
+        let mut app = app();
+        let _ = app.select(1);
+        for c in "the key is ||sk_test_1||".chars() {
+            app.key(KeyEvent::from(KeyCode::Char(c)));
+        }
+        let Action::Send(sent) = app.key(KeyEvent::from(KeyCode::Enter)) else {
+            panic!("not a send")
+        };
+        assert!(
+            sent.iter()
+                .all(|line| !line.to_string().contains("sk_test_1")),
+            "{sent:?}"
+        );
+        let (rows, _) = draw(&app, 120, 20);
+        assert!(
+            rows.iter()
+                .any(|row| row.contains("not sent: this device has no key")),
+            "{rows:?}"
+        );
     }
 
     #[test]

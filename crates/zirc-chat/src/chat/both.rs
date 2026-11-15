@@ -462,6 +462,7 @@ impl Chat {
             reply_to: None,
             formatted: None,
             edited: false,
+            sealed: None,
         }
     }
 
