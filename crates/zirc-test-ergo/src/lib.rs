@@ -178,7 +178,11 @@ impl Ergo {
     ///
     /// When it doesn't start again.
     pub fn restart(&mut self) {
-        let _ = self.child.kill();
+        // Stopped as an upgrade stops it, so it finishes writing what it took to its history
+        // first: killed, a message heard live just before could be gone after (build 3581).
+        let _ = Command::new("kill")
+            .args(["-TERM", &self.child.id().to_string()])
+            .status();
         let _ = self.child.wait();
         let before = self.log().matches(&Self::listening(self.port)).count();
         self.child = run(&self.binary, self.dir.path(), &self.env);
