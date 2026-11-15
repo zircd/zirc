@@ -260,9 +260,12 @@ Before saying master is broken, run `zirc state`: when someone already owns it, 
 `zirc note` with what they lack rather than a second report. A test that fails only under
 load goes once to the `flakes` topic (`zirc post --topic flakes`).
 
-**Stacking.** To build on another session's branch before it lands, rebase onto it and run
-`zirc stack --session <s> <their branch>`: your watch wakes when it lands or moves, `zirc
-stack` then says the rebase to run, and `zirc stack --check` fails while you shouldn't land.
+**Stacking.** Work that depends on a branch still to land, yours or another session's, needn't
+wait for it: branch from it and carry on. `zirc stack --session <s>` finds from git what your
+branch is stacked on (or say it, `zirc stack --session <s> <their branch>`), and your watch
+wakes when it lands or moves. Then `zirc stack --session <s> --rebase` rebases yours past the
+head you built on, keeping your branch as it was under `refs/zirc/backup/` and aborting on a
+conflict, and you land. `zirc stack --check` fails while you shouldn't land yet.
 
 **Decisions.** A record of what a person decided, quoting them, for every session to find:
 

@@ -74,7 +74,12 @@ text = "Update from the default branch, resolve keeping both sides' intent, land
 [[hint]]
 kind = "landing.overlapping"
 level = "act"
-text = "It changed your files: update onto it before committing more there, and tell the user in one line. If your branch is stacked on it, `zirc stack` says the rebase to run."
+text = "It changed your files: update onto it before committing more there, and tell the user in one line. If your branch is stacked on it, `zirc stack --rebase` rebases yours past it; then land."
+
+[[hint]]
+kind = "landing.yours.tried"
+level = "act"
+text = "Your try passed and landed nothing. Carry on; land {branch} when it's ready. If it's stacked on a branch still to land, your watch wakes when that lands: then `zirc stack --rebase`, and land."
 
 [[hint]]
 kind = "landing.default-broken"

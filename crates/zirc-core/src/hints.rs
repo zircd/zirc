@@ -43,6 +43,8 @@ pub mod kind {
     pub const FAILED: &str = "landing.yours.failed";
     /// CI: your landing conflicts with the default branch.
     pub const CONFLICTS: &str = "landing.yours.conflicts";
+    /// CI: your try (`//ops:land --try`) passed, landing nothing.
+    pub const TRIED: &str = "landing.yours.tried";
     /// CI: the default branch broke.
     pub const DEFAULT_BROKEN: &str = "landing.default-broken";
     /// CI: a landing you wait on (`zirc wait-for`) landed.
@@ -88,7 +90,7 @@ pub mod kind {
     pub const REACTION_OTHER: &str = "reaction.other";
 
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 32] = [
+    pub const ALL: [&str; 33] = [
         OVERLAP,
         OVERLAP_SAME_LINES,
         CONFLICT_AHEAD,
@@ -101,6 +103,7 @@ pub mod kind {
         LANDED,
         FAILED,
         CONFLICTS,
+        TRIED,
         DEFAULT_BROKEN,
         DEFAULT_MOVED,
         AWAITED,
@@ -592,6 +595,11 @@ fn ci_kind(
     }
     if text.contains("daily full check failed") || text.contains("master broke") {
         return kind::DEFAULT_BROKEN;
+    }
+    // A try of the session's own landed nothing: passed, it says what comes next; failed, as a
+    // landing's failure does.
+    if ci.tried && ci.state.as_deref() != Some("failed") {
+        return kind::TRIED;
     }
     match ci.state.as_deref() {
         Some("passed") if text.contains(" landed ") => kind::LANDED,
@@ -1158,6 +1166,36 @@ mod tests {
         };
         let heard = heard(zirc_proto::NO_SESSION, notice, Some(Why::Mention));
         assert_eq!(super::seen(&heard, Some("cc-1")), None);
+    }
+
+    /// A try of the session's own (`//ops:land --try`): passed, its own hint, never a
+    /// landing's; failed, as a landing's failure.
+    #[test]
+    fn a_try_passed_is_no_landing() {
+        let tried = |state: &str, text: &str| Event::Custom {
+            kind: zirc_proto::ci::LANDING_KIND.into(),
+            data: serde_json::json!({
+                "session": "cc-1", "state": state, "build": "8", "branch": "login", "try": true,
+            }),
+            text: format!("cc-1: {text}"),
+        };
+        let passed = heard(
+            "ci",
+            tried(
+                "info",
+                "tried login: passes on master as 1a2b3c4 (build 8), not landing it",
+            ),
+            None,
+        );
+        assert_eq!(
+            super::seen(&passed, Some("cc-1")).unwrap().kind,
+            kind::TRIED
+        );
+        let failed = heard("ci", tried("failed", "build 8 failed: //web:unit"), None);
+        assert_eq!(
+            super::seen(&failed, Some("cc-1")).unwrap().kind,
+            kind::FAILED
+        );
     }
 
     #[test]

@@ -47,9 +47,11 @@ installed. Otherwise:
    narrow it with `--filter`. To wait for a landing or a deploy you can name, start `zirc
    wait landed <branch or build>` or `zirc wait deployed <branch, build or commit>` as a
    background command of its own: it ends when CI says it happened, at once if it already
-   has, and as failed when CI says it failed. Where CI builds the branches you push rather
-   than landing them, run `zirc wait-for --session <your session> <branch>` after you push:
-   your watch wakes when CI says how that branch's build went. To wait for something you
+   has, and as failed when CI says it failed. Work that depends on it needn't wait: branch
+   from it and carry on, and `zirc stack --session <your session>` wakes you when it lands,
+   for `zirc stack --rebase`. Where CI builds the branches you push rather than landing
+   them, run `zirc wait-for --session <your session> <branch>` after you push: your watch
+   wakes when CI says how that branch's build went. To wait for something you
    can't name yet, such as the next landing that deploys, add `--until '<jq>'` to your
    watch, which still wakes you for everything else meanwhile: `--until 'select(.message.event.kind
    == "x-zirc/deploy" and (.message.event.text | test("deployed to production")))'`.
