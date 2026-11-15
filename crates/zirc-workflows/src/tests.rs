@@ -252,6 +252,57 @@ fn a_task_with_nothing_to_hand_back_is_done_at_its_last_stage() {
     );
 }
 
+/// Two states start the one workflow, and a run waits for the one that started it.
+const CHECKS: &str = r##"
+name = "checks"
+nick = "check_bot"
+description = "mend a broken check"
+channel = "#ops"
+
+[[input]]
+name = "state"
+
+[[on]]
+state = "master"
+level = "broken"
+inputs = { state = "name" }
+
+[[on]]
+state = "master/publish"
+level = "broken"
+inputs = { state = "name" }
+
+[[step]]
+id = "green"
+kind = "wait"
+until = { state = "{state}", level = "ok" }
+"##;
+
+#[test]
+fn a_wait_for_the_state_that_started_it_waits_for_that_one() {
+    let mut e = engine(CHECKS);
+    let named = |name: &str, level: Level| {
+        Input::State(State {
+            repo: "#monorepo".into(),
+            name: name.into(),
+            level,
+            why: None,
+            owner: None,
+            link: None,
+            until: None,
+        })
+    };
+    let started = texts(&e.handle(named("master/publish", Level::Broken), 0));
+    assert_eq!(
+        started.last().map(String::as_str),
+        Some("`checks-1` waits until master/publish is ok")
+    );
+    // Another state fine ends nothing.
+    assert!(texts(&e.handle(named("master", Level::Ok), MIN)).is_empty());
+    let mended = texts(&e.handle(named("master/publish", Level::Ok), 2 * MIN));
+    assert_eq!(mended, ["`green` of `checks-1`: it is", "`checks-1` is done"]);
+}
+
 #[test]
 fn stages_skip_ahead_and_ignore_everyone_else() {
     let mut e = running();

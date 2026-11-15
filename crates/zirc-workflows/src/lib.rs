@@ -27,7 +27,7 @@ use zirc_proto::run::{Act, Change, MAX_OUTPUTS, Outcome, RunEvent, StepAction};
 use zirc_proto::state::{Level, State};
 use zirc_proto::workflow::{
     Condition, EACH, EVERY_GRACE, Each, MAX_EACH, MAX_ENDED, MAX_SOURCE, OneFails, Ref, Signal,
-    Step, StepKind, Trigger, TriggerKind, Who, Workflow, fill, landed_under, seconds,
+    Step, StepKind, Trigger, TriggerKind, Until, Who, Workflow, fill, landed_under, seconds,
 };
 
 /// The workflow `source` says, once it keeps every rule.
@@ -1526,7 +1526,7 @@ impl Engine {
                     continue;
                 }
                 Status::Working(_) if step.kind == StepKind::Wait => {
-                    if self.met(&step) {
+                    if self.met(id, &step) {
                         let text = format!("`{}` of `{id}`: it is", step.id);
                         self.say(id, done(&step.id, &nick), text, said);
                         continue;
@@ -1552,7 +1552,7 @@ impl Engine {
                     let until = step.until.as_ref().expect("a checked wait has an until");
                     let text = format!(
                         "`{id}` waits until {} is {}",
-                        until.state,
+                        self.until_state(id, until),
                         until.level.word()
                     );
                     let change = Change::Assigned {
@@ -1690,10 +1690,18 @@ impl Engine {
     }
 
     /// Whether a wait's state is as it waits for.
-    fn met(&self, step: &Step) -> bool {
+    fn met(&self, id: &str, step: &Step) -> bool {
         step.until
             .as_ref()
-            .is_some_and(|u| self.states.get(&u.state) == Some(&u.level))
+            .is_some_and(|u| self.states.get(&self.until_state(id, u)) == Some(&u.level))
+    }
+
+    /// The state `until` waits for in run `id`: its name, or the input that names it filled.
+    fn until_state(&self, id: &str, until: &Until) -> String {
+        let Some(run) = self.runs.get(id) else {
+            return until.state.clone();
+        };
+        fill(&until.state, |r| run.value(&self.workflow, r))
     }
 
     fn says(&self, id: &str, step: &Step) -> String {

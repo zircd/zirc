@@ -911,7 +911,8 @@ pub enum Signal {
 #[serde(deny_unknown_fields)]
 #[ts(rename = "WorkflowUntil")]
 pub struct Until {
-    /// The state's name.
+    /// The state's name, or an input naming it, as `{state}`: a run started by one of several
+    /// states waits for the one that started it.
     pub state: String,
     /// Its level.
     pub level: Level,
@@ -1444,6 +1445,11 @@ impl Workflow {
         }
         for r in refs(&step.says).map_err(|e| format!("step {id:?}: {e}"))? {
             read(&r)?;
+        }
+        if let Some(until) = &step.until {
+            for r in refs(&until.state).map_err(|e| format!("step {id:?}: {e}"))? {
+                read(&r)?;
+            }
         }
         if let Some(when) = &step.when {
             let condition = Condition::parse(when).map_err(|e| format!("step {id:?}: {e}"))?;
