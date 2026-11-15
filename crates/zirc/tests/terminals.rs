@@ -83,6 +83,23 @@ async fn run(home: &Path, args: &[&str]) -> anyhow::Result<String> {
     Ok(String::from_utf8(out)?)
 }
 
+/// Henrik's `zirc who`, and, when it lacks Raj's set, as it did on CI now and then (flaky-73,
+/// flaky-75), what each machine knew then and a moment later: which lost it, and for how long.
+async fn who_noting_a_missing_set(henrik: &Machine, raj: &Machine) -> String {
+    let who = henrik.zirc(&["who"]).await;
+    if !who.contains("cc-91b7 is changing tests/e2e/harness.rs") {
+        eprintln!("henrik's who lacks raj's set:\n{who}");
+        eprintln!(
+            "henrik's, as JSON:\n{}",
+            henrik.zirc(&["who", "--json"]).await
+        );
+        eprintln!("raj's own:\n{}", raj.zirc(&["who", "--json"]).await);
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        eprintln!("henrik's, a second later:\n{}", henrik.zirc(&["who"]).await);
+    }
+    who
+}
+
 async fn until(machine: &Machine, args: &[&str], has: &str) {
     tokio::time::timeout(WAIT, async {
         while !machine.zirc(args).await.contains(has) {
@@ -210,7 +227,8 @@ async fn the_terminals_are_as_stored() {
     watch.printed(&heard(&mut lines).await);
     henrik.edit("tests/e2e/harness.rs", "pub const RETRIES: u32 = 2;\n");
     watch.printed(&heard(&mut lines).await);
-    coordinate.typed("zirc who", &henrik.zirc(&["who"]).await);
+    let who = who_noting_a_missing_set(&henrik, &raj).await;
+    coordinate.typed("zirc who", &who);
     terminals.push(("coordinate", coordinate));
 
     // Raj's agent needs main-fix to land first: it says so, then watches, and is called back
