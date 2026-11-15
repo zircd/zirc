@@ -6234,6 +6234,7 @@ fn counts_whats_new_from_the_divider_and_what_comes_while_reading_further_up() {
             count: 2,
             since_ms: since.timestamp_millis(),
             label: "2 new messages since 11:04".to_owned(),
+            above: "↑ 2 new".to_owned(),
             short: "↓ 2 new".to_owned(),
         })
     );

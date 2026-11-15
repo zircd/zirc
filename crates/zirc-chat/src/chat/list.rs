@@ -1184,8 +1184,9 @@ impl Chat {
 }
 
 /// What's new in the conversation shown, from its New divider on ([`Chat::divider`]): the
-/// bar over it, "28 new messages since 13:58", and the count on the button that takes the
-/// person down to it. Ready to draw and send as it is: every app reads this record, the
+/// pill over the messages while the divider is above the screen, "↑ 28 new", which takes the
+/// person up to it, the terminal's divider, "28 new messages since 13:58", and the count on
+/// the button that takes the person down to the newest. Ready to draw and send as it is: every app reads this record, the
 /// phones through `UniFFI` and web as JSON.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -1198,7 +1199,11 @@ pub struct Unseen {
     /// The bar's words, as Discord's: `28 new messages since 13:58`, `1 new message since
     /// Thu 09:12`, the time as a profile card says it.
     pub label: String,
-    /// The button's, which takes the person down to them: `↓ 28 new`.
+    /// The pill's over the messages, while the divider is above the screen: `↑ 28 new`, a
+    /// tap going up to the first of them. A conversation opens at its newest message, so
+    /// what's new is above it.
+    pub above: String,
+    /// The button's, which takes the person down to the newest: `↓ 28 new`.
     pub short: String,
 }
 
@@ -1226,6 +1231,7 @@ impl Chat {
                 "{count} new {messages} since {}",
                 super::card_time(wall(since), wall((self.clock)()))
             ),
+            above: format!("↑ {count} new"),
             short: format!("↓ {count} new"),
         })
     }
