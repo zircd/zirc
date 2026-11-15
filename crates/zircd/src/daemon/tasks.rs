@@ -3,7 +3,10 @@
 //! one, with a new id, and its `done:` or `dropped:` post, the last to carry it, ends it. A
 //! session's intent, while it's on none, starts one too, which its landing ends. A landing
 //! (`//ops:land`, [`zirc_core::ipc::Request::Task`]) claims the task the session is on, else
-//! the one it finished last, as sessions often post `done:` before they land. When that
+//! the one it finished last, as sessions often post `done:` before they land, else a new
+//! one of its own, so every landing says a task: 101 of 234 landings' events said none on
+//! 14-15 Nov, the fixer's (which takes workflow steps, never `taking:`) and those landed
+//! well after a `done:`, and a landing no task names can't be counted per task. When that
 //! landing lands while the session is still on the task it claimed, zircd says `done:` for
 //! it, in the channel its `taking:` went to: the task is finished everywhere without the
 //! session waking to say so. Kept across restarts, as names are. Only ids: never what a
@@ -100,16 +103,18 @@ impl Tasks {
 
     /// The task `session`'s landing at `now` claims: the one it's on, which ends if an intent
     /// started it, else the one it finished in the last [`LANDING_CLAIMS`] seconds, which
-    /// no later landing claims again.
-    fn land(&mut self, session: &str, now: u64) -> Option<String> {
+    /// no later landing claims again, else a new one, which is the landing's alone.
+    fn land(&mut self, session: &str, now: u64) -> String {
         if let Some(task) = self.on.get(session).cloned() {
             if self.implied.remove(session) {
                 self.on.remove(session);
             }
-            return Some(task);
+            return task;
         }
-        let finished = self.finished.remove(session)?;
-        (now.saturating_sub(finished.at) <= LANDING_CLAIMS).then_some(finished.task)
+        match self.finished.remove(session) {
+            Some(finished) if now.saturating_sub(finished.at) <= LANDING_CLAIMS => finished.task,
+            _ => new_id(session),
+        }
     }
 }
 
@@ -150,14 +155,14 @@ impl Daemon {
     }
 
     /// The task `session`'s landing claims ([`Tasks::land`]).
-    pub(super) fn task_landed(&mut self, session: &str) -> Option<String> {
+    pub(super) fn task_landed(&mut self, session: &str) -> String {
         // The intent it declared before is for what this landing carries: its landing ends it.
         self.auto_intents.landing_queued(session, super::now());
         let on = self.tasks.on(session).cloned();
         let task = self.tasks.land(session, super::now());
         // Claimed while still on it, by a `taking:`: this landing landing finishes it.
-        match (&task, self.tasks.on(session)) {
-            (Some(task), Some(still)) if on.as_ref() == Some(task) && still == task => {
+        match self.tasks.on(session) {
+            Some(still) if on.as_ref() == Some(&task) && *still == task => {
                 self.tasks_landing.insert(session.to_owned(), task.clone());
             }
             _ => {
@@ -268,8 +273,13 @@ mod tests {
         let task = kept.on["cc-a"].clone();
         assert!(kept.finish("cc-a", 100));
         assert_eq!(kept.on.get("cc-a"), None, "done: ends it");
-        assert_eq!(kept.land("cc-a", 200), Some(task));
-        assert_eq!(kept.land("cc-a", 300), None, "claimed once");
+        assert_eq!(kept.land("cc-a", 200), task);
+        // Ids go by the millisecond.
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let next = kept.land("cc-a", 300);
+        assert_ne!(next, task, "claimed once: the next landing's is its own");
+        assert_eq!(zirc_proto::task_id(&next), Some(next.clone()));
+        assert_eq!(kept.on.get("cc-a"), None, "and ends with it");
     }
 
     #[test]
@@ -277,7 +287,9 @@ mod tests {
         let mut kept = Tasks::default();
         kept.start("cc-a", false);
         kept.finish("cc-a", 100);
-        assert_eq!(kept.land("cc-a", 101 + LANDING_CLAIMS), None);
+        let task = kept.finished["cc-a"].task.clone();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        assert_ne!(kept.land("cc-a", 101 + LANDING_CLAIMS), task);
     }
 
     #[test]
@@ -285,8 +297,8 @@ mod tests {
         let mut kept = Tasks::default();
         kept.start("cc-a", false);
         let task = kept.on["cc-a"].clone();
-        assert_eq!(kept.land("cc-a", 1), Some(task.clone()));
-        assert_eq!(kept.land("cc-a", 2), Some(task), "on until done:");
+        assert_eq!(kept.land("cc-a", 1), task);
+        assert_eq!(kept.land("cc-a", 2), task, "on until done:");
     }
 
     #[test]
@@ -296,7 +308,7 @@ mod tests {
         let task = kept.on["cc-a"].clone();
         assert!(!kept.start("cc-a", true), "the next intent keeps it");
         assert_eq!(kept.on["cc-a"], task);
-        assert_eq!(kept.land("cc-a", 1), Some(task.clone()));
+        assert_eq!(kept.land("cc-a", 1), task);
         assert_eq!(kept.on.get("cc-a"), None);
         // Ids go by the millisecond.
         std::thread::sleep(std::time::Duration::from_millis(2));
@@ -318,7 +330,7 @@ mod tests {
             !kept.implied.contains("cc-b"),
             "a taking: is no implied task"
         );
-        assert!(kept.land("cc-b", 2).is_some());
+        kept.land("cc-b", 2);
         assert!(kept.on.contains_key("cc-b"), "so its landing leaves it on");
     }
 }

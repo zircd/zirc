@@ -4776,12 +4776,19 @@
           },
           "description": "The targets that failed, each with where its result is."
         },
+        "cause": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "On a landing that didn't land: why, one of [`CAUSES`], for counting what stops\nlandings."
+        },
         "task": {
           "type": [
             "string",
             "null"
           ],
-          "description": "The task the landing finishes or is part of ([`crate::Message::task`]), when its\nsession was on one."
+          "description": "The task the landing finishes or is part of ([`crate::Message::task`]): the one its\nsession is on or just finished, else one of the landing's own, from its zircd."
         },
         "reverts": {
           "type": "array",

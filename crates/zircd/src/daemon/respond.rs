@@ -259,7 +259,7 @@ impl Daemon {
             },
             Request::Task { session, landing } => Response::Task {
                 task: if landing {
-                    self.task_landed(&session)
+                    Some(self.task_landed(&session))
                 } else {
                     self.tasks.on(&session).cloned()
                 },

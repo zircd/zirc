@@ -50,7 +50,10 @@ async fn a_task_runs_from_taking_to_done_on_what_its_session_says() {
         Some(&task),
         "a landing after done: claims it"
     );
-    assert_eq!(task_of(&alpha, true).await, None, "once");
+    let next = task_of(&alpha, true)
+        .await
+        .expect("every landing has a task");
+    assert_ne!(next, task, "the next landing's is its own");
     let mut tasks = Vec::new();
     for _ in 0..5 {
         tasks.push(next_post(&mut beta_hears).await.message.task);

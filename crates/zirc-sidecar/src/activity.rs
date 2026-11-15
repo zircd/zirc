@@ -298,12 +298,18 @@ pub fn metadata(message: &Message) -> Option<Value> {
                     "commit",
                     "state",
                     "failed",
+                    "cause",
                     "task",
                     "reverts",
                     "fixes",
                     "try",
                     "stacked_on",
                 ],
+                // A check of the default branch or a flaky test: which build, how it went and
+                // what failed, for counting flakes and broken heads.
+                zirc_proto::ci::CHECK_KIND => {
+                    &["pipeline", "build", "commit", "state", "failed", "cause"]
+                }
                 // Its name, how it stands and who's on it ([`zirc_proto::state::State`]), never
                 // why, which is words.
                 zirc_proto::state::KIND => &["name", "level", "owner"],
@@ -780,7 +786,7 @@ mod tests {
                 kind: zirc_proto::ci::LANDING_KIND.into(),
                 data: json!({"state": "failed", "build": "7", "subject": "secret plans",
                              "failed": [{"target": "//web:e2e", "results": "https://x"}],
-                             "fixes": ["build 6"]}),
+                             "fixes": ["build 6"], "cause": "test"}),
                 text: "cc-1: build 7 failed".into(),
             },
         );
@@ -820,7 +826,8 @@ mod tests {
         assert_eq!(
             got[2].data,
             Some(
-                json!({"state": "failed", "build": "7", "failed": ["//web:e2e"], "fixes": ["build 6"]})
+                json!({"state": "failed", "build": "7", "failed": ["//web:e2e"], "cause": "test",
+                       "fixes": ["build 6"]})
             )
         );
         assert_eq!(got[2].level.as_deref(), Some("error"));

@@ -21,6 +21,23 @@ pub const DEPLOY_KIND: &str = "x-zirc/deploy";
 /// run, a flaky test.
 pub const CHECK_KIND: &str = "x-zirc/check";
 
+/// Why a landing didn't land ([`Data::cause`]): a test failed, the build or a lint or
+/// rustfmt stopped it, a generated file wasn't regenerated, it conflicts with the default
+/// branch, it's stacked on a branch still to land, the default branch kept moving, or CI
+/// itself ended it. `ops/land.sh`'s `failure_cause` and `tell_*` say these too, a copy the
+/// shell can't read from here: change both.
+pub const CAUSES: &[&str] = &[
+    "test",
+    "build",
+    "lint",
+    "format",
+    "generated",
+    "conflict",
+    "stacked",
+    "moving",
+    "ci",
+];
+
 /// The nick CI posts as on an organisation's server, with the organisation's CI token. One of
 /// [`crate::names::RESERVED_INTEGRATION_NICKS`], so no team's hook can post as it.
 pub const NICK: &str = "zirc-ci";
@@ -157,8 +174,12 @@ pub struct Data {
     /// The targets that failed, each with where its result is.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failed: Vec<Failed>,
-    /// The task the landing finishes or is part of ([`crate::Message::task`]), when its
-    /// session was on one.
+    /// On a landing that didn't land: why, one of [`CAUSES`], for counting what stops
+    /// landings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<String>,
+    /// The task the landing finishes or is part of ([`crate::Message::task`]): the one its
+    /// session is on or just finished, else one of the landing's own, from its zircd.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<String>,
     /// Full ids of the commits on the default branch the landing undoes, from its commits'
