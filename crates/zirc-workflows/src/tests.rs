@@ -300,7 +300,10 @@ fn a_wait_for_the_state_that_started_it_waits_for_that_one() {
     // Another state fine ends nothing.
     assert!(texts(&e.handle(named("master", Level::Ok), MIN)).is_empty());
     let mended = texts(&e.handle(named("master/publish", Level::Ok), 2 * MIN));
-    assert_eq!(mended, ["`green` of `checks-1`: it is", "`checks-1` is done"]);
+    assert_eq!(
+        mended,
+        ["`green` of `checks-1`: it is", "`checks-1` is done"]
+    );
 }
 
 #[test]
