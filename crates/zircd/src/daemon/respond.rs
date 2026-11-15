@@ -506,7 +506,7 @@ impl Daemon {
                     .iter()
                     .map(|(id, _)| *id)
                     .collect();
-                format!("{avatar:?} isn't an avatar: pick one of {}", ids.join(", "))
+                format!("{avatar:?} isn't a role: pick one of {}", ids.join(", "))
             })?;
             self.book
                 .set(Field::Avatar, session, avatar.to_owned())

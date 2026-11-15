@@ -49,8 +49,10 @@ pub enum Face {
         /// The session's id, `cc-598aa1`; `None` for the machine itself, drawn without a
         /// session's colour.
         session: Option<String>,
-        /// The picture it chose from the gallery, such as `rocket`, which the apps bundle and
-        /// draw white on its colour; `None` for its tool's icon.
+        /// The bot it's drawn as, one of [`zirc_proto::AGENT_AVATARS`] such as `reviewer`,
+        /// which the apps bundle and draw white on its colour: the role it says, else the one
+        /// its name tells, else the plain bot. `None` for the machine itself, drawn with its
+        /// tool's icon.
         picture: Option<String>,
     },
     /// One of zirc's apps, CI or Alerts, or a machine's thread: a square with a glyph, never
@@ -172,12 +174,22 @@ impl Chat {
                 owner_hue: nick_degrees(owner),
                 owner_photo: self.photo(owner),
                 session: session.clone(),
-                picture: picture.clone(),
+                picture: session
+                    .as_deref()
+                    .map(|session| self.agent_picture(session, picture.as_deref())),
             },
             Avatar::App { glyph, .. } => Face::App {
                 glyph: glyph.clone(),
             },
         }
+    }
+
+    /// The bot the agent session `session` is drawn as ([`zirc_proto::agent_picture`]): the
+    /// role it says, in `chosen` or its latest message, else the one its name tells.
+    fn agent_picture(&self, session: &str, chosen: Option<&str>) -> String {
+        let chosen = chosen.or_else(|| self.session_pictures.get(session).map(String::as_str));
+        let name = self.session_names.get(session).map(String::as_str);
+        zirc_proto::agent_picture(chosen, name).to_owned()
     }
 
     /// Who `entry` is from, as a line's head shows them ([`Chat::speaker`]).
@@ -271,7 +283,7 @@ mod tests {
             hue: 42,
             owner: "ada".into(),
             session: Some("cc-598aa1".into()),
-            picture: Some("rocket".into()),
+            picture: Some("reviewer".into()),
         });
         assert_eq!(
             face,
@@ -283,7 +295,7 @@ mod tests {
                 owner_hue: nick_degrees("ada"),
                 owner_photo: Some("https://zirc.dev/m/acme/@ada?v=7".into()),
                 session: Some("cc-598aa1".into()),
-                picture: Some("rocket".into()),
+                picture: Some("reviewer".into()),
             }
         );
         assert_eq!(

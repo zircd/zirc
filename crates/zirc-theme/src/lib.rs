@@ -148,38 +148,40 @@ pub mod icons {
     pub const IOS: &[u8] = include_bytes!("../art/icons/ios/zirc-1024.png");
 }
 
-/// The agent avatars, the pictures an agent session picks from by id (zirc-proto's
+/// The agent avatars, the bots an agent session is drawn as by its role (zirc-proto's
 /// `AGENT_AVATARS`), as SVGs in white on nothing, for apps to draw on the session's colour:
 /// `art/avatars/<id>.svg`, made by zirc-theme-art.
 pub mod avatars {
     /// Each picture by its id, in the gallery's order. The Android app names them again, as
     /// a genrule must (`AGENT_AVATARS` in oss/apps/android/BUILD.bazel), and checks they
     /// match: change both together.
-    pub const SVGS: [(&str, &[u8]); 24] = [
-        ("cat", include_bytes!("../art/avatars/cat.svg")),
-        ("dog", include_bytes!("../art/avatars/dog.svg")),
-        ("bird", include_bytes!("../art/avatars/bird.svg")),
-        ("fish", include_bytes!("../art/avatars/fish.svg")),
-        ("rabbit", include_bytes!("../art/avatars/rabbit.svg")),
-        ("squirrel", include_bytes!("../art/avatars/squirrel.svg")),
-        ("turtle", include_bytes!("../art/avatars/turtle.svg")),
-        ("snail", include_bytes!("../art/avatars/snail.svg")),
-        ("bug", include_bytes!("../art/avatars/bug.svg")),
-        ("ghost", include_bytes!("../art/avatars/ghost.svg")),
-        ("rocket", include_bytes!("../art/avatars/rocket.svg")),
-        ("robot", include_bytes!("../art/avatars/robot.svg")),
-        ("anchor", include_bytes!("../art/avatars/anchor.svg")),
-        ("compass", include_bytes!("../art/avatars/compass.svg")),
-        ("telescope", include_bytes!("../art/avatars/telescope.svg")),
-        ("atom", include_bytes!("../art/avatars/atom.svg")),
-        ("gem", include_bytes!("../art/avatars/gem.svg")),
-        ("coffee", include_bytes!("../art/avatars/coffee.svg")),
-        ("leaf", include_bytes!("../art/avatars/leaf.svg")),
-        ("flame", include_bytes!("../art/avatars/flame.svg")),
-        ("bolt", include_bytes!("../art/avatars/bolt.svg")),
-        ("moon", include_bytes!("../art/avatars/moon.svg")),
-        ("star", include_bytes!("../art/avatars/star.svg")),
-        ("mountain", include_bytes!("../art/avatars/mountain.svg")),
+    pub const SVGS: [(&str, &[u8]); 17] = [
+        ("agent", include_bytes!("../art/avatars/agent.svg")),
+        ("reviewer", include_bytes!("../art/avatars/reviewer.svg")),
+        ("fixer", include_bytes!("../art/avatars/fixer.svg")),
+        ("builder", include_bytes!("../art/avatars/builder.svg")),
+        ("tester", include_bytes!("../art/avatars/tester.svg")),
+        ("docs", include_bytes!("../art/avatars/docs.svg")),
+        ("designer", include_bytes!("../art/avatars/designer.svg")),
+        ("ops", include_bytes!("../art/avatars/ops.svg")),
+        ("security", include_bytes!("../art/avatars/security.svg")),
+        ("data", include_bytes!("../art/avatars/data.svg")),
+        ("release", include_bytes!("../art/avatars/release.svg")),
+        (
+            "researcher",
+            include_bytes!("../art/avatars/researcher.svg"),
+        ),
+        (
+            "coordinator",
+            include_bytes!("../art/avatars/coordinator.svg"),
+        ),
+        ("frontend", include_bytes!("../art/avatars/frontend.svg")),
+        ("backend", include_bytes!("../art/avatars/backend.svg")),
+        ("mobile", include_bytes!("../art/avatars/mobile.svg")),
+        (
+            "performance",
+            include_bytes!("../art/avatars/performance.svg"),
+        ),
     ];
 
     /// The picture with id `id`, as an SVG: `None` for one the gallery hasn't.

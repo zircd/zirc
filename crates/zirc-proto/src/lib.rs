@@ -818,42 +818,224 @@ pub fn session_tool(tool: &str) -> Option<String> {
 }
 
 /// The pictures an agent session can go by ([`Message::avatar`]), by id, each with what it
-/// shows, in the order apps offer them. Apps draw each one; nobody uploads a picture.
-pub const AGENT_AVATARS: [(&str, &str); 24] = [
-    ("cat", "a cat"),
-    ("dog", "a dog"),
-    ("bird", "a bird"),
-    ("fish", "a fish"),
-    ("rabbit", "a rabbit"),
-    ("squirrel", "a squirrel"),
-    ("turtle", "a turtle"),
-    ("snail", "a snail"),
-    ("bug", "a bug"),
-    ("ghost", "a friendly ghost"),
-    ("rocket", "a rocket"),
-    ("robot", "a robot"),
-    ("anchor", "an anchor"),
-    ("compass", "a compass"),
-    ("telescope", "a telescope"),
-    ("atom", "an atom"),
-    ("gem", "a gem"),
-    ("coffee", "a cup of coffee"),
-    ("leaf", "a leaf"),
-    ("flame", "a flame"),
-    ("bolt", "a lightning bolt"),
-    ("moon", "a crescent moon"),
-    ("star", "a star"),
-    ("mountain", "a mountain"),
+/// shows, in the order apps offer them: a bot dressed for each role an agent plays, and
+/// [`DEFAULT_ROLE`]'s plain one. Apps draw each one; nobody uploads a picture.
+pub const AGENT_AVATARS: [(&str, &str); 17] = [
+    (
+        DEFAULT_ROLE,
+        "a plain bot, for an agent whose role isn't said",
+    ),
+    ("reviewer", "a bot in glasses, for reviewing changes"),
+    ("fixer", "a bot with a wrench, for fixing what's broken"),
+    ("builder", "a bot in a hard hat, for building features"),
+    ("tester", "a bot with a flask, for tests"),
+    ("docs", "a bot with a quill, for docs and writing"),
+    ("designer", "a bot in a beret, for design"),
+    ("ops", "a bot in a headset, for ops, deploys and alerts"),
+    ("security", "a bot with a shield, for security"),
+    ("data", "a bot with a chart, for data"),
+    ("release", "a bot with a flag, for releases"),
+    ("researcher", "a bot with a magnifier, for research"),
+    (
+        "coordinator",
+        "a bot with a megaphone, for coordinating others",
+    ),
+    ("frontend", "a bot with </> for a face, for the frontend"),
+    ("backend", "a bot with servers, for the backend"),
+    ("mobile", "a bot with a phone, for mobile apps"),
+    (
+        "performance",
+        "a bot with a lightning bolt, for performance",
+    ),
 ];
 
-/// `id` as one of [`AGENT_AVATARS`], whatever its case: `None` for one that isn't.
+/// The plain bot of [`AGENT_AVATARS`], for an agent whose role is neither said nor told by
+/// its name.
+pub const DEFAULT_ROLE: &str = "agent";
+
+/// The pictures agent sessions went by before roles, still taken from older zircs and
+/// `--avatar`, and drawn as the role its name tells ([`agent_picture`]).
+const OLD_AVATARS: [&str; 24] = [
+    "cat",
+    "dog",
+    "bird",
+    "fish",
+    "rabbit",
+    "squirrel",
+    "turtle",
+    "snail",
+    "bug",
+    "ghost",
+    "rocket",
+    "robot",
+    "anchor",
+    "compass",
+    "telescope",
+    "atom",
+    "gem",
+    "coffee",
+    "leaf",
+    "flame",
+    "bolt",
+    "moon",
+    "star",
+    "mountain",
+];
+
+/// The words in a session's name that tell its role, for one that doesn't say it: the first
+/// word of its name found here decides ([`guess_role`]).
+const ROLE_WORDS: [(&str, &[&str]); 16] = [
+    ("reviewer", &["review", "reviewer", "reviews", "pr"]),
+    (
+        "fixer",
+        &[
+            "fix", "fixer", "fixes", "hotfix", "bug", "bugs", "flake", "flaky", "repair",
+        ],
+    ),
+    (
+        "builder",
+        &["build", "builder", "feature", "implement", "scaffold"],
+    ),
+    (
+        "tester",
+        &[
+            "test", "tests", "tester", "testing", "e2e", "qa", "spec", "specs",
+        ],
+    ),
+    (
+        "docs",
+        &["doc", "docs", "readme", "guide", "writing", "blog"],
+    ),
+    (
+        "designer",
+        &[
+            "design", "designer", "ux", "logo", "icon", "icons", "avatars", "theme",
+        ],
+    ),
+    (
+        "ops",
+        &[
+            "ops", "deploy", "infra", "k8s", "cluster", "oncall", "alert", "alerts", "ci",
+        ],
+    ),
+    (
+        "security",
+        &[
+            "security", "auth", "secret", "secrets", "audit", "vuln", "sealed",
+        ],
+    ),
+    (
+        "data",
+        &[
+            "data",
+            "sql",
+            "db",
+            "database",
+            "migration",
+            "analytics",
+            "metrics",
+            "insights",
+        ],
+    ),
+    (
+        "release",
+        &[
+            "release",
+            "releases",
+            "ship",
+            "publish",
+            "version",
+            "changelog",
+            "store",
+        ],
+    ),
+    (
+        "researcher",
+        &[
+            "research",
+            "researcher",
+            "explore",
+            "investigate",
+            "spike",
+            "study",
+        ],
+    ),
+    (
+        "coordinator",
+        &["coordinator", "coord", "operator", "lead", "triage", "plan"],
+    ),
+    (
+        "frontend",
+        &["frontend", "web", "css", "react", "ui", "landing"],
+    ),
+    (
+        "backend",
+        &[
+            "backend",
+            "api",
+            "server",
+            "controller",
+            "sidecar",
+            "daemon",
+            "zircd",
+        ],
+    ),
+    (
+        "mobile",
+        &["mobile", "ios", "android", "iphone", "phone", "phones"],
+    ),
+    (
+        "performance",
+        &[
+            "perf",
+            "performance",
+            "speed",
+            "latency",
+            "cache",
+            "fast",
+            "slow",
+        ],
+    ),
+];
+
+/// `id` as a picture an agent session may go by, whatever its case: one of
+/// [`AGENT_AVATARS`]' roles or a picture from before roles; `None` for one that's neither.
 #[must_use]
 pub fn agent_avatar(id: &str) -> Option<&'static str> {
     let id = id.trim();
     AGENT_AVATARS
         .iter()
         .map(|(avatar, _)| *avatar)
+        .chain(OLD_AVATARS)
         .find(|avatar| avatar.eq_ignore_ascii_case(id))
+}
+
+/// The role a session's `name` tells, by its first word that names one, such as `fixer`
+/// for `fix-ci`: `None` when none does.
+#[must_use]
+pub fn guess_role(name: &str) -> Option<&'static str> {
+    name.split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .find_map(|word| {
+            ROLE_WORDS.iter().find_map(|(role, words)| {
+                words
+                    .iter()
+                    .any(|known| known.eq_ignore_ascii_case(word))
+                    .then_some(*role)
+            })
+        })
+}
+
+/// The picture of [`AGENT_AVATARS`] an agent session is drawn with: the role its `avatar`
+/// says, else the one its `name` tells ([`guess_role`]), else [`DEFAULT_ROLE`]'s. A picture
+/// from before roles says none.
+#[must_use]
+pub fn agent_picture(avatar: Option<&str>, name: Option<&str>) -> &'static str {
+    avatar
+        .and_then(agent_avatar)
+        .filter(|id| !OLD_AVATARS.contains(id) && *id != DEFAULT_ROLE)
+        .or_else(|| name.and_then(guess_role))
+        .unwrap_or(DEFAULT_ROLE)
 }
 
 /// `text` in lowercase letters, digits, `-`, `_` and `.`, at most `max` of them, spaces
@@ -1572,6 +1754,24 @@ mod tests {
     }
 
     #[test]
+    fn an_agent_is_drawn_as_the_role_it_says_else_its_name_tells_else_a_plain_bot() {
+        assert_eq!(agent_picture(Some("tester"), Some("fix-ci")), "tester");
+        assert_eq!(agent_picture(None, Some("fix-ci")), "fixer");
+        assert_eq!(
+            agent_picture(Some("rocket"), Some("android-shots")),
+            "mobile"
+        );
+        assert_eq!(agent_picture(Some("agent"), Some("web-e2e")), "frontend");
+        assert_eq!(agent_picture(None, Some("previews")), DEFAULT_ROLE);
+        assert_eq!(agent_picture(None, None), DEFAULT_ROLE);
+        assert_eq!(guess_role("Review_PR-42"), Some("reviewer"));
+        // Every role a name can tell is one apps draw.
+        for (role, _) in ROLE_WORDS {
+            assert!(AGENT_AVATARS.iter().any(|(id, _)| *id == role), "{role}");
+        }
+    }
+
+    #[test]
     fn a_session_name_is_short_and_plain() {
         assert_eq!(session_name("zirc-chat").as_deref(), Some("zirc-chat"));
         assert_eq!(session_name("  Guests Web ").as_deref(), Some("guests-web"));
@@ -1584,9 +1784,10 @@ mod tests {
         assert_eq!(session_tool("Claude Code").as_deref(), Some(CLAUDE_CODE));
         assert_eq!(session_tool(" ").as_deref(), None);
         assert_eq!(agent_avatar(" Rocket"), Some("rocket"));
+        assert_eq!(agent_avatar("Reviewer"), Some("reviewer"));
         assert_eq!(agent_avatar("unicorn"), None);
-        assert_eq!(AGENT_AVATARS[0].0, "cat");
-        assert_eq!(AGENT_AVATARS[23].0, "mountain");
+        assert_eq!(AGENT_AVATARS[0].0, DEFAULT_ROLE);
+        assert_eq!(AGENT_AVATARS[16].0, "performance");
         let named = Message {
             name: Some("zirc-chat".into()),
             tool: Some(CODEX.into()),

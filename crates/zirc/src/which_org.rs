@@ -105,7 +105,7 @@ const ACTS: &[(&str, Acts)] = &[
     ("tui login", Acts::Machine),
     ("tui logout", Acts::Machine),
     ("agent-guide", Acts::Machine),
-    ("avatars", Acts::Machine),
+    ("roles", Acts::Machine),
     ("reference", Acts::Machine),
     ("skill install", Acts::Machine),
     ("skill uninstall", Acts::Machine),

@@ -286,7 +286,9 @@ async fn a_session_goes_by_its_name_and_says_its_tool_and_avatar() {
     };
     let refused = ipc::request(&alpha.socket(), &unknown).await.unwrap_err();
     assert!(
-        refused.to_string().contains("pick one of cat, dog"),
+        refused
+            .to_string()
+            .contains("isn't a role: pick one of agent, reviewer"),
         "{refused}"
     );
     let mut beta_hears = beta.watch(None).await;

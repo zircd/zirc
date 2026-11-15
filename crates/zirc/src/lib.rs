@@ -76,9 +76,9 @@ zirc's files are in ~/.zirc, or $ZIRC_HOME.";
 /// anywhere, as they always were, but said only where they do something: on every command's
 /// help they were three long paragraphs about something else.
 const IDENTITY: &str = "\
-How your session shows in apps (also $ZIRC_SESSION_NAME, _AVATAR and _TOOL):
+How your session shows in apps (also $ZIRC_SESSION_NAME, _ROLE and _TOOL):
       --name <SHORT>  What it's called, such as login-flow, in place of its id
-      --avatar <ID>   The picture it goes by, picked from `zirc avatars`
+      --role <ROLE>   The role it plays, from `zirc roles`, such as fixer: apps draw its bot
       --tool <TOOL>   The agent tool it runs in, such as claude-code; told by itself in most";
 
 /// What to type, for each command `zirc --help` lists: shown at the end of its own `--help`,
@@ -91,7 +91,7 @@ const EXAMPLES: &[(&str, &[&str])] = &[
         "watch",
         &[
             "zirc watch",
-            "zirc watch --once --session cc-1 --name login-flow --avatar rocket",
+            "zirc watch --once --session cc-1 --name login-flow --role builder",
         ],
     ),
     ("status", &["zirc status", "zirc status --json"]),
@@ -386,13 +386,16 @@ pub struct Cli {
         hide = true
     )]
     tool: Option<String>,
-    /// The picture your session goes by in apps, picked from `zirc avatars` by id, such as
-    /// rocket. `zirc watch`, `zirc join` and `zirc post` set it for the session.
+    /// The role your session plays, from `zirc roles`, such as fixer: apps draw the bot
+    /// dressed for it. Without it, the role its name tells, else a plain bot. `--avatar`,
+    /// from before roles, still takes one. `zirc watch`, `zirc join` and `zirc post` set it
+    /// for the session.
     #[arg(
-        long,
-        env = "ZIRC_SESSION_AVATAR",
+        long = "role",
+        alias = "avatar",
+        env = "ZIRC_SESSION_ROLE",
         global = true,
-        value_name = "ID",
+        value_name = "ROLE",
         hide = true
     )]
     avatar: Option<String>,
@@ -872,9 +875,9 @@ enum Command {
     /// Such as: zirc agent-guide >> CLAUDE.md
     #[command(hide = true)]
     AgentGuide,
-    /// List the pictures an agent session can go by, for `--avatar <id>`.
-    #[command(hide = true)]
-    Avatars,
+    /// List the roles an agent session can play, for `--role <role>`, each with its bot.
+    #[command(hide = true, alias = "avatars")]
+    Roles,
     /// Print the reference for building bots and scripts on zirc.
     ///
     /// The team's IRC server, Zirc's messages and events over it, and zircd's socket, with
@@ -939,7 +942,14 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
     let home = cli.home.unwrap_or_else(paths::home);
     let socket = paths::socket(&home);
     let tool = cli.tool.clone().or_else(tool_here);
-    let avatar = cli.avatar.as_deref().map(avatar_named).transpose()?;
+    // ZIRC_SESSION_AVATAR, from before roles, still counts.
+    let avatar = cli
+        .avatar
+        .clone()
+        .or_else(|| std::env::var("ZIRC_SESSION_AVATAR").ok())
+        .as_deref()
+        .map(avatar_named)
+        .transpose()?;
     let name = (cli.name.as_deref(), tool.as_deref(), avatar);
     before(&cli.command, &home, own_home);
     match cli.command {
@@ -1023,7 +1033,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Ci(command) => ci::ci(&home, &socket, command, out).await,
         Command::AgentGuide => Ok(write!(out, "{}", skill::agent_guide(&home))?),
         Command::Reference => Ok(write!(out, "{REFERENCE}")?),
-        Command::Avatars => Ok(write!(out, "{}", avatars_text())?),
+        Command::Roles => Ok(write!(out, "{}", avatars_text())?),
         Command::Skill(command) => skill::install_or_remove(command, out),
         Command::Help { all, command } => help(all, &command, out),
     }

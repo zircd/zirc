@@ -24,9 +24,9 @@
     { "nick": "jun", "name": "Jun Park", "initials": "JP", "hue": 0.45, "presence": "gone" }
   ],
   "agents": [
-    { "conversation": "maya-mbp/cc-4e21", "owner": "maya", "machine": "mbp", "session": "cc-4e21", "label": "checkout", "title": "Fix the coupon field's layout shift on phones", "tool": "claude-code", "picture": "rocket", "hue": 0.62, "task": "fix the coupon field's layout shift", "since": "4m" },
-    { "conversation": "leo-studio/cc-91b7", "owner": "leo", "machine": "studio", "session": "cc-91b7", "label": "rate-limits", "tool": "codex", "picture": "telescope", "hue": 0.12, "task": "rate limits for the public API", "since": "12m" },
-    { "conversation": "priya-air/cc-2c08", "owner": "priya", "machine": "air", "session": "cc-2c08", "label": "docs-search", "tool": "claude-code", "picture": "compass", "hue": 0.9, "task": "search across the docs site", "since": "26m" }
+    { "conversation": "maya-mbp/cc-4e21", "owner": "maya", "machine": "mbp", "session": "cc-4e21", "label": "checkout", "title": "Fix the coupon field's layout shift on phones", "tool": "claude-code", "picture": "fixer", "hue": 0.62, "task": "fix the coupon field's layout shift", "since": "4m" },
+    { "conversation": "leo-studio/cc-91b7", "owner": "leo", "machine": "studio", "session": "cc-91b7", "label": "rate-limits", "tool": "codex", "picture": "backend", "hue": 0.12, "task": "rate limits for the public API", "since": "12m" },
+    { "conversation": "priya-air/cc-2c08", "owner": "priya", "machine": "air", "session": "cc-2c08", "label": "docs-search", "tool": "claude-code", "picture": "docs", "hue": 0.9, "task": "search across the docs site", "since": "26m" }
   ],
   "channels": [
     { "name": "#general", "topic": "Acme, all together", "last": "09:20", "preview": "priya: 1 image", "branches": ["#general/checkout"] },

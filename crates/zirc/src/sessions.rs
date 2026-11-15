@@ -390,23 +390,25 @@ pub(crate) fn card_named(json: &str) -> Result<zirc_proto::card::Card> {
     Ok(card)
 }
 
-/// `id` as one of the avatars `zirc avatars` lists, or an error that lists them.
+/// `id` as one of the roles `zirc roles` lists, or a picture from before roles, or an error
+/// that lists the roles.
 pub(crate) fn avatar_named(id: &str) -> Result<&'static str> {
     zirc_proto::agent_avatar(id).with_context(|| {
         format!(
-            "{id:?} isn't an avatar. Pick one of these:\n{}",
+            "{id:?} isn't a role. Pick one of these:\n{}",
             avatars_text()
         )
     })
 }
 
-/// "cat       a cat": each avatar's id and what it shows, a line each.
+/// "fixer       a bot with a wrench, for fixing what's broken": each role and its bot, a
+/// line each.
 pub(crate) fn avatars_text() -> String {
     use std::fmt::Write as _;
     zirc_proto::AGENT_AVATARS
         .iter()
         .fold(String::new(), |mut text, (id, about)| {
-            let _ = writeln!(text, "{id:<10} {about}");
+            let _ = writeln!(text, "{id:<12} {about}");
             text
         })
 }
@@ -884,14 +886,18 @@ mod tests {
     }
 
     #[test]
-    fn lists_the_avatars_and_refuses_others() {
+    fn lists_the_roles_and_takes_older_pictures_but_refuses_others() {
         let list = avatars_text();
-        assert_eq!(list.lines().count(), 24);
-        assert!(list.starts_with("cat        a cat\n"));
+        assert_eq!(list.lines().count(), 17);
+        assert!(list.starts_with("agent        a plain bot"), "{list}");
+        assert_eq!(avatar_named("Fixer").unwrap(), "fixer");
         assert_eq!(avatar_named("Rocket").unwrap(), "rocket");
         let refused = avatar_named("unicorn").unwrap_err().to_string();
-        assert!(refused.contains("\"unicorn\" isn't an avatar"), "{refused}");
-        assert!(refused.contains("mountain   a mountain"), "{refused}");
+        assert!(refused.contains("\"unicorn\" isn't a role"), "{refused}");
+        assert!(
+            refused.contains("fixer        a bot with a wrench"),
+            "{refused}"
+        );
     }
 
     #[test]

@@ -38,7 +38,7 @@ installed. Otherwise:
    session>` there. When a repository the CLAUDE.md says uses zirc isn't watched yet, `zirc
    repo add --session <your session>` starts watching it; when it asks which organisation,
    ask the user, then add `--org <name>`; never guess.
-3. Start `zirc watch --once --session <your session> --name <short> --avatar <id>` as a
+3. Start `zirc watch --once --session <your session> --name <short> --role <role>` as a
    background command that tells you when it ends (in Claude Code, Bash with
    `run_in_background`), before anything else, even when the task looks like only reading.
    It waits quietly until something concerns your session, prints it and ends, which wakes
@@ -58,7 +58,8 @@ installed. Otherwise:
    Never poll for what zirc hears: not a channel's history, not CI's API or `gh`, not a
    loop with `sleep`.
    `--name` is a short name saying what you work on, such as `controller`, which apps show
-   in place of your id; `--avatar` is a picture from `zirc avatars`, such as `rocket`. Once,
+   in place of your id; `--role` is the role you play, from `zirc roles`, such as `fixer` or
+   `reviewer`, which apps draw as a bot dressed for it. Once,
    register your full title for the card apps show: `zirc name --session <your session>
    --name <short> --title "<your session's title>"`, unless the session that started you
    did. Without any way to run a background process, run `zirc who` before each commit.
