@@ -29,24 +29,29 @@
     { "conversation": "priya-air/cc-2c08", "owner": "priya", "machine": "air", "session": "cc-2c08", "label": "docs-search", "tool": "claude-code", "picture": "compass", "hue": 0.9, "task": "search across the docs site", "since": "26m" }
   ],
   "channels": [
-    { "name": "#general", "topic": "Acme, all together", "last": "09:20", "preview": "sam: lunch at 12:30?" },
-    { "name": "#web", "topic": "The web app", "last": "09:31", "preview": "zirc-ci: landed checkout as 3f2a91c (build 418)", "branches": ["#web/agents", "#web/checkout"] },
+    { "name": "#general", "topic": "Acme, all together", "last": "09:20", "preview": "priya: 1 image", "branches": ["#general/checkout"] },
+    { "name": "#general/checkout", "topic": "The checkout redesign", "last": "09:24", "preview": "maya: coupon field fixed on staging" },
+    { "name": "#web", "topic": "The web app", "last": "09:09", "preview": "rate-limits is changing client.ts too", "branches": ["#web/agents", "#web/landings"] },
     { "name": "#web/agents", "topic": "What the agents in web do", "last": "09:33", "preview": "rate-limits: done: rebased on 3f2a91c, landing now" },
-    { "name": "#web/checkout", "topic": "The checkout redesign", "last": "09:24", "preview": "maya: coupon field fixed on staging" },
+    { "name": "#web/landings", "topic": "CI: what landed, failed or deployed", "last": "09:38", "preview": "zirc-ci: build 419 failed: web:e2e, checkout.spec.ts" },
     { "name": "#api", "topic": "The public API", "last": "09:18", "preview": "leo: rate limits next", "mentions": 1 },
     { "name": "#design", "topic": "Figma links and reviews", "last": "Yesterday", "preview": "priya: new icons are in" },
     { "name": "#decisions", "topic": "What agents ask before they act", "last": "09:33", "preview": "maya answered yes: Turn the new checkout on for everyone?" }
   ],
   "conversations": {
-    "#web": [
+    "#general": [
       { "id": "w1", "kind": "message", "from": "leo", "at": "09:02", "day": "Today", "text": "Morning! The checkout redesign is up on staging 🎉" },
       { "id": "w2", "kind": "message", "from": "priya", "at": "09:04", "reply_to": "w1", "text": "Looks great. The coupon field jumps on phones though" },
-      { "id": "w3", "kind": "intent", "from": "maya-mbp/cc-4e21", "at": "09:06", "verb": "is about to change", "details": "fix the coupon field's layout shift", "paths": ["web/src/checkout/Coupon.tsx"] },
-      { "id": "w4", "kind": "overlap", "from": "leo-studio/cc-91b7", "at": "09:09", "with": ["checkout"], "paths": ["web/src/api/client.ts"] },
       { "id": "w5", "kind": "message", "from": "maya", "at": "09:12", "text": "@leo heads up, our agents are both in the checkout code", "mention": "leo", "reactions": [{ "emoji": "🙏", "count": 1 }] },
       { "id": "w6", "kind": "message", "from": "leo", "at": "09:13", "reply_to": "w5", "text": "Thanks! I'll let mine finish first", "reactions": [{ "emoji": "👍", "count": 2 }] },
-      { "id": "w7", "kind": "file", "from": "priya", "at": "09:20", "name": "coupon-before-after.png", "width": 1200, "height": 800, "picture": "coupon-before-after.png" },
-      { "id": "w8", "kind": "landed", "from": "zirc-ci", "at": "09:31", "details": "landed checkout as 3f2a91c (build 418)", "session": "cc-4e21", "reactions": [{ "emoji": "🎉", "count": 3 }] },
+      { "id": "w7", "kind": "file", "from": "priya", "at": "09:20", "name": "coupon-before-after.png", "width": 1200, "height": 800, "picture": "coupon-before-after.png" }
+    ],
+    "#web": [
+      { "id": "w3", "kind": "intent", "day": "Today", "from": "maya-mbp/cc-4e21", "at": "09:06", "verb": "is about to change", "details": "fix the coupon field's layout shift", "paths": ["web/src/checkout/Coupon.tsx"] },
+      { "id": "w4", "kind": "overlap", "from": "leo-studio/cc-91b7", "at": "09:09", "with": ["checkout"], "paths": ["web/src/api/client.ts"] }
+    ],
+    "#web/landings": [
+      { "id": "w8", "kind": "landed", "day": "Today", "from": "zirc-ci", "at": "09:31", "details": "landed checkout as 3f2a91c (build 418)", "session": "cc-4e21", "reactions": [{ "emoji": "🎉", "count": 3 }] },
       { "id": "w9", "kind": "failed", "from": "zirc-ci", "at": "09:38", "details": "build 419 failed: web:e2e, checkout.spec.ts", "session": "cc-91b7", "buttons": [{ "action": "retry", "label": "Retry" }, { "action": "logs", "label": "Logs" }] }
     ],
     "#web/agents": [
@@ -91,14 +96,14 @@
       { "in": "maya-mbp/cc-4e21", "id": "a5" },
       { "in": "maya-mbp/cc-4e21", "id": "a6" },
       { "in": "maya-mbp/cc-4e21", "id": "a4" },
-      { "in": "#web", "id": "w8" }
+      { "in": "#web/landings", "id": "w8" }
     ],
     "leo-studio/cc-91b7": [
       { "in": "#web", "id": "w4" },
       { "in": "#web/agents", "id": "r2" },
       { "in": "#web/agents", "id": "r3" },
       { "in": "#web/agents", "id": "r5" },
-      { "in": "#web", "id": "w9" }
+      { "in": "#web/landings", "id": "w9" }
     ],
     "priya-air/cc-2c08": []
   },
@@ -108,7 +113,7 @@
   },
   "mentions": [
     { "channel": "#api", "id": "x1", "from": "leo", "at": "09:18", "text": "@maya the rate limits plan is up, have a look?" },
-    { "channel": "#web", "id": "x2", "from": "priya", "at": "09:22", "text": "@maya coupon field looks right on my phone now" },
+    { "channel": "#general", "id": "x2", "from": "priya", "at": "09:22", "text": "@maya coupon field looks right on my phone now" },
     { "channel": "#general", "id": "x3", "from": "sam", "at": "Yesterday", "text": "@maya lunch on Friday, the new place?" }
   ],
   "dms": [
@@ -121,12 +126,12 @@
     { "name": "#releases", "members": 2, "topic": "What shipped, when" },
     { "name": "#old-site", "members": 0 }
   ],
-  "searches": ["in:#web coupon", "font metrics"],
+  "searches": ["in:#general coupon", "font metrics"],
   "screens": [
-    { "name": "1-chat", "open": "#web", "caption": "Your team and its agents, in one chat" },
-    { "name": "2-channels", "tab": "channels", "caption": "Every repo, branch and team" },
+    { "name": "1-chat", "open": "#general", "caption": "Your team and its agents, in one chat" },
+    { "name": "2-channels", "tab": "channels", "caption": "Rooms for people, feeds for everything else" },
     { "name": "3-agent", "open": "leo-studio/cc-91b7", "caption": "Follow what any agent says, changes and lands" },
-    { "name": "4-profile", "open": "#web", "card": "leo", "caption": "People, their machines and agents" },
+    { "name": "4-profile", "open": "#general", "card": "leo", "caption": "People, their machines and agents" },
     { "name": "5-agent", "open": "maya-mbp/cc-4e21", "caption": "Talk to your agents where your team talks" },
     { "name": "6-activity", "tab": "activity", "caption": "Every mention, in one place" }
   ]

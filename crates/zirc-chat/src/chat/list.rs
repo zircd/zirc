@@ -98,7 +98,7 @@ impl SidebarSection {
         match part {
             // Starred is in both: what's starred shows in its own section's.
             Shelf::Starred => true,
-            Shelf::Channels => self == Self::Channels,
+            Shelf::Channels | Shelf::Feeds => self == Self::Channels,
             Shelf::Direct => self == Self::Direct,
         }
     }
@@ -1079,8 +1079,12 @@ impl Chat {
 pub enum Shelf {
     /// What the person starred, in the order they starred it.
     Starred,
-    /// The channels, each repository's with its rooms, alphabetically.
+    /// The rooms people talk in, each with its threads, alphabetically.
     Channels,
+    /// What systems post: each repository's own channel with its standing rooms under it,
+    /// `#ops` and `#decisions` ([`Chat::is_feed`]). Folded until opened; a person may post
+    /// there too, but its rows never show bold (the user's choices, 15 Nov 2026).
+    Feeds,
     /// Direct messages: people, groups, agent sessions and machines' threads, newest first.
     Direct,
 }
@@ -1094,6 +1098,7 @@ impl Shelf {
         match self {
             Self::Starred => "Starred",
             Self::Channels => "Channels",
+            Self::Feeds => "Feeds",
             Self::Direct => "Direct messages",
         }
     }
@@ -1138,6 +1143,41 @@ impl Chat {
         }
     }
 
+    /// Folds away exactly the parts `folded`, and opens the rest: an app's kept choice, in
+    /// full, as Feeds is folded until it's opened.
+    pub fn set_folded_parts(&mut self, folded: &[Shelf]) {
+        self.collapsed = folded.iter().copied().collect();
+    }
+
+    /// Whether the channel called `name` is a feed, where systems post, rather than a room
+    /// people made: a standing room under a repository's channel (`#api/agents`,
+    /// [`zirc_proto::STANDING_ROOMS`]), the organisation's `#ops` or `#decisions`, or a
+    /// repository's own channel, one with a standing room under it that we know of. Said
+    /// once, for every app's sidebar.
+    #[must_use]
+    pub fn is_feed(&self, name: &str) -> bool {
+        let standing = |room: &str| {
+            zirc_proto::STANDING_ROOMS
+                .iter()
+                .any(|kind| room.eq_ignore_ascii_case(kind))
+        };
+        if [zirc_proto::state::CHANNEL, zirc_proto::request::CHANNEL]
+            .iter()
+            .any(|channel| name.eq_ignore_ascii_case(channel))
+        {
+            return true;
+        }
+        if let Some((_, room)) = room_parts(name) {
+            return standing(room);
+        }
+        is_channel(name)
+            && self.conversations.iter().any(|c| {
+                room_parts(&c.name).is_some_and(|(parent, room)| {
+                    parent.eq_ignore_ascii_case(name) && standing(room)
+                })
+            })
+    }
+
     /// The parts of the sidebar folded away, sorted.
     #[must_use]
     pub fn collapsed(&self) -> Vec<Shelf> {
@@ -1170,7 +1210,8 @@ impl Chat {
                     .filter(|c| c.kind != Kind::Server && SidebarSection::of(&c.name) == section)
                     .fold((false, 0usize), |(unread, badge), c| {
                         (
-                            unread || self.is_unread(&c.name),
+                            // A feed's traffic never makes its half bold: its mentions count.
+                            unread || (self.is_unread(&c.name) && !self.is_feed(&c.name)),
                             badge + self.badge(&c.name),
                         )
                     });

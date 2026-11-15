@@ -708,7 +708,8 @@ impl Chat {
             thresholds: BTreeMap::new(),
             org_name: None,
             network: None,
-            collapsed: std::collections::HashSet::new(),
+            // Feeds is folded until it's opened (the user's choice, 15 Nov 2026).
+            collapsed: std::collections::HashSet::from([list::Shelf::Feeds]),
             tab: list::SidebarSection::Channels,
             closed: HashMap::new(),
             gone: HashMap::new(),

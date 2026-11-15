@@ -6046,7 +6046,8 @@ fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
             .all(|row| row.unread && row.badge == 1)
     );
     chat.set_collapsed(Shelf::Direct, true);
-    assert_eq!(chat.collapsed(), [Shelf::Direct]);
+    // Feeds is folded until it's opened.
+    assert_eq!(chat.collapsed(), [Shelf::Feeds, Shelf::Direct]);
     let rows = chat.sidebar_list(&ListOptions::default());
     let heading = rows
         .iter()

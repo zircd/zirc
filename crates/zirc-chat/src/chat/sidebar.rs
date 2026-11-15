@@ -312,10 +312,24 @@ impl Chat {
         }
         list.extend(self.sidebar_part(Shelf::Starred, starred, &shown));
 
-        let mut channels: Vec<ListRow> = groups
+        // Rooms people made, then the feeds systems post to, folded until opened: a
+        // repository's channel with its standing rooms, `#ops` and `#decisions`.
+        let (feed_groups, room_groups): (Vec<&ChannelGroup>, Vec<&ChannelGroup>) = groups
             .iter()
             .filter(|group| !self.is_starred(&group.name))
+            .partition(|group| self.is_feed(&group.name));
+        let mut channels: Vec<ListRow> = room_groups
+            .into_iter()
             .flat_map(|group| self.channel_list_rows(group, Shelf::Channels))
+            .collect();
+        let feeds: Vec<ListRow> = feed_groups
+            .into_iter()
+            .flat_map(|group| self.channel_list_rows(group, Shelf::Feeds))
+            .map(|row| ListRow {
+                // A feed's traffic never shows bold: what mentions us still counts.
+                unread: false,
+                ..row
+            })
             .collect();
         let any_channel = !channels.is_empty()
             || !self.browse().is_empty()
@@ -336,6 +350,7 @@ impl Chat {
             NEW_CHANNEL.to_owned(),
         ));
         list.extend(self.sidebar_part(Shelf::Channels, channels, &shown));
+        list.extend(self.sidebar_part(Shelf::Feeds, feeds, &shown));
 
         let direct = self.direct_part(&directs, &working, *options);
         list.extend(self.sidebar_part(Shelf::Direct, direct, &shown));
