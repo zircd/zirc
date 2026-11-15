@@ -15,6 +15,9 @@ aes-gcm.workspace = true
 base64.workspace = true
 chrono.workspace = true
 emojis.workspace = true
+# Only for its js feature: P-256's randomness in the browser build (the workspace Cargo.toml
+# says why). Here, not in zirc-web, as published trees have no zirc-web to turn it on.
+getrandom.workspace = true
 hkdf.workspace = true
 p256.workspace = true
 pulldown-cmark.workspace = true

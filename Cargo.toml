@@ -36,6 +36,11 @@ zirc-test-irc = { path = "crates/zirc-test-irc" }
 # builds for the web client's wasm; the randomness comes from whoever calls it. The mobile
 # core's Web Push uses them too.
 aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+# Handing the sealing key to a member's new device (zirc-chat's sealed): P-256 key agreement
+# and HKDF, as the mobile core's Web Push uses them, also without randomness of their own.
+# In a browser, randomness from crypto.getRandomValues: P-256's rand_core asks getrandom for
+# it there as everywhere, which wasm32 has no other way to give. It changes nothing elsewhere.
+getrandom = { version = "0.2", features = ["js"] }
 hkdf = "0.12"
 p256 = { version = "0.13", default-features = false, features = ["ecdh", "std"] }
 anyhow = "1"
