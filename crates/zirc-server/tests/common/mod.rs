@@ -93,8 +93,9 @@ pub async fn start() -> Option<Running> {
 }
 
 /// How many times a server is started on fresh ports: one Ergo found it couldn't listen
-/// on (`bind: address already in use`, build 3569), as another process can take a free port
-/// before Ergo does. [`zirc_test_ergo::Ergo::start_with`] tries again the same way.
+/// on (`bind: address already in use`, build 3569), and one the sidecar did (build 3587), as
+/// another process can take a free port before a part of the server listens on it.
+/// [`zirc_test_ergo::Ergo::start_with`] tries again the same way.
 const ATTEMPTS: usize = 3;
 
 /// The same, its options changed by `change` first.
@@ -106,10 +107,13 @@ pub async fn start_with(change: impl Fn(&mut Options)) -> Option<Running> {
     for attempt in 1..=ATTEMPTS {
         match started(&change, &ergo, &ergo_config).await {
             Ok(running) => return Some(running),
-            // Ergo's own reason is in its log, above: a port taken, as a config it can't
-            // load would be every time, which the last attempt says.
-            Err(ended) if attempt < ATTEMPTS && ended.contains("Ergo stopped") => {
-                eprintln!("Ergo stopped as it started ({ended}): again, on other ports");
+            // A port taken: Ergo says so in its log, above, and stops; the server's own parts
+            // say it. A config Ergo can't load would stop it every time, which the last says.
+            Err(ended)
+                if attempt < ATTEMPTS
+                    && (ended.contains("Ergo stopped") || ended.contains("AddrInUse")) =>
+            {
+                eprintln!("the server stopped as it started ({ended}): again, on other ports");
             }
             Err(ended) => panic!("the server stopped before it answered: {ended}"),
         }
