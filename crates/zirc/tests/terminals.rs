@@ -83,20 +83,6 @@ async fn run(home: &Path, args: &[&str]) -> anyhow::Result<String> {
     Ok(String::from_utf8(out)?)
 }
 
-/// What Henrik's `zirc intend` says, and, when it leaves out Raj's working set, as it did on
-/// CI now and then (flaky-73, 75, 77), what Henrik knew just before and just after: whether
-/// the set was missing then, or there and left out.
-async fn intending_noting_a_missing_set(henrik: &Machine, intent: &[&str]) -> String {
-    let before = henrik.zirc(&["who", "--json"]).await;
-    let said = henrik.zirc(intent).await;
-    if !said.contains("cc-91b7 is changing tests/e2e/harness.rs") {
-        eprintln!("henrik's intend left out raj's set:\n{said}");
-        eprintln!("henrik's who just before, as JSON:\n{before}");
-        eprintln!("and just after:\n{}", henrik.zirc(&["who", "--json"]).await);
-    }
-    said
-}
-
 async fn until(machine: &Machine, args: &[&str], has: &str) {
     tokio::time::timeout(WAIT, async {
         while !machine.zirc(args).await.contains(has) {
@@ -196,7 +182,9 @@ async fn the_terminals_are_as_stored() {
 
     // Raj's agent has been in the e2e harness a while; it watches for what concerns it.
     raj.edit("tests/e2e/harness.rs", "pub const RETRIES: u32 = 3;\n");
-    until(&henrik, &["who"], "tests/e2e/harness.rs").await;
+    // Raj's working set itself, not the intent zircd says for it, which names the file too
+    // and could come first: Henrik's intend then didn't know the set (flaky-73 to 80).
+    until(&henrik, &["who"], "main (cc-91b7): tests/e2e/harness.rs").await;
     let mut lines = watching(&raj, "cc-91b7").await;
     let mut watch = Terminal::new("zirc watch --session cc-91b7");
     watch
@@ -216,7 +204,7 @@ async fn the_terminals_are_as_stored() {
         "-m",
         "reconnect test: bind port 0",
     ];
-    let said = intending_noting_a_missing_set(&henrik, &intent).await;
+    let said = henrik.zirc(&intent).await;
     coordinate.typed(
         "zirc intend --session cc-7d3a tests/e2e/reconnect.rs tests/e2e/harness.rs -m \"reconnect test: bind port 0\"",
         &said,
