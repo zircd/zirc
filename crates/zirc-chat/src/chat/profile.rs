@@ -636,7 +636,8 @@ impl Chat {
     /// when they connected, for [`Chat::profile`]. Returns what to send.
     #[must_use]
     pub fn whois(&self, nick: &str) -> Vec<Line> {
-        if self.is_connected() {
+        // The Server channel's name is no one's: asked, the server says there's no such nick.
+        if self.is_connected() && !self.is_server(nick) {
             vec![Line::new("WHOIS", [nick])]
         } else {
             Vec::new()

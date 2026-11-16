@@ -458,9 +458,10 @@ impl Chat {
         // Our nick first, as every reply has it, is no one's news.
         let params = line.params.get(1..).unwrap_or_default();
         let text = match command {
-            // `<nick!user@host> <account> :You are now logged in as <account>`: its words.
-            "900" | "901" => params.last().cloned().unwrap_or_default(),
-            "MODE" => format!("your modes: {}", params.join(" ")),
+            // Their words say the rest: `<nick!user@host> <account> :You are now logged in as
+            // <account>`, `<now> <max> :Current local users 15, max 18`.
+            "900" | "901" | "265" | "266" => params.last().cloned().unwrap_or_default(),
+            "MODE" | "221" => format!("your modes: {}", params.join(" ")),
             _ => params.join(" "),
         };
         self.server_said(self.time_of(line), "", strip_formatting(&text));

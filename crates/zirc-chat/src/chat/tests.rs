@@ -8543,6 +8543,8 @@ fn the_server_channel_shows_what_irc_clients_show_but_not_the_apps_own_asking() 
             ":irc.zirc.test 372 me :- be kind",
             ":irc.zirc.test 376 me :End of MOTD command",
             ":irc.zirc.test 900 me me!u@h me :You are now logged in as me",
+            ":irc.zirc.test 265 me 3 5 :Current local users 3, max 5",
+            ":irc.zirc.test 221 me +Zi",
             // The apps' own asking: no one's to read.
             ":irc.zirc.test 352 me #api u h irc.zirc.test bob H :0 Bob",
             ":irc.zirc.test 322 me #web 3 :Web",
@@ -8567,11 +8569,20 @@ fn the_server_channel_shows_what_irc_clients_show_but_not_the_apps_own_asking() 
             "- be kind",
             "End of MOTD command",
             "You are now logged in as me",
+            "Current local users 3, max 5",
+            "your modes: +Zi",
         ]
     );
 
     // Typed there, whatever answers it shows too, even what the apps read for themselves.
     let _ = chat.open("irc.zirc.test");
+    // An app asking about it as if it were someone gets nothing to send.
+    assert!(chat.whois("irc.zirc.test").is_empty());
+    assert_eq!(
+        chat.direct_kind("irc.zirc.test"),
+        None,
+        "no one's face in its header"
+    );
     let _ = ran(&mut chat, "irc.zirc.test", "WHOIS bob");
     feed(
         &mut chat,
@@ -8581,7 +8592,7 @@ fn the_server_channel_shows_what_irc_clients_show_but_not_the_apps_own_asking() 
         ],
     );
     assert_eq!(
-        said(&chat)[7..],
+        said(&chat)[9..],
         ["WHOIS bob", "bob u h * Bob", "bob End of /WHOIS list"]
     );
 }

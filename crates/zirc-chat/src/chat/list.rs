@@ -976,7 +976,8 @@ impl Chat {
         // A group's name is a channel's, `#dm-abc`: it's asked first.
         Some(if is_group(name) {
             DirectKind::Group
-        } else if is_channel(name) {
+        } else if is_channel(name) || self.is_server(name) {
+            // Nor is the Server channel anyone to talk to.
             return None;
         } else if agent(name).is_some() {
             DirectKind::Agent
