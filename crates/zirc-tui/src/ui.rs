@@ -19,7 +19,7 @@ use crate::rows::{self, Row, TIME_WIDTH, Tone, fit, wrap};
 use zirc_core::chat::{
     APP_TAG, APPS_SECTION, Avatar, COMPOSER_NOTE, GUEST_PILL, GuestHeader, Icon, Kind, OUTSIDE,
     OrgHeader, Presence, Profile, QUOTE_MARK, UNASSIGNED, agent, assigned_label, away_label,
-    channel_title, is_group, members_label, more_paths_label,
+    is_group, members_label, more_paths_label,
 };
 use zirc_core::emoji;
 use zirc_theme::{Design, Rgb, Theme, Type};
@@ -441,14 +441,7 @@ fn browse_card(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let mut lines: Vec<Line<'static>> = channels
         .iter()
         .map(|(name, count)| {
-            let parts = channel_title(name);
-            let (sigil, bare) = parts.as_ref().map_or(("", name.as_str()), |parts| {
-                (parts.sigil.as_str(), parts.name.as_str())
-            });
-            let mut spans = vec![
-                Span::styled(sigil.to_owned(), fg(theme.muted)),
-                Span::styled(fit(bare, text), fg(theme.text)),
-            ];
+            let mut spans = vec![Span::styled(fit(name, text), fg(theme.text))];
             if *count > 0 {
                 spans.push(Span::styled(
                     format!(
@@ -581,13 +574,8 @@ fn header(frame: &mut Frame<'_>, app: &App, area: Rect) {
     );
     let mut spans = vec![Span::raw(" ")];
     // Who it's with in front: an agent session by its tool's mark, a person by their
-    // presence; a channel's "#" quieter than its name.
+    // presence; a channel by its whole name, "#" and all.
     spans.extend(header_face(app, &buffer.name));
-    let (hash, title) = match channel_title(&title).filter(|_| guest.is_none()) {
-        Some(parts) => (parts.sigil, parts.name),
-        None => (String::new(), title),
-    };
-    spans.push(Span::styled(hash, fg(theme.muted)));
     spans.push(Span::styled(
         format!("{title} "),
         fg(name).add_modifier(Modifier::BOLD),
@@ -1014,16 +1002,7 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
     if unread {
         spans[0] = Span::styled("▎", fg(theme.text));
     }
-    // The one shown, on the selected ground, its channel's "#" in the signal colour.
-    let (hash, name) = match channel_title(&name).filter(|_| selected) {
-        Some(parts) => (parts.sigil, parts.name),
-        None => (String::new(), name),
-    };
     spans.push(Span::styled(indent, name_style));
-    spans.push(Span::styled(
-        hash,
-        fg(theme.signal).add_modifier(Modifier::BOLD),
-    ));
     spans.extend([
         Span::styled(name, name_style),
         Span::styled(said, said_style),
@@ -4221,11 +4200,11 @@ mod tests {
             assert_eq!(cell("morning").bg, Color::Reset);
             assert_eq!(cell("morning").fg, colour(theme.body));
             assert_eq!(cell("bob").bg, Color::Reset);
-            // The conversation shown on the selected ground, its "#" in the signal colour;
+            // The conversation shown on the selected ground, its name whole, "#" and all;
             // what's unread in bold text, with a pip at the edge.
             let (x, y) = place_of(&rows[1..], " #api");
             assert_eq!(buffer[(x + 1, y + 1)].bg, colour(theme.selected));
-            assert_eq!(buffer[(x + 1, y + 1)].fg, colour(theme.signal));
+            assert_eq!(buffer[(x + 1, y + 1)].symbol(), "#");
             assert_eq!(cell("#web").fg, colour(theme.text));
             assert!(cell("#web").modifier.contains(Modifier::BOLD));
             let (x, y) = place_of(&rows, "#web");

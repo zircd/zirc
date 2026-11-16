@@ -4329,21 +4329,16 @@ fn the_core_says_which_rows_are_channels_and_which_a_person() {
             .find(|row| row.name == name)
             .unwrap_or_else(|| panic!("no row {name}: {rows:#?}"))
     };
-    let title = |sigil: &str, name: &str| {
-        Some(ChannelTitle {
-            sigil: sigil.to_owned(),
-            name: name.to_owned(),
-        })
-    };
-    // "#" and "&" are both channels, their sigil drawn apart (the user's choice, 14 Nov 2026).
-    assert!(row("#api").channel && row("#api").channel_title == title("#", "api"));
-    assert!(row("&local").channel && row("&local").channel_title == title("&", "local"));
+    // "#" and "&" are both channels, the sigil part of the name every app draws whole (the
+    // user's choice, 16 Nov 2026).
+    assert!(row("#api").channel && row("#api").title == "#api");
+    assert!(row("&local").channel && row("&local").title == "&local");
     // A group's name is a channel's, but it's a direct message.
     let group = row("#dm-abc");
-    assert!(!group.channel && group.channel_title.is_none() && group.person.is_none());
+    assert!(!group.channel && group.person.is_none());
     // Only a direct message with one person has a person.
     assert!(matches!(row("bob").person, Some(Face::Person { .. })));
-    assert!(!row("bob").channel && row("bob").channel_title.is_none());
+    assert!(!row("bob").channel);
     assert!(row("me-mbp/cc-1").person.is_none());
     assert_eq!(chat.direct_kind("#api"), None);
     assert_eq!(chat.direct_kind("#dm-abc"), Some(DirectKind::Group));

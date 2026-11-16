@@ -903,32 +903,6 @@ pub fn is_channel(target: &str) -> bool {
     target.starts_with(['#', '&'])
 }
 
-/// A channel's name as every app draws it: its sigil apart, `#` or `&`, muted and in mono,
-/// then the rest. Apps read it; none looks at a name's first character.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(rename_all = "camelCase")]
-pub struct ChannelTitle {
-    /// `#` or `&`.
-    pub sigil: String,
-    /// The rest: `web/agents` for `#web/agents`.
-    pub name: String,
-}
-
-/// `title` as a channel's sigil and the rest ([`ChannelTitle`]), when it's a channel's
-/// ([`is_channel`]); `None` for anything else.
-#[must_use]
-pub fn channel_title(title: &str) -> Option<ChannelTitle> {
-    if !is_channel(title) {
-        return None;
-    }
-    let (sigil, name) = title.split_at(1);
-    Some(ChannelTitle {
-        sigil: sigil.to_owned(),
-        name: name.to_owned(),
-    })
-}
-
 /// What separates a machine's nick from one of its agent sessions in the name of a
 /// conversation with that session, `mattias-mbp/cc-1531f8`. No nick has one.
 pub const SESSION_MARK: char = '/';

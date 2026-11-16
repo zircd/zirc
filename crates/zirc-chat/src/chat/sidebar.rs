@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::conversation::{ChannelTitle, Kind, fold};
+use super::conversation::{Kind, fold};
 use super::face::Face;
 use super::list::{ChannelGroup, DirectKind, DirectRow, Shelf, SidebarSection};
 use super::{
@@ -165,10 +165,6 @@ pub struct ListRow {
     /// Whether it opens a channel, a room under one included ([`super::is_channel`]): what
     /// every app asks before offering a channel's menu, never from its name's first character.
     pub channel: bool,
-    /// Its title as a channel's sigil and name, when it's drawn so, its `#` apart: a channel
-    /// listed by its name. `None` for a room under its channel, a direct message and the rest,
-    /// which say their title whole.
-    pub channel_title: Option<ChannelTitle>,
     /// For a direct message with one person, their face: what a conversation's header shows
     /// beside their name, with their dot. `None` for a group, an agent, a machine, a guest and
     /// a channel.
@@ -215,19 +211,15 @@ impl ListRow {
             closed: false,
             quiet: false,
             channel: false,
-            channel_title: None,
             person: None,
         }
     }
 
-    /// Says what its name is: a channel, drawn with its `#` apart, or a direct message with
-    /// one person ([`ListRow::channel`], [`ListRow::channel_title`], [`ListRow::person`]).
+    /// Says what its name is: a channel, or a direct message with one person
+    /// ([`ListRow::channel`], [`ListRow::person`]).
     fn settle_names(&mut self) {
         // A group's name is a channel's too, `#dm-abc`: a direct message is never one.
         self.channel = !self.direct && super::is_channel(&self.name);
-        self.channel_title = (self.channel && self.depth == 0)
-            .then(|| super::channel_title(&self.title))
-            .flatten();
         self.person = (self.direct_kind == Some(DirectKind::Person) && !self.guest)
             .then(|| self.faces.first().cloned())
             .flatten()
