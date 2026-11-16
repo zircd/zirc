@@ -57,6 +57,7 @@ mod scans;
 mod sealing;
 mod sessions;
 mod tasks;
+mod team_hints;
 mod unowned;
 mod wakes;
 mod warn_once;
@@ -944,6 +945,7 @@ impl Daemon {
         self.restore_wakes();
         self.restore_awaits();
         self.restore_gotchas();
+        self.read_team_hints();
         held
     }
 

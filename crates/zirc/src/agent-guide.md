@@ -82,7 +82,10 @@ installed. Otherwise:
    sessions learnt there: read them first. When you learn something the hard way about
    some paths, keep it in one line: `zirc gotcha --session <your session> <paths> -m "<what
    goes wrong, and what to do instead>"`. When one you were told no longer holds, retire it
-   by its id, `zirc gotcha --session <your session> --retire <id>`, and tell your user.
+   by its id, `zirc gotcha --session <your session> --retire <id>`, and tell your user. The
+   hints under `zirc watch`'s lines are your team's to change too: when one keeps sending
+   agents wrong, `zirc hints` lists them with their ids, and `zirc hints add` or `remove`
+   (with `--session`) changes them for every machine at once; tell your user what you changed.
 
 Your session's name all session: `cc-` and the first 6 characters of your session id, or
 your agent's name and a few random characters.

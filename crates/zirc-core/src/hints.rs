@@ -1,8 +1,10 @@
 //! Hints: a line under an event `zirc watch` prints, saying what to do about it. A hint is a
 //! template keyed on the event's kind ([`kind`] names them) and optional conditions,
-//! with a [`Level`]. They come only from trusted layers on this machine, never from what
-//! anyone sends: zirc's [`defaults`] here, then (later) the repository's `.zirc/hints.toml`
-//! on its default branch, the organisation's, and the person's `~/.zirc/config.toml`.
+//! with a [`Level`]. They come only from trusted layers, never from what anyone sends: the
+//! person's `~/.zirc/config.toml`, then the team's own, which its server keeps for each
+//! repository and the whole organisation ([`crate::team_hints`]), and zirc's [`defaults`]. A
+//! repository whose server keeps none of its own still has its `.zirc/hints.toml` read from its
+//! default branch, until `zirc hints import` moves it there ([`team`]).
 //!
 //! An event's fields fill a hint's `{placeholders}` from its typed data, never its text, each
 //! quoted, without backticks or line breaks of its own ([`fill`]): a branch named like an
@@ -529,14 +531,61 @@ pub fn of_repo(root: &Path) -> Result<Vec<Hint>, String> {
     })
 }
 
+/// A repository's hints and its organisation's, as its server keeps them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Team {
+    /// The repository's: as its server keeps them, or, until any are kept there, its
+    /// `.zirc/hints.toml` on its default branch ([`of_repo`]), which `zirc hints import` moves
+    /// to the server.
+    pub repository: Vec<Hint>,
+    /// Its organisation's.
+    pub organisation: Vec<Hint>,
+    /// Whether the repository's came from its file rather than its server.
+    pub from_file: bool,
+}
+
+/// `repo`'s hints and its organisation's, as this machine last read them from the server
+/// ([`crate::team_hints`]); and, when the repository's are its file's and it doesn't read,
+/// why.
+#[must_use]
+pub fn team(home: &Path, repo: &Repo) -> (Team, Option<String>) {
+    let (repository, organisation) =
+        crate::team_hints::for_repo(home, repo.org.as_deref(), &repo.channel.to_lowercase());
+    if !repository.is_empty() {
+        return (
+            Team {
+                repository,
+                organisation,
+                from_file: false,
+            },
+            None,
+        );
+    }
+    let (repository, problem) = match of_repo(&repo.path) {
+        Ok(hints) => (hints, None),
+        Err(problem) => (Vec::new(), Some(problem)),
+    };
+    let from_file = !repository.is_empty();
+    (
+        Team {
+            repository,
+            organisation,
+            from_file,
+        },
+        problem,
+    )
+}
+
 /// The hints `zirc watch` shows under what wakes a session: each the first time its kind
 /// does, and again only when its text changes, remembered per session in
 /// `$ZIRC_HOME/hints-seen/<session>.json` across `--once` watches.
 pub struct Watch {
     /// The person's own, from `config.toml`.
     personal: Vec<Hint>,
-    /// Each watched repository's, from its default branch, by its channel.
-    repos: Vec<(String, Vec<Hint>)>,
+    /// Each watched repository's and its organisation's ([`team`]), by its channel.
+    repos: Vec<(String, Team)>,
+    /// Every organisation's own, for what's said outside the repositories' channels.
+    organisations: Vec<Hint>,
     defaults: Vec<Hint>,
     /// By kind, the text last shown.
     shown: BTreeMap<String, String>,
@@ -585,16 +634,15 @@ impl Watch {
                 session.is_none_or(|session| repo.sessions.iter().any(|it| it.session == session))
             })
             .map(|repo| {
-                let hints = of_repo(&repo.path).unwrap_or_else(|problem| {
-                    problems.push(problem);
-                    Vec::new()
-                });
-                (repo.channel.clone(), hints)
+                let (team, problem) = team(home, repo);
+                problems.extend(problem);
+                (repo.channel.clone(), team)
             })
             .collect();
         let watch = Self {
             personal: personal_in(home),
             repos,
+            organisations: crate::team_hints::for_repo(home, None, "").1,
             defaults: defaults(),
             shown,
             file,
@@ -616,8 +664,12 @@ impl Watch {
                     .starts_with(&format!("{}/", repo.to_ascii_lowercase()))
         });
         let mut layers = vec![(Layer::Personal, self.personal.as_slice())];
-        if let Some((_, hints)) = repo {
-            layers.push((Layer::Repository, hints.as_slice()));
+        match repo {
+            Some((_, team)) => {
+                layers.push((Layer::Repository, team.repository.as_slice()));
+                layers.push((Layer::Organisation, team.organisation.as_slice()));
+            }
+            None => layers.push((Layer::Organisation, self.organisations.as_slice())),
         }
         layers.push((Layer::Default, self.defaults.as_slice()));
         layers
@@ -1126,7 +1178,13 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let (mut hints, problems) = Watch::load(home.path(), Some("cc-1"), &[]);
         assert!(problems.is_empty(), "{problems:?}");
-        hints.repos = vec![("#api".into(), read)];
+        hints.repos = vec![(
+            "#api".into(),
+            Team {
+                repository: read,
+                ..Team::default()
+            },
+        )];
         let names = |channel: &str| -> Vec<Layer> {
             hints
                 .layers(channel)
@@ -1134,9 +1192,75 @@ mod tests {
                 .map(|(layer, _)| layer)
                 .collect()
         };
-        let all = vec![Layer::Personal, Layer::Repository, Layer::Default];
+        let all = vec![
+            Layer::Personal,
+            Layer::Repository,
+            Layer::Organisation,
+            Layer::Default,
+        ];
         assert_eq!(names("#api"), all);
         assert_eq!(names("#API/landings"), all);
-        assert_eq!(names("#apiary"), [Layer::Personal, Layer::Default]);
+        assert_eq!(
+            names("#apiary"),
+            [Layer::Personal, Layer::Organisation, Layer::Default]
+        );
+    }
+
+    #[test]
+    fn a_repositorys_hints_on_its_server_hold_in_place_of_its_file() {
+        use zirc_proto::hints::{Listing, ORG, Stored};
+        let home = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        let watched = Repo {
+            path: repo.path().to_owned(),
+            channel: "#API".into(),
+            sessions: Vec::new(),
+            org: Some("acme".into()),
+            shared: Vec::new(),
+        };
+        // Nothing on the server, and no file: nothing.
+        let (team_now, problem) = team(home.path(), &watched);
+        assert_eq!((team_now, problem), (Team::default(), None));
+        let stored = |scope: &str, text: &str| {
+            let hint = Hint {
+                kind: kind::OVERLAP.into(),
+                when: When::default(),
+                level: Level::Tell,
+                text: text.into(),
+                required: false,
+            };
+            Stored {
+                id: hint.id(),
+                scope: scope.into(),
+                hint,
+                by: "ada".into(),
+                session: None,
+                at: "2026-11-16T10:00:00Z".into(),
+            }
+        };
+        let listing = Listing {
+            version: 1,
+            hints: vec![stored("#api", "ask first"), stored(ORG, "be brief")],
+        };
+        crate::team_hints::keep(home.path(), "acme", &listing).unwrap();
+        let (got, problem) = team(home.path(), &watched);
+        assert_eq!(problem, None);
+        assert!(!got.from_file);
+        assert_eq!(got.repository[0].text, "ask first");
+        assert_eq!(got.organisation[0].text, "be brief");
+        let (mut hints, _) = Watch::load(home.path(), None, &[watched]);
+        let texts = |hints: &Watch, channel: &str, layer: Layer| -> Vec<String> {
+            hints
+                .layers(channel)
+                .into_iter()
+                .filter(|(at, _)| *at == layer)
+                .flat_map(|(_, hints)| hints.iter().map(|hint| hint.text.clone()))
+                .collect()
+        };
+        assert_eq!(texts(&hints, "#api", Layer::Repository), ["ask first"]);
+        // Outside the repositories' channels, the organisations' own still hold.
+        assert_eq!(texts(&hints, "#general", Layer::Organisation), ["be brief"]);
+        hints.organisations.clear();
+        assert!(texts(&hints, "#general", Layer::Organisation).is_empty());
     }
 }

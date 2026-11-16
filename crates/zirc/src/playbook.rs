@@ -66,14 +66,15 @@ pub(crate) async fn playbook(
         gotchas::under(&all, &paths)
     };
     let personal = hints::personal_in(home);
-    let ours = hints::of_repo(&repo.path).unwrap_or_else(|problem| {
+    let (team, problem) = hints::team(home, &repo);
+    if let Some(problem) = problem {
         eprintln!("{PROGRAM}: {problem}");
-        Vec::new()
-    });
+    }
     let defaults = hints::defaults();
     let layers = [
         (Layer::Personal, personal.as_slice()),
-        (Layer::Repository, ours.as_slice()),
+        (Layer::Repository, team.repository.as_slice()),
+        (Layer::Organisation, team.organisation.as_slice()),
         (Layer::Default, defaults.as_slice()),
     ];
     let playbook = Playbook::new(&layers, found);

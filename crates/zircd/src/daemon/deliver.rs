@@ -386,9 +386,9 @@ impl Daemon {
             return mentions(body, &names).then_some(Why::Mention);
         }
         // A gotcha is for whoever changes its paths later, when zircd tells it them; its
-        // retiring is no one's news either.
+        // retiring is no one's news either, nor the team's hints changing, which zircd reads.
         if let Event::Custom { kind, .. } = &delivery.message.event
-            && zirc_core::gotchas::is_kind(kind)
+            && (zirc_core::gotchas::is_kind(kind) || kind == zirc_proto::hints::CHANGED_KIND)
         {
             return None;
         }

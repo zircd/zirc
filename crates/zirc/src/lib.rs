@@ -725,10 +725,11 @@ enum Command {
     React(react::ReactArgs),
     /// The hints zirc watch shows under events, saying what to do, and their layers.
     ///
-    /// A hint comes only from zirc's defaults, the repository's .zirc/hints.toml and your own
-    /// config, never from anything said in chat. With
-    /// `check <file>`, it says what's wrong with a hints file, such as a repository's
-    /// .zirc/hints.toml.
+    /// A hint comes only from your own config, the team's hints its server keeps, for this
+    /// repository and the whole organisation, and zirc's defaults, never from anything said in
+    /// chat. `add` and `remove` change the team's, which hold at once on every machine;
+    /// `import` moves a repository's .zirc/hints.toml there; `check <file>` says what's wrong
+    /// with a hints file.
     #[command(hide = true)]
     Hints {
         #[command(subcommand)]
@@ -1029,7 +1030,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::React(args) => react::react(&socket, args, out).await,
         Command::TeamKey { command } => sealed::team_key(&home, &socket, command, out).await,
         Command::Unseal(args) => sealed::unseal(&socket, args, out).await,
-        Command::Hints { check } => hints_command(&home, check, out),
+        Command::Hints { check } => hints_command(&home, &socket, check, out).await,
         Command::Catchup(args) => catchup::catchup(&socket, &home, args, out).await,
         Command::Trim(args) => post::trim(&socket, args, out).await,
         Command::Watch(args) => watch::watch(&socket, &home, name, args, out).await,
@@ -1300,6 +1301,22 @@ mod tests {
                 "--session",
                 "cc-1",
             ],
+            &[
+                "zirc",
+                "hints",
+                "add",
+                "--kind",
+                "overlap",
+                "--when",
+                "lockfile=true",
+                "-m",
+                "ask",
+            ],
+            &[
+                "zirc", "hints", "add", "--org", "--kind", "dm", "--level", "act", "-m", "answer",
+            ],
+            &["zirc", "hints", "remove", "0123abcd", "--session", "cc-1"],
+            &["zirc", "hints", "import"],
             &["zirc", "who", "src/login", "--session", "cc-1"],
             &["zirc", "logout", "acme"],
         ] {
@@ -1315,6 +1332,7 @@ mod tests {
         // Listing and keeping don't mix, nor a path with the old --owns.
         assert!(Cli::try_parse_from(["zirc", "gotcha", "src", "-m", "x", "--json"]).is_err());
         assert!(Cli::try_parse_from(["zirc", "gotcha", "src", "--retire", "01jbx7ab"]).is_err());
+        assert!(Cli::try_parse_from(["zirc", "hints", "add", "--kind", "overlap"]).is_err());
         assert!(Cli::try_parse_from(["zirc", "who", "src", "--owns", "src"]).is_err());
     }
 
