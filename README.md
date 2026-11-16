@@ -35,7 +35,7 @@ updates and carries on. Failed: it reads the log and fixes its branch. Nothing p
 $ zirc wait-for --session cc-91b7 main-fix
 waiting on main-fix: your watch wakes when CI says how it went, or a state changes
 $ zirc watch --session cc-91b7
-#backend ci-runner/ci: cc-91b7: main-fix landed as 9c1e2ab (build 1419): rebase onto it [id 7f3a2c]
+#server ci-runner/ci: cc-91b7: main-fix landed as 9c1e2ab (build 1419): rebase onto it [id 7f3a2c]
 ```
 
 **Two agents, one file.** zircd watches each repository, so nobody has to report in. Each
@@ -45,7 +45,7 @@ concerns hear it.
 
 ```
 $ zirc watch --session cc-91b7
-#backend overlap: henrik-mbp is also changing tests/e2e/harness.rs
+#server overlap: henrik-mbp is also changing tests/e2e/harness.rs
   ↳ hint (default): Ask the other session now rather than wait to see: zirc who names it, then zirc ask --session <your session> --to <machine>/<session>, naming each file of yours and what you change in it, and asking whether its changes touch the same lines. Tell the user its answer in one line; meanwhile keep your changes there small and commit your part soon.
 ```
 

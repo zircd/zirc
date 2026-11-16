@@ -21,7 +21,7 @@ const WAIT: Duration = Duration::from_secs(15);
 /// How long a watch is given to say nothing more after what it was waited for.
 const QUIET: Duration = Duration::from_millis(800);
 
-/// One machine of the team's: its zirc directory and its clone of zirc/backend.
+/// One machine of the team's: its zirc directory and its clone of zirc/server.
 struct Machine {
     home: TempDir,
     repo: TempDir,
@@ -50,7 +50,7 @@ impl Machine {
         // At the top, before any table.
         let text = std::fs::read_to_string(&config).unwrap();
         std::fs::write(&config, format!("owner = \"{owner}\"\n{text}")).unwrap();
-        let repo = zirc_test_ergo::git::clone("https://github.com/zirc/backend.git");
+        let repo = zirc_test_ergo::git::clone("https://github.com/zirc/server.git");
         Self { home, repo }
     }
 
@@ -192,7 +192,7 @@ async fn the_terminals_are_as_stored() {
         .push(json!({ "command": "zirc watch --session cc-91b7" }));
 
     // Henrik's agent says what it's about to change, and Raj's hears it.
-    let mut coordinate = Terminal::new("~/src/backend");
+    let mut coordinate = Terminal::new("~/src/server");
     let intent = [
         "intend",
         "--session",
@@ -217,7 +217,7 @@ async fn the_terminals_are_as_stored() {
 
     // Raj's agent needs main-fix to land first: it says so, then watches, and is called back
     // when it does.
-    let mut callback = Terminal::new("~/src/backend");
+    let mut callback = Terminal::new("~/src/server");
     callback.typed(
         "zirc wait-for --session cc-91b7 main-fix",
         &raj.zirc(&["wait-for", "--session", "cc-91b7", "main-fix"])
@@ -271,21 +271,21 @@ async fn the_terminals_are_as_stored() {
 /// Getting started: Henrik watches the repository from her clone, as zirc.dev's home page shows
 /// it, and zircd says where.
 async fn watching_repo(henrik: &Machine) -> Terminal {
-    let mut watched = Terminal::new("~/src/backend");
+    let mut watched = Terminal::new("~/src/server");
     watched.typed("zirc repo add", &henrik.zirc(&["repo", "add"]).await);
-    until(henrik, &["status"], "#backend").await;
+    until(henrik, &["status"], "#server").await;
     watched.typed("zirc status", &henrik.zirc(&["status"]).await);
     watched
 }
 
 /// Henrik's agent adds the repository as its own session's, as Raj's and CI do theirs.
 async fn adding_repos(henrik: &Machine, raj: &Machine, ci: &Machine) -> Terminal {
-    let mut start = Terminal::new("~/src/backend");
+    let mut start = Terminal::new("~/src/server");
     let added = henrik.zirc(&["repo", "add", "--session", "cc-7d3a"]).await;
     start.typed("zirc repo add --session cc-7d3a", &added);
     raj.zirc(&["repo", "add", "--session", "cc-91b7"]).await;
     ci.zirc(&["repo", "add"]).await;
-    until(henrik, &["status"], "#backend").await;
+    until(henrik, &["status"], "#server").await;
     start.typed("zirc status", &henrik.zirc(&["status"]).await);
     start
 }
@@ -312,7 +312,7 @@ async fn watching(machine: &Machine, session: &'static str) -> mpsc::UnboundedRe
 
 /// Henrik decides, and her agent records it in her words.
 async fn deciding(henrik: &Machine) -> Terminal {
-    let mut decide = Terminal::new("~/src/backend");
+    let mut decide = Terminal::new("~/src/server");
     let decided = [
         "decide",
         "--session",
@@ -373,7 +373,7 @@ fn as_the_teams(line: Value, ergo: &Ergo, machines: &[&Machine]) -> Value {
         );
         for machine in machines {
             for (dir, as_shown) in [
-                (machine.repo.path(), "~/src/backend"),
+                (machine.repo.path(), "~/src/server"),
                 (machine.home.path(), "~/.zirc"),
             ] {
                 // macOS's /tmp is /private/tmp, which the CLI may print either way.
