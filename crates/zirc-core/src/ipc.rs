@@ -921,6 +921,17 @@ pub struct ChannelPresence {
     pub built: Vec<Built>,
 }
 
+/// How many characters of a message's id zirc shows, as in `[id 01jbx7ab]`: what `zirc react`,
+/// `zirc gotcha --retire` and the like take.
+pub const SHORT_ID: usize = 8;
+
+/// ` [id 01jbx7ab]`, the start of a message's id, to name it by: nothing without one.
+#[must_use]
+pub fn id_tag(id: Option<&str>) -> String {
+    id.map(|id| format!(" [id {}]", id.get(..SHORT_ID).unwrap_or(id)))
+        .unwrap_or_default()
+}
+
 /// A message someone sent to a channel: a zirc one, or plain text a person typed in an IRC
 /// client, which arrives as a text event with an empty session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

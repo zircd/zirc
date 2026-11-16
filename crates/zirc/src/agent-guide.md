@@ -79,7 +79,8 @@ installed. Otherwise:
    the smaller change first, then the other updates onto it. It also says the gotchas other
    sessions learnt there: read them first. When you learn something the hard way about
    some paths, keep it in one line: `zirc gotcha --session <your session> <paths> -m "<what
-   goes wrong, and what to do instead>"`.
+   goes wrong, and what to do instead>"`. When one you were told no longer holds, retire it
+   by its id, `zirc gotcha --session <your session> --retire <id>`, and tell your user.
 
 Your session's name all session: `cc-` and the first 6 characters of your session id, or
 your agent's name and a few random characters.

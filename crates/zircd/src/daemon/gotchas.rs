@@ -2,7 +2,8 @@
 //! across restarts, and told to a session once as it starts changing files under their
 //! paths without an intent of its own: the moment zircd says one for it
 //! ([`super::auto_intents`]), before it's deep in. `zirc intend` says them for a session
-//! that declares its own. A gotcha posted is nobody's news otherwise: it wakes no one.
+//! that declares its own. A gotcha posted is nobody's news otherwise: it wakes no one, nor
+//! does its retiring, which zircd hears to forget it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -28,20 +29,34 @@ fn key(gotcha: &Gotcha) -> String {
 }
 
 impl Daemon {
-    /// Keeps the gotcha `delivery` says, heard in a gotchas room, live or replayed.
+    /// Keeps the gotcha `delivery` says, heard in a gotchas room, live or replayed, or forgets
+    /// the one it retires.
     pub(super) fn remember_gotcha(&mut self, delivery: &Delivery) {
         if !gotchas::is_room(&delivery.channel) {
+            return;
+        }
+        let room = self
+            .gotchas
+            .entry(delivery.channel.to_ascii_lowercase())
+            .or_default();
+        if let Some(retired) = gotchas::retired(delivery) {
+            let before = room.len();
+            room.retain(|gotcha| !retired.retires(gotcha));
+            if room.len() != before {
+                self.save_gotchas();
+            }
             return;
         }
         let Some(gotcha) = gotchas::of(delivery) else {
             return;
         };
-        let room = self
-            .gotchas
-            .entry(delivery.channel.to_ascii_lowercase())
-            .or_default();
-        // Its echo, or the history read again: once is enough.
-        if room.iter().any(|kept| key(kept) == key(&gotcha)) {
+        // Its echo, or the history read again: once is enough, though the echo may bring the
+        // id this machine's own lacked as it was said.
+        if let Some(kept) = room.iter_mut().find(|kept| key(kept) == key(&gotcha)) {
+            if kept.id.is_none() && gotcha.id.is_some() {
+                kept.id = gotcha.id;
+                self.save_gotchas();
+            }
             return;
         }
         room.push(gotcha);

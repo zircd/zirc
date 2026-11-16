@@ -1,6 +1,6 @@
 //! `zirc gotcha`: one-line lessons tied to paths, kept in the repository's gotchas room
 //! rather than in the repository ([`zirc_core::gotchas`]). With `-m` it keeps one; without,
-//! it lists them, as `zirc gotchas` did and still does.
+//! it lists them, as `zirc gotchas` did and still does; with --retire, it retires one.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -29,6 +29,10 @@ pub(crate) struct GotchaArgs {
     /// Listing, print JSON: an array, newest first.
     #[arg(long, conflicts_with = "message")]
     pub(crate) json: bool,
+    /// Retire the lesson with this id, as a listing shows it ([id 01jbx7ab]), when it no
+    /// longer holds: nobody is told it again. Keeping it again later brings it back.
+    #[arg(long, value_name = "ID", conflicts_with_all = ["message", "json", "paths"])]
+    pub(crate) retire: Option<String>,
     /// Who learnt it: an agent session's id. Defaults to $ZIRC_SESSION, then $USER.
     #[arg(long, env = "ZIRC_SESSION")]
     pub(crate) session: Option<String>,
@@ -69,7 +73,8 @@ pub(crate) async fn here(socket: &Path, paths: &[PathBuf]) -> Result<(Repo, Vec<
     Ok((repo, relative))
 }
 
-/// The gotchas in `repo`'s room, oldest first; none when its history can't be read.
+/// The gotchas kept in `repo`'s room and not retired, oldest first; none when its history
+/// can't be read.
 pub(crate) async fn read(socket: &Path, repo: &Repo) -> Vec<Gotcha> {
     let room = format!("{}/{}", repo.channel, gotchas::ROOM);
     let read = Request::Read {
@@ -79,7 +84,7 @@ pub(crate) async fn read(socket: &Path, repo: &Repo) -> Vec<Gotcha> {
         until: None,
     };
     match waits(socket, repo.org.as_deref(), read).await {
-        Ok(Response::Messages { messages }) => messages.iter().filter_map(gotchas::of).collect(),
+        Ok(Response::Messages { messages }) => gotchas::kept(&messages),
         _ => Vec::new(),
     }
 }
@@ -90,8 +95,12 @@ pub(crate) async fn gotcha(socket: &Path, args: GotchaArgs, out: &mut impl Write
         paths,
         message,
         json,
+        retire,
         session,
     } = args;
+    if let Some(id) = retire {
+        return retire_one(socket, &id, session, out).await;
+    }
     // Nothing to keep: the lessons kept, about the path if one's given.
     if message.is_empty() {
         anyhow::ensure!(
@@ -120,6 +129,31 @@ pub(crate) async fn gotcha(socket: &Path, args: GotchaArgs, out: &mut impl Write
         app: None,
     };
     print_channel(ask(socket, request).await?, "kept in", out)
+}
+
+/// `zirc gotcha --retire <id>`: the event retiring the gotcha kept here with that id.
+async fn retire_one(
+    socket: &Path,
+    id: &str,
+    session: Option<String>,
+    out: &mut impl Write,
+) -> Result<()> {
+    let (repo, _) = here(socket, &[]).await?;
+    let all = read(socket, &repo).await;
+    let gotcha = gotchas::by_id(&all, id).map_err(anyhow::Error::msg)?;
+    let request = Request::Emit {
+        repo: repo.path.clone(),
+        session: session_or_user(session),
+        kind: gotchas::RETIRED.to_owned(),
+        data: serde_json::to_value(gotchas::Retired::of(gotcha))?,
+        text: gotchas::retired_text(gotcha),
+        to: Target::Topic {
+            name: gotchas::ROOM.to_owned(),
+            org: false,
+        },
+        app: None,
+    };
+    print_channel(ask(socket, request).await?, "retired in", out)
 }
 
 /// `zirc gotchas`.

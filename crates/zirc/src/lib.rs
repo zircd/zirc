@@ -183,6 +183,7 @@ const EXAMPLES: &[(&str, &[&str])] = &[
         &[
             "zirc gotcha src/login --session cc-1 -m \"the form tests need the fake clock\"",
             "zirc gotcha src/login",
+            "zirc gotcha --retire 01jbx7ab --session cc-1",
         ],
     ),
     ("playbook", &["zirc playbook src/login", "zirc playbook"]),
@@ -1291,6 +1292,14 @@ mod tests {
             &["zirc", "gotcha"],
             &["zirc", "gotcha", "src", "--json"],
             &["zirc", "gotcha", "src", "-m", "split", "it"],
+            &[
+                "zirc",
+                "gotcha",
+                "--retire",
+                "01jbx7ab",
+                "--session",
+                "cc-1",
+            ],
             &["zirc", "who", "src/login", "--session", "cc-1"],
             &["zirc", "logout", "acme"],
         ] {
@@ -1305,6 +1314,7 @@ mod tests {
         }
         // Listing and keeping don't mix, nor a path with the old --owns.
         assert!(Cli::try_parse_from(["zirc", "gotcha", "src", "-m", "x", "--json"]).is_err());
+        assert!(Cli::try_parse_from(["zirc", "gotcha", "src", "--retire", "01jbx7ab"]).is_err());
         assert!(Cli::try_parse_from(["zirc", "who", "src", "--owns", "src"]).is_err());
     }
 

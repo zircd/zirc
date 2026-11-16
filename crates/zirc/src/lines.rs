@@ -189,14 +189,7 @@ pub(crate) fn line(delivery: &Delivery) -> String {
     )
 }
 
-/// How many characters of a message's id `zirc watch` shows: `zirc react` takes them.
-pub(crate) const SHORT_ID: usize = 8;
-
-/// ` [id 01jbx7ab]`, the start of a message's id, to react to it with: nothing without one.
-pub(crate) fn id_of(id: Option<&str>) -> String {
-    id.map(|id| format!(" [id {}]", id.get(..SHORT_ID).unwrap_or(id)))
-        .unwrap_or_default()
-}
+pub(crate) use zirc_core::ipc::{SHORT_ID, id_tag as id_of};
 
 /// Who said what: `alpha/cc-1: text`, or `mattias: text` from a person typing in an IRC
 /// client, who has no session.

@@ -5,6 +5,11 @@
 //! `zirc gotchas <path>` lists those about a path, newest first. `zirc intend` says those
 //! under the paths it names, and zircd tells a session those under the directories it
 //! starts changing without one ([`under`]).
+//!
+//! A lesson that no longer holds is retired, not edited: `zirc gotcha --retire <id>` posts a
+//! [`RETIRED`] event in the same room naming its paths and words ([`Retired`]), and [`kept`]
+//! leaves out each gotcha retired after it was said. Saying the same lesson again later keeps it
+//! once more.
 
 use serde::{Deserialize, Serialize};
 use zirc_proto::Event;
@@ -14,6 +19,9 @@ use crate::presence::touches;
 
 /// The kind of a gotcha's event.
 pub const KIND: &str = "x-zirc/gotcha";
+
+/// The kind of the event that retires a gotcha.
+pub const RETIRED: &str = "x-zirc/gotcha-retired";
 
 /// The standing room under a repository's channel that holds its gotchas.
 pub const ROOM: &str = "gotchas";
@@ -47,6 +55,114 @@ pub struct Gotcha {
 pub struct Data {
     /// The paths it's about.
     pub paths: Vec<String>,
+}
+
+/// What a retiring event carries: the gotcha it retires, by its paths and a hash of its
+/// words ([`Retired::sha`]), which match it on every machine whether or not the server gave
+/// its message an id there, and stay short when its text is cut to fit a line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retired {
+    /// The retired gotcha's paths.
+    pub paths: Vec<String>,
+    /// The start of the SHA-256 of the retired gotcha's words, in hex.
+    pub sha: String,
+}
+
+impl Retired {
+    /// What retires `gotcha`.
+    #[must_use]
+    pub fn of(gotcha: &Gotcha) -> Self {
+        Self {
+            paths: gotcha.paths.clone(),
+            sha: Self::sha(&gotcha.text),
+        }
+    }
+
+    /// The first 8 bytes of the SHA-256 of `lesson`, in hex.
+    #[must_use]
+    pub fn sha(lesson: &str) -> String {
+        use std::fmt::Write as _;
+        let digest = ring::digest::digest(&ring::digest::SHA256, lesson.as_bytes());
+        digest.as_ref()[..8]
+            .iter()
+            .fold(String::new(), |mut hex, byte| {
+                let _ = write!(hex, "{byte:02x}");
+                hex
+            })
+    }
+
+    /// Whether it retires `gotcha`.
+    #[must_use]
+    pub fn retires(&self, gotcha: &Gotcha) -> bool {
+        self.paths == gotcha.paths && self.sha == Self::sha(&gotcha.text)
+    }
+}
+
+/// The text of the event retiring `gotcha`, for apps and plain IRC clients.
+#[must_use]
+pub fn retired_text(gotcha: &Gotcha) -> String {
+    format!(
+        "retired a gotcha about {}: {}",
+        gotcha.paths.join(", "),
+        gotcha.text
+    )
+}
+
+/// The retiring `delivery` says, if it's one.
+#[must_use]
+pub fn retired(delivery: &Delivery) -> Option<Retired> {
+    let Event::Custom { kind, data, .. } = &delivery.message.event else {
+        return None;
+    };
+    (kind == RETIRED)
+        .then(|| serde_json::from_value(data.clone()).ok())
+        .flatten()
+}
+
+/// Whether `kind` is one of a gotchas room's: a gotcha or its retiring, which wake no one.
+#[must_use]
+pub fn is_kind(kind: &str) -> bool {
+    kind == KIND || kind == RETIRED
+}
+
+/// The gotchas `deliveries`, a room's history oldest first, keep: each said and not retired
+/// since.
+#[must_use]
+pub fn kept(deliveries: &[Delivery]) -> Vec<Gotcha> {
+    let mut kept: Vec<Gotcha> = Vec::new();
+    for delivery in deliveries {
+        if let Some(gotcha) = of(delivery) {
+            kept.push(gotcha);
+        } else if let Some(retired) = retired(delivery) {
+            kept.retain(|gotcha| !retired.retires(gotcha));
+        }
+    }
+    kept
+}
+
+/// The one of `gotchas` whose message's id starts with `id`, as `[id …]` shows it.
+///
+/// # Errors
+///
+/// When none does, or more than one, saying so.
+pub fn by_id<'a>(gotchas: &'a [Gotcha], id: &str) -> Result<&'a Gotcha, String> {
+    let id = id.trim_start_matches("[id ").trim_end_matches(']').trim();
+    let found: Vec<&Gotcha> = gotchas
+        .iter()
+        .filter(|gotcha| {
+            !id.is_empty() && gotcha.id.as_deref().is_some_and(|it| it.starts_with(id))
+        })
+        .collect();
+    match found.as_slice() {
+        [gotcha] => Ok(gotcha),
+        [] => Err(format!(
+            "no gotcha kept here has the id {id}: `zirc gotcha` lists them with theirs"
+        )),
+        _ => Err(format!(
+            "{} gotchas' ids start {id}: say more of it",
+            found.len()
+        )),
+    }
 }
 
 /// The gotcha `delivery` says, if it's one.
@@ -101,14 +217,16 @@ pub fn under<'a>(gotchas: &'a [Gotcha], paths: &[String]) -> Vec<&'a Gotcha> {
     found
 }
 
-/// `gotcha` in a line: `2026-11-11 cc-1 (api): <text> (<paths>)`.
+/// `gotcha` in a line: `2026-11-11 cc-1 (api): <text> (<paths>) [id 01jbx7ab]`, the id what
+/// `zirc gotcha --retire` takes.
 #[must_use]
 pub fn line(gotcha: &Gotcha) -> String {
     let day = gotcha.at.as_deref().and_then(|at| at.get(..10));
     let paths = gotcha.paths.join(", ");
+    let id = crate::ipc::id_tag(gotcha.id.as_deref());
     match day {
-        Some(day) => format!("{day} {}: {} ({paths})", gotcha.who, gotcha.text),
-        None => format!("{}: {} ({paths})", gotcha.who, gotcha.text),
+        Some(day) => format!("{day} {}: {} ({paths}){id}", gotcha.who, gotcha.text),
+        None => format!("{}: {} ({paths}){id}", gotcha.who, gotcha.text),
     }
 }
 
@@ -186,8 +304,8 @@ mod tests {
         assert_eq!(
             lines,
             [
-                "2026-11-10 cc-2: saved: keep serde defaults (src/daemon/awaits.rs)",
-                "2026-11-09 cc-1: clippy's line limit is 100 (src/daemon)",
+                "2026-11-10 cc-2: saved: keep serde defaults (src/daemon/awaits.rs) [id id-2026-]",
+                "2026-11-09 cc-1: clippy's line limit is 100 (src/daemon) [id id-2026-]",
             ]
         );
         // A directory finds those about files in it too.
@@ -207,5 +325,69 @@ mod tests {
         assert!(is_room("#api/gotchas"));
         assert!(!is_room("#api/agents"));
         assert!(!is_room("#gotchas"));
+    }
+
+    fn retiring(gotcha: &Gotcha) -> Delivery {
+        let retired = Retired::of(gotcha);
+        Delivery::new(
+            "#api/gotchas",
+            "mbp",
+            Message::new(
+                "cc-9",
+                Event::Custom {
+                    kind: RETIRED.into(),
+                    text: retired_text(gotcha),
+                    data: serde_json::to_value(&retired).unwrap(),
+                },
+            ),
+        )
+    }
+
+    #[test]
+    fn a_retired_gotcha_is_left_out_until_it_is_said_again() {
+        let pnpm = said("cc-1", &["web"], "pnpm only", "2026-11-09T10:00:00Z");
+        let clippy = said("cc-2", &["src"], "clippy's limit", "2026-11-10T10:00:00Z");
+        let gotcha = of(&pnpm).unwrap();
+        let retire = retiring(&gotcha);
+        assert_eq!(retired(&retire), Some(Retired::of(&gotcha)));
+        assert!(is_kind(RETIRED) && is_kind(KIND) && !is_kind("x-zirc/intent"));
+        let texts = |kept: Vec<Gotcha>| kept.into_iter().map(|g| g.text).collect::<Vec<_>>();
+        assert_eq!(
+            texts(kept(&[pnpm.clone(), clippy.clone(), retire.clone()])),
+            ["clippy's limit"]
+        );
+        // Said again after its retiring, it's kept again.
+        let again = said("cc-3", &["web"], "pnpm only", "2026-11-12T10:00:00Z");
+        assert_eq!(texts(kept(&[pnpm, retire, again])), ["pnpm only"]);
+    }
+
+    #[test]
+    fn finds_a_gotcha_by_the_start_of_its_id() {
+        let gotchas: Vec<Gotcha> = [
+            said("cc-1", &["web"], "pnpm only", "2026-11-09T10:00:00Z"),
+            said("cc-2", &["src"], "clippy's limit", "2026-11-10T10:00:00Z"),
+        ]
+        .iter()
+        .filter_map(of)
+        .collect();
+        assert_eq!(
+            by_id(&gotchas, "id-2026-11-10").unwrap().text,
+            "clippy's limit"
+        );
+        assert_eq!(
+            by_id(&gotchas, "[id id-2026-11-09]").unwrap().text,
+            "pnpm only"
+        );
+        assert!(
+            by_id(&gotchas, "id-2026")
+                .unwrap_err()
+                .contains("2 gotchas' ids start")
+        );
+        assert!(
+            by_id(&gotchas, "nope")
+                .unwrap_err()
+                .contains("no gotcha kept here")
+        );
+        assert!(by_id(&gotchas, "").is_err());
     }
 }

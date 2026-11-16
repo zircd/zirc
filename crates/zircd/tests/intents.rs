@@ -349,6 +349,71 @@ async fn a_session_starting_to_change_files_is_told_the_gotchas_kept_about_them(
 }
 
 #[tokio::test]
+async fn a_retired_gotcha_is_told_to_nobody() {
+    let fleet = Fleet::with_sessions(require_ergo!()).await;
+    let mut watching = fleet.beta.watch().await;
+    let say = |kind: &str, data: serde_json::Value, text: &str| Request::Emit {
+        repo: fleet.alpha.clone.path().to_owned(),
+        session: "cc-a".into(),
+        kind: kind.into(),
+        data,
+        text: text.into(),
+        to: Target::Topic {
+            name: zirc_core::gotchas::ROOM.into(),
+            org: false,
+        },
+        app: None,
+    };
+    let old = zirc_core::gotchas::Gotcha {
+        paths: vec!["web".into()],
+        text: "the login page only builds with yarn".into(),
+        who: "cc-a".into(),
+        at: None,
+        id: None,
+    };
+    let retired = zirc_core::gotchas::Retired::of(&old);
+    for request in [
+        say(
+            zirc_core::gotchas::KIND,
+            serde_json::json!({ "paths": ["web"] }),
+            &old.text,
+        ),
+        say(
+            zirc_core::gotchas::RETIRED,
+            serde_json::to_value(&retired).unwrap(),
+            &zirc_core::gotchas::retired_text(&old),
+        ),
+        say(
+            zirc_core::gotchas::KIND,
+            serde_json::json!({ "paths": ["web"] }),
+            "the login page only builds with pnpm",
+        ),
+    ] {
+        let said = fleet.alpha.machine.request(request).await;
+        assert!(matches!(said, Response::Channel { .. }), "{said:?}");
+    }
+    // Beta hears the retiring, which wakes nobody, then the lesson kept after it.
+    let mut heard_retiring = false;
+    loop {
+        let delivery = next(&mut watching).await;
+        if zirc_core::gotchas::retired(&delivery).is_some() {
+            assert_eq!(delivery.why, None);
+            heard_retiring = true;
+        }
+        if zirc_core::gotchas::of(&delivery).is_some_and(|it| it.text.contains("pnpm")) {
+            break;
+        }
+    }
+    assert!(heard_retiring);
+
+    fleet.beta.edits("web/login.ts", "export {}\n");
+
+    let (body, _) = next_post_why(&mut watching).await;
+    assert!(body.contains("only builds with pnpm"), "{body}");
+    assert!(!body.contains("yarn"), "{body}");
+}
+
+#[tokio::test]
 async fn the_gotchas_told_one_session_dont_wake_the_session_that_learnt_them() {
     let ergo = require_ergo!();
     let machine = Machine::start(&ergo, "alpha").await;
