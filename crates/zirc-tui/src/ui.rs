@@ -19,7 +19,7 @@ use crate::rows::{self, Row, TIME_WIDTH, Tone, fit, wrap};
 use zirc_core::chat::{
     APP_TAG, APPS_SECTION, Avatar, COMPOSER_NOTE, GUEST_PILL, GuestHeader, Icon, Kind, OUTSIDE,
     OrgHeader, Presence, Profile, QUOTE_MARK, UNASSIGNED, agent, assigned_label, away_label,
-    is_group, members_label, more_paths_label,
+    is_group, members_label,
 };
 use zirc_core::emoji;
 use zirc_theme::{Design, Rgb, Theme, Type};
@@ -277,10 +277,6 @@ fn details_card(
     );
 }
 
-/// How many files an agent card says it's changing with others before `and 2 more`, as
-/// every app's card does.
-const BOTH_CHANGING_SHOWN: usize = zirc_core::chat::BOTH_CHANGING_SHOWN;
-
 /// The card of `nick`'s agent `session` over the scrollback, `area`, as zirc-chat says it
 /// ([`zirc_core::chat::AgentCard`]): its name, whose it is and where, Now, the files it's
 /// changing with others, each in zirc-chat's one phrase, and when it was last heard.
@@ -313,13 +309,14 @@ fn agent_card(frame: &mut Frame<'_>, app: &App, nick: &str, session: &str, area:
                 .map(|line| Line::styled(line, fg(theme.text))),
         );
     }
-    let both = app.chat.both_changing_for(session);
-    if !both.is_empty() {
+    let both = app
+        .chat
+        .both_changing_card(&app.chat.both_changing_for(session), session);
+    if !both.lines.is_empty() {
         lines.push(Line::default());
     }
-    for item in both.iter().take(BOTH_CHANGING_SHOWN) {
-        let parts = app.chat.both_changing_line(item, session);
-        let said = format!("{} {} {}", parts.verb, item.path, parts.details);
+    for parts in &both.lines {
+        let said = format!("{} {} {}", parts.verb, parts.paths.join(" "), parts.details);
         let glyph = parts.icon.glyph();
         for (i, line) in wrap(&said, text.saturating_sub(glyph.width() + 1))
             .into_iter()
@@ -332,11 +329,8 @@ fn agent_card(frame: &mut Frame<'_>, app: &App, nick: &str, session: &str, area:
             ]));
         }
     }
-    if both.len() > BOTH_CHANGING_SHOWN {
-        lines.push(Line::styled(
-            more_paths_label(both.len() - BOTH_CHANGING_SHOWN),
-            muted,
-        ));
+    if let Some(more) = both.more {
+        lines.push(Line::styled(more, muted));
     }
     if let Some(heard) = card.heard {
         lines.push(Line::default());
