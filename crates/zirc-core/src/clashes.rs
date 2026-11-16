@@ -100,6 +100,12 @@ pub fn ask_target(nick: &str, session: Option<&str>) -> Option<String> {
         .map(|session| format!("{nick}/{session}"))
 }
 
+/// What `zirc intend` says when nobody else is on its paths: nothing to agree, so nothing
+/// to wait for. Sessions waited on answers no overlap called for (the agent evals, 16 Nov
+/// 2026).
+pub const NOBODY: &str = "nobody else is on these paths: carry on, and land without waiting \
+    for anyone's answer";
+
 /// `clashes` as lines for `session` to read: a heads-up and what to do, then one line for
 /// each, its paths cut to a few, then for each session among them a `zirc ask` to copy,
 /// with its address and its paths, as asking beats waiting to see whether the two conflict.

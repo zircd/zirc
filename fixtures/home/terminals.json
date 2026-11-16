@@ -67,6 +67,9 @@
         "command": "zirc intend --session cc-7d3a tests/e2e/reconnect.rs tests/e2e/harness.rs -m \"reconnect test: bind port 0\""
       },
       {
+        "output": "posted taking: reconnect test: bind port 0 to #backend/agents: zircd says done: once your landing lands"
+      },
+      {
         "output": "told #backend/agents"
       },
       {
@@ -107,6 +110,12 @@
       },
       {
         "output": "    raj-studio/cc-91b7: tests/e2e: changing tests/e2e/harness.rs on main (said by zircd) (30m left)"
+      },
+      {
+        "output": "  taken on:"
+      },
+      {
+        "output": "    henrik-mbp/cc-7d3a: reconnect test: bind port 0 (just now)"
       }
     ]
   },

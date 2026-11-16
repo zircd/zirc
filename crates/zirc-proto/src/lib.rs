@@ -597,10 +597,20 @@ pub struct Message {
     pub task: Option<String>,
 }
 
+/// What a post that starts a task starts with ([`says_taking`]).
+pub const TAKING: &str = "taking:";
+
 /// Whether `text`, a post, starts a task: it starts `taking:`, whatever the case.
 #[must_use]
 pub fn says_taking(text: &str) -> bool {
-    text.trim_start().to_lowercase().starts_with("taking:")
+    text.trim_start().to_lowercase().starts_with(TAKING)
+}
+
+/// The post that starts `task`: `taking: <task>`, as `zirc intend` posts it for a session
+/// on none.
+#[must_use]
+pub fn taking(task: &str) -> String {
+    format!("{TAKING} {}", task.trim())
 }
 
 /// The longest a task id is ([`task_id`]).
@@ -1581,6 +1591,8 @@ mod tests {
     fn a_task_starts_with_taking_and_its_id_carries_no_text() {
         assert!(says_taking("  Taking: the recorder"));
         assert!(!says_taking("done: the recorder"));
+        assert_eq!(taking(" the recorder "), "taking: the recorder");
+        assert!(says_taking(&taking("the recorder")));
         assert_eq!(task_id("t-mh3k2a9x1q"), Some("t-mh3k2a9x1q".into()));
         for not in ["t-", "x-abc", "t-ABC", "t-a b", "t-0123456789abcdef"] {
             assert_eq!(task_id(not), None, "{not}");

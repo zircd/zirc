@@ -69,7 +69,8 @@ pub(crate) async fn send_dm(
     print_channel(ask_in(socket, org, request).await?, "sent to", out)
 }
 
-/// Tells the repository's channel what the session is about to change.
+/// Tells the repository's channel what the session is about to change: first, for a session
+/// on no task, its `taking:` post, so one command does both; then who else is on those paths.
 pub(crate) async fn intend(
     socket: &Path,
     paths: Vec<PathBuf>,
@@ -79,6 +80,7 @@ pub(crate) async fn intend(
     out: &mut impl Write,
 ) -> Result<()> {
     let cwd = std::env::current_dir()?;
+    let takes = session.is_some();
     let session = session_or_user(session);
     if ends_work(&summary) {
         let request = Request::Post {
@@ -95,6 +97,10 @@ pub(crate) async fn intend(
         writeln!(out, "{INTENT_ENDED}")?;
         return Ok(());
     }
+    // Before the intent, which then carries the task it starts.
+    if takes {
+        take_task(socket, &cwd, &session, &summary, out).await?;
+    }
     let request = Request::Intend {
         paths: paths.iter().map(|path| cwd.join(path)).collect(),
         repo: cwd.clone(),
@@ -106,13 +112,56 @@ pub(crate) async fn intend(
     // Told as it is: a path broader than the change is worth saying, not refusing.
     write!(out, "{}", intent_scope::warnings(&cwd, &paths))?;
     // Told already: who else is there is worth saying, but not worth failing over.
-    if let Ok(text) = clashes_here(socket, &session, &paths).await {
+    if let Ok(Some((clashed, text))) = clashes_found(socket, &session, &paths).await {
         write!(out, "{text}")?;
+        if !clashed {
+            writeln!(out, "{}", zirc_core::clashes::NOBODY)?;
+        }
     }
     write!(
         out,
         "{}",
         crate::gotchas::under_here(socket, &session, &paths).await
+    )?;
+    Ok(())
+}
+
+/// Posts `taking: <summary>` for `session` when it's on no task, as `zirc post` would, so
+/// its intent needn't follow a post of its own: the agent evals (16 Nov 2026) counted two
+/// posts a session, mostly `taking:` and `done:`. A zircd too old to say a session's task
+/// takes nothing.
+async fn take_task(
+    socket: &Path,
+    cwd: &Path,
+    session: &str,
+    summary: &str,
+    out: &mut impl Write,
+) -> Result<()> {
+    let org = org_here(socket, OrgArg::default()).await?;
+    let request = Request::Task {
+        session: session.to_owned(),
+        landing: false,
+    };
+    let Ok(Response::Task { task: None }) = waits(socket, org.as_deref(), request).await else {
+        return Ok(());
+    };
+    let text = zirc_proto::taking(summary);
+    let request = Request::Post {
+        repo: cwd.to_owned(),
+        session: session.to_owned(),
+        text: text.clone(),
+        to: Target::Default,
+        app: None,
+        everyone: false,
+        force: false,
+        reply: None,
+    };
+    let Response::Channel { channel, .. } = ask(socket, request).await? else {
+        return Err(crate::client::unexpected());
+    };
+    writeln!(
+        out,
+        "posted {text} to {channel}: zircd says done: once your landing lands"
     )?;
     Ok(())
 }
@@ -189,13 +238,26 @@ pub(crate) async fn clashes_here(
     session: &str,
     paths: &[PathBuf],
 ) -> Result<String> {
+    Ok(clashes_found(socket, session, paths)
+        .await?
+        .map(|(_, text)| text)
+        .unwrap_or_default())
+}
+
+/// [`clashes_here`], and whether anyone besides `session` is on `paths`: `None` outside a
+/// watched repository, or one whose channel zircd doesn't know yet.
+async fn clashes_found(
+    socket: &Path,
+    session: &str,
+    paths: &[PathBuf],
+) -> Result<Option<(bool, String)>> {
     let Response::Repos { repos } = ask(socket, Request::RepoList).await? else {
         return Err(crate::client::unexpected());
     };
     let cwd = std::env::current_dir()?;
     let cwd = cwd.canonicalize().unwrap_or(cwd);
     let Some(repo) = repo_here(&repos, &cwd) else {
-        return Ok(String::new());
+        return Ok(None);
     };
     let root = repo
         .path
@@ -216,12 +278,10 @@ pub(crate) async fn clashes_here(
         .iter()
         .find(|channel| channel.channel == repo.channel)
     else {
-        return Ok(String::new());
+        return Ok(None);
     };
-    let mut text = zirc_core::clashes::text(
-        &zirc_core::clashes::clashes(channel, session, &paths, now),
-        session,
-    );
+    let clashes = zirc_core::clashes::clashes(channel, session, &paths, now);
+    let mut text = zirc_core::clashes::text(&clashes, session);
     // Who changed them lately, to ask: worth saying, not worth failing over.
     let read = Request::Read {
         target: channel.channel.clone(),
@@ -234,7 +294,7 @@ pub(crate) async fn clashes_here(
         forget_gone(socket, &mut owners).await;
         text.push_str(&zirc_core::owners::ask_text(&owners));
     }
-    Ok(text)
+    Ok(Some((!clashes.is_empty(), text)))
 }
 
 /// Joins or leaves a topic.

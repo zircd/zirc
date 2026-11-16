@@ -620,8 +620,11 @@ enum Command {
     ///
     /// Say what you're about to change, before you start changing it.
     ///
-    /// Whoever else is changing it hears now, rather than when you collide. It goes to the repository's channel and lasts until it expires, a new one replaces
-    /// it, or you post `done: …` or `dropped: …`.
+    /// Whoever else is changing it hears now, rather than when you collide, and it says who
+    /// else is on those paths, or that nobody is. It goes to the repository's channel and
+    /// lasts until it expires, a new one replaces it, or you post `done: …` or `dropped: …`.
+    /// A session on no task takes its message on as one: it posts `taking: <message>` first,
+    /// and zircd says `done:` when that task's landing lands.
     #[command(after_long_help = examples("intend", ""))]
     Intend {
         /// Files or directories you're about to change.
@@ -659,10 +662,10 @@ enum Command {
     Name(sessions::NameArgs),
     /// Print the id of the task your session is on, if it's on one.
     ///
-    /// Your `zirc post "taking: …"` starts a task with a new id, which your posts, intents,
-    /// commits and pushes then carry, and `//ops:land` puts on your landing; your `done:` or
-    /// `dropped:` post ends it, though a landing soon after still claims it. A `zirc intend`
-    /// while you're on none starts one too, which your landing ends. Prints nothing while
+    /// Your `zirc post "taking: …"`, or your first `zirc intend` while you're on none, starts
+    /// a task with a new id, which your posts, intents, commits and pushes then carry, and
+    /// `//ops:land` puts on your landing; its landing landing, or your `done:` or `dropped:`
+    /// post, ends it, though a landing soon after still claims it. Prints nothing while
     /// you're on none.
     #[command(hide = true)]
     Task(sessions::TaskArgs),
