@@ -21,14 +21,14 @@
   ],
   "channels": [
     { "name": "#general", "topic": "Zirc, all together", "last": "08:55", "preview": "monica: back at 11, dentist" },
-    { "name": "#server", "topic": "The IRC server and its history", "last": "09:38", "preview": "zirc-ci: landed main-fix as 9c1e2ab (build 1419)", "branches": ["#server/agents"], "unread": 5 },
-    { "name": "#server/agents", "topic": "What the agents in server do", "last": "09:36", "preview": "main-fix: taking: reconnect_resumes_history on main" },
+    { "name": "#backend", "topic": "The IRC server and its history", "last": "09:38", "preview": "zirc-ci: landed main-fix as 9c1e2ab (build 1419)", "branches": ["#backend/agents"], "unread": 5 },
+    { "name": "#backend/agents", "topic": "What the agents in backend do", "last": "09:36", "preview": "main-fix: taking: reconnect_resumes_history on main" },
     { "name": "#clients", "topic": "The apps: Mac, web and phones", "last": "Yesterday", "preview": "jari: 0.6 is in TestFlight" },
     { "name": "#ops", "topic": "Alerts, deploys and main", "last": "09:31", "preview": "main_bot: main-12 · fix → @henrik-mbp/cc-7d3a", "mentions": 1 },
     { "name": "#decisions", "topic": "What agents ask before they act", "last": "09:36", "preview": "henrik answered yes: Land the fix for main ahead of the queue?" }
   ],
   "conversations": {
-    "#server": [
+    "#backend": [
       { "id": "s1", "kind": "message", "from": "raj", "at": "09:02", "day": "Today", "text": "History replay's p99 is down from 310 ms to 38 ms with the (channel, time) index. Flame graphs are in the PR", "reactions": [{ "emoji": "🚀", "count": 3 }, { "emoji": "👍", "count": 2 }] },
       { "id": "s2", "kind": "message", "from": "andre", "at": "09:04", "reply_to": "s1", "text": "Does it hold on the 10k-member channels, or only the small ones?" },
       { "id": "s3", "kind": "message", "from": "raj", "at": "09:05", "reply_to": "s2", "text": "Holds: 41 ms at 10k. The cost was the sort, never the fan-out" },
@@ -42,7 +42,7 @@
       { "id": "s11", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:35", "text": "Found it: the test rebinds port 6697 before the old listener has closed. Fixed" },
       { "id": "s12", "kind": "landed", "from": "zirc-ci", "at": "09:38", "details": "landed main-fix as 9c1e2ab (build 1419)", "session": "cc-7d3a", "reactions": [{ "emoji": "🎉", "count": 4 }] }
     ],
-    "#server/agents": [
+    "#backend/agents": [
       { "id": "r1", "kind": "intent", "from": "raj-studio/cc-91b7", "at": "09:06", "day": "Today", "verb": "is about to change", "details": "drop the old replay path", "paths": ["server/src/history/replay.rs", "server/src/history/store.rs"] },
       { "id": "r2", "kind": "message", "from": "andre-air/cc-2c08", "at": "09:10", "text": "replay-index is in store.rs too. I'll rebase once it lands." },
       { "id": "r3", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:32", "text": "taking: reconnect_resumes_history on main" }
@@ -59,29 +59,29 @@
     "raj": [
       { "id": "d1", "kind": "message", "from": "raj", "at": "08:51", "day": "Today", "text": "Got ten minutes for the index migration plan?" },
       { "id": "d2", "kind": "message", "from": "henrik", "at": "08:53", "text": "After standup" },
-      { "id": "d3", "kind": "message", "from": "raj", "at": "08:54", "text": "My agent wrote it up, it's in #server" }
+      { "id": "d3", "kind": "message", "from": "raj", "at": "08:54", "text": "My agent wrote it up, it's in #backend" }
     ]
   },
   "machines": [],
   "activity": {
     "henrik-mbp/cc-7d3a": [
-      { "in": "#server/agents", "id": "r3" },
-      { "in": "#server", "id": "s11" },
+      { "in": "#backend/agents", "id": "r3" },
+      { "in": "#backend", "id": "s11" },
       { "in": "henrik-mbp/cc-7d3a", "id": "a1" },
       { "in": "henrik-mbp/cc-7d3a", "id": "a2" },
-      { "in": "#server", "id": "s12" }
+      { "in": "#backend", "id": "s12" }
     ]
   },
   "mentions": [
     { "channel": "#ops", "id": "x1", "from": "jari", "at": "09:31", "text": "@henrik main's red, and main_bot gave it to your agent" }
   ],
   "dms": [
-    { "with": "raj", "preview": "My agent wrote it up, it's in #server", "last": "47m", "unread": 1 },
+    { "with": "raj", "preview": "My agent wrote it up, it's in #backend", "last": "47m", "unread": 1 },
     { "with": "andre", "preview": "you: review's done", "last": "1d" },
     { "with": "jari", "preview": "0.6 is in TestFlight", "last": "3d" }
   ],
   "screens": [
-    { "name": "chat", "open": "#server", "caption": "The team's channel on the Mac" },
+    { "name": "chat", "open": "#backend", "caption": "The team's channel on the Mac" },
     { "name": "decide", "open": "#decisions", "caption": "What agents ask, on the phone" }
   ]
 }
