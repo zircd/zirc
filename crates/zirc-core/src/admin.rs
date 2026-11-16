@@ -30,7 +30,7 @@ pub struct OrgRole {
     /// The organisation's short name.
     pub slug: String,
     /// What [`crate::chat::Chat::set_role`] takes. A member's when the web app doesn't say.
-    #[serde(default, deserialize_with = "zirc_proto::role::lenient")]
+    #[serde(default, with = "zirc_proto::role::lenient")]
     pub role: zirc_proto::role::Role,
 }
 

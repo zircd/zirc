@@ -34,15 +34,34 @@ pub enum Role {
     Member,
 }
 
-/// A role as zirc.dev says it, for `#[serde(deserialize_with)]`: one it doesn't say, or one
-/// this zirc doesn't know, from an older or newer zirc.dev, is a member's.
-///
-/// # Errors
-///
-/// Never for a string or null; only when it's neither.
-pub fn lenient<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Role, D::Error> {
-    let text = Option::<String>::deserialize(deserializer)?;
-    Ok(text.as_deref().and_then(Role::named).unwrap_or_default())
+/// A role as zirc.dev says it, for `#[serde(with)]`, which ts-rs reads (it warns of
+/// `deserialize_with`): one it doesn't say, or one this zirc doesn't know, from an older or
+/// newer zirc.dev, is a member's. Written as [`Role`] writes itself.
+pub mod lenient {
+    use serde::{Deserialize, Serialize};
+
+    use super::Role;
+
+    /// `role` as [`Role`] writes it.
+    ///
+    /// # Errors
+    ///
+    /// When the serializer fails.
+    pub fn serialize<S: serde::Serializer>(role: &Role, serializer: S) -> Result<S::Ok, S::Error> {
+        role.serialize(serializer)
+    }
+
+    /// The role said, a member's when it's none or one this zirc doesn't know.
+    ///
+    /// # Errors
+    ///
+    /// Never for a string or null; only when it's neither.
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Role, D::Error> {
+        let text = Option::<String>::deserialize(deserializer)?;
+        Ok(text.as_deref().and_then(Role::named).unwrap_or_default())
+    }
 }
 
 impl Role {
@@ -99,7 +118,7 @@ mod tests {
     fn a_role_zirc_dev_doesnt_say_or_this_zirc_doesnt_know_is_a_members() {
         #[derive(Deserialize)]
         struct Org {
-            #[serde(default, deserialize_with = "lenient")]
+            #[serde(default, with = "lenient")]
             role: Role,
         }
         let role = |json: &str| serde_json::from_str::<Org>(json).unwrap().role;

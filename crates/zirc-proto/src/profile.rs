@@ -85,7 +85,8 @@ pub struct MeOrg {
     pub handle: String,
     /// Their role there. Owners and admins manage its guests. A member's from a zirc.dev older
     /// than roles, which says none.
-    #[serde(default, deserialize_with = "crate::role::lenient")]
+    #[serde(default, with = "crate::role::lenient")]
+    #[ts(as = "crate::role::Role")]
     pub role: crate::role::Role,
     /// The name they set for it alone, `None` when it shows the account's.
     pub name_override: Option<String>,

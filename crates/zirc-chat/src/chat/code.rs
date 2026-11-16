@@ -57,18 +57,23 @@ pub struct Token {
     /// The code.
     pub text: String,
     /// Its role.
-    #[serde(serialize_with = "theme_role")]
+    #[serde(with = "theme_role")]
     #[ts(type = "string")]
     pub role: Role,
 }
 
 /// `role` as zirc-theme names it, for [`Token`]'s JSON.
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde passes a reference"
-)]
-fn theme_role<S: serde::Serializer>(role: &Role, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(role.theme_role())
+mod theme_role {
+    use super::Role;
+
+    /// For `#[serde(with)]`, which ts-rs reads (it warns of `serialize_with`).
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde passes a reference"
+    )]
+    pub fn serialize<S: serde::Serializer>(role: &Role, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(role.theme_role())
+    }
 }
 
 /// `code`'s lines as tokens, highlighted as `language` (a fence's name, such as `rust`,
