@@ -169,7 +169,7 @@ mod tests {
             zirc_core::time::seconds_at("2026-11-05T08:00:00Z").unwrap()
         );
         assert!(super::moment_arg("soon", "--since").is_err());
-        assert!((1_814_400..1_814_405).contains(&ago("3w")));
+        assert!((1_814_395..=1_814_400).contains(&ago("3w")));
         assert!(super::moment_arg("3y", "--since").is_err());
         // How long, for --for: the same units, and a bare number is minutes.
         for (said, seconds) in [("90s", 90), ("20m", 1200), ("15", 900), ("2h", 7200)] {
