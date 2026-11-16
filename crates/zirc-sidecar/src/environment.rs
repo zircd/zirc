@@ -28,6 +28,12 @@ pub const HISTORY: &[(&str, &str)] = &[
     // History survives restarts, in ergo_history.db next to ircd.db. A team's channels
     // aren't registered with ChanServ, so theirs is kept too.
     ("ERGO__DATASTORE__SQLITE__ENABLED", "true"),
+    // How long Ergo waits to write a message to its history while something else holds the
+    // database: the sidecar's scrub rewrites it whole (crate::trim, VACUUM), which took 15s
+    // on zirc's own, and Ergo's 5s let each message said meanwhile go unkept (SQLITE_BUSY:
+    // about 40 in the week to 16 Nov 2026). It has delivered the message by then; only
+    // whoever sent it waits.
+    ("ERGO__DATASTORE__SQLITE__BUSY_TIMEOUT", "2m"),
     ("ERGO__HISTORY__PERSISTENT__ENABLED", "true"),
     ("ERGO__HISTORY__PERSISTENT__UNREGISTERED_CHANNELS", "true"),
     // People remove their own messages, and team ops any in their channels, with REDACT;

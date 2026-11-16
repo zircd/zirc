@@ -147,15 +147,25 @@ fn checkpoint(connection: &Connection) -> rusqlite::Result<()> {
 /// Scrubs the history whenever rows went from it since the last look.
 pub struct Scrubber {
     path: PathBuf,
-    /// The ids Ergo had given out but no longer has, as of the last look.
+    /// The ids Ergo had given out but no longer has, as of the last look: kept beside the
+    /// history ([`mark_of`]), so a sidecar starting again doesn't rewrite it all when nothing
+    /// went meanwhile, as every rollout did, and Ergo's writes waited on it.
     gone: Option<i64>,
 }
 
+/// Where a scrubber keeps how many rows had gone at its last look, beside the history.
+fn mark_of(path: &Path) -> PathBuf {
+    path.with_extension("scrubbed")
+}
+
 impl Scrubber {
-    /// A scrubber of the history database at `path`.
+    /// A scrubber of the history database at `path`, as the last one there left it.
     #[must_use]
     pub fn new(path: PathBuf) -> Self {
-        Self { path, gone: None }
+        let gone = std::fs::read_to_string(mark_of(&path))
+            .ok()
+            .and_then(|mark| mark.trim().parse().ok());
+        Self { path, gone }
     }
 
     /// Scrubs if rows went since the last call, or on the first call if any ever did, and says
@@ -172,6 +182,11 @@ impl Scrubber {
         let scrub = gone > self.gone.unwrap_or(0);
         if scrub {
             self::scrub(&self.path)?;
+        }
+        if self.gone != Some(gone)
+            && let Err(error) = std::fs::write(mark_of(&self.path), gone.to_string())
+        {
+            warn!(%error, "couldn't keep the scrub's mark: a restart scrubs again");
         }
         self.gone = Some(gone);
         Ok(scrub)
@@ -395,6 +410,12 @@ mod tests {
         // Ergo carries on writing afterwards.
         add(&path, "n", "#api", 9000, "bob", "after the scrub");
         assert_eq!(find(&path, None, "after the scrub", 5).unwrap().len(), 1);
+
+        // A sidecar starting again picks up where this one left off: nothing went since.
+        assert!(!Scrubber::new(path.clone()).tick().unwrap());
+        ergo.execute_batch("DELETE FROM history WHERE msgid = 'n';")
+            .unwrap();
+        assert!(Scrubber::new(path.clone()).tick().unwrap(), "but this did");
     }
 }
 

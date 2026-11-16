@@ -209,6 +209,12 @@ impl Ergo {
         self.ws_port
     }
 
+    /// Its history database, as Ergo keeps it beside its config.
+    #[must_use]
+    pub fn history(&self) -> std::path::PathBuf {
+        self.dir.path().join("ergo_history.db")
+    }
+
     /// The server's output so far, for failure messages.
     #[must_use]
     pub fn log(&self) -> String {
