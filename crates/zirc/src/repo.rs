@@ -210,7 +210,7 @@ async fn here_watched(socket: &Path, path: &Path, out: &mut impl Write) -> Resul
 
 /// The main checkout of the Git working tree at `path`, which a linked worktree shares
 /// its repository with: `None` outside Git.
-fn main_checkout(path: &Path) -> Option<PathBuf> {
+pub(crate) fn main_checkout(path: &Path) -> Option<PathBuf> {
     let output = std::process::Command::new("git")
         .arg("-C")
         .arg(path)

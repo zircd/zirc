@@ -10,14 +10,14 @@ use zirc_core::filter::Filter;
 use zirc_core::ipc::{self, Delivery, Heard, Request, Response};
 use zirc_proto::{Event, Level, PROGRAM};
 
-use crate::client::{ask, not_running};
+use crate::client::{ask, ask_in, not_running, shown};
 use crate::daemon::{SocketId, socket_id};
 use crate::decide::answered_line;
 use crate::hints::{hint_line, watch_hints};
 use crate::lines::{
     conflict_line, direct_line, line, local_overlap_line, one_line, overlap_line, reaction_line,
 };
-use crate::repo::{repo_here, unregistered};
+use crate::repo::{main_checkout, repo_here, unregistered};
 use crate::sessions::{name_session, waiting, waiting_line};
 use crate::status::stuck_channelless;
 
@@ -77,7 +77,15 @@ pub(crate) async fn watch_as(
         .await
         .map_err(|err| not_running(socket, err))?;
     in_channels(socket, how.channels, session).await?;
-    for line in starting(socket, session).await {
+    let starting = starting(socket, session).await;
+    for line in &starting.lines {
+        aside(how.once, out, line)?;
+    }
+    if let Some(line) = starting.unwatched {
+        if how.once {
+            writeln!(out, "{line}")?;
+            return Ok(());
+        }
         aside(how.once, out, &line)?;
     }
     let mut watched = socket_id(socket);
@@ -172,32 +180,77 @@ pub(crate) fn is_orphan(started_by: u32, parent: u32) -> bool {
     parent == 1 || parent != started_by
 }
 
-/// What a watch says once, at the start: that the session isn't registered, or that this
-/// machine is in no channels, either of which makes a watch look quiet; and what the
-/// session waits on, which zircd keeps and no process shows otherwise.
-pub(crate) async fn starting(socket: &Path, session: Option<&str>) -> Vec<String> {
-    let mut lines = Vec::new();
+/// What a watch says once, at the start ([`starting`]).
+#[derive(Debug, Default)]
+pub(crate) struct Starting {
+    /// What isn't news: that it registered the session, or that this machine is in no
+    /// channels, which makes a watch look quiet; and what the session waits on, which zircd
+    /// keeps and no process shows otherwise.
+    pub(crate) lines: Vec<String>,
+    /// That the session works in a Git repository this machine doesn't watch, and the fix:
+    /// news, as it decides whether the session uses zirc at all, which ends a `--once`
+    /// watch at once rather than leaving it to hear only what names the session.
+    pub(crate) unwatched: Option<String>,
+}
+
+/// What a watch says once, at the start. A session registered in no repository is
+/// registered in the watched one it runs in, as `zirc repo here --session` would, so its
+/// watch is all it starts with (the agent evals, 16 Nov 2026, counted a turn a session
+/// for `repo here`); where that's none, it's said.
+pub(crate) async fn starting(socket: &Path, session: Option<&str>) -> Starting {
+    let mut starting = Starting::default();
     if let Some(session) = session
         && let Ok(Response::Repos { repos }) = ask(socket, Request::RepoList).await
     {
         let cwd = std::env::current_dir().unwrap_or_default();
+        let cwd = cwd.canonicalize().unwrap_or(cwd);
         if !repos
             .iter()
             .any(|repo| repo.sessions.iter().any(|it| it.session == session))
         {
+            let main = main_checkout(&cwd);
+            let here = repo_here(&repos, &cwd).or_else(|| repo_here(&repos, main.as_deref()?));
             // Said where the session will read it: what it's missing and the fix.
-            lines.push(unregistered(session, &repos, &cwd));
+            let missing = unregistered(session, &repos, &cwd);
+            match here {
+                Some(repo) => starting.lines.push(
+                    register(socket, session, repo, &cwd)
+                        .await
+                        .unwrap_or(missing),
+                ),
+                None if main.is_some() => starting.unwatched = Some(missing),
+                None => starting.lines.push(missing),
+            }
         }
         // In the organisation `zirc wait-for` run here would ask.
         let org = repo_here(&repos, &cwd).and_then(|repo| repo.org.as_deref());
         if let Ok(on) = waiting(socket, org, session).await {
-            lines.extend(waiting_line(&on));
+            starting.lines.extend(waiting_line(&on));
         }
     }
     if let Ok(Response::Status(status)) = ask(socket, Request::Status).await {
-        lines.extend(stuck_channelless(socket, &status).await);
+        starting
+            .lines
+            .extend(stuck_channelless(socket, &status).await);
     }
-    lines
+    starting
+}
+
+/// Registers `session` in `cwd`, in the watched `repo` or a worktree of it, and says so;
+/// `None` when zircd wouldn't.
+async fn register(socket: &Path, session: &str, repo: &ipc::Repo, cwd: &Path) -> Option<String> {
+    let request = Request::RepoAdd {
+        path: cwd.to_owned(),
+        session: Some(session.to_owned()),
+    };
+    let Ok(Response::Repos { .. }) = ask_in(socket, repo.org.as_deref(), request).await else {
+        return None;
+    };
+    Some(format!(
+        "{PROGRAM}: registered {session} in {}, watched in {}",
+        shown(cwd),
+        repo.channel
+    ))
 }
 
 /// Prints `line`, which isn't news, to `out`, or with --once (`once`) to stderr: printed
