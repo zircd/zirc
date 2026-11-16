@@ -44,8 +44,9 @@
 //!   "task", "data", …}]}`, metadata only, never what anyone said; page with the last `id`.
 //!   With `&collapse=true`, a session's working set said again in the same hour is left out.
 //!
-//! - `GET /v1/push`: `{"vapidKey"}`, the key Ergo signs its pushes with (`webpush`), for
-//!   zirc.dev to check the pushes it relays to phones; `null` while push is off.
+//! - `GET /v1/push`: `{"vapidKey"}`, the key the pusher signs its pushes with
+//!   (`crate::pusher`), for zirc.dev to check the pushes it relays to phones; `null` while
+//!   push is off.
 //! - `GET /v1/guests`: the organisation's guests (`crate::guests`), most recently there first:
 //!   `{"guests": [{"name", "connected", "lastSeen", "channels"}]}`.
 //! - `GET /v1/guests/unread?text=true|false`: what staff wrote to each guest with an account
@@ -140,6 +141,11 @@ pub struct Options {
     /// Where to answer Ergo's logins; beside its history when left out.
     #[arg(long)]
     pub auth_socket: Option<PathBuf>,
+
+    /// Who sends people's pushes, as their VAPID signature says: zirc.dev's address, which
+    /// relays them to phones. Without it, nothing is pushed (`crate::pusher`).
+    #[arg(long, env = "PUSH_SUBSCRIBER")]
+    pub push_subscriber: Option<String>,
 }
 
 struct Ergo {
@@ -189,6 +195,8 @@ struct Ergo {
     colleagues: tokio::sync::Mutex<Option<Colleagues>>,
     /// The team's own hints (`crate::hints`).
     hints: crate::hints::Store,
+    /// Whether the pusher runs (`crate::pusher`).
+    pushing: bool,
 }
 
 #[derive(Default)]
@@ -232,6 +240,28 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
                 .is_ok()
         }
     }));
+    // What reaches people's phones, decided here (crate::pusher), where pushes go somewhere.
+    if let Some(subscriber) = options.push_subscriber.clone() {
+        let pusher = crate::pusher::Pusher {
+            host: ergo.irc.ip().to_string(),
+            port: ergo.irc.port(),
+            gate: ergo.gate.clone(),
+            token: ergo.token.clone(),
+            history: ergo.history.clone(),
+            api: ergo.api.clone(),
+            subscriber,
+            delay: crate::pusher::DELAY,
+        };
+        let keeper = ergo.clone();
+        tokio::spawn(pusher.run(move |reset| {
+            let ergo = keeper.clone();
+            async move {
+                integration_account(&ergo, zirc_proto::push::PUSHER, reset)
+                    .await
+                    .is_ok()
+            }
+        }));
+    }
     // The server's workflows, each as its own nick (crate::workflows), where the controller
     // turns them on. An account that exists is never changed for one: a nick that's someone
     // else's is refused.
@@ -386,6 +416,7 @@ fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
         searches: tokio::sync::Semaphore::new(SEARCHES),
         gateway,
         history,
+        pushing: options.push_subscriber.is_some(),
     })
 }
 
@@ -1618,9 +1649,24 @@ async fn exists(ergo: &Ergo, name: &str) -> Result<bool, Box<Response>> {
 }
 
 async fn push_key(State(ergo): State<Arc<Ergo>>) -> Response {
-    match ergo.operator.vapid_key().await {
+    if !ergo.pushing {
+        return Json(json!({"vapidKey": null})).into_response();
+    }
+    let history = ergo.history.clone();
+    let key = tokio::task::spawn_blocking(move || crate::pusher::public_key(&history))
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|key| key);
+    match key {
         Ok(key) => Json(json!({"vapidKey": key})).into_response(),
-        Err(failure) => ergo_failed(failure),
+        Err(why) => {
+            warn!(%why, "the pusher's key can't be read");
+            error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "starting",
+                "the pusher's key can't be read",
+            )
+        }
     }
 }
 

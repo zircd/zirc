@@ -420,6 +420,7 @@ pub fn row_of(line: &Line) -> Option<Row> {
         item: Item {
             kind,
             nick: source_nick(line).unwrap_or_default(),
+            mask: line.source.clone().unwrap_or_default(),
             account: line.tag("account").unwrap_or_default().to_owned(),
             text: line.params.get(1).cloned().unwrap_or_default(),
             tags,

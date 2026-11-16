@@ -57,6 +57,7 @@ fn row(channel: &str, account: &str, kind: i64, text: &str) -> Row {
         item: Item {
             kind,
             nick: account.to_owned(),
+            mask: format!("{account}!u@h"),
             account: account.to_owned(),
             text: text.to_owned(),
             tags: BTreeMap::new(),

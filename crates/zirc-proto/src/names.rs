@@ -36,16 +36,17 @@ pub const RESERVED_GUEST_NAMES: [&str; 9] = [
     "moderator",
 ];
 
-/// Nicks of zirc's own integrations (the alert bridge's, CI's, the tenant's recorder's), which
+/// Nicks of zirc's own integrations (the alert bridge's, CI's, the tenant's recorder's and pusher's), which
 /// no team's incoming hook may post as: the web app refuses them when a hook is made, and the
 /// tenant sidecar refuses to post as them, so neither can be the one to pass for the other.
-pub const RESERVED_INTEGRATION_NICKS: [&str; 7] = [
+pub const RESERVED_INTEGRATION_NICKS: [&str; 8] = [
     "zirc-alerts",
     "zirc-ci",
     "zirc-bridge",
     SYSTEM,
     "zirc-zirc",
     crate::activity::RECORDER,
+    crate::push::PUSHER,
     crate::workflow::HOST,
 ];
 

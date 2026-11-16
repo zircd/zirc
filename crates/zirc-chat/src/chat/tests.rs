@@ -73,6 +73,15 @@ fn texts(lines: &[Line]) -> Vec<String> {
     lines.iter().map(ToString::to_string).collect()
 }
 
+/// What's said to the server, leaving out what the tenant's pusher is told of reads.
+fn to_server(lines: &[String]) -> Vec<&str> {
+    lines
+        .iter()
+        .map(String::as_str)
+        .filter(|line| !line.ends_with(&format!("TAGMSG {}", zirc_proto::push::PUSHER)))
+        .collect()
+}
+
 fn names(chat: &Chat) -> Vec<&str> {
     chat.conversations()
         .iter()
@@ -1995,6 +2004,13 @@ fn explains_errors_where_the_person_is_looking() {
 }
 
 #[test]
+fn says_nothing_of_a_server_without_a_pusher() {
+    let mut chat = Scene::in_api();
+    feed(&mut chat, &[":s 401 me zirc-pusher :No such nick"]);
+    assert!(said(api(&chat)).is_empty());
+}
+
+#[test]
 fn rejoins_after_reconnecting() {
     let mut chat = Scene::in_api();
     feed(&mut chat, &[":bob!u@h PRIVMSG me :hi"]);
@@ -2304,7 +2320,7 @@ fn counts_what_came_after_the_read_marker_history_included() {
     // Reading it here tells the server, for the person's other apps.
     let at = chat.position("#api").unwrap();
     assert_eq!(
-        texts(&chat.select(at)),
+        to_server(&texts(&chat.select(at))),
         ["MARKREAD #api timestamp=2026-10-30T11:45:00.000Z"]
     );
     assert_eq!(
@@ -2362,7 +2378,7 @@ fn marks_the_conversation_shown_as_messages_arrive_and_history_once() {
         ],
     );
     assert_eq!(
-        sent,
+        to_server(&sent),
         [
             "MARKREAD #api timestamp=2026-10-30T10:01:00.000Z",
             "MARKREAD #api timestamp=2026-10-30T11:59:00.000Z",
@@ -4452,16 +4468,32 @@ fn marks_one_conversation_or_all_read_as_escape_does() {
     );
     assert_eq!((api(&chat).unread, api(&chat).mentions), (1, 1));
     // One, up to its newest message, here and for the person's other apps.
+    let marked = texts(&chat.mark_read("#api"));
     assert_eq!(
-        texts(&chat.mark_read("#api")),
+        to_server(&marked),
         ["MARKREAD #api timestamp=2026-10-30T11:30:00.000Z"]
+    );
+    // And the tenant's pusher, so the person's phone isn't pushed what's read.
+    let told = marked.last().unwrap();
+    let tag = told
+        .strip_prefix("@+zirc/push=")
+        .unwrap()
+        .split(' ')
+        .next()
+        .unwrap();
+    assert_eq!(
+        zirc_proto::push::Said::of(tag),
+        Some(zirc_proto::push::Said::Read {
+            target: "#api".into(),
+            at: "2026-10-30T11:30:00.000Z".into(),
+        })
     );
     assert_eq!((api(&chat).unread, api(&chat).mentions), (0, 0));
     assert!(chat.mark_read("#api").is_empty(), "nothing new to mark");
     assert!(chat.mark_read("#nowhere").is_empty());
     // Every one.
     assert_eq!(
-        texts(&chat.mark_all_read()),
+        to_server(&texts(&chat.mark_all_read())),
         ["MARKREAD #web timestamp=2026-10-30T11:40:00.000Z"]
     );
     let web = chat.conversation("#web").unwrap();

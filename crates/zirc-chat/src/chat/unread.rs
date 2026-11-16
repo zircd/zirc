@@ -1,6 +1,7 @@
 //! Which conversation is shown, and what is read and unread in each.
 
 use super::{Chat, Conversation, DateTime, Kind, Line, Reading, Utc, agent, fold, stamp};
+use zirc_proto::push::{self, PUSHER};
 
 impl Chat {
     /// The conversation shown.
@@ -186,13 +187,27 @@ impl Chat {
         if !conversation.mark_read(time, &self.me) {
             return Vec::new();
         }
-        vec![Line::new(
-            "MARKREAD",
-            [
-                conversation.name.clone(),
-                format!("timestamp={}", stamp(time)),
-            ],
-        )]
+        let at = stamp(time);
+        // The tenant's pusher hears it too, so a push waiting for what's now read isn't sent
+        // to the person's phone, and one already sent goes from it (zirc_proto::push).
+        let mut told = Line::new("TAGMSG", [PUSHER]);
+        told.tags.push((
+            push::TAG.to_owned(),
+            Some(
+                push::Said::Read {
+                    target: conversation.name.clone(),
+                    at: at.clone(),
+                }
+                .tag(),
+            ),
+        ));
+        vec![
+            Line::new(
+                "MARKREAD",
+                [conversation.name.clone(), format!("timestamp={at}")],
+            ),
+            told,
+        ]
     }
 
     /// Asks the server how far the private conversation with `nick` has been read, which

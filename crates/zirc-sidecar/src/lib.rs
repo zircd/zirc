@@ -18,6 +18,7 @@ pub mod janitor;
 pub mod limits;
 pub mod machines;
 pub mod profiles;
+pub mod pusher;
 pub mod recorder;
 pub mod say;
 pub mod secrets;

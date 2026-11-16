@@ -31,6 +31,7 @@ pub mod login;
 pub mod media;
 pub mod names;
 pub mod profile;
+pub mod push;
 pub mod report;
 pub mod request;
 pub mod role;

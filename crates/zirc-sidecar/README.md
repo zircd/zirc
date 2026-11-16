@@ -15,6 +15,12 @@ What it does:
   the organisation's choice of who may read what, and scrubs what was removed off the disk.
 - **Gateway** (`gateway`, `guests`, `visitors`, `demo`): a WebSocket for the public channels'
   guests, who aren't IRC users, and the demo server's scripted cast.
+- **Push** (`pusher`): what reaches people's phones while their app is closed, decided here by
+  zirc-chat's push rule (mentions, replies, reactions, direct messages, and conversations set to
+  All, by each phone's own levels and mutes), sent encrypted for the phone to zirc.dev, which
+  relays it. It hears each message as Ergo writes it to its history (file events, no polling),
+  and phones register with it, and apps say what was read, over IRC as `zirc-pusher`. Ergo's
+  own web push is off.
 - **Usage and metrics** (`usage`, `exporter`): counts, never content, and Ergo's own metrics as
   OpenMetrics.
 - **Workflows** (`workflows`): runs the organisation's workflows (`zirc workflow deploy`), each as

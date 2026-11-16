@@ -93,15 +93,48 @@ pub struct NotifySettings {
     pub muted: BTreeMap<String, Muted>,
 }
 
+impl NotifySettings {
+    /// How much the conversation called `name` notifies.
+    #[must_use]
+    pub fn level(&self, name: &str) -> Level {
+        self.levels.get(&fold(name)).copied().unwrap_or_default()
+    }
+
+    /// Whether the conversation called `name` is muted at `now`, in seconds since the Unix
+    /// epoch: until a time still to come, or until turned back on.
+    #[must_use]
+    pub fn is_muted(&self, name: &str, now: i64) -> bool {
+        match self.muted.get(&fold(name)) {
+            Some(Muted::Off) => true,
+            Some(Muted::Time { at }) => *at > now,
+            None => false,
+        }
+    }
+
+    /// Whether something someone else said in the conversation called `name` notifies at
+    /// `now`, by its level and whether it's muted: `direct` for a direct message or a group,
+    /// `aimed` when it names the person (or, for the pusher, answers them). A channel message
+    /// aimed at them always does, even at [`Level::Nothing`] or muted, as one that names them
+    /// is meant for them; a direct message keeps to its own level and mute.
+    #[must_use]
+    pub fn notifies(&self, name: &str, direct: bool, aimed: bool, now: i64) -> bool {
+        let named = aimed && !direct;
+        if self.is_muted(name, now) && !named {
+            return false;
+        }
+        match self.level(name) {
+            Level::All => true,
+            Level::Mentions => direct || aimed,
+            Level::Nothing => named,
+        }
+    }
+}
+
 impl Chat {
     /// How much the conversation called `name` notifies.
     #[must_use]
     pub fn level(&self, name: &str) -> Level {
-        self.notify
-            .levels
-            .get(&fold(name))
-            .copied()
-            .unwrap_or_default()
+        self.notify.level(name)
     }
 
     /// Sets how much the conversation called `name` notifies.
@@ -132,11 +165,7 @@ impl Chat {
     /// until turned back on.
     #[must_use]
     pub fn is_muted(&self, name: &str) -> bool {
-        match self.notify.muted.get(&fold(name)) {
-            Some(Muted::Off) => true,
-            Some(Muted::Time { at }) => *at > (self.clock)().timestamp(),
-            None => false,
-        }
+        self.notify.is_muted(name, (self.clock)().timestamp())
     }
 
     /// Whether `entry`, newly arrived in the conversation called `name`, deserves a
@@ -189,11 +218,8 @@ impl Chat {
                 return self.guest_notifies(name, entry);
             }
         }
-        match self.level(name) {
-            Level::All => true,
-            Level::Mentions => direct || entry.mention,
-            Level::Nothing => named,
-        }
+        self.notify
+            .notifies(name, direct, entry.mention, (self.clock)().timestamp())
     }
 
     /// The settings, for the app to keep.

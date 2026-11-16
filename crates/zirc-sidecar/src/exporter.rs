@@ -40,6 +40,7 @@ pub(crate) const HISTORY_VERSION: &str = "2";
 /// Ergo's history item types for a PRIVMSG and a NOTICE.
 pub(crate) const MESSAGE_TYPES: &str = "1, 2";
 pub(crate) const PRIVMSG: i64 = 1;
+pub(crate) const NOTICE: i64 = 2;
 
 /// A kept TAGMSG's item type, as Ergo numbers them.
 pub(crate) const TAGMSG: i64 = 8;
@@ -472,6 +473,8 @@ pub(crate) struct Said {
     pub kind: i64,
     /// The sender's nick, without the rest of its mask.
     pub nick: String,
+    /// Its whole mask, `nick!user@host`, as Ergo kept it.
+    pub mask: String,
     /// The sender's account, empty or `*` without one.
     pub account: String,
     pub text: String,
@@ -527,6 +530,7 @@ pub(crate) fn said(data: &[u8]) -> Option<Said> {
     Some(Said {
         kind: item.kind,
         nick: item.nick.split('!').next().unwrap_or_default().to_owned(),
+        mask: item.nick.clone(),
         account: item.account,
         text,
         tags: item.tags.unwrap_or_default(),

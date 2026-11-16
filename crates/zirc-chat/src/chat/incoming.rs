@@ -77,6 +77,9 @@ impl Chat {
     pub(super) fn reply(&mut self, line: &Line) -> Vec<Line> {
         let param = |i: usize| line.params.get(i).map_or("", String::as_str);
         match line.command.as_str() {
+            // ERR_NOSUCHNICK for the tenant's pusher, told what was read (Chat::mark): a
+            // server without one isn't the person's to hear about.
+            "401" if param(1).eq_ignore_ascii_case(zirc_proto::push::PUSHER) => {}
             // RPL_TOPIC
             "332" => {
                 if let Some(at) = self.position(param(1)) {

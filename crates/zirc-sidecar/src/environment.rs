@@ -96,9 +96,6 @@ pub struct Server<'a> {
     pub require_sasl: bool,
     /// The web pages that may open a WebSocket here.
     pub web_origins: Vec<String>,
-    /// Who Ergo's push notifications are signed for, when there's a web app to relay them to
-    /// people's phones; none on a self-hosted server.
-    pub push_subscriber: Option<&'a str>,
     /// The public keys of the tokens the browser client logs in with (SASL IRCV3BEARER).
     pub token_keys: Vec<String>,
     /// The socket the sidecar checks devices' own keys on ([`crate::signin`]), where they're on.
@@ -173,25 +170,9 @@ pub fn ergo(server: &Server) -> Vec<(&'static str, Value)> {
         ("ERGO__API__LISTENER", server.api_listener.into()),
         ("ERGO__API__BEARER_TOKENS", secret(Secret::ApiBearerTokens)),
     ]);
-    match server.push_subscriber {
-        // Push notifications for the phone apps: people's accounts are always-on, so Ergo
-        // pushes their mentions and direct messages, encrypted for their phones, to the
-        // endpoints the apps register with the web app, signed with its own VAPID key (which
-        // the sidecar gives the web app, GET /v1/push). It waits a little first, and doesn't
-        // push what was read meanwhile on another device.
-        Some(subscriber) => env.extend([
-            ("ERGO__WEBPUSH__ENABLED", "true".into()),
-            ("ERGO__WEBPUSH__SUBSCRIBER", subscriber.into()),
-            ("ERGO__WEBPUSH__DELAY", "15s".into()),
-            // Ergo's default is 4 endpoints an account, and it refuses a fifth (FAIL WEBPUSH
-            // MAX_REGISTRATIONS). A person's phone, a reinstall's new token, a development
-            // build and an emulator fill that, and a stale endpoint only goes when a push to
-            // it fails or it goes 14 days without registering again: a person's new phone
-            // then gets nothing.
-            ("ERGO__WEBPUSH__MAX_SUBSCRIPTIONS", "16".into()),
-        ]),
-        None => env.push(("ERGO__WEBPUSH__ENABLED", "false".into())),
-    }
+    // Ergo's own push notifications are off: the sidecar's pusher decides what reaches
+    // people's phones, by zirc's rules (crate::pusher), and Ergo refuses WEBPUSH REGISTER.
+    env.push(("ERGO__WEBPUSH__ENABLED", "false".into()));
     // The browser client logs in with a token the web app signs for an account that's
     // already there (SASL IRCV3BEARER); Ergo checks it with the organisation's public keys
     // alone, any of them, so a new one can come in before the old one goes.
@@ -262,7 +243,6 @@ mod tests {
             proxy_allowed_from: vec!["localhost".into()],
             require_sasl: true,
             web_origins: vec![],
-            push_subscriber: None,
             token_keys: vec![],
             auth_socket: None,
             api_listener: API_LISTENER,
@@ -275,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn without_a_web_app_nothing_is_pushed() {
+    fn ergo_pushes_nothing_itself() {
         let env = ergo(&server());
         assert_eq!(value(&env, "ERGO__WEBPUSH__ENABLED"), Some(&"false".into()));
         assert_eq!(value(&env, "ERGO__WEBPUSH__SUBSCRIBER"), None);

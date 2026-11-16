@@ -227,7 +227,6 @@ impl Options {
         proxy_allowed_from.extend(self.proxy_from.iter().cloned());
         let api = self.inside.api_listen.to_string();
         let socket = data.join(AUTH_SOCKET).display().to_string();
-        let subscriber = format!("{}/", self.web.trim_end_matches('/'));
         let server = environment::Server {
             network: self.network(),
             name: &self.host,
@@ -235,8 +234,6 @@ impl Options {
             proxy_allowed_from,
             require_sasl: true,
             web_origins: vec![self.web.clone()],
-            // zirc.dev relays its pushes to people's phones, as a hosted server's.
-            push_subscriber: Some(&subscriber),
             token_keys: vec![],
             // Each of a person's apps signs in to their account with a key of its own.
             auth_socket: Some(&socket),
@@ -419,6 +416,8 @@ fn sidecar_options(options: &Options, data: &Path, secrets: &Secrets) -> zirc_si
             guest_listen: inside.guest_listen,
             server_name: Some(options.host.clone()),
             auth_socket: Some(data.join(AUTH_SOCKET)),
+            // zirc.dev relays its pushes to people's phones, as a hosted server's.
+            push_subscriber: Some(format!("{}/", options.web.trim_end_matches('/'))),
         },
     }
 }
@@ -616,15 +615,19 @@ mod tests {
     }
 
     #[test]
-    fn ergo_gets_secrets_filled_in_and_pushes_through_zirc_dev() {
+    fn ergo_gets_secrets_filled_in_and_the_sidecar_pushes_through_zirc_dev() {
         let data = tempfile::tempdir().unwrap();
         let secrets = Secrets::read_or_make(data.path()).unwrap();
         let env = options(&[]).ergo_env(data.path(), &secrets);
         let get = |name: &str| env.iter().find(|(n, _)| *n == name).map(|(_, v)| v.clone());
-        assert_eq!(get("ERGO__SERVER__PASSWORD"), Some(secrets.gate.hash));
-        assert_eq!(get("ERGO__WEBPUSH__ENABLED").as_deref(), Some("true"));
         assert_eq!(
-            get("ERGO__WEBPUSH__SUBSCRIBER").as_deref(),
+            get("ERGO__SERVER__PASSWORD"),
+            Some(secrets.gate.hash.clone())
+        );
+        assert_eq!(get("ERGO__WEBPUSH__ENABLED").as_deref(), Some("false"));
+        let sidecar = sidecar_options(&options(&[]), data.path(), &secrets);
+        assert_eq!(
+            sidecar.accounts.push_subscriber.as_deref(),
             Some("https://zirc.dev/")
         );
         assert_eq!(
