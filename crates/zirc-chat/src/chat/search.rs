@@ -537,24 +537,50 @@ pub fn switch_rank(query: &str, title: &str, note: Option<&str>) -> Option<u8> {
         .then_some(2)
 }
 
+/// How many conversations Jump to lists at most, in every app (the user's choice, 16 Nov
+/// 2026).
+pub const JUMP_ROWS: usize = 20;
+
 impl Chat {
-    /// The conversations the quick switcher offers for `query`, by name, best first: as
-    /// [`switch_rank`] ranks their titles, then what's unread ([`Chat::is_unread`]), then in
-    /// the order of the conversations. Never the server's.
+    /// The conversations Jump to offers for `query`, by name, at most [`JUMP_ROWS`]. With
+    /// nothing typed, the most recent first ([`Chat::last_said`]), those with nothing said by
+    /// what they show; else best first, as [`switch_rank`] ranks their titles and an agent
+    /// session's task, then what's unread ([`Chat::is_unread`]), then in the order of the
+    /// conversations. Never the server's.
     #[must_use]
     pub fn switcher(&self, query: &str) -> Vec<String> {
-        let mut found: Vec<(u8, bool, usize, String)> = self
+        let names = self
             .conversations()
             .iter()
             .filter(|conversation| conversation.kind != Kind::Server)
+            .map(|conversation| conversation.name.as_str());
+        if query.trim().is_empty() {
+            let mut recent: Vec<&str> = names.collect();
+            recent.sort_by_cached_key(|name| {
+                (
+                    std::cmp::Reverse(self.last_said(name)),
+                    fold(&self.title(name)),
+                )
+            });
+            return recent
+                .into_iter()
+                .take(JUMP_ROWS)
+                .map(str::to_owned)
+                .collect();
+        }
+        let mut found: Vec<(u8, bool, usize, &str)> = names
             .enumerate()
-            .filter_map(|(at, conversation)| {
-                let rank = switch_rank(query, &self.title(&conversation.name), None)?;
-                let read = !self.is_unread(&conversation.name);
-                Some((rank, read, at, conversation.name.clone()))
+            .filter_map(|(at, name)| {
+                let task = self.agent(name).and_then(|agent| agent.task);
+                let rank = switch_rank(query, &self.title(name), task.as_deref())?;
+                Some((rank, !self.is_unread(name), at, name))
             })
             .collect();
-        found.sort_by_key(|(rank, read, at, _)| (*rank, *read, *at));
-        found.into_iter().map(|(.., name)| name).collect()
+        found.sort_unstable();
+        found
+            .into_iter()
+            .take(JUMP_ROWS)
+            .map(|(.., name)| name.to_owned())
+            .collect()
     }
 }

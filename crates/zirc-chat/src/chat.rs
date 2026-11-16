@@ -55,6 +55,7 @@ mod live;
 mod members;
 mod more;
 mod names;
+mod navigate;
 mod notify;
 mod org;
 mod people;
@@ -190,8 +191,8 @@ pub use sealing::{
     copy_sealed_label, key_added, no_random, seals,
 };
 pub use search::{
-    Hit, HitPart, SEARCH_OLDER, SEARCHING_OLDER, Search, SearchHit, SearchView, ServerQuery,
-    highlights, switch_rank,
+    Hit, HitPart, JUMP_ROWS, SEARCH_OLDER, SEARCHING_OLDER, Search, SearchHit, SearchView,
+    ServerQuery, highlights, switch_rank,
 };
 pub use seek::{HOLE_LABEL, LATEST_LABEL};
 pub use settings_list::{

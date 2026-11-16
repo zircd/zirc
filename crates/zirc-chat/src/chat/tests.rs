@@ -6,6 +6,7 @@ mod agent_activity;
 mod finder;
 mod guest_rooms;
 mod live;
+mod navigate;
 mod perf;
 mod scene;
 mod sidebar;
@@ -742,12 +743,13 @@ fn counts_mentions_and_private_messages() {
     );
     let bob = chat.conversation("bob").unwrap();
     assert_eq!((bob.unread, bob.mentions), (1, 1));
-    assert!(chat.next_unread().is_some());
-    assert_eq!(chat.selected().name, "#api");
+    // Down the sidebar from the server's: #api, then bob, both mentioning us.
+    assert_eq!(chat.next_unread(1).as_deref(), Some("#api"));
+    let _ = chat.open("#api");
     assert_eq!(chat.selected().unread, 0);
-    assert!(chat.next_unread().is_some());
-    assert_eq!(chat.selected().name, "bob");
-    assert!(chat.next_unread().is_none());
+    assert_eq!(chat.next_unread(1).as_deref(), Some("bob"));
+    let _ = chat.open("bob");
+    assert!(chat.next_unread(1).is_none());
 }
 
 #[test]

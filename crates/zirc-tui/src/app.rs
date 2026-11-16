@@ -1700,7 +1700,7 @@ impl App {
                 return Action::Send(self.chat.mark_read(&name));
             }
             KeyCode::Char('a') if alt => {
-                return Action::Send(self.chat.next_unread().unwrap_or_default());
+                return Action::Send(self.next_unread());
             }
             KeyCode::Char(c @ '1'..='9') if alt => {
                 return Action::Send(self.show_listed(c as usize - '1' as usize));
@@ -1993,19 +1993,28 @@ impl App {
         at.map(|at| self.select(at)).unwrap_or_default()
     }
 
-    /// Shows the conversation `by` places on in the list from the one shown, round the
-    /// ends. Returns what to send.
+    /// Next conversation (`by` 1) or Previous (`by` -1), down or up both halves of the
+    /// list, round the ends, as zirc-chat steps for every app. Returns what to send.
     fn cycle(&mut self, by: isize) -> Vec<Line> {
-        let listed: Vec<usize> = self.listed().map(|(at, _)| at).collect();
-        if listed.is_empty() {
-            return Vec::new();
-        }
-        let len = listed.len().cast_signed();
-        let here = listed.iter().position(|&at| at == self.selected());
-        // From the server's, which isn't listed, the first step lands on an end.
-        let from = here.map_or(if by > 0 { -1 } else { len }, usize::cast_signed);
-        let nth = (from + by).rem_euclid(len);
-        self.select(listed[nth.cast_unsigned()])
+        let next = self.chat.next_conversation(&ListOptions::default(), by);
+        self.show_named(next)
+    }
+
+    /// Next unread: what mentions us first, round the ends, as zirc-chat says for every
+    /// app. Returns what to send.
+    fn next_unread(&mut self) -> Vec<Line> {
+        let next = self.chat.next_unread(1);
+        self.show_named(next)
+    }
+
+    /// Shows the conversation called `name`, if there's one. Returns what to send.
+    fn show_named(&mut self, name: Option<String>) -> Vec<Line> {
+        let at = name.and_then(|name| {
+            self.conversations()
+                .iter()
+                .position(|conversation| conversation.name.eq_ignore_ascii_case(&name))
+        });
+        at.map(|at| self.select(at)).unwrap_or_default()
     }
 
     fn submit(&mut self) -> Action {

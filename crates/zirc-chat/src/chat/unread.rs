@@ -116,15 +116,6 @@ impl Chat {
         }
     }
 
-    /// Shows the conversation `by` places on from the one shown, round the ends. Returns
-    /// what to send, as [`Chat::select`] does.
-    #[must_use = "it says where the conversation's been read up to"]
-    pub fn cycle(&mut self, by: isize) -> Vec<Line> {
-        let len = self.conversations.len().cast_signed();
-        let at = (self.selected.cast_signed() + by).rem_euclid(len);
-        self.select(at.cast_unsigned())
-    }
-
     /// Marks the conversation called `name` read up to its newest message, as Escape does:
     /// here, and through the server in the person's other apps. Returns what to send.
     #[must_use = "it says where the conversation's been read up to"]
@@ -154,19 +145,6 @@ impl Chat {
                 self.mark(at)
             })
             .collect()
-    }
-
-    /// Shows the next conversation that mentions us, or else the next with anything
-    /// unread. What to send, as [`Chat::select`] returns, when there was one.
-    #[must_use = "it says where the conversation's been read up to"]
-    pub fn next_unread(&mut self) -> Option<Vec<Line>> {
-        let len = self.conversations.len();
-        let order = (1..len).map(|i| (self.selected + i) % len);
-        let next = order
-            .clone()
-            .find(|&at| self.conversations[at].mentions > 0)
-            .or_else(|| order.clone().find(|&at| self.conversations[at].unread > 0));
-        next.map(|at| self.select(at))
     }
 
     /// Marks the conversation at `at` read up to its newest message, and tells the server,
