@@ -8516,7 +8516,15 @@ fn the_server_channel_shows_notices_and_sends_what_is_typed_there_as_it_is() {
         Some("NickServ: Nickname me has 1 push subscription(s)")
     );
 
+    // Listed with every conversation while it's shown, so apps show it.
+    assert_eq!(chat.channel_rows()[0].title, crate::chat::SERVER_TITLE);
+
     // Another conversation shown, the server's stands for nothing shown again.
     let _ = chat.open("#api");
     assert!(!chat.server_shown());
+    assert!(
+        chat.channel_rows()
+            .iter()
+            .all(|row| row.name != "irc.zirc.test")
+    );
 }

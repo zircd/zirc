@@ -27,8 +27,8 @@ pub struct ChannelRow {
 }
 
 impl Chat {
-    /// The channel list: the server's channels, then direct messages, each sorted by what
-    /// it shows. Direct messages are our private conversations and groups, and the agent
+    /// The channel list: the Server channel while it's shown, the server's channels, then
+    /// direct messages, each sorted by what it shows. Direct messages are our private conversations and groups, and the agent
     /// sessions on our own machines, whether or not we've talked to them yet.
     #[must_use]
     pub fn channel_rows(&self) -> Vec<ChannelRow> {
@@ -67,6 +67,18 @@ impl Chat {
         }
         let mut rows: Vec<ChannelRow> = rows.into_values().collect();
         rows.sort_by_cached_key(|row| (row.section, fold(&row.title)));
+        // The Server channel while it's shown, first: an app shows what's open only if it's
+        // here.
+        if self.server_shown() {
+            rows.insert(
+                0,
+                ChannelRow {
+                    joined: true,
+                    title: super::SERVER_TITLE.to_owned(),
+                    ..row(&self.selected().name)
+                },
+            );
+        }
         rows
     }
 }
