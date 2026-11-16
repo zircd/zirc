@@ -399,9 +399,8 @@ impl Chat {
     }
 
     /// The direct messages the sidebar lists, newest first: every one of [`Chat::direct_rows`]
-    /// a person's, a group's or a guest's; an agent session's or a teammate's machine's only
-    /// once something's been said in it, there and not in a channel (the user's choice, 15 Nov
-    /// 2026), as an agent that exists but never wrote to us is nothing to read. An agent
+    /// a person's, a group's or a guest's; an agent session's only once something's been said
+    /// in it, there and not in a channel (the user's choice, 15 Nov 2026), as an agent that exists but never wrote to us is nothing to read. An agent
     /// session quiet for longer than [`super::ROOM_QUIET_AFTER`] ([`DirectRow::folded`])
     /// isn't listed either: Jump to… and search still find it, and it's back once it's opened
     /// or says something again. The one shown is always listed.
@@ -418,7 +417,7 @@ impl Chat {
                 shown.eq_ignore_ascii_case(&row.name)
                     || match row.kind {
                         DirectKind::Agent => said(&row.name) && !row.folded,
-                        DirectKind::Machine => said(&row.name),
+                        DirectKind::Machine => false,
                         DirectKind::Person | DirectKind::Group => true,
                     }
             })

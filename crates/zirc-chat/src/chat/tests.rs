@@ -3402,14 +3402,15 @@ fn dm(machine: &str, session: &str, text: &str, minute: u32) -> String {
 }
 
 #[test]
-fn files_what_our_agents_say_by_session() {
+fn files_what_agents_say_by_session_ours_and_a_teammates() {
     let mut chat = Scene::in_api();
     feed(
         &mut chat,
         &[
             &dm("me-mbp", "cc-1531f8", "done with the tests", 1),
             &dm("me-mbp", "cc-77aa01", "which branch?", 2),
-            // Someone else's machine, and a machine's own word, aren't ours to split.
+            // A teammate's agent's is its own conversation too; a machine's own word isn't
+            // an agent's.
             &dm("bob-mbp", "cc-0000ff", "hello", 3),
             &dm("me-mbp", zirc_proto::NO_SESSION, "from the machine", 4),
         ],
@@ -3419,7 +3420,7 @@ fn files_what_our_agents_say_by_session() {
         [
             "irc.zirc.test",
             "#api",
-            "bob-mbp",
+            "bob-mbp/cc-0000ff",
             "me-mbp",
             "me-mbp/cc-1531f8",
             "me-mbp/cc-77aa01"
@@ -3431,7 +3432,7 @@ fn files_what_our_agents_say_by_session() {
     assert_eq!(first.mentions, 1, "a private message counts as a mention");
     assert_eq!(chat.title("me-mbp/cc-1531f8"), "cc-1531f8");
     assert_eq!(chat.title("me-mbp"), "me · me-mbp");
-    assert_eq!(chat.title("bob-mbp"), "bob · bob-mbp");
+    assert_eq!(chat.title("bob-mbp/cc-0000ff"), "cc-0000ff · bob");
     assert_eq!(chat.title("#api"), "#api");
 }
 
@@ -4279,13 +4280,13 @@ fn lists_each_direct_conversation_on_its_own_newest_first() {
         .into_iter()
         .map(|row| (row.name, row.kind, row.folded))
         .collect();
-    // Newest first, each on its own: our agent, bob's machine, bob, the old agent session
-    // (folded, as it's been quiet a day), and the group nothing's been said in.
+    // Newest first, each on its own: our agent, bob, the old agent session (folded, as it's
+    // been quiet a day), and the group nothing's been said in. Never bob's machine itself,
+    // whose plain word has no session to file it under.
     assert_eq!(
         rows,
         [
             ("me-mbp/cc-1".to_owned(), DirectKind::Agent, false),
-            ("bob-laptop".to_owned(), DirectKind::Machine, false),
             ("bob".to_owned(), DirectKind::Person, false),
             ("me-mini/cc-2".to_owned(), DirectKind::Agent, true),
             ("#dm-abc".to_owned(), DirectKind::Group, false),

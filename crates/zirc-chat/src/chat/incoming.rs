@@ -353,16 +353,20 @@ impl Chat {
         }
     }
 
-    /// `entry`, in the private conversation with `nick`, and the agent session on our own
-    /// machine it's with, if it's with one: an answer the session sent with `zirc dm`,
-    /// which carries its name, or what we said to it there, `<session> …` (older apps: `/agent <session> …`), once
+    /// `entry`, in the private conversation with `nick`, and the agent session it's with, if
+    /// it's with one: a message a session on any machine the server vouches for sent with
+    /// `zirc dm`, which carries its name, a teammate's agent's as our own's; or what we said
+    /// to one of our own there, `<session> …` (older apps: `/agent <session> …`), once
     /// it has a conversation of its own (until then it stays with the machine's, to move
     /// when the session answers). What we said is shown without its `<session>`.
     pub(super) fn for_agent(&self, nick: &str, mut entry: Entry) -> (Entry, Option<String>) {
-        if is_channel(nick) || !self.ours(nick) {
+        if is_channel(nick) || self.whose(nick).is_none() {
             return (entry, None);
         }
         let session = if entry.from.eq_ignore_ascii_case(&self.me) {
+            if !self.ours(nick) {
+                return (entry, None);
+            }
             let EntryKind::Message(text) = &entry.kind else {
                 return (entry, None);
             };

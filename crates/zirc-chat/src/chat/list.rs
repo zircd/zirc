@@ -929,19 +929,17 @@ impl Chat {
     /// The direct messages, one row each, whoever they're with, newest first, starred first
     /// as every list orders them: never a person's agents rolled under them, nor our own
     /// agents in a group. An old private conversation with a guest is listed only while
-    /// something in it is new, or it's shown: a guest is talked to in their room. Never one of
-    /// our own machines itself: its agents are talked to one at a time, in their own
-    /// conversations, never all at once (the user's choice, 15 Nov 2026). A teammate's
-    /// machine is, as their agents' messages to us arrive there.
+    /// something in it is new, or it's shown: a guest is talked to in their room. Never a
+    /// machine itself: its agents are talked to one at a time, in their own conversations,
+    /// never all at once (the user's choice, 15 Nov 2026), and a teammate's agent's messages
+    /// to us arrive in its own.
     #[must_use]
     pub fn direct_rows(&self) -> Vec<DirectRow> {
         let mut rows: Vec<DirectRow> = self
             .list(SidebarSection::Direct)
             .into_iter()
             .map(|at| self.conversations[at].name.clone())
-            .filter(|name| {
-                !(self.direct_kind(name) == Some(DirectKind::Machine) && self.ours(name))
-            })
+            .filter(|name| self.direct_kind(name) != Some(DirectKind::Machine))
             // A guest is talked to in their room: an old private conversation with one is
             // listed only while something in it is new, or it's shown.
             .filter(|name| {
