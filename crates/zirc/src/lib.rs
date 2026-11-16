@@ -984,7 +984,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Decisions(args) => decide::decisions(&socket, args, out).await,
         Command::Request(args) => decide::request(&socket, args, out).await,
         Command::WaitFor(args) => sessions::wait_for(&socket, args, out).await,
-        Command::Wait { command } => wait::wait(&socket, command, out).await,
+        Command::Wait { command } => wait::wait(&home, &socket, command, out).await,
         Command::Stack(args) => stack::stack(&socket, args, out).await,
         Command::Workflow(command) => workflows::workflow(&socket, command, out).await,
         Command::Step(command) => workflows::step(&socket, command, out).await,

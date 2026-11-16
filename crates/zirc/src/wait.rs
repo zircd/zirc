@@ -104,7 +104,12 @@ pub(crate) struct HowArgs {
 }
 
 /// `zirc wait`.
-pub(crate) async fn wait(socket: &Path, command: WaitCommand, out: &mut impl Write) -> Result<()> {
+pub(crate) async fn wait(
+    home: &Path,
+    socket: &Path,
+    command: WaitCommand,
+    out: &mut impl Write,
+) -> Result<()> {
     let (how, asked) = match command {
         WaitCommand::Landed(args) => (args.how, Asked::Ci(Condition::landed(&args.on))),
         WaitCommand::Deployed(args) => (
@@ -121,6 +126,10 @@ pub(crate) async fn wait(socket: &Path, command: WaitCommand, out: &mut impl Wri
     let repo = repo_here(&repos, &cwd)
         .context("run it in a repository zirc watches: CI says these in its channels")?;
     let org = how.org.name.or_else(|| repo.org.clone());
+    // What a watch says under a message, said under one that ends the wait too: printed bare,
+    // an agent took its person's "stop" for text injected into a tool's output and kept going
+    // (the agent evals' M3, 16 Nov 2026).
+    let mut hints = crate::hints::watch_hints(home, how.session.as_deref(), &repos);
     let mut place = Place {
         socket,
         org: org.as_deref(),
@@ -178,17 +187,7 @@ pub(crate) async fn wait(socket: &Path, command: WaitCommand, out: &mut impl Wri
                 }
             }
             Ok(Some(heard)) if for_session(&heard, how.session.as_deref()) => {
-                let said = match &heard {
-                    Heard::Direct(direct) => crate::lines::direct_line(direct),
-                    Heard::Answered(answered) => crate::decide::answered_line(answered),
-                    _ => String::new(),
-                };
-                writeln!(out, "{said}")?;
-                bail!(
-                    "stopped waiting for {}: a message came for you, above. Act on it, then wait \
-                     again if you still need to",
-                    condition.describe()
-                );
+                return stop_for(&heard, &mut hints, &condition, out);
             }
             Ok(Some(_)) => {}
             // zircd stopped, as for an update: follow the new one, and read back what was
@@ -207,6 +206,30 @@ pub(crate) async fn wait(socket: &Path, command: WaitCommand, out: &mut impl Wri
             Err(err) => return Err(err.into()),
         }
     }
+}
+
+/// Ends a wait for `condition` on `heard`, a message for the waiting session: printed, with
+/// the hint a watch gives under it, and the wait ended as not happened.
+fn stop_for(
+    heard: &Heard,
+    hints: &mut zirc_core::hints::Watch,
+    condition: &Condition,
+    out: &mut impl Write,
+) -> Result<()> {
+    let said = match heard {
+        Heard::Direct(direct) => crate::lines::direct_line(direct),
+        Heard::Answered(answered) => crate::decide::answered_line(answered),
+        _ => String::new(),
+    };
+    writeln!(out, "{said}")?;
+    if let Some(shown) = hints.new_for(heard) {
+        writeln!(out, "{}", crate::hints::hint_line(&shown))?;
+    }
+    bail!(
+        "stopped waiting for {}: a message came for you, above. Act on it, then wait again if \
+         you still need to",
+        condition.describe()
+    );
 }
 
 /// Whether `heard` is for `session` itself: a direct message or note to it, or its person's
