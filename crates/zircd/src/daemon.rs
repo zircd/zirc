@@ -58,6 +58,7 @@ mod sealing;
 mod sessions;
 mod tasks;
 mod team_hints;
+mod undone;
 mod unowned;
 mod wakes;
 mod warn_once;
@@ -111,6 +112,9 @@ pub enum Input {
     /// The branches sessions are stacked on that origin no longer has, each with the
     /// repository it was asked from ([`Daemon::check_stacks`]).
     StacksChecked(Vec<(PathBuf, String)>),
+    /// The landings by others a session's branch, in the channel, takes out
+    /// ([`Daemon::check_undone`]).
+    UndoneChecked(String, String, Vec<git::Undone>),
     /// Whether this daemon watches the repository with this root, or will once its restore
     /// gets to it: the router's question for which organisation a request is for, answered
     /// even while restoring, so it never waits for one.
@@ -584,6 +588,9 @@ pub struct Daemon {
     /// When origin was last asked about the branches sessions are stacked on
     /// ([`Daemon::check_stacks`]).
     stacks_checked: Option<std::time::Instant>,
+    /// The landings each session has been told its branch takes out, by session, commit and
+    /// path ([`Daemon::check_undone`]).
+    undone_told: BTreeSet<(String, String, String)>,
     /// What the organisation last said its members' agents may do, from `#ops` as kept
     /// before it was last dropped ([`Daemon::colleagues`]).
     colleagues_said: Option<zirc_proto::colleagues::Colleagues>,
@@ -799,6 +806,7 @@ impl Daemon {
             invite_owner: BTreeSet::new(),
             ops: None,
             stacks_checked: None,
+            undone_told: BTreeSet::new(),
             colleagues_said: None,
             repos: BTreeMap::new(),
             topics: Topics::new(),
@@ -1062,6 +1070,9 @@ impl Daemon {
             }
             Input::PushChecked(clashes) => self.push_checked(clashes),
             Input::StacksChecked(gone) => self.stacks_checked(gone),
+            Input::UndoneChecked(channel, session, found) => {
+                self.undone_checked(&channel, &session, found);
+            }
             Input::Predicted(channel, overlaps) => self.predicted(&channel, overlaps),
             Input::Fitted(found) => self.fitted(found),
             Input::Holds(root, answer) => {

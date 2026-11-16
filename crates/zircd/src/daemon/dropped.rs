@@ -92,7 +92,7 @@ impl Daemon {
     }
 
     /// Tells the session `body` names, in a line of zircd's own.
-    fn tell_dropped(&mut self, channel: &str, body: String) {
+    pub(super) fn tell_dropped(&mut self, channel: &str, body: String) {
         let from = self
             .client
             .as_ref()

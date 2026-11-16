@@ -48,6 +48,7 @@ pub mod team;
 pub mod team_hints;
 pub mod telemetry;
 pub mod time;
+pub mod undone;
 pub mod update;
 pub mod waits;
 pub mod which_org;

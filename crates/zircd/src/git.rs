@@ -1256,6 +1256,97 @@ async fn git(dir: &Path, args: &[&str]) -> Result<String> {
     run(dir, &[], args).await
 }
 
+/// A change someone else landed on the default branch that `head` takes out
+/// ([`zirc_core::undone`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Undone {
+    /// Their landing's commit on the default branch.
+    pub sha: String,
+    /// Its author's name, as Git has it.
+    pub author: String,
+    /// Its subject.
+    pub subject: String,
+    /// The file.
+    pub path: String,
+    /// A line their change put in, which `head` removes.
+    pub line: String,
+}
+
+/// What of the last two days' landings by others, on `origin/<default>` beneath `head`, the
+/// changes `head` makes since then take out. Landings by this repository's own Git identity
+/// are its own to undo.
+pub async fn undone(root: &Path, default: &str, head: &str) -> Vec<Undone> {
+    let main = format!("origin/{default}");
+    let Ok(base) = git(root, &["merge-base", head, &main]).await else {
+        return Vec::new();
+    };
+    let base = base.trim().to_owned();
+    let ours = git(
+        root,
+        &["diff", "-U0", "--no-color", "--no-ext-diff", &base, head],
+    )
+    .await
+    .map(|diff| zirc_core::undone::parse(&diff))
+    .unwrap_or_default();
+    if ours.is_empty() {
+        return Vec::new();
+    }
+    let own = git(root, &["config", "user.email"])
+        .await
+        .unwrap_or_default();
+    let log = git(
+        root,
+        &[
+            "log",
+            "--since=2.days",
+            "-n",
+            "30",
+            "--format=%H%x09%ae%x09%an%x09%s",
+            &base,
+        ],
+    )
+    .await
+    .unwrap_or_default();
+    let mut found = Vec::new();
+    for line in log.lines() {
+        let mut fields = line.splitn(4, '\t');
+        let (Some(sha), Some(email), Some(author), Some(subject)) =
+            (fields.next(), fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        if email.eq_ignore_ascii_case(own.trim()) {
+            continue;
+        }
+        let Ok(diff) = git(
+            root,
+            &[
+                "show",
+                "-U0",
+                "--no-color",
+                "--no-ext-diff",
+                "--format=",
+                sha,
+            ],
+        )
+        .await
+        else {
+            continue;
+        };
+        let theirs = zirc_core::undone::parse(&diff);
+        if let Some((path, taken)) = zirc_core::undone::undone(&theirs, &ours) {
+            found.push(Undone {
+                sha: sha.to_owned(),
+                author: author.to_owned(),
+                subject: subject.to_owned(),
+                path: path.to_owned(),
+                line: taken.to_owned(),
+            });
+        }
+    }
+    found
+}
+
 /// `git` with `env` set too.
 async fn run(dir: &Path, env: &[(&str, &str)], args: &[&str]) -> Result<String> {
     run_allowing(dir, env, args, &[0]).await

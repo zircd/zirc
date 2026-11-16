@@ -781,3 +781,87 @@ async fn a_branch_pushed_on_another_sessions_unlanded_one_wakes_that_session() {
     );
     assert_eq!(why, Why::StackedOn);
 }
+
+/// A session whose branch takes out what someone else landed, as a conflict's resolution does
+/// when it keeps only its own side, is told so: the evals' S4, where the tests still passed.
+#[tokio::test]
+async fn a_branch_taking_out_anothers_landing_is_told() {
+    let ergo = require_ergo!();
+    let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
+    let remote = tempfile::tempdir().unwrap();
+    git(remote.path(), &["init", "--quiet", "--bare"]);
+    git(
+        &main_root,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            remote.path().to_str().unwrap(),
+        ],
+    );
+    std::fs::write(
+        main_root.join("report.py"),
+        "def summary(n):\n    return f\"{n} orders in all\"\n",
+    )
+    .unwrap();
+    git(&main_root, &["add", "report.py"]);
+    git(&main_root, &["commit", "--quiet", "--message", "Report"]);
+    // Carol lands new words for the line on main.
+    std::fs::write(
+        main_root.join("report.py"),
+        "def summary(n):\n    return f\"orders: {n}, total so far\"\n",
+    )
+    .unwrap();
+    git(&main_root, &["add", "report.py"]);
+    git(
+        &main_root,
+        &[
+            "-c",
+            "user.name=Carol",
+            "-c",
+            "user.email=carol@example.com",
+            "commit",
+            "--quiet",
+            "--message",
+            "The summary names its numbers",
+        ],
+    );
+    git(&main_root, &["push", "--quiet", "origin", "main"]);
+    git(&login_root, &["fetch", "--quiet", "origin"]);
+    git(&login_root, &["reset", "--quiet", "--hard", "origin/main"]);
+    let mut login_hears = machine.watch(Some("cc-login")).await;
+
+    // The login session puts its own words back over hers, and commits.
+    std::fs::write(
+        login_root.join("report.py"),
+        "def summary(n):\n    return f\"{n} orders, {n * 2} in all\"\n",
+    )
+    .unwrap();
+    git(
+        &login_root,
+        &[
+            "commit",
+            "--quiet",
+            "--all",
+            "--message",
+            "Money in the summary",
+        ],
+    );
+    let told = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        loop {
+            let delivery = next(&mut login_hears).await;
+            if let Event::Text { body } = &delivery.message.event
+                && body.contains("takes out")
+            {
+                return body.clone();
+            }
+        }
+    })
+    .await
+    .expect("told its branch takes out Carol's landing");
+    assert!(
+        told.starts_with("cc-login: your branch takes out what Carol landed in"),
+        "{told}"
+    );
+    assert!(told.contains("The summary names its numbers"), "{told}");
+}
