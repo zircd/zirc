@@ -9,7 +9,9 @@
 //! well after a `done:`, and a landing no task names can't be counted per task. When that
 //! landing lands while the session is still on the task it claimed, zircd says `done:` for
 //! it, in the channel its `taking:` went to: the task is finished everywhere without the
-//! session waking to say so. Kept across restarts, as names are. Only ids: never what a
+//! session waking to say so, and `zirc intend` posts the `taking:` for a session on none, so
+//! a session needn't post either. Kept across restarts, as names are, the `done:` to say
+//! too, as zircd updates itself while landings run. Only ids and channels: never what a
 //! task is.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -31,8 +33,20 @@ pub(super) struct Finished {
     at: u64,
 }
 
-/// Each session's task: the one it's on, whether an intent started it, and the one it
-/// finished last. An organisation's daemon keeps its own, in its own directory: a session's
+/// What zircd needs to say `done:` for a session whose landing lands.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct Landing {
+    /// Session → the channel its `taking:` went to.
+    #[serde(default)]
+    taken_in: BTreeMap<String, String>,
+    /// Session → the task its queued landing claimed while on it, which that landing
+    /// landing ends.
+    #[serde(default)]
+    claimed: BTreeMap<String, String>,
+}
+
+/// Each session's task: the one it's on, whether an intent started it, the one it finished
+/// last, and what its landing landing finishes. An organisation's daemon keeps its own, in its own directory: a session's
 /// task is said where it works.
 #[derive(Debug, Default)]
 pub(super) struct Tasks {
@@ -43,6 +57,8 @@ pub(super) struct Tasks {
     implied: BTreeSet<String>,
     /// Session → the task it finished last, for its landing to claim.
     finished: BTreeMap<String, Finished>,
+    /// For zircd's `done:` when a session's landing lands.
+    landing: Landing,
 }
 
 impl Tasks {
@@ -52,12 +68,14 @@ impl Tasks {
             on: read_saved(&paths::session_tasks(state)).unwrap_or_default(),
             implied: BTreeSet::new(),
             finished: read_saved(&paths::session_tasks_finished(state)).unwrap_or_default(),
+            landing: read_saved(&paths::session_tasks_landing(state)).unwrap_or_default(),
         }
     }
 
     fn save(&self, state: &Path) -> std::io::Result<()> {
         save_saved(&paths::session_tasks(state), &self.on)?;
-        save_saved(&paths::session_tasks_finished(state), &self.finished)
+        save_saved(&paths::session_tasks_finished(state), &self.finished)?;
+        save_saved(&paths::session_tasks_landing(state), &self.landing)
     }
 
     /// The task `session` is on.
@@ -67,11 +85,19 @@ impl Tasks {
 
     /// Forgets the tasks of every session `keep` doesn't say to. Whether any went.
     pub(super) fn retain(&mut self, keep: impl Fn(&str) -> bool) -> bool {
-        let before = self.on.len() + self.finished.len();
+        let count = |tasks: &Self| {
+            tasks.on.len()
+                + tasks.finished.len()
+                + tasks.landing.taken_in.len()
+                + tasks.landing.claimed.len()
+        };
+        let before = count(self);
         self.on.retain(|session, _| keep(session));
         self.implied.retain(|session| keep(session));
         self.finished.retain(|session, _| keep(session));
-        self.on.len() + self.finished.len() < before
+        self.landing.taken_in.retain(|session, _| keep(session));
+        self.landing.claimed.retain(|session, _| keep(session));
+        count(self) < before
     }
 
     /// `session` takes on a new task (`taking:`), or, with `implied`, states an intent:
@@ -129,7 +155,9 @@ impl Daemon {
             self.same_work_taken(session, text, channel);
         }
         if zirc_proto::says_taking(text) && self.tasks.start(session, false) {
-            self.tasks_taken_in
+            self.tasks
+                .landing
+                .taken_in
                 .insert(session.to_owned(), channel.to_owned());
             self.save_tasks();
         }
@@ -155,7 +183,7 @@ impl Daemon {
             self.same_work_finished(session);
         }
         if zirc_proto::says_finished(text) && self.tasks.finish(session, super::now()) {
-            self.tasks_taken_in.remove(session);
+            self.tasks.landing.taken_in.remove(session);
             self.save_tasks();
         }
     }
@@ -169,10 +197,13 @@ impl Daemon {
         // Claimed while still on it, by a `taking:`: this landing landing finishes it.
         match self.tasks.on(session) {
             Some(still) if on.as_ref() == Some(&task) && *still == task => {
-                self.tasks_landing.insert(session.to_owned(), task.clone());
+                self.tasks
+                    .landing
+                    .claimed
+                    .insert(session.to_owned(), task.clone());
             }
             _ => {
-                self.tasks_landing.remove(session);
+                self.tasks.landing.claimed.remove(session);
             }
         }
         self.save_tasks();
@@ -182,13 +213,12 @@ impl Daemon {
     /// `session`'s landing landed: if it's still on the task that landing claimed, zircd
     /// says `done:` for it where its `taking:` went, and the task ends.
     pub(super) fn task_landing_landed(&mut self, session: &str) {
-        let Some(task) = self.tasks_landing.remove(session) else {
+        let Some(task) = self.tasks.landing.claimed.remove(session) else {
             return;
         };
-        if self.tasks.on(session) != Some(&task) {
-            return;
-        }
-        let Some(channel) = self.tasks_taken_in.remove(session) else {
+        let channel = self.tasks.landing.taken_in.get(session).cloned();
+        let (Some(channel), true) = (channel, self.tasks.on(session) == Some(&task)) else {
+            self.save_tasks();
             return;
         };
         let text = DONE_ON_LANDING.to_owned();
@@ -203,8 +233,6 @@ impl Daemon {
         if self.tasks.retain(|session| book.knows(session)) {
             self.save_tasks();
         }
-        self.tasks_taken_in.retain(|session, _| book.knows(session));
-        self.tasks_landing.retain(|session, _| book.knows(session));
     }
 
     fn save_tasks(&self) {
@@ -261,14 +289,23 @@ mod tests {
         ours.save(&first).unwrap();
         theirs.start("cc-b", false);
         theirs.finish("cc-b", 100);
+        theirs
+            .landing
+            .taken_in
+            .insert("cc-c".into(), "#api/agents".into());
+        theirs.landing.claimed.insert("cc-c".into(), "t-1".into());
         theirs.save(&other).unwrap();
         // Neither saved over the other's.
         let ours = Tasks::load(&first);
         assert!(ours.on("cc-a").is_some() && ours.on("cc-b").is_none());
         let mut theirs = Tasks::load(&other);
         assert!(theirs.finished.contains_key("cc-b") && theirs.on("cc-a").is_none());
+        // What its landing's done: needs, kept across restarts too.
+        assert_eq!(theirs.landing.claimed["cc-c"], "t-1");
         assert!(theirs.retain(|session| session != "cc-b"));
         assert!(theirs.finished.is_empty());
+        assert!(theirs.retain(|session| session != "cc-c"));
+        assert!(theirs.landing.taken_in.is_empty() && theirs.landing.claimed.is_empty());
         assert!(!theirs.retain(|_| true));
     }
 

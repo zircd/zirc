@@ -156,6 +156,13 @@ pub fn session_tasks_finished(home: &Path) -> PathBuf {
     home.join("session-tasks-finished.json")
 }
 
+/// What each session on this machine's landing finishes, and where its `taking:` went, for
+/// zircd to say `done:` when that landing lands, kept across restarts.
+#[must_use]
+pub fn session_tasks_landing(home: &Path) -> PathBuf {
+    home.join("session-tasks-landing.json")
+}
+
 /// The full title each session was given ([`crate::ipc::Request::Name`]), by session.
 #[must_use]
 pub fn session_titles(home: &Path) -> PathBuf {

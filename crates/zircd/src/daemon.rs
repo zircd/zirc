@@ -719,12 +719,6 @@ pub struct Daemon {
     forgot_at: u64,
     /// The task each session is on, and finished last ([`tasks`]).
     tasks: tasks::Tasks,
-    /// Session → the channel its `taking:` went to, for zircd's `done:` when its landing
-    /// lands ([`tasks`]). Not kept across restarts, where the session says `done:` itself.
-    tasks_taken_in: BTreeMap<String, String>,
-    /// Session → the task its queued landing claimed while on it, which that landing
-    /// landing ends ([`tasks`]). Not kept across restarts either.
-    tasks_landing: BTreeMap<String, String>,
     /// By root, the sessions registered there in the last day that another worktree, still
     /// there, had registered ([`zirc_core::ipc::Shared`]).
     shared: BTreeMap<PathBuf, Vec<zirc_core::ipc::Shared>>,
@@ -871,8 +865,6 @@ impl Daemon {
             carded,
             forgot_at: 0,
             tasks,
-            tasks_taken_in: BTreeMap::new(),
-            tasks_landing: BTreeMap::new(),
             shared: BTreeMap::new(),
             restoring: BTreeSet::new(),
             live,
