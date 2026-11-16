@@ -138,13 +138,16 @@ impl Daemon {
         let theirs: BTreeSet<String> = if local {
             self.session_paths(channel, sender)
         } else {
-            self.presence
-                .members(channel)
-                .into_iter()
-                .filter(|member| {
-                    member.nick == delivery.from && member.session.as_deref() == Some(sender)
-                })
+            // Its uncommitted paths, and what its commits change that hasn't landed.
+            let changing = self.presence.members(channel).into_iter().filter(|member| {
+                member.nick == delivery.from && member.session.as_deref() == Some(sender)
+            });
+            let built = self.presence.built(channel).into_iter().filter(|built| {
+                built.nick == delivery.from && built.session.as_deref() == Some(sender)
+            });
+            changing
                 .flat_map(|member| member.paths)
+                .chain(built.flat_map(|built| built.changed))
                 .collect()
         };
         let theirs: Vec<String> = presence::touching(&theirs, &intended);

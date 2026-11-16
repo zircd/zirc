@@ -161,10 +161,12 @@ type Sets = BTreeMap<(Option<String>, Option<String>), (Place, BTreeSet<String>)
 /// One part of a working set: where its paths are, and the paths.
 type Part = (Place, Vec<String>);
 
-/// Every path in a machine's working sets.
+/// Every path in a machine's working sets: what's uncommitted, and what its own commits
+/// change that hasn't landed. Work committed straight away, as agents do every turn, was
+/// never compared, and conflicted on landing with nobody told (15 Nov 2026).
 fn all_paths(sets: &Sets) -> BTreeSet<String> {
     sets.values()
-        .flat_map(|(_, paths)| paths.iter().cloned())
+        .flat_map(|(place, paths)| paths.iter().chain(&place.committed).cloned())
         .collect()
 }
 
@@ -1049,6 +1051,26 @@ mod tests {
 
     fn paths(paths: &[&str]) -> Vec<String> {
         paths.iter().map(|&path| path.to_owned()).collect()
+    }
+
+    #[test]
+    fn work_committed_but_not_landed_overlaps_too() {
+        let mut presence = Presence::default();
+        let committed = Place {
+            committed: set(&["guide.md"]),
+            ..Place::default()
+        };
+        // Everything committed, nothing left uncommitted, as an agent's worktree each turn.
+        presence.working_at("#api", "beta", committed, Vec::new(), false);
+        assert_eq!(
+            presence.overlaps("#api", &set(&["guide.md", "a.rs"])),
+            [Overlap {
+                channel: "#api".into(),
+                nick: "beta".into(),
+                paths: paths(&["guide.md"]),
+                why: None,
+            }]
+        );
     }
 
     #[test]

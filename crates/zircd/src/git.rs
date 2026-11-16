@@ -371,7 +371,7 @@ pub async fn snapshot(root: &Path) -> Result<Snapshot> {
         .filter(|path| !root.join(path).exists())
         .cloned()
         .collect();
-    let (base, committed) = built_on(root, head.as_deref(), &dirty).await;
+    let (base, committed) = built_on(root, branch.as_deref(), head.as_deref(), &dirty).await;
     let lines = match &base {
         Some(base) => own_lines(root, base, dirty.union(&committed).cloned().collect()).await,
         None => BTreeMap::new(),
@@ -407,11 +407,12 @@ async fn own_lines(root: &Path, base: &str, paths: Vec<String>) -> BTreeMap<Stri
         .collect()
 }
 
-/// What the work at `root`, whose HEAD is `head`, is built on, and the paths its own
-/// commits since change beyond the `dirty` ones ([`Snapshot::base`],
+/// What the work at `root`, whose HEAD is `head` on `branch`, is built on, and the paths
+/// its own commits since change beyond the `dirty` ones ([`Snapshot::base`],
 /// [`Snapshot::committed`]).
 async fn built_on(
     root: &Path,
+    branch: Option<&str>,
     head: Option<&str>,
     dirty: &BTreeSet<String>,
 ) -> (Option<String>, BTreeSet<String>) {
@@ -430,11 +431,50 @@ async fn built_on(
     if all_in(root, &default).await {
         return (Some(base), BTreeSet::new());
     }
-    let committed = changed_between(root, &base, head)
+    let committed = own_commits_change(root, &base, branch)
         .await
-        .map(|paths| paths.difference(dirty).cloned().collect())
-        .unwrap_or_default();
+        .difference(dirty)
+        .cloned()
+        .collect();
     (Some(base), committed)
+}
+
+/// The paths changed by the commits since `base` that are the worktree at `root`'s alone,
+/// on `branch`: none another local branch has, nor a remote's but `branch`'s own. A commit
+/// two worktrees both have, as one that caught up to another's branch before that was
+/// pushed, or a branch stacked on another's, isn't either one's work: counted as both's,
+/// it made them look as if both changed its files (16 Nov 2026).
+async fn own_commits_change(root: &Path, base: &str, branch: Option<&str>) -> BTreeSet<String> {
+    let not_base = format!("^{base}");
+    let mut args = vec![
+        "log",
+        "--format=",
+        "--name-only",
+        "-z",
+        "--no-renames",
+        "HEAD",
+        not_base.as_str(),
+        "--not",
+    ];
+    let (own, own_remote);
+    if let Some(branch) = branch {
+        own = format!("--exclude={branch}");
+        own_remote = format!("--exclude=*/{branch}");
+        args.extend([own.as_str(), "--branches", own_remote.as_str(), "--remotes"]);
+    } else {
+        args.extend(["--branches", "--remotes"]);
+    }
+    args.push("--");
+    git(root, &args)
+        .await
+        .map(|names| {
+            names
+                .split(['\0', '\n'])
+                .filter(|path| !path.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Of the `dirty` paths, those that differ from the remote's default branch too: the rest
@@ -1618,6 +1658,28 @@ mod tests {
         run(dir, &["add", path]);
         run(dir, &["commit", "-q", "-m", subject]);
         run(dir, &["rev-parse", "HEAD"])
+    }
+
+    #[tokio::test]
+    async fn a_commit_another_branch_has_is_no_branchs_own_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        run(root, &["init", "-q", "-b", "main"]);
+        let base = commit(root, "README.md", "zirc\n", "start");
+        // main commits b.rs, not pushed; login takes it and commits a.rs of its own.
+        commit(root, "b.rs", "fn b() {}\n", "main's");
+        run(root, &["checkout", "-q", "-b", "login"]);
+        commit(root, "a.rs", "fn a() {}\n", "login's");
+        let own = async |branch: &str| {
+            run(root, &["checkout", "-q", branch]);
+            own_commits_change(root, &base, Some(branch)).await
+        };
+        assert_eq!(own("login").await, ["a.rs".to_owned()].into());
+        // main's commit is login's too, so it's neither's own.
+        assert_eq!(own("main").await, BTreeSet::new());
+        // Once login's gone, it's main's.
+        run(root, &["branch", "-q", "-D", "login"]);
+        assert_eq!(own("main").await, ["b.rs".to_owned()].into());
     }
 
     #[tokio::test]
