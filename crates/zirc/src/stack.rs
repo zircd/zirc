@@ -210,7 +210,22 @@ fn step(stack: &Stack, has_tip: bool, default: &str) -> Step {
         tip,
         landed,
         moved,
+        dropped,
     } = stack;
+    if *dropped {
+        if !has_tip {
+            return Step::Done;
+        }
+        return Step::Say {
+            line: format!(
+                "{branch} was deleted from origin without landing: dropped, so don't land it \
+                 yourself. `zirc stack --rebase` rebases yours onto {default} past it (`git \
+                 fetch origin {default} && git rebase --onto origin/{default} {tip}`); then keep \
+                 in yours what it needs of {branch}'s work"
+            ),
+            blocks: true,
+        };
+    }
     if *landed {
         if !has_tip {
             return Step::Done;
@@ -236,12 +251,13 @@ fn step(stack: &Stack, has_tip: bool, default: &str) -> Step {
 }
 
 /// A rebase `--rebase` runs: onto `onto` (a ref, such as `origin/master`), past `past`, the
-/// head built on, which `branch` landed or moved from.
+/// head built on, which `branch` landed, moved or was dropped from.
 #[derive(Debug, PartialEq, Eq)]
 struct Move {
     branch: String,
     onto: String,
     past: String,
+    /// Whether `branch` is gone from the stack once rebased past: landed, or dropped.
     landed: bool,
 }
 
@@ -252,7 +268,7 @@ fn moves(dir: &Path, stacks: &[Stack], default: &str) -> Vec<Move> {
         .iter()
         .filter(|stack| has_commit(dir, &stack.tip))
         .filter_map(|stack| {
-            let onto = if stack.landed {
+            let onto = if stack.landed || stack.dropped {
                 format!("origin/{default}")
             } else {
                 stack.moved.as_ref()?;
@@ -262,7 +278,7 @@ fn moves(dir: &Path, stacks: &[Stack], default: &str) -> Vec<Move> {
                 branch: stack.branch.clone(),
                 onto,
                 past: stack.tip.clone(),
-                landed: stack.landed,
+                landed: stack.landed || stack.dropped,
             })
         })
         .collect()
@@ -590,7 +606,26 @@ mod tests {
             tip: "abcdef0123".into(),
             landed,
             moved: moved.map(str::to_owned),
+            dropped: false,
         }
+    }
+
+    #[test]
+    fn a_dropped_base_says_not_to_land_it_and_rebases_onto_the_default_branch() {
+        let dropped = Stack {
+            dropped: true,
+            ..stack(false, None)
+        };
+        let Step::Say { line, blocks } = step(&dropped, true, "main") else {
+            panic!("a dropped base still held says what to do");
+        };
+        assert!(blocks);
+        assert!(
+            line.starts_with("api-auth was deleted from origin without landing"),
+            "{line}"
+        );
+        assert!(line.contains("don't land it yourself"), "{line}");
+        assert_eq!(step(&dropped, false, "main"), Step::Done);
     }
 
     #[test]

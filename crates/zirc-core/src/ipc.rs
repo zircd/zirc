@@ -768,6 +768,10 @@ pub struct Stack {
     /// Its head since, when a push moved it from `tip`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub moved: Option<String>,
+    /// Whether it was deleted from origin without landing: dropped, not to be landed in its
+    /// place.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dropped: bool,
 }
 
 /// The daemon's state.

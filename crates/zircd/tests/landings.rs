@@ -646,3 +646,93 @@ fn wait_for(session: &str, on: &[&str]) -> Request {
         drop: false,
     }
 }
+
+/// A session stacked on a branch that's deleted from origin without landing is told so, once a
+/// minute's look at origin finds it gone: not to land it, and the rebase past it. In the agent
+/// evals' S5 a session waited on such a base for good, and another landed it to free its own.
+#[tokio::test]
+async fn a_session_stacked_on_a_branch_dropped_unlanded_is_told_what_to_do() {
+    let ergo = require_ergo!();
+    let clock = zircd::Clock::default();
+    let hooks = zircd::Hooks {
+        clock: clock.clone(),
+        ..zircd::Hooks::default()
+    };
+    let machine = Machine::hooked(&ergo, "alpha", hooks).await;
+    let remote = tempfile::tempdir().unwrap();
+    git(remote.path(), &["init", "--quiet", "--bare"]);
+    let clone = clone();
+    let root = clone.path();
+    git(
+        root,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            remote.path().to_str().unwrap(),
+        ],
+    );
+    git(root, &["push", "--quiet", "origin", "main"]);
+    git(root, &["switch", "--quiet", "-c", "money"]);
+    std::fs::write(root.join("money.py"), "def format_cents(c): ...\n").unwrap();
+    git(root, &["add", "money.py"]);
+    git(root, &["commit", "--quiet", "--message", "Money"]);
+    git(root, &["push", "--quiet", "origin", "money"]);
+    let tip = String::from_utf8(
+        std::process::Command::new("git")
+            .args(["rev-parse", "money"])
+            .current_dir(root)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    machine
+        .request(Request::RepoAdd {
+            path: root.to_owned(),
+            session: Some("cc-top".into()),
+        })
+        .await;
+    let mut top = machine.watch(Some("cc-top")).await;
+    let stack = |branch: Option<&str>, tip: Option<&str>| Request::Stack {
+        session: "cc-top".into(),
+        branch: branch.map(str::to_owned),
+        tip: tip.map(str::to_owned),
+        drop: false,
+    };
+    machine
+        .request(stack(Some("money"), Some(tip.trim())))
+        .await;
+
+    // Dropped: deleted from origin, never landed. A minute on, by zircd's clock, it looks.
+    git(remote.path(), &["branch", "-D", "money"]);
+    let mut looks = 0;
+    let line = loop {
+        looks += 1;
+        assert!(looks <= 20, "never told money was dropped");
+        clock.advance(std::time::Duration::from_mins(1));
+        let Ok(heard) =
+            tokio::time::timeout(std::time::Duration::from_secs(2), next(&mut top)).await
+        else {
+            continue;
+        };
+        if let Event::Text { body } = &heard.message.event
+            && body.contains("deleted from origin without landing")
+        {
+            assert!(heard.why.is_some(), "{heard:?}");
+            break body.clone();
+        }
+    };
+    assert!(
+        line.starts_with("cc-top: money, which your work is stacked on"),
+        "{line}"
+    );
+    assert!(line.contains("don't land it yourself"), "{line}");
+    let Response::Stacks { stacks } = machine.request(stack(None, None)).await else {
+        panic!("its stacks");
+    };
+    assert!(
+        stacks.iter().any(|s| s.branch == "money" && s.dropped),
+        "{stacks:?}"
+    );
+}

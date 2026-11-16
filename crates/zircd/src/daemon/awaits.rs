@@ -133,6 +133,10 @@ struct Stacked {
     /// Its head since, when a push moved it from `tip`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     moved: Option<String>,
+    /// Whether it was deleted from origin without CI saying it landed: dropped, as a team
+    /// drops work, which the session must not land in its place ([`super::dropped`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    dropped: bool,
 }
 
 /// Whether two commits, either perhaps shortened, are the same.
@@ -392,6 +396,7 @@ impl Awaits {
                 tip: tip.to_owned(),
                 landed: false,
                 moved: None,
+                dropped: false,
             }),
             reaction: None,
         });
@@ -420,6 +425,7 @@ impl Awaits {
                         tip: stack.tip.clone(),
                         landed: stack.landed,
                         moved: stack.moved.clone(),
+                        dropped: stack.dropped,
                     })
                 })
                 .collect()
@@ -454,6 +460,13 @@ impl Awaits {
             if wait.on != branch {
                 continue;
             }
+            // Pushed again: it's there after all.
+            if let Some(stack) = &mut wait.stack
+                && stack.dropped
+            {
+                stack.dropped = false;
+                changed = true;
+            }
             if let Some(stack) = &mut wait.stack
                 && !stack.landed
                 && !same_commit(&stack.tip, head)
@@ -468,6 +481,36 @@ impl Awaits {
             }
         }
         changed
+    }
+
+    /// Each session's stacks on branches CI hasn't said landed and not known dropped: the
+    /// branches to ask origin about ([`super::dropped`]), with whose they are.
+    pub(super) fn stacks_to_check(&self) -> Vec<(String, String)> {
+        let mut found = Vec::new();
+        for (session, waits) in &self.0 {
+            for wait in waits.iter().filter(|wait| wait.live()) {
+                if wait.stack.as_ref().is_some_and(|s| !s.landed && !s.dropped) {
+                    found.push((session.clone(), wait.on.clone()));
+                }
+            }
+        }
+        found
+    }
+
+    /// Marks `branch`, gone from origin, dropped for `session` if it's stacked on it and CI
+    /// never said it landed: the head it built on, once, when it's newly so.
+    pub(super) fn dropped(&mut self, session: &str, branch: &str) -> Option<String> {
+        let waits = self.0.get_mut(session)?;
+        let wait = waits
+            .iter_mut()
+            .find(|wait| wait.live() && wait.on == branch)?;
+        let stack = wait.stack.as_mut()?;
+        if stack.landed || stack.dropped {
+            return None;
+        }
+        stack.dropped = true;
+        wait.since = now();
+        Some(stack.tip.clone())
     }
 
     /// Each session waiting on something, and what.

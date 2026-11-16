@@ -1287,6 +1287,10 @@
             "null"
           ],
           "description": "Its head since, when a push moved it from `tip`."
+        },
+        "dropped": {
+          "type": "boolean",
+          "description": "Whether it was deleted from origin without landing: dropped, not to be landed in its\nplace."
         }
       },
       "required": [

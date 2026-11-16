@@ -35,6 +35,7 @@ pub(crate) mod breaker;
 mod broadcast;
 mod busy;
 mod deliver;
+mod dropped;
 mod fit;
 mod gotchas;
 mod holds;
@@ -106,6 +107,9 @@ pub enum Input {
     Fitted(fit::Found),
     /// The request waiting on the server with this token has waited long enough.
     Expired(u64),
+    /// The branches sessions are stacked on that origin no longer has, each with the
+    /// repository it was asked from ([`Daemon::check_stacks`]).
+    StacksChecked(Vec<(PathBuf, String)>),
     /// Whether this daemon watches the repository with this root, or will once its restore
     /// gets to it: the router's question for which organisation a request is for, answered
     /// even while restoring, so it never waits for one.
@@ -518,6 +522,7 @@ pub async fn run(mut daemon: Daemon, mut received: mpsc::UnboundedReceiver<Input
             _ = worktrees.tick() => {
                 start = Instant::now();
                 daemon.find_worktrees().await;
+                daemon.check_stacks();
             }
             _ = leases.tick() => {
                 start = Instant::now();
@@ -575,6 +580,9 @@ pub struct Daemon {
     invite_owner: BTreeSet<String>,
     /// `#ops`'s newest messages, kept to answer reads of states at once.
     ops: Option<ops_kept::Kept>,
+    /// When origin was last asked about the branches sessions are stacked on
+    /// ([`Daemon::check_stacks`]).
+    stacks_checked: Option<std::time::Instant>,
     /// What the organisation last said its members' agents may do, from `#ops` as kept
     /// before it was last dropped ([`Daemon::colleagues`]).
     colleagues_said: Option<zirc_proto::colleagues::Colleagues>,
@@ -789,6 +797,7 @@ impl Daemon {
             joined: BTreeSet::new(),
             invite_owner: BTreeSet::new(),
             ops: None,
+            stacks_checked: None,
             colleagues_said: None,
             repos: BTreeMap::new(),
             topics: Topics::new(),
@@ -958,6 +967,23 @@ impl Daemon {
         self.repos.contains_key(root) || self.restoring.contains(root)
     }
 
+    /// A client watching from now on, as `session` if it names one: caught up first on what
+    /// that session missed; told why instead, while the machine can't connect.
+    fn watch(&mut self, heard: mpsc::Sender<Response>, session: Option<String>) {
+        tracing::debug!(?session, "a client is watching");
+        if let Some(problem) = &self.problem {
+            let _ = heard.try_send(Response::Error {
+                message: problem.clone(),
+            });
+            return;
+        }
+        if let Some(session) = &session {
+            self.book.seen(session, now());
+            self.catch_up(&heard, session);
+        }
+        self.watchers.push(Watcher { heard, session });
+    }
+
     pub async fn handle(&mut self, input: Input) {
         match input {
             // A guest's terminal reads its room's history and nothing else's, and trims none.
@@ -990,21 +1016,7 @@ impl Daemon {
                     });
                 let _ = answer.send(response);
             }
-            Input::Watch(heard, session) => {
-                tracing::debug!(?session, "a client is watching");
-                // A watch hears nothing while the machine can't connect: it's told why.
-                if let Some(problem) = &self.problem {
-                    let _ = heard.try_send(Response::Error {
-                        message: problem.clone(),
-                    });
-                    return;
-                }
-                if let Some(session) = &session {
-                    self.book.seen(session, now());
-                    self.catch_up(&heard, session);
-                }
-                self.watchers.push(Watcher { heard, session });
-            }
+            Input::Watch(heard, session) => self.watch(heard, session),
             Input::Revoked => self.stopped(zirc_core::ipc::REVOKED.to_owned()),
             Input::Refused(message) => self.stopped(message),
             Input::Connected(client) => {
@@ -1047,6 +1059,7 @@ impl Daemon {
                 self.scan_done(&root, read);
             }
             Input::PushChecked(clashes) => self.push_checked(clashes),
+            Input::StacksChecked(gone) => self.stacks_checked(gone),
             Input::Predicted(channel, overlaps) => self.predicted(&channel, overlaps),
             Input::Fitted(found) => self.fitted(found),
             Input::Holds(root, answer) => {
