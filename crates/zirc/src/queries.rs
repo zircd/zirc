@@ -179,9 +179,13 @@ pub(crate) async fn agents(
             );
         }
     }
-    let Response::Queries { queries } = ask(socket, Request::Queries { set }).await? else {
+    let Response::Queries {
+        queries,
+        colleagues_kept_out,
+    } = ask(socket, Request::Queries { set }).await?
+    else {
         return Err(crate::client::unexpected());
     };
-    writeln!(out, "{}", agents::said(queries))?;
+    writeln!(out, "{}", agents::said(queries, colleagues_kept_out))?;
     Ok(())
 }

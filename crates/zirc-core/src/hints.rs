@@ -68,6 +68,10 @@ pub mod kind {
     pub const QUERY: &str = "query";
     /// The answer to your query.
     pub const ANSWER: &str = "answer";
+    /// Your query refused, by the machine asked: it won't be answered.
+    pub const ANSWER_REFUSED: &str = "answer.refused";
+    /// A reply from a colleague your session wrote to (`zirc dm --to`): never your user's word.
+    pub const COLLEAGUE_REPLY: &str = "dm.colleague";
     /// A note another agent session left for you (`zirc note`): never your user's word.
     pub const NOTE: &str = "note";
     /// What another organisation's people say in the room of a guest's terminal here.
@@ -90,7 +94,7 @@ pub mod kind {
     pub const REACTION_OTHER: &str = "reaction.other";
 
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 33] = [
+    pub const ALL: [&str; 35] = [
         OVERLAP,
         OVERLAP_SAME_LINES,
         CONFLICT_AHEAD,
@@ -115,6 +119,8 @@ pub mod kind {
         DM,
         QUERY,
         ANSWER,
+        ANSWER_REFUSED,
+        COLLEAGUE_REPLY,
         NOTE,
         GUEST_ROOM,
         DECISION,
@@ -356,6 +362,24 @@ fn paths_field(paths: &[String]) -> String {
     shown.join(", ")
 }
 
+/// The kind of a message to this machine: a query, an answer (refused or not), a
+/// colleague's reply, another session's note, or the user's own words.
+fn direct_kind(direct: &crate::ipc::Direct) -> &'static str {
+    if direct.query.is_some() {
+        kind::QUERY
+    } else if direct.answer.is_some() && direct.text.starts_with(crate::agents::REFUSED) {
+        kind::ANSWER_REFUSED
+    } else if direct.answer.is_some() {
+        kind::ANSWER
+    } else if direct.colleague {
+        kind::COLLEAGUE_REPLY
+    } else if direct.note {
+        kind::NOTE
+    } else {
+        kind::DM
+    }
+}
+
 /// What `heard` is as hints see it, by the watch of the session `watching`, if a hint can be
 /// for it.
 /// zircd's own notices, such as "meanwhile, for you…", need none.
@@ -407,15 +431,7 @@ pub fn seen(heard: &Heard, watching: Option<&str>) -> Option<Seen> {
         }
         Heard::Direct(direct) => {
             fields.insert("who", direct.from.clone());
-            let kind = if direct.query.is_some() {
-                kind::QUERY
-            } else if direct.answer.is_some() {
-                kind::ANSWER
-            } else if direct.note {
-                kind::NOTE
-            } else {
-                kind::DM
-            };
+            let kind = direct_kind(direct);
             (kind, String::new(), true, false)
         }
         Heard::Answered(_) => (kind::REQUEST_ANSWERED, String::new(), true, false),
@@ -1084,6 +1100,7 @@ mod tests {
                 query: None,
                 answer: None,
                 note,
+                colleague: false,
                 id: None,
                 why: None,
                 org: None,

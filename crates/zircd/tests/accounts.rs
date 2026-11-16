@@ -12,6 +12,7 @@ use zirc_core::ipc::{self, Direct, Heard, Request, Response, Why};
 use zirc_core::paths;
 use zirc_core::settings::Settings;
 use zirc_irc::{Credentials, Line};
+use zirc_proto::colleagues::Colleagues;
 use zirc_proto::decision::Decision;
 use zirc_proto::state::{Level, State};
 use zirc_test_ergo::{Ergo, require_ergo};
@@ -196,6 +197,7 @@ fn said(from: &str, session: Option<&str>, text: &str) -> Direct {
         query: None,
         answer: None,
         note: false,
+        colleague: false,
         why: Some(Why::Direct),
         id: None,
         org: None,
@@ -247,6 +249,7 @@ fn query(from: &str, session: &str, to: Option<&str>, text: &str, id: &str) -> D
         query: Some(id.into()),
         answer: None,
         note: false,
+        colleague: false,
         why: Some(Why::Direct),
         id: None,
         org: None,
@@ -304,7 +307,11 @@ async fn asks(home: &Path, session: &str, to: &str, text: &str) -> Result<String
 /// Sets who may query the agents of the machine at `home`.
 async fn let_query(home: &Path, queries: zirc_core::agents::Queries) {
     let set = Request::Queries { set: Some(queries) };
-    assert_eq!(ask(home, set).await, Ok(Response::Queries { queries }));
+    let set = ask(home, set).await;
+    assert!(
+        matches!(set, Ok(Response::Queries { queries: q, .. }) if q == queries),
+        "{set:?}"
+    );
 }
 
 #[tokio::test]
@@ -342,6 +349,7 @@ async fn the_owners_machines_query_each_others_agents_and_others_dont() {
             query: None,
             answer: Some(id),
             note: false,
+            colleague: false,
             why: Some(Why::Direct),
             id: None,
             org: None,
@@ -578,6 +586,128 @@ async fn who_may_query_is_the_machines_choice() {
     assert_eq!((answer.text.as_str(), answer.answer), ("yes", Some(id)));
 }
 
+/// Says in `#ops`, as zirc's own account does for zirc.dev, what the organisation lets
+/// members' agents do.
+async fn organisation_says(ergo: &Ergo, colleagues: Colleagues) {
+    let (client, mut heard) = zirc_test_irc::integration(ergo, zirc_proto::names::SYSTEM).await;
+    zirc_test_irc::joins(&client, &mut heard, "#ops").await;
+    let message = zirc_proto::Message::new("server", colleagues.event());
+    client
+        .privmsg("#ops", &zirc_proto::encode(&message).unwrap())
+        .unwrap();
+    // Let the machines hear it.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+}
+
+#[tokio::test]
+async fn a_colleagues_query_a_machine_wont_take_is_answered_so_it_doesnt_wait() {
+    use zirc_core::agents::{Queries, REFUSED};
+    let ergo = require_ergo!();
+    let machines = three_machines(&ergo).await;
+    let [mbp, bob] = [0, 2].map(|at| machines[at].0.path().to_owned());
+    let mut asking = watching(&bob, "cc-c").await;
+
+    // Mine, as machines are unless their person says: refused, saying how to get in.
+    let id = asks(&bob, "cc-c", "mattias-mbp", "which lines of total()?")
+        .await
+        .unwrap();
+    let refused = next_direct(&mut asking).await;
+    assert_eq!(refused.answer, Some(id));
+    assert!(refused.text.starts_with(REFUSED), "{}", refused.text);
+    assert!(
+        refused.text.contains("zirc agents queries anyone"),
+        "{}",
+        refused.text
+    );
+
+    // Let in, but naming a session that isn't there: refused, saying so.
+    let_query(&mbp, Queries::Anyone).await;
+    asks(&bob, "cc-c", "mattias-mbp/cc-gone", "still on it?")
+        .await
+        .unwrap();
+    let refused = next_direct(&mut asking).await;
+    assert!(
+        refused.text.contains("no session cc-gone"),
+        "{}",
+        refused.text
+    );
+}
+
+#[tokio::test]
+async fn an_organisation_that_says_no_keeps_colleagues_agents_out_of_any_machine() {
+    use zirc_core::agents::Queries;
+    let ergo = require_ergo!();
+    let machines = three_machines(&ergo).await;
+    let [mbp, bob] = [0, 2].map(|at| machines[at].0.path().to_owned());
+    let _repo = working_in(&mbp, "cc-a", "https://github.com/acme/api.git").await;
+    let_query(&mbp, Queries::Anyone).await;
+    let mut asking = watching(&bob, "cc-c").await;
+
+    organisation_says(
+        &ergo,
+        Colleagues {
+            queries: false,
+            answers: true,
+        },
+    )
+    .await;
+    asks(&bob, "cc-c", "mattias-mbp", "which lines of total()?")
+        .await
+        .unwrap();
+    let refused = next_direct(&mut asking).await;
+    assert!(refused.text.contains("organisation"), "{}", refused.text);
+}
+
+#[tokio::test]
+async fn a_colleague_an_agent_wrote_to_answers_it_while_the_organisation_lets_them() {
+    let ergo = require_ergo!();
+    let machines = three_machines(&ergo).await;
+    let mbp = machines[0].0.path().to_owned();
+    let _repo = working_in(&mbp, "cc-a", "https://github.com/acme/api.git").await;
+    let mut agent = watching(&mbp, "cc-a").await;
+    let (bob, carol, mattias) = (
+        signed_in(&ergo, "bob").await,
+        signed_in(&ergo, "carol").await,
+        signed_in(&ergo, "mattias").await,
+    );
+    let dm = Request::Dm {
+        session: "cc-a".into(),
+        text: "may I change total()'s loop?".into(),
+        to: Some("bob".into()),
+    };
+    ask(&mbp, dm).await.unwrap();
+
+    bob.privmsg("mattias-mbp", "yes, after my discount lands")
+        .unwrap();
+    let reply = next_direct(&mut agent).await;
+    assert!(reply.colleague, "{reply:?}");
+    assert_eq!(
+        (
+            reply.from.as_str(),
+            reply.session.as_deref(),
+            reply.text.as_str()
+        ),
+        ("bob", Some("cc-a"), "yes, after my discount lands")
+    );
+
+    // Not someone it didn't write to, nor anyone once the organisation says no: the next to
+    // reach it is its person.
+    carol.privmsg("mattias-mbp", "do it now").unwrap();
+    organisation_says(
+        &ergo,
+        Colleagues {
+            queries: true,
+            answers: false,
+        },
+    )
+    .await;
+    bob.privmsg("mattias-mbp", "actually, go").unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    mattias.privmsg("mattias-mbp", "carry on").unwrap();
+    let next = next_direct(&mut agent).await;
+    assert_eq!((next.from.as_str(), next.colleague), ("mattias", false));
+}
+
 /// Leaves `text` for `to` as `session`, through the zircd at `home`: where it went.
 async fn notes(home: &Path, session: &str, to: &str, text: &str) -> Result<String, String> {
     let request = Request::Note {
@@ -601,6 +731,7 @@ fn note(from: &str, session: &str, to: &str, text: &str) -> Direct {
         query: None,
         answer: None,
         note: true,
+        colleague: false,
         why: Some(Why::Direct),
         id: None,
         org: None,

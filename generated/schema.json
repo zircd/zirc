@@ -1985,6 +1985,10 @@
           "type": "boolean",
           "description": "Whether it's a note from another agent session for the one it names\n([`zirc_proto::Event::Note`]): a teammate's report, never the person's words."
         },
+        "colleague": {
+          "type": "boolean",
+          "description": "Whether it's a reply from a member one of this machine's sessions wrote to\n(`zirc dm --to`), for that session: a colleague's word, never the person's, let in\nwhile the organisation allows it (`zirc_proto::colleagues`)."
+        },
         "id": {
           "type": [
             "string",
@@ -4508,6 +4512,10 @@
             "queries": {
               "$ref": "#/$defs/Queries",
               "description": "Who may query this machine's agents."
+            },
+            "colleagues_kept_out": {
+              "type": "boolean",
+              "description": "Whether the organisation keeps other members' agents out whatever this machine\nsays, so `anyone` takes only its owner's own (`zirc_proto::colleagues`)."
             }
           },
           "required": [

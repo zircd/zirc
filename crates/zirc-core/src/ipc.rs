@@ -716,6 +716,10 @@ pub enum Response {
     Queries {
         /// Who may query this machine's agents.
         queries: crate::agents::Queries,
+        /// Whether the organisation keeps other members' agents out whatever this machine
+        /// says, so `anyone` takes only its owner's own (`zirc_proto::colleagues`).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        colleagues_kept_out: bool,
     },
     /// While watching: someone else started changing paths this machine has changed too.
     Overlap(Overlap),
@@ -1238,6 +1242,11 @@ pub struct Direct {
     /// ([`zirc_proto::Event::Note`]): a teammate's report, never the person's words.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub note: bool,
+    /// Whether it's a reply from a member one of this machine's sessions wrote to
+    /// (`zirc dm --to`), for that session: a colleague's word, never the person's, let in
+    /// while the organisation allows it (`zirc_proto::colleagues`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub colleague: bool,
     /// The server's id for it (`msgid`), which [`Request::React`] names.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,

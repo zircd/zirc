@@ -575,6 +575,9 @@ pub struct Daemon {
     invite_owner: BTreeSet<String>,
     /// `#ops`'s newest messages, kept to answer reads of states at once.
     ops: Option<ops_kept::Kept>,
+    /// What the organisation last said its members' agents may do, from `#ops` as kept
+    /// before it was last dropped ([`Daemon::colleagues`]).
+    colleagues_said: Option<zirc_proto::colleagues::Colleagues>,
     repos: BTreeMap<PathBuf, Watched>,
     /// Topic channels joined by choice, each with who joined it: sessions by name, and
     /// `None` for the machine, as a person or an older zircd joins.
@@ -640,6 +643,8 @@ pub struct Daemon {
     asked: VecDeque<Asked>,
     /// The queries heard lately, to send their answers back.
     queried: VecDeque<Queried>,
+    /// The members this machine's sessions wrote to lately, newest last.
+    wrote_to: VecDeque<Wrote>,
     /// Counts queries asked, to name each apart.
     queries_asked: u64,
     /// Leases this machine's sessions hold or wait for, and what it's heard of others'.
@@ -732,6 +737,20 @@ struct Queried {
     session: String,
 }
 
+/// A member one of this machine's sessions wrote to (`zirc dm --to`), whose reply reaches
+/// it ([`Daemon::colleague_replied`]).
+#[derive(Debug)]
+struct Wrote {
+    /// Their nick, as written to.
+    to: String,
+    session: String,
+    /// When, in seconds since the Unix epoch.
+    at: u64,
+}
+
+/// How long a member's reply to a session that wrote to them reaches it: a day.
+const WROTE_FOR: u64 = 86_400;
+
 /// How many queries asked and heard zircd remembers, to match answers to them.
 const QUERIES: usize = 200;
 
@@ -770,6 +789,7 @@ impl Daemon {
             joined: BTreeSet::new(),
             invite_owner: BTreeSet::new(),
             ops: None,
+            colleagues_said: None,
             repos: BTreeMap::new(),
             topics: Topics::new(),
             presence: Presence::default(),
@@ -802,6 +822,7 @@ impl Daemon {
             agents,
             asked: VecDeque::new(),
             queried: VecDeque::new(),
+            wrote_to: VecDeque::new(),
             queries_asked: 0,
             leases: lease::LeaseState::default(),
             requests: requests::Requests::default(),

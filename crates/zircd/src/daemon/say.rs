@@ -19,8 +19,8 @@ use crate::git;
 
 use super::book::Field;
 use super::{
-    Daemon, GUESTS, Seen, TYPING_EVERY, Typing, Which, is_guest, is_nick, now, only_cis_word,
-    reaction, vouch,
+    Daemon, GUESTS, Seen, TYPING_EVERY, Typing, Which, Wrote, is_guest, is_nick, now,
+    only_cis_word, reaction, remember, vouch,
 };
 
 impl Daemon {
@@ -230,7 +230,7 @@ impl Daemon {
 
     /// Says `text` to `to` alone, or else to this machine's owner, from `session`. Returns
     /// whom it went to.
-    pub(super) fn dm(&self, session: &str, text: &str, to: Option<String>) -> Result<String> {
+    pub(super) fn dm(&mut self, session: &str, text: &str, to: Option<String>) -> Result<String> {
         let to = match to {
             Some(to) => {
                 anyhow::ensure!(is_nick(&to), "{to:?} isn't a person's nick or account");
@@ -260,6 +260,17 @@ impl Daemon {
             ),
         )
         .with_context(|| format!("couldn't send to {to}"))?;
+        // Their reply reaches this session, while the organisation lets colleagues answer.
+        if self.owner.as_deref() != Some(to.as_str()) {
+            remember(
+                &mut self.wrote_to,
+                Wrote {
+                    to: to.clone(),
+                    session: session.to_owned(),
+                    at: now(),
+                },
+            );
+        }
         Ok(to)
     }
 

@@ -88,13 +88,19 @@ pub const KEEP: &str = "Keep it as it is";
 /// What every zirc app and the CLI say of the setting: `queries to this machine's agents:
 /// mine`, with the warning when it's `anyone`.
 #[must_use]
-pub fn said(queries: Queries) -> String {
+pub fn said(queries: Queries, colleagues_kept_out: bool) -> String {
     let said = format!("queries to this machine's agents: {}", queries.word());
     match queries {
+        Queries::Anyone if colleagues_kept_out => format!("{said}\n{KEPT_OUT}"),
         Queries::Anyone => format!("{said}\nwarning: {ANYONE_WARNING}"),
         Queries::Off | Queries::Mine => said,
     }
 }
+
+/// What every zirc app says of `anyone` while the organisation keeps other members' agents
+/// out (`zirc_proto::colleagues`).
+pub const KEPT_OUT: &str = "but your organisation doesn't let colleagues' agents ask: only \
+    your own machines may, until an owner or admin turns it on in zirc.dev's Server tab";
 
 /// Everything in `agents.toml`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -250,6 +256,50 @@ pub fn may_query(queries: Queries, standing: Standing) -> bool {
         Queries::Anyone => standing != Standing::Nobody,
     }
 }
+
+impl Queries {
+    /// As the organisation lets it be: `anyone` only while it lets members' agents ask each
+    /// other's (`zirc_proto::colleagues`); else the owner's own.
+    #[must_use]
+    pub fn under(self, colleagues_may: bool) -> Self {
+        if self == Self::Anyone && !colleagues_may {
+            Self::Mine
+        } else {
+            self
+        }
+    }
+}
+
+/// What a machine whose agents take queries as `queries` say, while the organisation does or
+/// doesn't let members' agents ask each other's, answers an agent whose query it won't take,
+/// so it doesn't wait for an answer that won't come.
+#[must_use]
+pub fn refused(queries: Queries, colleagues_may: bool) -> String {
+    let why = match queries {
+        Queries::Off => "this machine's agents take no queries",
+        Queries::Anyone if !colleagues_may => {
+            "the organisation doesn't let members' agents ask each other's"
+        }
+        _ => {
+            "this machine's agents take queries only from its person's own machines (its person \
+             can let colleagues' agents in with `zirc agents queries anyone`)"
+        }
+    };
+    format!("{REFUSED}{why}. {INSTEAD}")
+}
+
+/// What a machine answers a query for a session that doesn't work on it now.
+#[must_use]
+pub fn no_such_session(session: &str) -> String {
+    format!("{REFUSED}no session {session} works on this machine now. {INSTEAD}")
+}
+
+/// How a refusal starts, so an agent can tell one from an answer.
+pub const REFUSED: &str = "refused: ";
+
+/// What a refusal says to do instead of waiting.
+const INSTEAD: &str = "Don't wait for an answer: post in the repository's channel naming \
+    its person, or go ahead and say what you're changing with `zirc intend`.";
 
 /// Whose machine the sender of a line with `source` (`nick!user@host`) is, as the server says
 /// by its host (`zirc_proto::names::machine_host`): None for a person, their own client, or a

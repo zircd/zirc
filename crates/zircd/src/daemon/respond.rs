@@ -541,6 +541,7 @@ impl Daemon {
         }
         Ok(Response::Queries {
             queries: self.agents.queries,
+            colleagues_kept_out: !self.colleagues().queries,
         })
     }
 

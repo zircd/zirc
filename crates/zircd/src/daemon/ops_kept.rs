@@ -21,6 +21,7 @@ use tokio::sync::oneshot;
 use zirc_core::ipc::{Delivery, Request, Response};
 use zirc_core::{history, states};
 use zirc_irc::Line;
+use zirc_proto::colleagues::Colleagues;
 
 use super::Daemon;
 use crate::clock::unix;
@@ -46,6 +47,9 @@ pub(super) struct Kept {
     read: bool,
     /// Reads waiting for it, each with its limit.
     waiting: Vec<(usize, oneshot::Sender<Response>)>,
+    /// What members' agents may do with other members and theirs, as zirc's own account
+    /// last said here: kept however many messages come after it.
+    colleagues: Option<Colleagues>,
 }
 
 impl Kept {
@@ -72,6 +76,9 @@ impl Kept {
     /// The read is in: `history`, then each heard meanwhile that it doesn't already have.
     /// Those waiting for it are answered.
     pub(super) fn read(&mut self, history: Vec<Delivery>) {
+        for delivery in &history {
+            self.note_colleagues(delivery);
+        }
         let heard = std::mem::replace(&mut self.messages, history.into());
         self.read = true;
         self.trim();
@@ -96,9 +103,28 @@ impl Kept {
         if known {
             return;
         }
+        self.note_colleagues(&delivery);
         self.messages.push_back(delivery);
         if self.read {
             self.trim();
+        }
+    }
+
+    /// What members' agents may do with other members and theirs, as the organisation last
+    /// said here, if it has.
+    pub(super) fn said_colleagues(&self) -> Option<Colleagues> {
+        self.colleagues
+    }
+
+    /// Takes what `delivery` says members' agents may do, if it says it and it's zirc's own
+    /// word: from the account no person or machine holds, which the server says sent it.
+    fn note_colleagues(&mut self, delivery: &Delivery) {
+        let zircs = delivery
+            .account
+            .as_deref()
+            .is_some_and(|account| account.eq_ignore_ascii_case(zirc_proto::names::SYSTEM));
+        if zircs && let Some(colleagues) = Colleagues::of(&delivery.message.event) {
+            self.colleagues = Some(colleagues);
         }
     }
 
@@ -160,6 +186,16 @@ fn newest(limit: usize) -> Request {
 }
 
 impl Daemon {
+    /// What members' agents may do with other members and theirs, as the organisation last
+    /// said in `#ops`: both allowed when it never has.
+    pub(super) fn colleagues(&self) -> Colleagues {
+        self.ops
+            .as_ref()
+            .and_then(Kept::said_colleagues)
+            .or(self.colleagues_said)
+            .unwrap_or_default()
+    }
+
     /// Answers `read` from what's kept of `#ops`, or has it wait for the read that keeps it.
     /// Otherwise gives `answer` back, for the server to answer: a read of `#ops`'s newest
     /// then starts keeping them, unless one is already out.
@@ -241,6 +277,9 @@ impl Daemon {
     /// Forgets what's kept of `#ops`: reads waiting for it ask the server.
     pub(super) fn drop_ops(&mut self) {
         let Some(kept) = self.ops.take() else { return };
+        // Kept till it's read again, so an organisation that said no isn't taken as yes
+        // meanwhile.
+        self.colleagues_said = kept.said_colleagues().or(self.colleagues_said);
         for (limit, answer) in kept.waiting {
             self.read(newest(limit), answer);
         }

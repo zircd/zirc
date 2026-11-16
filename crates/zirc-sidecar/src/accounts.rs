@@ -93,6 +93,7 @@ use tracing::{debug, info, warn};
 use crate::ergo::{Api, Operator, OperatorError};
 use crate::history::{self, Conversation, Viewer};
 use crate::{demo, gateway, guests, profiles, say, signin, teams, trim, usage};
+use zirc_proto::colleagues::Colleagues;
 use zirc_proto::desired::Visibility;
 
 pub mod content;
@@ -183,6 +184,9 @@ struct Ergo {
     token_keys: tokio::sync::Mutex<Vec<String>>,
     /// The content API's access log ([`content::Access`]).
     access: signin::Log<content::Access>,
+    /// What members' agents may do with other members and theirs, as last said in `#ops`
+    /// since the sidecar started ([`tell_colleagues`]).
+    colleagues: tokio::sync::Mutex<Option<Colleagues>>,
 }
 
 #[derive(Default)]
@@ -375,6 +379,7 @@ fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
         content: tokio::sync::Mutex::new(None),
         token_keys: tokio::sync::Mutex::default(),
         access: content::access_log(&history, jiff::Timestamp::now().as_second()),
+        colleagues: tokio::sync::Mutex::new(None),
         searches: tokio::sync::Semaphore::new(SEARCHES),
         gateway,
         history,
@@ -1690,6 +1695,9 @@ async fn set_settings(State(ergo): State<Arc<Ergo>>, Json(given): Json<Settings>
     match crate::config::apply(dir, &ergo.operator, &given.config, &given.motd).await {
         Ok(pending) => {
             info!(?pending, "settings in force");
+            if let Some(colleagues) = given.colleagues {
+                tell_colleagues(&ergo, colleagues).await;
+            }
             Json(json!({"pending": pending})).into_response()
         }
         Err(failure) => ergo_failed(failure),
@@ -1700,6 +1708,40 @@ async fn set_settings(State(ergo): State<Arc<Ergo>>, Json(given): Json<Settings>
 struct Settings {
     config: String,
     motd: String,
+    /// From a controller since there were these.
+    #[serde(default)]
+    colleagues: Option<Colleagues>,
+}
+
+/// Says in `#ops`, as zirc's own account, what members' agents may do with other members
+/// and theirs, for each machine's zircd to take: once after the sidecar starts, as what was
+/// said before may have been, and whenever it changes. A failure is logged and said again
+/// with the next settings the controller gives.
+async fn tell_colleagues(ergo: &Ergo, colleagues: Colleagues) {
+    let mut said = ergo.colleagues.lock().await;
+    if *said == Some(colleagues) {
+        return;
+    }
+    let nick = zirc_proto::names::SYSTEM;
+    if integration_account(ergo, nick, false).await.is_err() {
+        warn!("couldn't make zirc's account to say what colleagues' agents may do");
+        return;
+    }
+    let config = say::config(
+        &ergo.irc.ip().to_string(),
+        ergo.irc.port(),
+        ergo.gate.as_deref(),
+        &ergo.token,
+        nick,
+    );
+    let message = zirc_proto::Message::new("server", colleagues.event());
+    match say::post(&config, zirc_proto::state::CHANNEL, &message).await {
+        Ok(()) => {
+            info!(?colleagues, "said what colleagues' agents may do");
+            *said = Some(colleagues);
+        }
+        Err(failure) => warn!(%failure, "couldn't say what colleagues' agents may do"),
+    }
 }
 
 /// Sets an account's name and picture (`PUT /v1/accounts/<name>/profile`).

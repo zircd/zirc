@@ -147,6 +147,11 @@ pub(crate) fn direct_line(direct: &Direct) -> String {
         return channel_in(&line, direct.org.as_deref());
     }
     // Never `dm from`, which is the person's own words.
+    if direct.colleague {
+        let to = direct.session.as_deref().unwrap_or("you");
+        let line = format!("reply from {from}, whom {to} wrote to: {}", direct.text);
+        return channel_in(&line, direct.org.as_deref());
+    }
     if direct.note {
         let line = format!("note from {from}: {}", direct.text);
         return channel_in(&line, direct.org.as_deref());
@@ -492,6 +497,7 @@ pub(crate) mod tests {
             query: None,
             answer: None,
             note: false,
+            colleague: false,
             why: None,
             id: None,
             org: Some("globex".into()),

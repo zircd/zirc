@@ -1936,7 +1936,10 @@ impl App {
                     .set_checkouts(zirc_core::editor::checkouts(&repos));
                 return;
             }
-            Ok(Response::Queries { queries }) => agents::said(queries),
+            Ok(Response::Queries {
+                queries,
+                colleagues_kept_out,
+            }) => agents::said(queries, colleagues_kept_out),
             Ok(Response::Error { message }) | Err(message) => format!("zircd: {message}"),
             Ok(other) => format!("zircd answered {other:?}"),
         };
@@ -2695,6 +2698,7 @@ mod tests {
 
         app.zircd_answered(Ok(Response::Queries {
             queries: Queries::Mine,
+            colleagues_kept_out: false,
         }));
         app.zircd_answered(Err("zircd isn't running".into()));
         let said = texts(app.current());

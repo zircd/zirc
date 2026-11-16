@@ -9,7 +9,19 @@ use zirc_core::agents::{Queries, Sender, Standing};
 use zirc_core::ipc::{Direct, Response};
 use zirc_proto::Event;
 
-use super::{Asked, Daemon, GUESTS, Queried, is_guest, is_nick, now, query_id, remember};
+use super::{
+    Asked, Daemon, GUESTS, Queried, WROTE_FOR, is_guest, is_nick, now, query_id, remember,
+};
+
+/// A query's id, the session it's for, if it names one, and what it asks.
+struct Asking {
+    id: String,
+    to: Option<String>,
+    text: String,
+}
+
+/// The session a refusal comes from: the machine's zircd, not any agent on it.
+const REFUSER: &str = "zircd";
 
 impl Daemon {
     /// A message to this machine's nick, as its watchers hear it, if they're to: only this
@@ -31,8 +43,9 @@ impl Daemon {
         body: &str,
     ) -> Option<Result<Direct, String>> {
         let owner = self.owner.as_deref()?;
-        if agents::standing(sender, Some(owner), self.zirc_dev) != Standing::Owner {
-            return None;
+        let standing = agents::standing(sender, Some(owner), self.zirc_dev);
+        if standing != Standing::Owner {
+            return self.colleague_replied(standing, sender, from, body).map(Ok);
         }
         let (text, from_session) = match zirc_proto::decode(body) {
             Ok(Some(message)) => match message.event {
@@ -63,10 +76,74 @@ impl Daemon {
             query: None,
             answer: None,
             note: false,
+            colleague: false,
             why: None,
             id: None,
             org: None,
         }))
+    }
+
+    /// A reply from a member that one of this machine's sessions wrote to lately (`zirc dm
+    /// --to`), for that session, while the organisation lets colleagues answer agents: a
+    /// colleague's word, never the person's. Anyone else's message, or one to a session that
+    /// didn't write to them, is dropped.
+    fn colleague_replied(
+        &self,
+        standing: Standing,
+        sender: Sender<'_>,
+        from: &str,
+        body: &str,
+    ) -> Option<Direct> {
+        if standing != Standing::Member || !self.colleagues().answers {
+            return None;
+        }
+        let them = sender.account().unwrap_or(from);
+        let since = now().saturating_sub(WROTE_FOR);
+        let wrote = self
+            .wrote_to
+            .iter()
+            .rev()
+            .find(|wrote| wrote.at >= since && wrote.to.eq_ignore_ascii_case(them))?;
+        let (text, from_session) = match zirc_proto::decode(body) {
+            Ok(Some(message)) => match message.event {
+                Event::Text { body } => (body, Some(message.session)),
+                _ => return None,
+            },
+            Ok(None) if !body.starts_with('\x01') => (body.to_owned(), None),
+            _ => return None,
+        };
+        if text.trim().is_empty() {
+            return None;
+        }
+        Some(Direct {
+            from: from.to_owned(),
+            from_session,
+            session: Some(wrote.session.clone()),
+            text,
+            query: None,
+            answer: None,
+            note: false,
+            colleague: true,
+            why: None,
+            id: None,
+            org: None,
+        })
+    }
+
+    /// Answers the query `id` from `asker`, a session on the machine `from`, with `why` it
+    /// won't be answered, so it doesn't wait. One that can't be sent is only logged.
+    fn refuse(&self, from: &str, asker: &str, id: &str, why: &str) {
+        let Ok(client) = self.connected() else {
+            return;
+        };
+        let event = Event::Answer {
+            query: id.to_owned(),
+            to: Some(asker.to_owned()),
+            text: why.to_owned(),
+        };
+        if let Err(e) = zirc_core::send::send_message(client, from, &self.signed(REFUSER, event)) {
+            tracing::warn!("couldn't tell {from} its query was refused: {e}");
+        }
     }
 
     /// What to tell the owner when they name `name`, which isn't a session working here.
@@ -99,6 +176,63 @@ impl Daemon {
             .map(str::to_owned)
     }
 
+    /// A query from `asker`, a session on the machine `from` of `standing`, as its watchers
+    /// hear it, if they're to; one this machine won't take is refused with an answer saying
+    /// why, to a colleague's agent, so it doesn't wait ([`Daemon::refuse`]).
+    fn queried(
+        &mut self,
+        standing: Standing,
+        from: &str,
+        account: Option<&str>,
+        asker: String,
+        asking: Asking,
+    ) -> Option<Direct> {
+        let Asking { id, to, text } = asking;
+        let colleagues_may = self.colleagues().queries;
+        if !agents::may_query(self.agents.queries.under(colleagues_may), standing) {
+            tracing::info!("dropped a query from {from} ({account:?}): not let in");
+            // A colleague's agent is told, so it doesn't wait; anyone else isn't.
+            if standing == Standing::Member {
+                let why = agents::refused(self.agents.queries, colleagues_may);
+                self.refuse(from, &asker, &id, &why);
+            }
+            return None;
+        }
+        // Only for the session it names: never every session's when that one isn't here.
+        let session = match to {
+            Some(to) => {
+                let Some(session) = self.session_here(&to) else {
+                    tracing::info!("dropped a query from {from} for {to}: no such session here");
+                    self.refuse(from, &asker, &id, &agents::no_such_session(&to));
+                    return None;
+                };
+                Some(session)
+            }
+            None => None,
+        };
+        remember(
+            &mut self.queried,
+            Queried {
+                id: id.clone(),
+                from: from.to_owned(),
+                session: asker.clone(),
+            },
+        );
+        Some(Direct {
+            from: from.to_owned(),
+            from_session: Some(asker),
+            session,
+            text,
+            query: Some(id),
+            answer: None,
+            note: false,
+            colleague: false,
+            why: None,
+            id: None,
+            org: None,
+        })
+    }
+
     /// A query or an answer sent to this machine, as its watchers hear it, if they're to.
     /// A query reaches them only when this machine lets its sender query its agents, told
     /// by the account the server says sent it ([`agents::may_query`]); it's for the session
@@ -116,47 +250,18 @@ impl Daemon {
         match message.event {
             Event::Query { id, to, text } => {
                 let standing = agents::standing(sender, self.owner.as_deref(), self.zirc_dev);
-                if !agents::may_query(self.agents.queries, standing) {
-                    tracing::info!("dropped a query from {from} ({account:?}): not let in");
-                    return None;
-                }
-                // Only for the session it names: never every session's when that one isn't here.
-                let session = match to {
-                    Some(to) => {
-                        let Some(session) = self.session_here(&to) else {
-                            tracing::info!(
-                                "dropped a query from {from} for {to}: no such session here"
-                            );
-                            return None;
-                        };
-                        Some(session)
-                    }
-                    None => None,
-                };
-                remember(
-                    &mut self.queried,
-                    Queried {
-                        id: id.clone(),
-                        from: from.to_owned(),
-                        session: message.session.clone(),
-                    },
-                );
-                Some(Direct {
-                    from: from.to_owned(),
-                    from_session: Some(message.session),
-                    session,
-                    text,
-                    query: Some(id),
-                    answer: None,
-                    note: false,
-                    why: None,
-                    id: None,
-                    org: None,
-                })
+                self.queried(
+                    standing,
+                    from,
+                    account,
+                    message.session,
+                    Asking { id, to, text },
+                )
             }
             Event::Note { to, text } => {
                 let standing = agents::standing(sender, self.owner.as_deref(), self.zirc_dev);
-                if !agents::may_query(self.agents.queries, standing) {
+                let queries = self.agents.queries.under(self.colleagues().queries);
+                if !agents::may_query(queries, standing) {
                     tracing::info!("dropped a note from {from} ({account:?}): not let in");
                     return None;
                 }
@@ -173,6 +278,7 @@ impl Daemon {
                     query: None,
                     answer: None,
                     note: true,
+                    colleague: false,
                     why: None,
                     id: None,
                     org: None,
@@ -199,6 +305,7 @@ impl Daemon {
                     query: None,
                     answer: Some(query),
                     note: false,
+                    colleague: false,
                     why: None,
                     id: None,
                     org: None,
@@ -352,6 +459,7 @@ impl Daemon {
             query: None,
             answer: None,
             note: true,
+            colleague: false,
             why: None,
             id: None,
             org: None,
@@ -400,6 +508,7 @@ impl Daemon {
             query: Some(id.to_owned()),
             answer: None,
             note: false,
+            colleague: false,
             why: None,
             id: None,
             org: None,
@@ -430,6 +539,7 @@ impl Daemon {
                 query: None,
                 answer: Some(id.to_owned()),
                 note: false,
+                colleague: false,
                 why: None,
                 id: None,
                 org: None,

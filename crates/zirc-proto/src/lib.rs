@@ -13,6 +13,7 @@
 pub mod activity;
 pub mod card;
 pub mod ci;
+pub mod colleagues;
 pub mod decision;
 pub mod desired;
 pub mod device_key;

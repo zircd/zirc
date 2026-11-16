@@ -351,6 +351,17 @@ pub struct Settings {
     /// then 20 a second, unless set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit: Option<RateLimit>,
+
+    /// Whether members may let other members' agents ask their machines' agents (`zirc
+    /// ask`), each machine opting in with its own setting: allowed unless set to false
+    /// ([`crate::colleagues`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colleague_queries: Option<bool>,
+
+    /// Whether a member an agent wrote to may answer it, their reply reaching that agent as a
+    /// colleague's word: allowed unless set to false ([`crate::colleagues`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colleague_answers: Option<bool>,
 }
 
 impl Settings {
