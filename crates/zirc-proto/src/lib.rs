@@ -261,6 +261,12 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         repo: Option<String>,
+        /// The branch not landed yet that this one is built on, as the pushing machine's git
+        /// says ([`zirc stack`]'s): whoever works on that one hears that someone builds on it,
+        /// before they amend or force-push it from under them.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        on: Option<String>,
     },
     /// Free text, for people.
     Text {

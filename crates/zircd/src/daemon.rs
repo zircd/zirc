@@ -1843,6 +1843,7 @@ async fn events(root: &Path, change: Change, web: Option<&str>, default: &str) -
                 }
                 _ => BTreeMap::new(),
             };
+            let on = stacked_on(root, default, &branch, &head).await;
             vec![Event::Push {
                 branch,
                 head,
@@ -1852,9 +1853,29 @@ async fn events(root: &Path, change: Change, web: Option<&str>, default: &str) -
                 base: old.filter(|_| !lines.is_empty()),
                 lines,
                 repo,
+                on,
             }]
         }
     }
+}
+
+/// The branch not landed yet that `branch`, at `head`, is built on, as git at `root` says
+/// ([`zirc_core::stacked::stacked_on`]), off the runtime: git runs once per branch on origin.
+async fn stacked_on(root: &Path, default: &str, branch: &str, head: &str) -> Option<String> {
+    let (root, default, branch, head) = (
+        root.to_owned(),
+        default.to_owned(),
+        branch.to_owned(),
+        head.to_owned(),
+    );
+    tokio::task::spawn_blocking(move || {
+        zirc_core::stacked::stacked_on(&root, &default, Some(&branch), &head)
+    })
+    .await
+    .ok()?
+    .into_iter()
+    .next()
+    .map(|(on, _)| on)
 }
 
 /// What watching a repository needs read first, by [`read_repo`].

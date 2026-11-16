@@ -382,6 +382,13 @@
                 "null"
               ],
               "description": "The repository's web address, such as `https://github.com/zircapp/monorepo`, so\napps can link the push, its branch and its files. Left out where it has none."
+            },
+            "on": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The branch not landed yet that this one is built on, as the pushing machine's git\nsays ([`zirc stack`]'s): whoever works on that one hears that someone builds on it,\nbefore they amend or force-push it from under them."
             }
           },
           "required": [
@@ -1552,6 +1559,11 @@
           "type": "string",
           "const": "landing",
           "description": "A push to the default branch, or to the session's branch, that changed paths the\nsession has changed: it may need to rebase."
+        },
+        {
+          "type": "string",
+          "const": "stacked-on",
+          "description": "A push of a branch built on the session's own, which hasn't landed: rewriting the\nsession's from under it breaks theirs."
         },
         {
           "type": "string",

@@ -47,6 +47,11 @@ level = "act"
 text = "It moved under your files: update before you commit. Your watch wakes when it lands."
 
 [[hint]]
+kind = "push.stacked-on"
+level = "tell"
+text = "Their branch is built on yours, which hasn't landed. Land yours as it is if you can; before you amend, rebase or force-push it, tell them with zirc note, and after, so they rebase onto it. Never wait on them to land theirs first: it holds yours."
+
+[[hint]]
 kind = "commit"
 level = "tell"
 text = "In your files: keep yours there small. Your watch wakes when it lands."

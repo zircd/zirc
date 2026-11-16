@@ -826,6 +826,7 @@ mod tests {
             base: Some("e".repeat(40)),
             lines: [("src/login.rs".to_owned(), vec![[3, 2]])].into(),
             repo: None,
+            on: None,
         };
         let events = decoded(&encode("watcher", push));
         let [

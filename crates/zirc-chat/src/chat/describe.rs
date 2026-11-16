@@ -272,6 +272,7 @@ mod tests {
             base: None,
             lines: std::collections::BTreeMap::new(),
             repo: None,
+            on: None,
         });
         assert_eq!(push.kind, EventKind::Push);
         assert_eq!(

@@ -434,6 +434,17 @@ impl Daemon {
                     Some(Why::Intent)
                 }
             }
+            // A branch built on the one the session works on, not landed: it's to hear before
+            // it amends or force-pushes its own from under it (the agent evals' S3, 16 Nov
+            // 2026, where the two waited on each other for good).
+            Event::Push { on: Some(on), .. }
+                if self
+                    .watched_in(channel, session)
+                    .iter()
+                    .any(|watched| watched.snapshot.branch.as_deref() == Some(on.as_str())) =>
+            {
+                Some(Why::StackedOn)
+            }
             Event::Push {
                 branch,
                 head,

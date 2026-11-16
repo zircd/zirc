@@ -797,6 +797,7 @@ fn what_the_owner_does_and_what_ci_says_moves_their_task() {
         base: None,
         lines: BTreeMap::new(),
         repo: None,
+        on: None,
     };
     let pushed = hosted.take(
         &zirc("#monorepo", "m3-mac", "cc-8b60f7", push),

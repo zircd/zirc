@@ -1614,6 +1614,7 @@ mod tests {
                 base: None,
                 lines: std::collections::BTreeMap::new(),
                 repo: None,
+                on: None,
             },
         );
         api.entries

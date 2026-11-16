@@ -1014,6 +1014,9 @@ pub enum Why {
     /// A push to the default branch, or to the session's branch, that changed paths the
     /// session has changed: it may need to rebase.
     Landing,
+    /// A push of a branch built on the session's own, which hasn't landed: rewriting the
+    /// session's from under it breaks theirs.
+    StackedOn,
     /// Said in a channel the watch was asked to print all of (`zirc watch --channel`).
     Channel,
     /// A decision a person made (`x-zirc/decision`), which every session hears.

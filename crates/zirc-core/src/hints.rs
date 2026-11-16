@@ -33,6 +33,8 @@ pub mod kind {
     pub const INTENT_SAME_LINES: &str = "intent.same-lines";
     /// A push under files you're changing.
     pub const PUSH: &str = "push";
+    /// A push of a branch built on the session's own, which hasn't landed.
+    pub const PUSH_STACKED_ON: &str = "push.stacked-on";
     /// Another session's commit in files you're changing.
     pub const COMMIT: &str = "commit";
     /// A post naming you, your files, or a channel you joined.
@@ -94,7 +96,7 @@ pub mod kind {
     pub const REACTION_OTHER: &str = "reaction.other";
 
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 35] = [
+    pub const ALL: [&str; 36] = [
         OVERLAP,
         OVERLAP_SAME_LINES,
         CONFLICT_AHEAD,
@@ -102,6 +104,7 @@ pub mod kind {
         INTENT_ELSEWHERE,
         INTENT_SAME_LINES,
         PUSH,
+        PUSH_STACKED_ON,
         COMMIT,
         POST,
         LANDED,
@@ -590,7 +593,11 @@ fn message_kind(
         Event::Push { branch, paths, .. } => {
             fields.insert("branch", branch.clone());
             fields.insert("paths", paths_field(paths));
-            Some(kind::PUSH)
+            Some(if why == Some(Why::StackedOn) {
+                kind::PUSH_STACKED_ON
+            } else {
+                kind::PUSH
+            })
         }
         Event::Commit { branch, paths, .. } => {
             fields.insert("branch", branch.clone());

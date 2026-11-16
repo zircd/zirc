@@ -2364,6 +2364,7 @@ mod tests {
                 base: None,
                 lines: std::collections::BTreeMap::new(),
                 repo: Some("https://github.com/zircapp/zirc".into()),
+                on: None,
             },
         );
         app.handle(

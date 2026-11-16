@@ -1079,6 +1079,7 @@ mod tests {
                 base: None,
                 lines: std::collections::BTreeMap::new(),
                 repo: Some("https://github.com/acme/api".into()),
+                on: None,
             },
         );
         feed(
@@ -1498,6 +1499,7 @@ mod tests {
                 base: None,
                 lines: std::collections::BTreeMap::new(),
                 repo: Some(repo.into()),
+                on: None,
             },
         );
         let to = named("cc-1", "checkout", text("cc-598aa1: please rebase"));
@@ -1672,6 +1674,7 @@ mod tests {
                 base: None,
                 lines: std::collections::BTreeMap::new(),
                 repo: None,
+                on: None,
             },
         );
         feed(

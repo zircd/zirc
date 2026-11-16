@@ -736,3 +736,48 @@ async fn a_session_stacked_on_a_branch_dropped_unlanded_is_told_what_to_do() {
         "{stacks:?}"
     );
 }
+
+/// A push of a branch built on another session's, not landed, wakes that session, so it doesn't
+/// rewrite its own from under the other, nor wait on it: the agent evals' S3 deadlock.
+#[tokio::test]
+async fn a_branch_pushed_on_another_sessions_unlanded_one_wakes_that_session() {
+    let ergo = require_ergo!();
+    let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
+    let remote = tempfile::tempdir().unwrap();
+    git(remote.path(), &["init", "--quiet", "--bare"]);
+    let origin = remote.path().to_str().unwrap();
+    git(&main_root, &["remote", "set-url", "origin", origin]);
+    std::fs::write(main_root.join("lines.txt"), ten_lines(0, "")).unwrap();
+    git(&main_root, &["add", "lines.txt"]);
+    git(&main_root, &["commit", "--quiet", "--message", "Lines"]);
+    git(&main_root, &["push", "--quiet", "origin", "main"]);
+    // The login session pushes its branch, which doesn't land.
+    git(&login_root, &["merge", "--quiet", "--ff-only", "main"]);
+    std::fs::write(login_root.join("login.txt"), "login\n").unwrap();
+    git(&login_root, &["add", "login.txt"]);
+    git(&login_root, &["commit", "--quiet", "--message", "Login"]);
+    git(&login_root, &["push", "--quiet", "origin", "login"]);
+    let mut login_hears = machine.watch(Some("cc-login")).await;
+
+    // The main session builds on it, and pushes.
+    git(&main_root, &["fetch", "--quiet", "origin"]);
+    git(
+        &main_root,
+        &["checkout", "--quiet", "-b", "receipt", "origin/login"],
+    );
+    std::fs::write(main_root.join("receipt.txt"), "receipt\n").unwrap();
+    git(&main_root, &["add", "receipt.txt"]);
+    git(&main_root, &["commit", "--quiet", "--message", "Receipt"]);
+    git(&main_root, &["push", "--quiet", "origin", "receipt"]);
+    let (event, why) = loop {
+        let (event, why) = next_concerning(&mut login_hears).await;
+        if matches!(&event, Event::Push { branch, .. } if branch == "receipt") {
+            break (event, why);
+        }
+    };
+    assert!(
+        matches!(&event, Event::Push { on: Some(on), .. } if on == "login"),
+        "{event:?}"
+    );
+    assert_eq!(why, Why::StackedOn);
+}

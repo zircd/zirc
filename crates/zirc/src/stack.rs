@@ -451,50 +451,13 @@ fn refuse_unclean(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// The branches on origin (refs/remotes/origin/*, as last fetched) that HEAD at `dir` is
-/// stacked on, `(branch, head)`: those whose head HEAD holds and `origin/<default>` doesn't,
-/// with a commit it doesn't have as a patch either (`git cherry`), so a branch that landed,
-/// rebased onto it, isn't one. Not `own`, HEAD's own branch, nor the default branch. Only a
-/// base held whole: one that took more commits after HEAD was built on it looks to git just as
-/// HEAD built beside it. A copy of `ops/land.sh`'s `stacked_on`, which CI runs without zirc:
-/// change both.
+/// The branches on origin HEAD at `dir` is stacked on, `(branch, head)`, as git says
+/// ([`zirc_core::stacked::stacked_on`]).
 fn inferred(dir: &Path, default: &str, own: Option<&str>) -> Vec<(String, String)> {
-    let main = format!("refs/remotes/origin/{default}");
     let Ok(head) = rev(dir, "HEAD") else {
         return Vec::new();
     };
-    let Ok(refs) = git(
-        dir,
-        &[
-            "for-each-ref",
-            "--format=%(refname) %(objectname)",
-            "refs/remotes/origin/",
-        ],
-    ) else {
-        return Vec::new();
-    };
-    let mut found = Vec::new();
-    for line in lines(&refs) {
-        let Some((name, tip)) = line.split_once(' ') else {
-            continue;
-        };
-        let branch = name.trim_start_matches("refs/remotes/origin/");
-        if branch == default || branch == "HEAD" || Some(branch) == own || tip == head {
-            continue;
-        }
-        let holds = |a: &str, b: &str| {
-            git(dir, &["merge-base", "--is-ancestor", a, b]).is_ok_and(|out| out.status.success())
-        };
-        if !holds(tip, &head) || holds(tip, &main) {
-            continue;
-        }
-        let unlanded = git(dir, &["cherry", &main, tip])
-            .is_ok_and(|out| lines(&out).iter().any(|line| line.starts_with('+')));
-        if unlanded {
-            found.push((branch.to_owned(), tip.to_owned()));
-        }
-    }
-    found
+    zirc_core::stacked::stacked_on(dir, default, own, &head)
 }
 
 /// A commit as people say it.
@@ -719,30 +682,6 @@ mod tests {
         sh(dir, &["cherry-pick", branch]);
         sh(dir, &["push", "-q", "origin", "master"]);
         sh(dir, &["fetch", "-q", "origin"]);
-    }
-
-    #[test]
-    fn finds_what_a_branch_is_stacked_on_from_git_alone() {
-        let root = tempfile::tempdir().unwrap();
-        let work = repo(root.path());
-        pushed(&work, "a", "master", "a");
-        pushed(&work, "b", "a", "b");
-        pushed(&work, "l", "master", "l");
-        pushed(&work, "d", "l", "d");
-        lands(&work, "l");
-        let on = |branch: &str| {
-            sh(&work, &["checkout", "-q", branch]);
-            inferred(&work, "master", Some(branch))
-                .into_iter()
-                .map(|(branch, _)| branch)
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(on("b"), ["a"], "b is built on a");
-        assert!(
-            on("a").is_empty(),
-            "a is built on nothing, b being built on it"
-        );
-        assert!(on("d").is_empty(), "d is built on l, which landed");
     }
 
     /// B built on A, A landed: B, rebased past A's old head, holds master and its own commit,

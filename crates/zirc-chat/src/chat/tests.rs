@@ -5629,6 +5629,7 @@ fn comings_and_goings_never_end_a_run_but_events_do() {
             base: None,
             lines: std::collections::BTreeMap::new(),
             repo: None,
+            on: None,
         },
     );
     let commit = Message::new(
@@ -5755,6 +5756,7 @@ fn a_commit_and_its_push_are_one_row() {
                 base: None,
                 lines: std::collections::BTreeMap::new(),
                 repo: None,
+                on: None,
             },
         )
     };
@@ -8318,6 +8320,7 @@ fn a_push_of_several_commits_lists_them_under_its_verb() {
                     base: None,
                     lines: std::collections::BTreeMap::new(),
                     repo: None,
+                    on: None,
                 },
             ),
             chrono::Utc::now(),
