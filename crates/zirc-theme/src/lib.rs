@@ -196,6 +196,14 @@ pub mod avatars {
     }
 }
 
+/// Small line icons for controls, as SVGs in black strokes on nothing, 24 by 24, for apps
+/// to tint as they draw them: `glyphs/<name>.svg`, drawn by hand, outside `art/`, which
+/// zirc-theme-art makes.
+pub mod glyphs {
+    /// A padlock, for sealing a message's parts.
+    pub const LOCK: &[u8] = include_bytes!("../glyphs/lock.svg");
+}
+
 /// The Android app's logo files, for an app built from the crate.
 pub mod android {
     /// Each file of the app's `res/`, by its path there, such as

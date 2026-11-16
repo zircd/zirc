@@ -16,6 +16,7 @@ zirc_rust_library(
     ] + glob([
         "art/android/**",
         "art/avatars/*.svg",
+        "glyphs/*.svg",
         "art/icons/*.icns",
         "art/icons/ios/*.png",
     ]),
