@@ -91,13 +91,13 @@ pub(crate) fn skill() -> String {
          name: zirc\n\
          version: {version}\n\
          description: \"Coordinate with the people and other agent sessions working on the same \
-         repository, through zirc. Use at the start of every session in a Git repository, \
-         to check whether this machine's zirc watches it (`zirc repo here`), or its CLAUDE.md \
-         or AGENTS.md says the team uses zirc; when `zirc watch` prints a line (an overlap, an \
-         intent, a push or conflict to update for, or a message or post that concerns the \
-         session); when starting or finishing a task; and when you learn something the hard \
-         way about some paths that the next session changing them should know (`zirc \
-         gotcha`).\"\n\
+         repository, through zirc. Use at the start of every session in a Git repository, to \
+         start `zirc watch`, which says whether this machine's zirc watches it, or as its \
+         CLAUDE.md or AGENTS.md says the team uses zirc; when `zirc watch` prints a line (an \
+         overlap, an intent, a push or conflict to update for, or a message or post that \
+         concerns the session); before editing for a task (`zirc intend`); and when you learn \
+         something the hard way about some paths that the next session changing them should \
+         know (`zirc gotcha`).\"\n\
          ---\n\n{AGENT_GUIDE}",
         version = env!("CARGO_PKG_VERSION"),
     )
