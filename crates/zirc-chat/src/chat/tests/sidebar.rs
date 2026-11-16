@@ -733,6 +733,24 @@ fn an_empty_conversation_says_no_messages_yet_once_its_history_is_in() {
 }
 
 #[test]
+fn a_channels_threads_list_those_the_server_lists_that_we_arent_in() {
+    let mut chat = super::chat();
+    connected(&mut chat);
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #api",
+            ":srv 322 me #api 3 :the API",
+            ":srv 322 me #api/fix-login 1 :",
+            ":srv 322 me #web/other 1 :",
+            ":srv 323 me :End of /LIST",
+        ],
+    );
+    let names: Vec<String> = chat.threads("#api").into_iter().map(|t| t.name).collect();
+    assert_eq!(names, ["#api/fix-login"]);
+}
+
+#[test]
 fn a_channel_previews_its_own_words_and_each_thread_its_own() {
     let mut chat = super::chat();
     connected(&mut chat);

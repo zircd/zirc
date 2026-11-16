@@ -883,7 +883,8 @@ impl Chat {
     }
 
     /// The threads of the channel called `channel`, newest first: the rooms under it we know,
-    /// quiet ones too, for its header's "Threads" list. None for a channel without any.
+    /// quiet ones too, and those the server lists that we aren't in, which opening joins, for
+    /// its header's "Threads" list. None for a channel without any.
     #[must_use]
     pub fn threads(&self, channel: &str) -> Vec<Thread> {
         let Some(group) = self
@@ -893,9 +894,22 @@ impl Chat {
         else {
             return Vec::new();
         };
+        let mut rooms = group.rooms;
+        for (name, _) in self.listed() {
+            let under =
+                room_parts(&name).is_some_and(|(parent, _)| parent.eq_ignore_ascii_case(channel));
+            let known = rooms.iter().any(|room| room.eq_ignore_ascii_case(&name))
+                || group
+                    .guests
+                    .rooms
+                    .iter()
+                    .any(|room| room.name.eq_ignore_ascii_case(&name));
+            if under && !known && !super::is_guest_room(&name) {
+                rooms.push(name);
+            }
+        }
         let started = self.started(channel);
-        let mut threads: Vec<Thread> = group
-            .rooms
+        let mut threads: Vec<Thread> = rooms
             .into_iter()
             .map(|name| {
                 let (unread, mentions, latest) = self.counts(&name);
