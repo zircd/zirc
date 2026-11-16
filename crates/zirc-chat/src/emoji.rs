@@ -18,6 +18,9 @@ pub const QUICK_DEFAULTS: [&str; 6] = ["👍", "❤️", "😂", "🎉", "👀",
 /// What a picker says when no emoji is called what's typed.
 pub const NO_MATCH: &str = "No emoji match.";
 
+/// What a picker's search field says while it's empty.
+pub const SEARCH: &str = "Search emoji";
+
 /// The newest emoji an app can draw, as Unicode's emoji version: (15, 0) for Emoji 15.0.
 /// Newer ones are left out, as the system's font would show them as boxes.
 pub type Newest = (u32, u32);

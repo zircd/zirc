@@ -51,6 +51,10 @@ pub const ADVANCED: &str = "Advanced";
 /// account does.
 pub const ASKING_ZIRC_DEV: &str = "Asking zirc.dev…";
 
+/// What opens the emoji to react to a message with, where it's a button's name: the `+`
+/// after a message's reactions, its hover bar's button.
+pub const ADD_REACTION: &str = "Add reaction";
+
 /// The composer's button that adds a file.
 pub const ATTACH: &str = "Attach";
 
@@ -75,6 +79,10 @@ pub const CLOSE_SEARCH: &str = "Close search";
 /// The label of how a sign-in's connection stands, under [`ADVANCED`].
 pub const CONNECTION: &str = "Connection";
 
+/// The sign-in's one button, which opens zirc.dev's sign-in by email: on the phones' first
+/// screen and in the desktop's Account.
+pub const CONTINUE_WITH_EMAIL: &str = "Continue with email";
+
 /// A code block's own button that copies it.
 pub const COPY: &str = "Copy";
 
@@ -95,6 +103,9 @@ pub const DELETE: &str = "Delete";
 
 /// The button that deletes the account, once what that does is read.
 pub const DELETE_MY_ACCOUNT: &str = "Delete my account";
+
+/// What puts away an error once it's read, such as a send's that failed.
+pub const DISMISS: &str = "Dismiss";
 
 /// What shuts a page once it's finished with, and what a card's button says it did when
 /// the integration says nothing.
@@ -135,8 +146,16 @@ pub const MORE_PEOPLE_ONLY: &str = "More, showing people only";
 /// The label of the name the person shows as.
 pub const NAME: &str = "Name";
 
+/// Under the account's name field: who sees it, and what shows without one.
+pub const NAME_NOTE: &str =
+    "What people see, in every organisation you're in. Leave it empty and your nickname shows.";
+
 /// What marks the first message unread when a conversation was opened.
 pub const NEW_DIVIDER: &str = "New";
+
+/// What starts a direct message to someone not picked yet: a button, a menu item, its
+/// sheet's title.
+pub const NEW_MESSAGE: &str = "New message";
 
 /// The heading over what an organisation joined from now on shows of the person.
 pub const NEW_ORGANISATIONS: &str = "New organisations";
@@ -149,6 +168,9 @@ pub const NICKNAME: &str = "Nickname";
 
 /// Under the nickname's field: what a nickname is.
 pub const NICKNAME_NOTE: &str = "Your name on the server, which people @.";
+
+/// What puts a question off, such as the offer to turn notifications on.
+pub const NOT_NOW: &str = "Not now";
 
 /// [`ACTIVITY`]'s empty line.
 pub const NOTHING_YET: &str = "Nothing yet";
@@ -220,6 +242,10 @@ pub const THREADS: &str = "Threads";
 /// types it too for its sign-in, drawn before its wasm is loaded (`oss/web/src/App.tsx`).
 pub const TRY_AGAIN: &str = "Try again";
 
+/// What asks the system to let the app notify: the phones' question's title, the
+/// desktop's button for it in Settings.
+pub const TURN_ON_NOTIFICATIONS: &str = "Turn on notifications";
+
 /// The label of the app's version, in About.
 pub const VERSION: &str = "Version";
 
@@ -281,6 +307,32 @@ pub fn nothing_called(query: &str) -> String {
     format!("Nothing called “{}”.", query.trim())
 }
 
+/// What a reaction's button says for a screen reader: `React with 👍`.
+#[must_use]
+pub fn react_with_label(emoji: &str) -> String {
+    format!("React with {emoji}")
+}
+
+/// What failed, under what was tried, such as a card's button: `Couldn't: timed out`.
+#[must_use]
+pub fn couldnt_label(why: &str) -> String {
+    format!("Couldn't: {why}")
+}
+
+/// The words of a Mac's menu bar, in its title case: the Swift app's menus and the
+/// desktop's say them alike. Elsewhere the same choices are said in sentence case, as
+/// [`settings_list::ADD_ORGANISATION`] is.
+pub mod menu_bar {
+    /// Sparkle's check, under About.
+    pub const CHECK_FOR_UPDATES: &str = "Check for Updates…";
+    /// Adding an organisation, which opens zirc.dev's sign-in.
+    pub const ADD_ORGANISATION: &str = "Add Organisation…";
+    /// The conversation above the open one in the list.
+    pub const PREVIOUS_CONVERSATION: &str = "Previous Conversation";
+    /// The conversation below the open one in the list.
+    pub const NEXT_CONVERSATION: &str = "Next Conversation";
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,6 +346,8 @@ mod tests {
         assert_eq!(new_label(3), "3 new");
         assert_eq!(removed_label("old.png"), "old.png was removed");
         assert_eq!(nothing_called(" lunch "), "Nothing called “lunch”.");
+        assert_eq!(react_with_label("👍"), "React with 👍");
+        assert_eq!(couldnt_label("timed out"), "Couldn't: timed out");
         assert_eq!(
             activity_empty(),
             "Nothing yet. When someone mentions you, replies to you or reacts to what you said, it shows here."
@@ -323,6 +377,14 @@ mod tests {
         );
         assert!(MORE_PEOPLE_ONLY.starts_with(MORE));
         assert!(COPY_MESSAGE_LINK.starts_with(COPY_LINK));
+        assert_eq!(
+            settings_list::SIGN_OUT_EVERYTHING,
+            format!("{}…", crate::orgs::SIGN_OUT_EVERYTHING_NAME)
+        );
+        assert_eq!(
+            menu_bar::ADD_ORGANISATION.to_lowercase(),
+            settings_list::ADD_ORGANISATION.to_lowercase()
+        );
     }
 }
 
@@ -384,6 +446,8 @@ pub struct Words {
     pub advanced: String,
     /// While zirc.dev is asked: `Asking zirc.dev…`.
     pub asking_zirc_dev: String,
+    /// What opens the emoji to react with, as a button's name: `Add reaction`.
+    pub add_reaction: String,
     /// The composer's button that adds a file: `Attach`.
     pub attach: String,
     /// What goes back a step: `Back`.
@@ -402,6 +466,8 @@ pub struct Words {
     pub close_search: String,
     /// The label of how a sign-in's connection stands: `Connection`.
     pub connection: String,
+    /// The sign-in's one button: `Continue with email`.
+    pub continue_with_email: String,
     /// A code block's button that copies it: `Copy`.
     pub copy_block: String,
     /// A message's menu, copying a code block of it: `Copy code`.
@@ -422,6 +488,8 @@ pub struct Words {
     pub delete_account: String,
     /// The button that deletes the account: `Delete my account`.
     pub delete_my_account: String,
+    /// What puts away an error once it's read: `Dismiss`.
+    pub dismiss: String,
     /// What shuts a page once it's finished with: `Done`.
     pub done: String,
     /// A file's button that fetches it: `Download`.
@@ -448,6 +516,14 @@ pub struct Words {
     pub jump_to_prompt: String,
     /// A person's machines, as a heading on their card: `Machines`.
     pub machines: String,
+    /// The menu bar's: `Add Organisation…`.
+    pub menu_add_organisation: String,
+    /// The menu bar's: `Check for Updates…`.
+    pub menu_check_for_updates: String,
+    /// The menu bar's: `Next Conversation`.
+    pub menu_next_conversation: String,
+    /// The menu bar's: `Previous Conversation`.
+    pub menu_previous_conversation: String,
     /// The button that opens a menu of what else can be done: `More`.
     pub more: String,
     /// A header's `more` for a screen reader while `people_only` is on: `More, showing
@@ -455,8 +531,13 @@ pub struct Words {
     pub more_people_only: String,
     /// The label of the name the person shows as: `Name`.
     pub name: String,
+    /// Under the account's name field: `What people see, in every organisation you're in.
+    /// Leave it empty and your nickname shows.`
+    pub name_note: String,
     /// What marks the first message unread when a conversation was opened: `New`.
     pub new_divider: String,
+    /// What starts a direct message to someone not picked yet: `New message`.
+    pub new_message: String,
     /// The heading over what organisations joined from now on show: `New organisations`.
     pub new_organisations: String,
     /// `new_divider` where a tag is drawn in capitals: `NEW`.
@@ -471,6 +552,8 @@ pub struct Words {
     pub no_directs: String,
     /// What the emoji picker says when nothing matches: `No emoji match.`.
     pub no_emoji: String,
+    /// What puts a question off: `Not now`.
+    pub not_now: String,
     /// Activity's empty line: `Nothing yet`.
     pub nothing_yet: String,
     /// The organisations signed in to, as a list's title and a menu's: `Organisations`.
@@ -495,6 +578,8 @@ pub struct Words {
     pub said_by: String,
     /// Search's name, on its page and what opens it: `Search`.
     pub search: String,
+    /// The emoji picker's field while it's empty: `Search emoji`.
+    pub search_emoji: String,
     /// The title of where a search looks: `Search in`.
     pub search_in: String,
     /// The button that sends what's written: `Send`.
@@ -520,6 +605,8 @@ pub struct Words {
     pub threads: String,
     /// What sends again what failed: `Try again`.
     pub try_again: String,
+    /// What asks to let the app notify: `Turn on notifications`.
+    pub turn_on_notifications: String,
     /// The label of the app's version: `Version`.
     pub version: String,
     /// The person's own page, its tab and their row: `You`.
@@ -530,6 +617,10 @@ pub struct Words {
 
 /// The core's fixed words ([`Words`]).
 #[must_use]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one field a line, each a constant above: split, it would only be harder to read"
+)]
 pub fn words() -> Words {
     Words {
         leave: menu::LEAVE.to_owned(),
@@ -556,6 +647,7 @@ pub fn words() -> Words {
         add_organisation: settings_list::ADD_ORGANISATION_NAME.to_owned(),
         advanced: ADVANCED.to_owned(),
         asking_zirc_dev: ASKING_ZIRC_DEV.to_owned(),
+        add_reaction: ADD_REACTION.to_owned(),
         attach: ATTACH.to_owned(),
         back: BACK.to_owned(),
         back_to_results: BACK_TO_RESULTS.to_owned(),
@@ -565,6 +657,7 @@ pub fn words() -> Words {
         clear: CLEAR.to_owned(),
         close_search: CLOSE_SEARCH.to_owned(),
         connection: CONNECTION.to_owned(),
+        continue_with_email: CONTINUE_WITH_EMAIL.to_owned(),
         copy_block: COPY.to_owned(),
         copy_code: COPY_CODE.to_owned(),
         copy_link: COPY_LINK.to_owned(),
@@ -574,6 +667,7 @@ pub fn words() -> Words {
         delete: DELETE.to_owned(),
         delete_account: settings_list::DELETE_ACCOUNT.to_owned(),
         delete_my_account: DELETE_MY_ACCOUNT.to_owned(),
+        dismiss: DISMISS.to_owned(),
         done: DONE.to_owned(),
         download: DOWNLOAD.to_owned(),
         edit: super::EDIT_LABEL.to_owned(),
@@ -587,10 +681,16 @@ pub fn words() -> Words {
         jump_to: JUMP_TO.to_owned(),
         jump_to_prompt: JUMP_TO_PROMPT.to_owned(),
         machines: MACHINES.to_owned(),
+        menu_add_organisation: menu_bar::ADD_ORGANISATION.to_owned(),
+        menu_check_for_updates: menu_bar::CHECK_FOR_UPDATES.to_owned(),
+        menu_next_conversation: menu_bar::NEXT_CONVERSATION.to_owned(),
+        menu_previous_conversation: menu_bar::PREVIOUS_CONVERSATION.to_owned(),
         more: MORE.to_owned(),
         more_people_only: MORE_PEOPLE_ONLY.to_owned(),
         name: NAME.to_owned(),
+        name_note: NAME_NOTE.to_owned(),
         new_divider: NEW_DIVIDER.to_owned(),
+        new_message: NEW_MESSAGE.to_owned(),
         new_organisations: NEW_ORGANISATIONS.to_owned(),
         new_tag: NEW_TAG.to_owned(),
         nickname: NICKNAME.to_owned(),
@@ -598,6 +698,7 @@ pub fn words() -> Words {
         no_channels: NO_CHANNELS.to_owned(),
         no_directs: NO_DIRECTS.to_owned(),
         no_emoji: crate::emoji::NO_MATCH.to_owned(),
+        not_now: NOT_NOW.to_owned(),
         nothing_yet: NOTHING_YET.to_owned(),
         organisations: settings_list::ORGANISATIONS.to_owned(),
         people_only: PEOPLE_ONLY.to_owned(),
@@ -610,6 +711,7 @@ pub fn words() -> Words {
         retry: RETRY.to_owned(),
         said_by: SAID_BY.to_owned(),
         search: SEARCH.to_owned(),
+        search_emoji: crate::emoji::SEARCH.to_owned(),
         search_in: SEARCH_IN.to_owned(),
         send: SEND.to_owned(),
         sending: SENDING.to_owned(),
@@ -622,6 +724,7 @@ pub fn words() -> Words {
         stop_replying: STOP_REPLYING.to_owned(),
         threads: THREADS.to_owned(),
         try_again: TRY_AGAIN.to_owned(),
+        turn_on_notifications: TURN_ON_NOTIFICATIONS.to_owned(),
         version: VERSION.to_owned(),
         you: YOU_PAGE.to_owned(),
         your_name: YOUR_NAME.to_owned(),

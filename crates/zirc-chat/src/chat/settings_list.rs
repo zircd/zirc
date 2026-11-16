@@ -132,7 +132,9 @@ pub const ADD_ORGANISATION: &str = "Add organisation…";
 /// ellipsis.
 pub const ADD_ORGANISATION_NAME: &str = "Add organisation";
 
-/// Signing out of every organisation and zirc.dev, which asks first.
+/// Signing out of every organisation and zirc.dev, which asks first: a menu's item, a
+/// button that opens the question. The question's title and its button are
+/// [`crate::orgs::SIGN_OUT_EVERYTHING_NAME`], the same words without the ellipsis.
 pub const SIGN_OUT_EVERYTHING: &str = "Sign out of everything…";
 
 /// The system's own notification settings, which open apart.

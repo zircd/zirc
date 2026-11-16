@@ -460,8 +460,9 @@ pub fn sign_out_sheet(org: &str, others: &[String], self_hosted: bool) -> Sheet 
     }
 }
 
-/// The menu item, title (with `?`) and button that sign out of every organisation at once.
-pub const SIGN_OUT_EVERYTHING: &str = "Sign out of everything";
+/// The title (with `?`) and button of the question that signs out of every organisation at
+/// once: [`crate::chat::SIGN_OUT_EVERYTHING`] without its ellipsis, which is what asks it.
+pub const SIGN_OUT_EVERYTHING_NAME: &str = "Sign out of everything";
 
 /// Where signing out of everything forgets the sign-ins: on this device (an app), or in this
 /// browser (the web chat).
@@ -502,9 +503,9 @@ pub fn sign_out_everything_sheet(names: &[String], zirc_dev: bool, place: SignOu
         SignOutPlace::Browser => "in this browser",
     };
     Sheet {
-        title: format!("{SIGN_OUT_EVERYTHING}?"),
+        title: format!("{SIGN_OUT_EVERYTHING_NAME}?"),
         body: format!("Signs you out of {} {place}.", sentence(&said)),
-        confirm: SIGN_OUT_EVERYTHING.to_owned(),
+        confirm: SIGN_OUT_EVERYTHING_NAME.to_owned(),
     }
 }
 
