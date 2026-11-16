@@ -935,7 +935,16 @@ const ROLE_WORDS: [(&str, &[&str]); 16] = [
     ),
     (
         "builder",
-        &["build", "builder", "feature", "implement", "scaffold"],
+        &[
+            "build",
+            "builder",
+            "feature",
+            "implement",
+            "scaffold",
+            "developer",
+            "engineer",
+            "coder",
+        ],
     ),
     (
         "tester",

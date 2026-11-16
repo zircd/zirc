@@ -960,8 +960,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         .clone()
         .or_else(|| std::env::var("ZIRC_SESSION_AVATAR").ok())
         .as_deref()
-        .map(avatar_named)
-        .transpose()?;
+        .map(role_named);
     let name = (cli.name.as_deref(), tool.as_deref(), avatar);
     before(&cli.command, &home, own_home);
     match cli.command {
@@ -1070,6 +1069,15 @@ fn before(command: &Command, home: &Path, own_home: bool) {
             env!("CARGO_PKG_VERSION")
         );
     }
+}
+
+/// The role `--role` names, saying on stderr which one it took for a word that isn't one.
+fn role_named(id: &str) -> &'static str {
+    let (role, note) = avatar_named(id);
+    if let Some(note) = note {
+        eprintln!("{PROGRAM}: {note}");
+    }
+    role
 }
 
 /// The longest line, in characters, a post reads easily with.

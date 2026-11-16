@@ -390,15 +390,17 @@ pub(crate) fn card_named(json: &str) -> Result<zirc_proto::card::Card> {
     Ok(card)
 }
 
-/// `id` as one of the roles `zirc roles` lists, or a picture from before roles, or an error
-/// that lists the roles.
-pub(crate) fn avatar_named(id: &str) -> Result<&'static str> {
-    zirc_proto::agent_avatar(id).with_context(|| {
-        format!(
-            "{id:?} isn't a role. Pick one of these:\n{}",
-            avatars_text()
-        )
-    })
+/// `id` as one of the roles `zirc roles` lists, or a picture from before roles. Any other
+/// word is never a reason to fail the command it came with: the role its words tell
+/// ([`zirc_proto::guess_role`]), such as `builder` for `developer`, else the plain
+/// [`zirc_proto::DEFAULT_ROLE`], with a note saying which it took.
+pub(crate) fn avatar_named(id: &str) -> (&'static str, Option<String>) {
+    if let Some(role) = zirc_proto::agent_avatar(id) {
+        return (role, None);
+    }
+    let role = zirc_proto::guess_role(id).unwrap_or(zirc_proto::DEFAULT_ROLE);
+    let note = format!("{id:?} isn't a role, so it's {role}; `{PROGRAM} roles` lists them");
+    (role, Some(note))
 }
 
 /// "fixer       a bot with a wrench, for fixing what's broken": each role and its bot, a
@@ -886,18 +888,19 @@ mod tests {
     }
 
     #[test]
-    fn lists_the_roles_and_takes_older_pictures_but_refuses_others() {
+    fn lists_the_roles_and_takes_older_pictures_and_other_words() {
         let list = avatars_text();
         assert_eq!(list.lines().count(), 17);
         assert!(list.starts_with("agent        a plain bot"), "{list}");
-        assert_eq!(avatar_named("Fixer").unwrap(), "fixer");
-        assert_eq!(avatar_named("Rocket").unwrap(), "rocket");
-        let refused = avatar_named("unicorn").unwrap_err().to_string();
-        assert!(refused.contains("\"unicorn\" isn't a role"), "{refused}");
+        assert_eq!(avatar_named("Fixer"), ("fixer", None));
+        assert_eq!(avatar_named("Rocket"), ("rocket", None));
+        let (role, note) = avatar_named("developer");
+        assert_eq!(role, "builder");
         assert!(
-            refused.contains("fixer        a bot with a wrench"),
-            "{refused}"
+            note.unwrap()
+                .contains("\"developer\" isn't a role, so it's builder")
         );
+        assert_eq!(avatar_named("unicorn").0, "agent");
     }
 
     #[test]
