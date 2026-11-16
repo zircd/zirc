@@ -13,7 +13,7 @@ use ts_rs::TS;
 use super::conversation::{Conversation, Entry, agent, fold};
 use super::face::{Face, LineSpeaker};
 use super::flat::{RichBlock, RichSpan, is_plain};
-use super::rich::Block;
+use super::rich::{Block, Span, SpanKind};
 use super::view::{Item, Landing, Parts};
 use super::{Chat, Icon, Presence, Standing, activity_conversation, file, first_link, link_blocks};
 
@@ -54,6 +54,58 @@ pub enum LineKind {
     File,
 }
 
+/// How a line's row is drawn, decided here for every app, which draws the shape it's given
+/// and never decides it from the line's kind, icon or parts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum RowShape {
+    /// What someone said or did, or a file they shared, under who they are.
+    Message,
+    /// An event, a landing or a card, drawn as a message is: its actor's face and name, then
+    /// its [`SystemLine::body`].
+    System,
+    /// One muted line: people coming and going, with [`SystemLine::glyph`] as its marker and
+    /// its time, the user's choice for every app on 16 Nov 2026; or a note, which has neither.
+    Quiet,
+    /// An agent's routine work as one muted line, [`SystemLine::brief`], which a click or a
+    /// tap opens to its [`RowShape::System`] row; the app keeps which it opened.
+    Brief,
+    /// A card's update said further down: one muted line, [`Line::text`], which brings the
+    /// card ([`SystemLine::points_to`]) into view when clicked or tapped.
+    Pointer,
+}
+
+impl RowShape {
+    /// The shape of `line`'s row, from what it is.
+    fn of(line: &Line) -> Self {
+        match (&line.system, &line.speaker) {
+            (Some(system), _) if system.points_to.is_some() => Self::Pointer,
+            (Some(system), Some(_)) if system.brief.is_some() => Self::Brief,
+            _ if matches!(line.kind, LineKind::Membership | LineKind::Note) => Self::Quiet,
+            (_, None) => Self::Quiet,
+            (Some(_), Some(_)) => Self::System,
+            (None, Some(_)) => Self::Message,
+        }
+    }
+}
+
+/// What a [`RowShape::System`] row draws under its head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum SystemBody {
+    /// A landing's card: [`Line::rich`] is its line, with [`SystemLine::outcome`] and
+    /// [`SystemLine::buttons`].
+    Card,
+    /// Words, as a message's are: [`Line::rich`] and [`Line::more`], a long one cut. A
+    /// post's words, `→ zirc-chat` first when it's to an agent session; an older landing's.
+    Blocks,
+    /// Its parts: [`SystemLine::lead`], its [`SystemLine::details`], and its paths when
+    /// [`SystemLine::paths_listed`].
+    Parts,
+}
+
 /// One line of a conversation, as every app draws it.
 #[expect(
     clippy::struct_excessive_bools,
@@ -80,6 +132,8 @@ pub struct Line {
     pub day: Option<String>,
     /// What sort of line it is.
     pub kind: LineKind,
+    /// How its row is drawn.
+    pub shape: RowShape,
     /// Whether it carries on a run from the same sender, so its avatar and name go.
     pub continues: bool,
     /// Who: their nick, which replies, mentions and their card name. Empty for what no one
@@ -94,8 +148,9 @@ pub struct Line {
     /// What it says, whole, for copying and the menu.
     pub text: String,
     /// What it says as blocks to draw: code, quotes, lists, bold and the like. Empty when
-    /// it's one plain paragraph shown whole, which [`Line::text`] says, or for a post (an
-    /// event with [`Icon::Post`]), [`SystemLine::details`], whose words these are when not.
+    /// it's one plain paragraph shown whole, which [`Line::text`] says; never for a post (an
+    /// event with [`Icon::Post`] and words), whose words these are, `→ zirc-chat` first when
+    /// it's to an agent session ([`SystemBody::Blocks`]).
     pub rich: Vec<RichBlock>,
     /// The first web address it has, for Copy link: a landing's page, else its build's.
     pub link: Option<String>,
@@ -240,10 +295,6 @@ pub struct SessionName {
 /// A system line in parts ([`Parts`]): headed as a message is, by who, whose agent and the
 /// time, never its kind; then its lead (marker and verb), its details and the paths under
 /// them.
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "each bool is a fact of its own about the line, which every app reads as is"
-)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
@@ -253,15 +304,17 @@ pub struct SystemLine {
     /// What to draw for it, one character wide ([`Icon::glyph`]).
     pub glyph: String,
     /// What its body starts with ([`Parts::lead`]): its marker and what was done, `✎ is
-    /// about to change`; the marker alone when nothing was, and nothing for a post. Draw
-    /// it, never `glyph` and `verb` put together.
+    /// about to change`; the marker alone when nothing was, and nothing for a post. Apps
+    /// draw it, when it's there, as [`SystemLine::glyph`] in [`SystemLine::marker_tone`],
+    /// then [`SystemLine::verb`] with its links, muted: never by cutting this up.
     pub lead: String,
     /// Who, as people read it: an agent session's name, a machine itself as `dana's agent`,
     /// a person's nick. Never a device.
     pub actor: String,
     /// The agent session it's from, or a landing's, shown dim by its name, its id on hover.
     pub session: Option<SessionName>,
-    /// For a post to an agent session, that session: shown `→ zirc-chat` before the details.
+    /// For a post to an agent session, that session, which [`Line::rich`] starts with as
+    /// `→ zirc-chat`.
     pub to: Option<SessionName>,
     /// What they did, in a few words: `is about to change`; empty for a post.
     pub verb: String,
@@ -284,15 +337,13 @@ pub struct SystemLine {
     /// it on the same line: when its paths are listed under them, or they have lines of
     /// their own, as a push's commits do.
     pub details_apart: bool,
-    /// [`SystemLine::lead`] with its links ([`Chat::linked`]). Empty when none of it links.
-    pub lead_links: Vec<RichSpan>,
-    /// [`SystemLine::verb`] with its links: a push's branch and commit to their pages on the
-    /// forge. Empty when none of it links.
+    /// [`SystemLine::verb`] with its links ([`Chat::linked`]): a push's branch and commit to
+    /// their pages on the forge. Empty when none of it links.
     pub verb_links: Vec<RichSpan>,
     /// [`SystemLine::details`] with its links. Empty when none of it links.
     pub details_links: Vec<RichSpan>,
-    /// Whether it's drawn as one quiet line: only people coming and going are.
-    pub compact: bool,
+    /// What its row draws under its head, when it's a [`RowShape::System`] row.
+    pub body: SystemBody,
     /// The event as one muted line, for an app that draws an agent's routine work quietly
     /// ([`Parts::brief`](super::Parts::brief)): `checkout is about to change Coupon.tsx`.
     /// `None` for what keeps its full form: what someone has reacted to, and everything in
@@ -525,6 +576,7 @@ impl<'a> Layout<'a> {
             let mut line = self.line(item);
             line.day = day.take();
             line.actions = LineActions::of(line.kind, line.id.as_deref(), line.mine, editable);
+            line.shape = RowShape::of(&line);
             lines.push(line);
         }
         lines
@@ -568,11 +620,14 @@ impl<'a> Layout<'a> {
                 continues,
             } => {
                 let mut line = self.said(entry, LineKind::Event, &text, continues);
-                // A post's words read as a message's: drawn, and cut when long, as one is.
+                let mut system = self.system(&parts, parts.session.clone(), line.id.as_deref());
+                // A post's words read as a message's: drawn, and cut when long, as one is,
+                // after whom it's to.
                 if parts.icon == Icon::Post && !parts.details.is_empty() {
-                    self.body(&mut line, super::rich(&parts.details));
+                    self.post(&mut line, &parts.details, system.to.as_ref());
+                    system.body = SystemBody::Blocks;
                 }
-                line.system = Some(self.system(&parts, parts.session.clone(), line.id.as_deref()));
+                line.system = Some(system);
                 line
             }
             Item::Landing(landing) => self.landing(&landing),
@@ -624,6 +679,7 @@ impl<'a> Layout<'a> {
             clock: self.clock(time),
             day: None,
             kind,
+            shape: RowShape::Message,
             continues: false,
             from: entry.map(|entry| entry.from.clone()).unwrap_or_default(),
             speaker: None,
@@ -686,6 +742,11 @@ impl<'a> Layout<'a> {
     /// `line`'s words as `blocks`, drawn and cut when long, with its control: none when
     /// they're one plain paragraph shown whole, which its text says.
     fn body(&self, line: &mut Line, blocks: Vec<Block>) {
+        self.words(line, blocks, false);
+    }
+
+    /// [`Self::body`], or, `always`, as blocks though they're plain.
+    fn words(&self, line: &mut Line, blocks: Vec<Block>, always: bool) {
         let shown = self.chat.body(&line.key, blocks, line.mention);
         let more = shown.more.map(|more| {
             // Whose message, as its head says: `Maya Chen's agent`, or the person's name.
@@ -705,11 +766,36 @@ impl<'a> Layout<'a> {
         let plain = more.is_none() && is_plain(&shown.blocks);
         let rich = self.chat.flat_in(&self.conversation.name, shown.blocks);
         // Plain words draw as text, unless they name code that links.
-        if plain && !names_code(&rich) {
+        if !always && plain && !names_code(&rich) {
             return;
         }
         line.rich = rich;
         line.more = more;
+    }
+
+    /// `line`'s words as a post's, `details`: always as blocks, drawn and cut when long as a
+    /// message's are, after `→ zirc-chat ` when it's `to` an agent session.
+    fn post(&self, line: &mut Line, details: &str, to: Option<&SessionName>) {
+        let mut blocks = super::rich(details);
+        if let Some(to) = to {
+            let span = |text: &str, kind| Span {
+                text: text.to_owned(),
+                kind,
+                ..Span::default()
+            };
+            let lead = [
+                span("→ ", SpanKind::Text),
+                span(&to.label, SpanKind::Session(to.id.clone())),
+                span(" ", SpanKind::Text),
+            ];
+            match blocks.first_mut() {
+                Some(Block::Paragraph(spans)) => {
+                    spans.splice(0..0, lead);
+                }
+                _ => blocks.insert(0, Block::Paragraph(lead.into())),
+            }
+        }
+        self.words(line, blocks, true);
     }
 
     /// A system line from `parts`, about the agent session `session`, if any, said as the
@@ -727,7 +813,6 @@ impl<'a> Layout<'a> {
             details_apart,
             icon: parts.icon,
             glyph: parts.icon.glyph().to_owned(),
-            lead_links: self.chat.linked(&lead, &parts.links),
             lead,
             actor: parts.actor.clone(),
             session: session.map(|id| self.session(id)),
@@ -737,7 +822,7 @@ impl<'a> Layout<'a> {
             verb: parts.verb.clone(),
             details: parts.details.clone(),
             paths: parts.paths.clone(),
-            compact: parts.compact,
+            body: SystemBody::Parts,
             brief: self.conversation.brief(parts, id),
             until_clock: (parts.until != parts.time).then(|| self.clock(parts.until)),
             outcome: None,
@@ -792,8 +877,16 @@ impl<'a> Layout<'a> {
             .or_else(|| landing.url.map(str::to_owned));
         let outcome = (parts.icon != Icon::Post).then_some(parts.icon);
         let version = landing.card_version();
+        // Its card's line, or an older one's words, as a message's are; its parts when it
+        // has neither.
+        let body = match (card_line.is_some(), line.rich.is_empty()) {
+            (_, true) => SystemBody::Parts,
+            (true, false) => SystemBody::Card,
+            (false, false) => SystemBody::Blocks,
+        };
         line.system = Some(SystemLine {
             outcome,
+            body,
             card: card_line.is_some(),
             buttons: self.buttons(landing, &version),
             card_version: landing.card.as_ref().map(|_| version),
@@ -898,20 +991,16 @@ impl<'a> Layout<'a> {
     /// drawn as their messages are; only its id when it's no longer among those kept.
     fn quote(&self, entry: &Entry) -> Option<LineQuote> {
         let id = entry.reply_to.as_ref()?;
-        Some(self.chat.quote(self.conversation, entry).map_or_else(
-            || LineQuote {
-                id: id.clone(),
-                from: String::new(),
-                text: String::new(),
-                face: None,
-            },
-            |quote| LineQuote {
-                face: Some(self.chat.face(&quote.avatar)),
-                id: quote.id,
-                from: quote.name,
-                text: quote.text,
-            },
-        ))
+        Some(
+            self.chat
+                .line_quote(self.conversation, entry)
+                .unwrap_or_else(|| LineQuote {
+                    id: id.clone(),
+                    from: String::new(),
+                    text: String::new(),
+                    face: None,
+                }),
+        )
     }
 
     fn session(&self, id: String) -> SessionName {
@@ -971,6 +1060,31 @@ fn names_code(blocks: &[RichBlock]) -> bool {
     let mut names = false;
     RichBlock::each_span(blocks, &mut |span| names |= span.code.is_some());
     names
+}
+
+impl Chat {
+    /// What the message `id` in `conversation` says, as the bar over the composer shows it
+    /// while a reply to it is written (`Replying to bob: first line…`), and as a reply's
+    /// [`Line::quote`] does: who, as their messages' heads name them, and its first line cut
+    /// to [`super::QUOTE_CHARS`]. `None` once it's no longer among those kept.
+    #[must_use]
+    pub fn quoted(&self, conversation: &Conversation, id: &str) -> Option<LineQuote> {
+        let asking = Entry {
+            reply_to: Some(id.to_owned()),
+            ..Entry::info((self.clock)(), String::new())
+        };
+        self.line_quote(conversation, &asking)
+    }
+
+    /// What `entry` answers in `conversation`, as a [`LineQuote`].
+    fn line_quote(&self, conversation: &Conversation, entry: &Entry) -> Option<LineQuote> {
+        self.quote(conversation, entry).map(|quote| LineQuote {
+            face: Some(self.face(&quote.avatar)),
+            id: quote.id,
+            from: quote.name,
+            text: quote.text,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -1467,7 +1581,12 @@ mod tests {
                 text: String::new(),
                 face: None,
             })
-        );
+        ); // The bar over the composer while a reply is written says the same.
+        let conversation = chat.conversation("#api").unwrap();
+        assert_eq!(chat.quoted(conversation, "m1"), line(&lines, "on it").quote);
+        assert_eq!(chat.quoted(conversation, "gone"), None);
+        // Messages are under who said them.
+        assert!(lines.iter().all(|line| line.shape == RowShape::Message));
     }
 
     #[expect(clippy::too_many_lines, reason = "one story, told step by step")]
@@ -1543,14 +1662,17 @@ mod tests {
         assert!(system.paths.is_empty());
         assert_eq!(made.clock, "09:00");
         assert_eq!(system.until_clock.as_deref(), Some("09:01"));
-        assert!(!system.compact && !system.card);
+        assert!(!system.card);
+        assert_eq!(
+            (made.shape, system.body),
+            (RowShape::Brief, SystemBody::Parts)
+        );
         // The branch links to its page on the forge.
         assert!(system.verb_links.iter().any(|span| span.text == "main"
             && span.kind
                 == RichSpanKind::Link {
                     url: crate::chat::branch_link(repo, "main")
                 }));
-        assert_eq!(system.lead_links.len(), system.verb_links.len());
         // The details link the commit, when they name it; else nothing links.
         assert!(
             system.details_links.is_empty()
@@ -1577,8 +1699,18 @@ mod tests {
         assert_eq!(system.details, "please rebase");
         assert!(system.details_links.is_empty());
         assert_eq!(system.until_clock, None);
-        // Plain words, shown whole, need no blocks: its details say them.
-        assert!(post.rich.is_empty() && post.more.is_none());
+        // Its words are blocks, as a message's are, though plain, after whom it's to, which
+        // links to that session.
+        assert_eq!(
+            (post.shape, system.body),
+            (RowShape::System, SystemBody::Blocks)
+        );
+        assert_eq!(rich_text(post), "→ cc-598aa1 please rebase");
+        let RichBlock::Paragraph { spans } = &post.rich[0] else {
+            panic!("{:?}", post.rich)
+        };
+        assert!(matches!(&spans[1].kind, RichSpanKind::Session { id, .. } if id == "cc-598aa1"));
+        assert!(post.more.is_none());
         let about = lines[2].system.as_ref().unwrap();
         assert_eq!(about.icon, Icon::Intent);
         assert_eq!(about.verb, "is about to change");
@@ -1709,7 +1841,7 @@ mod tests {
         let more = cut.more.as_ref().expect("a control");
         assert_eq!(more.label, "Show 6 more lines");
         assert_eq!(more.spoken, "Show 6 more lines of your agent's message");
-        // Addressed to a session, its words are what follows the session.
+        // Addressed to a session, its words follow `→ ` and the session.
         let to = &lines[1];
         assert_eq!(
             to.system.as_ref().and_then(|system| system.to.as_ref()),
@@ -1721,7 +1853,11 @@ mod tests {
         let [RichBlock::Paragraph { spans }] = to.rich.as_slice() else {
             panic!("one paragraph: {:?}", to.rich);
         };
-        assert!(spans[0].bold && spans[0].text == "please");
+        assert_eq!(spans[0].text, "→ ");
+        assert!(
+            matches!(&spans[1].kind, RichSpanKind::Session { id, label, .. } if id == "cc-598aa1" && label == "cc-598aa1")
+        );
+        assert!(spans[3].bold && spans[3].text == "please");
     }
 
     fn ci_landing(text: &str) -> Message {
@@ -2051,7 +2187,8 @@ mod tests {
         // The pointer: a quiet line that jumps to the card.
         let pointer = lines[2].system.as_ref().unwrap();
         assert_eq!(pointer.points_to.as_deref(), Some("c1"));
-        assert!(pointer.compact);
+        assert_eq!(lines[2].shape, RowShape::Pointer);
+        assert_eq!(lines[0].shape, RowShape::System);
         assert_eq!(pointer.icon, Icon::Landed);
         assert_eq!(lines[0].system.as_ref().unwrap().points_to, None);
     }
@@ -2163,7 +2300,8 @@ mod tests {
         assert_eq!(came.from, "");
         assert!(came.speaker.is_none() && came.presence.is_none());
         let system = came.system.as_ref().unwrap();
-        assert!(system.compact);
+        // One quiet line, in every app (the user's choice, 16 Nov 2026).
+        assert_eq!(came.shape, RowShape::Quiet);
         assert_eq!(system.icon, Icon::Join);
         assert_eq!(system.verb, came.text);
         let nine = Utc

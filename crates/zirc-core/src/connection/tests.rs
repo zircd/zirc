@@ -253,6 +253,7 @@ fn says_it_on_a_banner_and_in_a_word() {
             was_up: true
         }
         .banner(now)
+        .map(|banner| banner.text)
         .as_deref(),
         Some("Reconnecting…")
     );
@@ -264,15 +265,24 @@ fn says_it_on_a_banner_and_in_a_word() {
     };
     // Just dropped: most come back, so no news yet, and never why.
     assert_eq!(
-        offline(500, 0).banner(now).as_deref(),
+        offline(500, 0)
+            .banner(now)
+            .map(|banner| banner.text)
+            .as_deref(),
         Some("Reconnecting…")
     );
     assert_eq!(
-        offline(4000, 2200).banner(now).as_deref(),
+        offline(4000, 2200)
+            .banner(now)
+            .map(|banner| banner.text)
+            .as_deref(),
         Some("Offline · retrying in 3s")
     );
     assert_eq!(
-        offline(4000, -10).banner(now).as_deref(),
+        offline(4000, -10)
+            .banner(now)
+            .map(|banner| banner.text)
+            .as_deref(),
         Some("Offline · retrying now")
     );
     assert_eq!(offline(4000, 0).short(), Some("offline"));

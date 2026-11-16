@@ -150,7 +150,8 @@ pub use guests::{
 pub use layout::{COMPACT_SETTING, ClockAt, Heading, Layout};
 pub use lines::{
     ANIMATION_PLAYS, CardAction, CardButtons, FileShape, LineActions, LineFile, LineKind, LineMore,
-    LineQuote, LineReaction, MEDIA_HEIGHT, MEDIA_WIDTH, SessionName, SystemLine,
+    LineQuote, LineReaction, MEDIA_HEIGHT, MEDIA_WIDTH, RowShape, SessionName, SystemBody,
+    SystemLine,
 };
 pub use list::{
     AGENTS_ROOM, ActiveCard, Agent, AppMember, AppRow, BADGE_MOST, Badges, ChannelGroup,

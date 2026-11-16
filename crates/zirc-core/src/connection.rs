@@ -31,7 +31,9 @@ use crate::clock;
 pub use zirc_chat::connection::{Backoff, Policy};
 
 /// Where the connection is, for the UI: zirc-chat's, which the web client shares.
-pub use zirc_chat::connection::{NO_NETWORK, QUIET_OFFLINE, SIGNED_OUT, Status};
+pub use zirc_chat::connection::{
+    Banner, BannerKind, NO_NETWORK, QUIET_OFFLINE, SIGNED_OUT, Status,
+};
 
 /// What happened to the connection.
 #[derive(Debug)]

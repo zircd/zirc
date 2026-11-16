@@ -248,8 +248,15 @@ impl Status {
     /// which [`Status::describe`] says for a place with room for it. None when connected.
     /// Redraw it at [`Status::banner_changes`].
     #[must_use]
-    pub fn banner(&self, now: DateTime<Utc>) -> Option<String> {
-        self.banner_words(now, countdown)
+    pub fn banner(&self, now: DateTime<Utc>) -> Option<Banner> {
+        let text = self.banner_words(now, countdown)?;
+        // Offline is said once its quiet start is over; until then it's getting back on.
+        let kind = if text.starts_with(OFFLINE) {
+            BannerKind::Offline
+        } else {
+            BannerKind::Connecting
+        };
+        Some(Banner { text, kind })
     }
 
     /// When [`Status::banner`] next says something else, after `now`: each second while
@@ -284,7 +291,7 @@ impl Status {
             Self::Offline { since, .. } if now - *since >= QUIET_OFFLINE => {
                 Some(OFFLINE_SPOKEN.to_owned())
             }
-            _ => self.banner(now),
+            _ => self.banner(now).map(|banner| banner.text),
         }
     }
 
@@ -294,9 +301,12 @@ impl Status {
             Self::Offline {
                 since, retry_at, ..
             } if now - *since >= QUIET_OFFLINE => Some(if *retry_at > now {
-                format!("Offline · retrying {}", left(seconds_left(*retry_at - now)))
+                format!(
+                    "{OFFLINE} · retrying {}",
+                    left(seconds_left(*retry_at - now))
+                )
             } else {
-                "Offline · retrying now".to_owned()
+                format!("{OFFLINE} · retrying now")
             }),
             // Getting on, and for the quiet start offline.
             _ if self.was_up() => Some(RECONNECTING.to_owned()),
@@ -315,6 +325,56 @@ impl Status {
         }
     }
 }
+
+/// The banner over the chat while it isn't connected ([`Status::banner`]): its words, and
+/// what every app draws with them.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct Banner {
+    /// What it says: `Reconnecting…`, `Offline · retrying in 12s`.
+    pub text: String,
+    /// What goes with its words.
+    pub kind: BannerKind,
+}
+
+impl Banner {
+    /// The banner while getting back on: for an app that knows it's stale before its
+    /// connection says so.
+    #[must_use]
+    pub fn reconnecting() -> Self {
+        Self {
+            text: RECONNECTING.to_owned(),
+            kind: BannerKind::Connecting,
+        }
+    }
+
+    /// The banner while the device has no network at all ([`NO_NETWORK`]).
+    #[must_use]
+    pub fn no_network() -> Self {
+        Self {
+            text: NO_NETWORK.to_owned(),
+            kind: BannerKind::NoNetwork,
+        }
+    }
+}
+
+/// What every app draws with a [`Banner`]'s words (the user's choice, 16 Nov 2026).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum BannerKind {
+    /// Getting on, or back on: a spinner before its words.
+    Connecting,
+    /// Offline past its quiet start, waiting to try again: a Retry button after its words,
+    /// which tries now.
+    Offline,
+    /// The device has no network: its words alone, as there's nothing to retry.
+    NoNetwork,
+}
+
+/// How a [`Status::banner`] starts once it's offline.
+const OFFLINE: &str = "Offline";
 
 /// What a [`Status::banner`] says while getting on, before it's ever been connected.
 const CONNECTING: &str = "Connecting…";
@@ -490,20 +550,49 @@ mod tests {
             was_up: true,
         };
         let now = Utc::now();
-        assert_eq!(first.banner(now).as_deref(), Some("Connecting…"));
-        assert_eq!(again.banner(now).as_deref(), Some("Reconnecting…"));
+        assert_eq!(
+            first.banner(now).map(|banner| banner.text).as_deref(),
+            Some("Connecting…")
+        );
+        assert_eq!(
+            again.banner(now).map(|banner| banner.text).as_deref(),
+            Some("Reconnecting…")
+        );
         assert!(Status::Connected { since: now }.was_up());
         // A first attempt that failed is still only connecting, for the quiet start.
         let (status, now) = offline(false, 1, 5000);
-        assert_eq!(status.banner(now).as_deref(), Some("Connecting…"));
+        assert_eq!(
+            status.banner(now).map(|banner| banner.text).as_deref(),
+            Some("Connecting…")
+        );
         let (status, now) = offline(true, 1, 5000);
-        assert_eq!(status.banner(now).as_deref(), Some("Reconnecting…"));
+        assert_eq!(
+            status.banner(now).map(|banner| banner.text).as_deref(),
+            Some("Reconnecting…")
+        );
         // Then the countdown, either way.
         let (status, now) = offline(false, 4, 5000);
         assert_eq!(
-            status.banner(now).as_deref(),
+            status.banner(now).map(|banner| banner.text).as_deref(),
             Some("Offline · retrying in 5s")
         );
+    }
+
+    #[test]
+    fn a_banner_spins_while_getting_on_and_offers_retry_once_offline() {
+        let kind =
+            |(status, now): (Status, DateTime<Utc>)| status.banner(now).map(|banner| banner.kind);
+        let connecting = Status::Connecting {
+            attempt: 1,
+            was_up: true,
+        };
+        assert_eq!(kind((connecting, Utc::now())), Some(BannerKind::Connecting));
+        // Its quiet start says it's reconnecting, and spins as that does.
+        assert_eq!(kind(offline(true, 1, 5000)), Some(BannerKind::Connecting));
+        assert_eq!(kind(offline(true, 4, 5000)), Some(BannerKind::Offline));
+        assert_eq!(kind(offline(true, 4, -10)), Some(BannerKind::Offline));
+        assert_eq!(Banner::no_network().kind, BannerKind::NoNetwork);
+        assert_eq!(Banner::no_network().text, NO_NETWORK);
     }
 
     #[test]
@@ -533,7 +622,7 @@ mod tests {
         // Mid-second, the next change is at the second's end.
         let (status, now) = offline(true, 10, 11_400);
         assert_eq!(
-            status.banner(now).as_deref(),
+            status.banner(now).map(|banner| banner.text).as_deref(),
             Some("Offline · retrying in 12s")
         );
         assert_eq!(

@@ -156,11 +156,6 @@ pub struct ListRow {
     pub unanswered: bool,
     /// For a guest's, that it's closed: under the Closed fold.
     pub closed: bool,
-    /// For a room under its channel, that it's quiet ([`super::Chat::is_quiet_thread`]):
-    /// nothing unread nor said in it for [`super::THREAD_ACTIVE_FOR`], and not shown. A
-    /// phone leaves it off its list, in its channel's sheet alone, as Discord lists only
-    /// active threads (Android, from 14 Nov 2026, the user's choice).
-    pub quiet: bool,
     /// Whether it opens a channel, a room under one included ([`super::is_channel`]): what
     /// every app asks before offering a channel's menu, never from its name's first character.
     pub channel: bool,
@@ -208,7 +203,6 @@ impl ListRow {
             mine: false,
             unanswered: false,
             closed: false,
-            quiet: false,
             channel: false,
             person: None,
         }
@@ -523,7 +517,15 @@ impl Chat {
         }
         .counting(rolled.iter().map(|name| self.badge(name)).sum());
         let mut rows = vec![head];
-        rows.extend(rooms.iter().map(|room| self.room_list_row(room, part, 1)));
+        // A room under it is listed while it's an active thread, as Discord lists them: a
+        // quiet one is in its channel's threads alone ([`Chat::threads`], the user's choice,
+        // 14 Nov 2026).
+        rows.extend(
+            rooms
+                .iter()
+                .filter(|room| !self.is_quiet_thread(room))
+                .map(|room| self.room_list_row(room, part, 1)),
+        );
         // What's starred is under Starred alone.
         rows.extend(
             guests
@@ -593,7 +595,6 @@ impl Chat {
                 .map(|preview| ago_short(preview.at, (self.clock)())),
             preview: preview.map(|preview| preview.text),
             latest_ms: self.last_said(name).map(|at| at.timestamp_millis()),
-            quiet: depth > 0 && self.is_quiet_thread(name),
             ..ListRow::new(kind, part, title)
         }
         .counting(self.badge(name))

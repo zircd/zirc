@@ -1046,7 +1046,7 @@ fn scrollback(frame: &mut Frame<'_>, app: &App, area: Rect) {
 /// then `Offline · retrying in 3s`, on the warning colour's ground.
 fn offline_banner(app: &App) -> Option<Line<'static>> {
     let theme = app.theme;
-    let words = app.connection.banner((app.chat.clock)())?;
+    let words = app.connection.banner((app.chat.clock)())?.text;
     Some(
         Line::styled(
             format!(" {words}"),

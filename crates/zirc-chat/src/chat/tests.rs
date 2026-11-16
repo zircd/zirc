@@ -4173,7 +4173,7 @@ fn says_the_person_is_typing_every_few_seconds_and_when_they_clear_it() {
 }
 
 #[test]
-fn marks_a_thread_quiet_after_a_day_with_nothing_unread_or_shown() {
+fn leaves_a_thread_off_the_sidebar_after_a_day_with_nothing_unread_or_shown() {
     let mut chat = Scene::in_api();
     feed(
         &mut chat,
@@ -4192,25 +4192,23 @@ fn marks_a_thread_quiet_after_a_day_with_nothing_unread_or_shown() {
     );
     let at = chat.position("#web/shown").unwrap();
     let _ = chat.select(at);
-    let quiet: Vec<(String, bool)> = chat
+    let listed: Vec<String> = chat
         .sidebar_list(&ListOptions::default())
         .into_iter()
         .filter(|row| row.kind == ListKind::Room)
-        .map(|row| (row.name, row.quiet))
+        .map(|row| row.name)
         .collect();
-    let of = |name: &str| quiet.iter().find(|(n, _)| n == name).map(|(_, q)| *q);
-    assert_eq!(of("#web/fresh"), Some(false), "{quiet:?}");
-    assert_eq!(of("#web/unread"), Some(false), "{quiet:?}");
-    assert_eq!(of("#web/shown"), Some(false), "{quiet:?}");
-    assert_eq!(of("#web/old"), Some(true), "{quiet:?}");
-    assert_eq!(of("#web/silent"), Some(true), "{quiet:?}");
-    // A channel's own row is never quiet: only what's under it is.
-    assert!(
-        chat.sidebar_list(&ListOptions::default())
-            .iter()
-            .filter(|row| row.kind != ListKind::Room)
-            .all(|row| !row.quiet)
-    );
+    // An active thread is listed under its channel; a quiet one only in its channel's
+    // threads, as Discord lists them (the user's choice, 14 Nov 2026).
+    assert_eq!(listed, ["#web/fresh", "#web/shown", "#web/unread"]);
+    let threads: Vec<String> = chat
+        .threads("#web")
+        .into_iter()
+        .map(|thread| thread.name)
+        .collect();
+    for quiet in ["#web/old", "#web/silent"] {
+        assert!(threads.iter().any(|name| name == quiet), "{threads:?}");
+    }
 }
 
 #[test]
@@ -6118,6 +6116,8 @@ fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
             ":me!u@h JOIN #web",
             ":me!u@h JOIN #api/login",
             ":me!u@h JOIN #api",
+            // Said in today, so an active thread, which the sidebar lists.
+            "@time=2026-10-30T10:59:00.000Z :me!u@h PRIVMSG #api/login :looking",
             "@time=2026-10-30T11:00:00.000Z :bob!u@h PRIVMSG me :hi",
             "@time=2026-10-30T11:05:00.000Z :carol!u@h PRIVMSG me :hey",
             "@time=2026-10-30T11:06:00.000Z :dave!u@h PRIVMSG me :yo",

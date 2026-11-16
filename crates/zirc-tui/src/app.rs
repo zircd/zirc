@@ -510,9 +510,6 @@ impl App {
             }
             // A terminal makes a channel with /join, as IRC does: no row for it.
             ListKind::AllDirect | ListKind::NewChannel => return None,
-            // A room under its channel is listed while it's an active thread, as Discord lists
-            // them (the core's `quiet`, the user's choice, 14 Nov 2026).
-            ListKind::Room if row.quiet => return None,
             ListKind::Browse => Some(Target::Browse),
             ListKind::Conversation | ListKind::Room | ListKind::GuestRoom => {
                 self.side_target(&row.name)

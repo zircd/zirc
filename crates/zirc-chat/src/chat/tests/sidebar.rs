@@ -62,6 +62,8 @@ fn busy() -> Chat {
         &[
             ":me!u@h JOIN #web",
             ":me!u@h JOIN #api/login",
+            // Said in today, so an active thread, which the sidebar lists.
+            "@time=2026-10-30T11:04:00.000Z :me!u@h PRIVMSG #api/login :looking",
             "@time=2026-10-30T11:05:00.000Z :carol!u@h PRIVMSG me :hey",
         ],
     );
@@ -717,9 +719,12 @@ fn an_empty_conversation_says_no_messages_yet_once_its_history_is_in() {
             ":s BATCH -r",
         ],
     );
-    assert_eq!(
-        says(&chat, "#api/fix-login"),
-        (Some(crate::chat::NO_MESSAGES.to_owned()), true, None)
+    // Nothing said in it, it's a quiet thread: in its channel's Threads list alone.
+    let rows = chat.sidebar_list(&all());
+    assert!(
+        rows.iter().all(|row| row.name != "#api/fix-login"),
+        "{:#?}",
+        lines(&rows)
     );
     let thread = &chat.threads("#api")[0];
     assert_eq!(
