@@ -88,6 +88,18 @@ fn note(words: impl Into<String>) -> Ran {
 }
 
 impl Chat {
+    /// What's typed in the Server channel: a line that goes to the server as it is (the user's
+    /// choice, 16 Nov 2026), and stays there under what it answers.
+    fn send_raw(&mut self, text: String) -> Ran {
+        let Ok(line) = text.parse::<Line>() else {
+            return note(said::NOT_A_LINE);
+        };
+        let now = (self.clock)();
+        let me = self.me.clone();
+        self.server_said(now, &me, text);
+        Ran::Send(vec![line])
+    }
+
     /// Carries out `command`, typed in the conversation `here`, as every app does.
     pub fn run(&mut self, here: &Here<'_>, command: Command) -> Ran {
         let name = here.name;
@@ -95,6 +107,7 @@ impl Chat {
         let server = shown.is_none_or(|c| c.kind == Kind::Server);
         let joined = shown.is_some_and(|c| c.joined || c.kind == Kind::Query);
         match command {
+            Command::Say(text) if server && self.server_shown => self.send_raw(text),
             Command::Say(_) | Command::Me(_) if server => note(said::NOT_A_CONVERSATION),
             Command::Say(_) | Command::Me(_) if !self.can_message(name) => note(
                 self.read_only_note(name)

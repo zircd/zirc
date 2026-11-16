@@ -985,6 +985,15 @@ impl App {
     #[must_use = "it says where the conversation's been read up to"]
     pub fn select(&mut self, at: usize) -> Vec<Line> {
         self.changed();
+        // The server's, from the list, is the Server channel.
+        if self
+            .conversations()
+            .get(at)
+            .is_some_and(|c| c.kind == Kind::Server)
+        {
+            self.chat.show_server();
+            return Vec::new();
+        }
         self.chat.select(at)
     }
 
@@ -1978,7 +1987,12 @@ impl App {
 
     /// Shows the conversation `nth` in the list, if there is one. Returns what to send.
     fn show_listed(&mut self, nth: usize) -> Vec<Line> {
-        let at = self.listed().nth(nth).map(|(at, _)| at);
+        // Alt-1 is the first conversation, as before the Server channel was listed above it.
+        let at = self
+            .listed()
+            .filter(|(_, conversation)| conversation.kind != Kind::Server)
+            .nth(nth)
+            .map(|(at, _)| at);
         at.map(|at| self.select(at)).unwrap_or_default()
     }
 
@@ -2137,7 +2151,8 @@ impl App {
             let name = current.name.clone();
             // Kept from when it was first hidden, as joins can show another meanwhile.
             self.hidden.get_or_insert(name);
-            return server.map(|at| self.select(at)).unwrap_or_default();
+            // Shown as nothing, not as the Server channel.
+            return server.map(|at| self.chat.select(at)).unwrap_or_default();
         }
         let Some(name) = self.hidden.take() else {
             return Vec::new();
@@ -2778,9 +2793,11 @@ mod tests {
         app.key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL));
         assert_eq!(
             app.current().name,
-            "#api",
-            "round the ends, past the server's"
+            "irc.zirc.test",
+            "round the ends, to Server"
         );
+        app.key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL));
+        assert_eq!(app.current().name, "#api", "and on from there");
         app.key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::ALT));
         assert_eq!(app.current().name, "bob");
         app.key(KeyEvent::new(KeyCode::Char('9'), KeyModifiers::ALT));
@@ -2991,6 +3008,7 @@ mod tests {
         assert_eq!(
             listed,
             [
+                zirc_core::chat::SERVER_TITLE,
                 starred,
                 "#web",
                 channels,

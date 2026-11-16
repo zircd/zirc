@@ -128,18 +128,20 @@ impl Chat {
             }
             // RPL_LISTEND
             "323" => return self.list_ended(),
-            // The MOTD is left out, but for the line that says the server logs what people
-            // send, which they see where they type.
+            // The MOTD is the Server channel's, never the status's; its line that says the
+            // server logs what people send is seen where they type, too.
             "372" => {
                 if let Some(logged) = Logged::from_motd(param(1)) {
                     self.status.logged = Some(logged);
                 }
+                let text = strip_formatting(param(1));
+                self.server_said(self.time_of(line), "", text);
             }
             // The server closing the connection; the rest of registration's chatter, the
             // welcome included, is left out.
             "ERROR" => {
                 let text = strip_formatting(&line.params.join(" "));
-                self.status.notice(self.time_of(line), "", text);
+                self.server_notice(self.time_of(line), "", text);
             }
             // Errors answer what the person did, so they show where the person is looking.
             // Subscribing to profiles is the app's doing, not the person's: a server that
@@ -239,7 +241,7 @@ impl Chat {
         if (notice && (from_server || target == "*")) || services {
             let from = if from_server { "" } else { from };
             let text = strip_formatting(param(1));
-            self.status.notice(self.time_of(line), from, text);
+            self.server_notice(self.time_of(line), from, text);
             return Vec::new();
         }
         let (name, kind) = if is_channel(target) {
@@ -395,6 +397,49 @@ impl Chat {
             }
         };
         (entry, Some(session))
+    }
+
+    /// What the server or one of its services (`from`, empty for the server) said: the status's
+    /// latest, and the Server channel's ([`Chat::server_said`]).
+    pub(super) fn server_notice(&mut self, time: DateTime<Utc>, from: &str, text: String) {
+        self.server_said(time, from, text.clone());
+        self.status.notice(time, from, text);
+    }
+
+    /// Keeps what `from` said in the server's own conversation, the Server channel: by the
+    /// server's name when `from` is empty, and never unread (the user's choice, 16 Nov 2026),
+    /// so it goes in as it is, not through [`Chat::add`].
+    pub(super) fn server_said(&mut self, time: DateTime<Utc>, from: &str, text: String) {
+        if text.is_empty() {
+            return;
+        }
+        let Some(at) = self.position(&self.server.clone()) else {
+            return;
+        };
+        let entry = Entry {
+            time,
+            id: None,
+            from: if from.is_empty() {
+                self.server.clone()
+            } else {
+                from.to_owned()
+            },
+            owner: None,
+            kind: if from.eq_ignore_ascii_case(&self.me) {
+                EntryKind::Message(text)
+            } else {
+                EntryKind::Notice(text)
+            },
+            history: false,
+            mention: false,
+            sent_from: None,
+            reply_to: None,
+            formatted: None,
+            edited: false,
+            sealed: None,
+        };
+        let max = self.options.max_entries;
+        let _ = self.conversations[at].insert(entry, max);
     }
 
     /// Adds a message to the conversation at `at`. It's fresh when it arrived live from

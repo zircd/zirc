@@ -30,12 +30,24 @@ pub const NOTHING_JOINED: NothingJoined = NothingJoined {
     action: "Join a channel",
 };
 
+/// What the server's own conversation is called where every app lists it, at the top of the
+/// sidebar: what the server and its services said, and where raw IRC lines are typed (the
+/// user's choice, 16 Nov 2026).
+pub const SERVER_TITLE: &str = "Server";
+
 impl Chat {
-    /// What to show in place of the conversation shown, when that's the server's own: as when
-    /// nothing's joined yet. Its notices are no one's to read as a conversation or to write to.
+    /// What to show in place of the conversation shown, when that's the server's own and it
+    /// isn't open as the Server channel ([`Chat::show_server`]): as when nothing's joined yet.
     #[must_use]
     pub fn nothing_joined(&self) -> Option<NothingJoined> {
-        (self.selected().kind == Kind::Server).then_some(NOTHING_JOINED)
+        (self.selected().kind == Kind::Server && !self.server_shown).then_some(NOTHING_JOINED)
+    }
+
+    /// Whether the conversation called `name` is the server's own: the Server channel.
+    #[must_use]
+    pub fn is_server(&self, name: &str) -> bool {
+        self.conversation(name)
+            .is_some_and(|conversation| conversation.kind == Kind::Server)
     }
 
     /// The conversation called `name` as every app shows it in its list: a channel as named,
@@ -46,6 +58,9 @@ impl Chat {
     /// room of their own as the public channel beside it ([`Chat::our_room_beside`]).
     #[must_use]
     pub fn title(&self, name: &str) -> String {
+        if self.is_server(name) {
+            return SERVER_TITLE.to_owned();
+        }
         if let Some(parent) = self.our_room_beside(name) {
             return parent;
         }

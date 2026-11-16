@@ -2743,20 +2743,12 @@ mod tests {
         assert!(row_with(&rows, "#web").starts_with("▎#web bob: "));
         // Long names are cut to fit, the same way everywhere.
         assert_eq!(row_with(&rows, " #a-"), " #a-channel-with-a-very… │");
-        // The server's conversation is shown, but isn't in the list.
-        assert!(rows[0].starts_with(" irc.zirc.test"));
-        assert!(
-            !rows[1..rows.len() - 2]
-                .iter()
-                .any(|row| row.starts_with(" irc.zirc.test"))
-        );
+        // The Server channel is shown, and first in the list.
+        assert!(rows[0].starts_with(" Server"), "{}", rows[0]);
         // Where we are on the left; the connection only when it's down, and what mentions
         // us, on the right.
         let status = row_with(&rows, "irc.zirc.test · ");
-        assert!(
-            status.starts_with(" irc.zirc.test · irc.zirc.test"),
-            "{status}"
-        );
+        assert!(status.starts_with(" irc.zirc.test · Server"), "{status}");
         assert!(!status.contains("connected"), "{status}");
         assert!(status.ends_with(" 1 mention  Alt-A"), "{status}");
     }
@@ -3423,11 +3415,15 @@ mod tests {
         }
         let listed: Vec<String> = app.listed().map(|(_, c)| app.chat.title(&c.name)).collect();
         // Channels A–Z, then direct messages newest first, agent sessions among them.
-        assert_eq!(listed, ["#api", "#web", "bob", "cc-77aa01", "alice"]);
+        assert_eq!(
+            listed,
+            ["Server", "#api", "#web", "bob", "cc-77aa01", "alice"]
+        );
         let screen = Rect::new(0, 0, 100, 16);
         // The list under the switch.
+        // Under Server, first.
         let side = |rows: &[String], under: usize| -> Vec<String> {
-            rows[2..2 + under]
+            rows[3..3 + under]
                 .iter()
                 .map(|row| row.split('│').next().unwrap().trim_end().to_owned())
                 .collect()
@@ -3928,7 +3924,7 @@ mod tests {
         let side = |app: &App| {
             let (rows, _) = draw(app, 100, 16);
             // Under the switch.
-            rows[2..6]
+            rows[3..7]
                 .iter()
                 .map(|row| row.split('│').next().unwrap().trim_end().to_owned())
                 .collect::<Vec<_>>()

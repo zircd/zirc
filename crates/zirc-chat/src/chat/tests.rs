@@ -1168,7 +1168,7 @@ fn opens_private_conversations_and_their_history() {
 }
 
 #[test]
-fn keeps_services_and_the_server_in_the_status() {
+fn keeps_services_and_the_server_in_the_status_and_the_server_channel() {
     let mut chat = Scene::in_api();
     feed(
         &mut chat,
@@ -1179,7 +1179,30 @@ fn keeps_services_and_the_server_in_the_status() {
         ],
     );
     assert_eq!(names(&chat), ["irc.zirc.test", "#api"]);
-    assert!(chat.conversations().iter().all(|c| c.entries.is_empty()));
+    // In the Server channel too, but never what we said to a service, a password among it.
+    let server: Vec<(&str, &EntryKind)> = chat.conversations()[0]
+        .entries
+        .iter()
+        .map(|e| (e.from.as_str(), &e.kind))
+        .collect();
+    assert_eq!(
+        server,
+        [
+            (
+                "NickServ",
+                &EntryKind::Notice("You are now logged in".into())
+            ),
+            (
+                "irc.zirc.test",
+                &EntryKind::Notice("Looking up your hostname".into())
+            ),
+        ]
+    );
+    assert!(
+        chat.conversations()[1..]
+            .iter()
+            .all(|c| c.entries.is_empty())
+    );
     let notices: Vec<String> = chat.status().notices.iter().map(Notice::line).collect();
     assert_eq!(
         notices,
@@ -1361,7 +1384,11 @@ fn shows_a_channel_as_every_app_does() {
         .map(|n| n.text.as_str())
         .collect();
     assert_eq!(notices, ["Server restarting", "Closing link"]);
-    assert!(chat.conversations()[0].entries.is_empty());
+    assert_eq!(
+        chat.conversations()[0].entries.len(),
+        2,
+        "the Server channel's"
+    );
 }
 
 #[test]
@@ -6100,6 +6127,7 @@ fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
         for row in chat.sidebar_list(&ListOptions::default()) {
             match row.kind {
                 ListKind::Heading => shelves.push((row.shelf, Vec::new())),
+                _ if row.shelf == Shelf::Server => shelves.push((row.shelf, vec![row.title])),
                 ListKind::Conversation | ListKind::Room => {
                     let indent = "  ".repeat(usize::from(row.depth));
                     shelves
@@ -6116,6 +6144,7 @@ fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
     assert_eq!(
         shelves(&chat),
         [
+            (Shelf::Server, vec![crate::chat::SERVER_TITLE.to_owned()]),
             (Shelf::Starred, vec!["carol".to_owned()]),
             (
                 Shelf::Channels,
@@ -8426,4 +8455,63 @@ fn nothing_is_said_where_nobody_can_read_it() {
         ran(&mut chat, "#api", "hi"),
         Ran::Note(said::JOIN_FIRST.into())
     );
+}
+
+#[test]
+fn the_server_channel_shows_notices_and_sends_what_is_typed_there_as_it_is() {
+    let mut chat = Scene::in_api();
+    // Until it's opened, the server's conversation stands for nothing shown.
+    assert_eq!(chat.title("irc.zirc.test"), crate::chat::SERVER_TITLE);
+    assert!(!chat.server_shown());
+    let here = |chat: &Chat| chat.selected().name.clone();
+    assert!(chat.open("irc.zirc.test").is_empty());
+    assert!(chat.server_shown());
+    assert_eq!(here(&chat), "irc.zirc.test");
+    assert!(
+        chat.nothing_joined().is_none(),
+        "it's a channel of its own now"
+    );
+
+    let name = here(&chat);
+    let ran = chat.run(
+        &Here::new(&name, (15, 0)),
+        crate::command::Command::Say("PRIVMSG NickServ :PUSH LIST".into()),
+    );
+    let Ran::Send(lines) = ran else {
+        panic!("sent as it is: {ran:?}");
+    };
+    assert_eq!(texts(&lines), ["PRIVMSG NickServ :PUSH LIST"]);
+    feed(
+        &mut chat,
+        &[":NickServ!NickServ@s NOTICE me :Nickname me has 1 push subscription(s)"],
+    );
+    let said: Vec<&EntryKind> = chat.conversations()[0]
+        .entries
+        .iter()
+        .map(|e| &e.kind)
+        .collect();
+    assert_eq!(
+        said,
+        [
+            &EntryKind::Message("PRIVMSG NickServ :PUSH LIST".into()),
+            &EntryKind::Notice("Nickname me has 1 push subscription(s)".into()),
+        ]
+    );
+    // Never unread nor counted, and at the top of the sidebar with the newest under it.
+    assert_eq!(chat.conversations()[0].unread, 0);
+    let rows = chat.sidebar_list(&ListOptions::default());
+    let top = &rows[0];
+    assert_eq!(
+        (top.shelf, top.title.as_str()),
+        (Shelf::Server, crate::chat::SERVER_TITLE)
+    );
+    assert!(!top.unread && top.badge == 0);
+    assert_eq!(
+        top.preview.as_deref(),
+        Some("NickServ: Nickname me has 1 push subscription(s)")
+    );
+
+    // Another conversation shown, the server's stands for nothing shown again.
+    let _ = chat.open("#api");
+    assert!(!chat.server_shown());
 }

@@ -214,6 +214,9 @@ pub mod said {
     /// What's typed where nobody can be written to: the server's own conversation.
     pub const NOT_A_CONVERSATION: &str =
         "this isn't a conversation: /join a channel or /msg someone";
+    /// What's typed in the Server channel that isn't an IRC line, such as nothing but tags.
+    pub const NOT_A_LINE: &str =
+        "the Server channel sends IRC lines as they are: PRIVMSG NickServ :HELP";
     /// What's typed where nobody reads it, when the conversation says nothing of its own.
     pub const TAKES_NO_MESSAGES: &str = "this conversation takes no messages";
     /// What's typed in a channel we aren't in.

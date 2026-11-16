@@ -80,6 +80,7 @@ fn lists_starred_then_channels_with_guests_rooms_then_direct_messages() {
     assert_eq!(
         lines(&rows),
         [
+            "Conversation Server Server",
             "Heading Starred Starred",
             "Conversation Starred carol",
             "Heading Channels Channels",
@@ -94,7 +95,7 @@ fn lists_starred_then_channels_with_guests_rooms_then_direct_messages() {
             "Conversation Direct bob",
         ]
     );
-    let heading = &rows[0];
+    let heading = &rows[1];
     assert_eq!((heading.name.as_str(), heading.open), ("", Some(true)));
     // A direct message's row says what it's with, its dot and what was said.
     let bob = row(&rows, "bob");
@@ -216,6 +217,7 @@ fn whats_starred_is_under_starred_alone_a_channel_with_its_rooms() {
     assert_eq!(
         lines(&rows),
         [
+            "Conversation Server Server",
             "Heading Starred Starred",
             "Conversation Starred #api",
             "  Room Starred login",
@@ -393,7 +395,14 @@ fn browse_channels_then_new_channel_end_the_channels() {
     assert!(new.name.is_empty() && !new.opens);
     let empty = Chat::new("me", "irc.example", Vec::new(), Options::default()).sidebar_list(&all());
     let kinds: Vec<ListKind> = empty.iter().map(|r| r.kind).collect();
-    assert_eq!(kinds, [ListKind::Heading, ListKind::NewChannel]);
+    assert_eq!(
+        kinds,
+        [
+            ListKind::Conversation,
+            ListKind::Heading,
+            ListKind::NewChannel
+        ]
+    );
     let browse = channels[channels.len() - 2];
     assert_eq!(browse.kind, ListKind::Browse);
     assert_eq!(browse.title, BROWSE_CHANNELS);
@@ -410,6 +419,7 @@ fn browse_channels_then_new_channel_end_the_channels() {
     assert_eq!(
         lines(&rows),
         [
+            "Conversation Server Server",
             "Heading Starred Starred",
             "Conversation Starred #api",
             "Heading Channels Channels",
@@ -622,8 +632,8 @@ fn each_tab_lists_its_own_parts_and_whats_starred_in_it() {
     let both = chat.sidebar_list(&all());
     assert_eq!(
         both.len(),
-        channels.len() + messages.len() - 1,
-        "one Starred heading"
+        channels.len() + messages.len() - 2,
+        "one Server row and one Starred heading"
     );
     assert_eq!(
         SidebarSection::ALL.map(SidebarSection::label),

@@ -111,6 +111,10 @@ impl Chat {
     /// one: with an agent session, `<machine>/<session>`, too. A channel we're not in is joined; a private conversation's history is asked
     /// for. Returns what to send.
     pub fn open(&mut self, name: &str) -> Vec<Line> {
+        if self.is_server(name) {
+            self.show_server();
+            return Vec::new();
+        }
         if is_channel(name) {
             return self.join(&[name.to_owned()]);
         }

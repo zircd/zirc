@@ -22,6 +22,7 @@ impl Chat {
         if at >= self.conversations.len() {
             return Vec::new();
         }
+        self.server_shown = false;
         self.divider = self.first_unread(&self.conversations[at].name.clone());
         // Opened again, a closed direct message is back in the sidebar.
         self.closed.remove(&fold(&self.conversations[at].name));
@@ -36,6 +37,22 @@ impl Chat {
         conversation.unread = 0;
         conversation.mentions = 0;
         self.mark(at)
+    }
+
+    /// Shows the server's own conversation as the Server channel: what the server and its
+    /// services said, where what's typed goes to the server as it is.
+    pub fn show_server(&mut self) {
+        if let Some(at) = self.position(&self.server.clone()) {
+            // The server's conversation has nothing to mark read.
+            let _ = self.select(at);
+            self.server_shown = true;
+        }
+    }
+
+    /// Whether the Server channel is shown ([`Chat::show_server`]).
+    #[must_use]
+    pub fn server_shown(&self) -> bool {
+        self.server_shown
     }
 
     /// The id of the message the "New" divider goes above in the conversation shown, as

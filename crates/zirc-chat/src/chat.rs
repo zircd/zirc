@@ -212,7 +212,7 @@ pub use speaker::{
 pub use split::split_message;
 pub use status::{Connection, Logged, Notice, Status};
 pub use thread::{ThreadLink, thread_name};
-pub use titles::{NOTHING_JOINED, NothingJoined};
+pub use titles::{NOTHING_JOINED, NothingJoined, SERVER_TITLE};
 pub use typing::{EVERY as TYPING_EVERY, SESSION_TAG, TYPING_TAG, Typist, typing_words};
 pub use view::{
     EVENT_MARK, Icon, Item, LANDING_KIND, Landing, Membership, Outcome, Parts, Pointer,
@@ -471,6 +471,9 @@ pub struct Chat {
     /// as the sidebar asks it hundreds of times a frame. Rebuilt wherever one is added or removed.
     index: HashMap<String, usize>,
     selected: usize,
+    /// Whether the server's own conversation is shown as the Server channel
+    /// ([`Chat::show_server`]), not as the stand-in for nothing shown that it is otherwise.
+    server_shown: bool,
     /// Channels to join besides the server's own.
     joins: Vec<String>,
     /// The server's channels and how many are in each, from the last complete `LIST`, and
@@ -652,6 +655,7 @@ impl Chat {
             conversations: vec![Conversation::new(server, Kind::Server)],
             index: HashMap::from([(fold(server), 0)]),
             selected: 0,
+            server_shown: false,
             joins,
             listed: Vec::new(),
             listing: Vec::new(),

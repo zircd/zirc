@@ -5,7 +5,8 @@
 //! out nothing of its own: what's folded away isn't in the list, so moving to the next or
 //! previous row walks the list as it is.
 //!
-//! The parts, in order: Starred (anything starred, there alone); Channels (each repository's
+//! The parts, in order: the Server channel, alone and with no heading, in both halves of the
+//! sidebar; Starred (anything starred, there alone); Channels (each repository's
 //! channel with its rooms and its guests' rooms under it, then Browse channels); Direct
 //! messages (people, groups, agent sessions and our offline machines' threads, newest first;
 //! an agent session that ended and went quiet isn't listed, till it's opened); Your machines
@@ -22,8 +23,8 @@ use super::conversation::{Kind, fold};
 use super::face::Face;
 use super::list::{ChannelGroup, DirectKind, DirectRow, Shelf, SidebarSection};
 use super::{
-    Attendance, Avatar, BROWSE_CHANNELS, Chat, NEW_CHANNEL, Presence, ago_short, away_label,
-    badge_label, is_group, room_label,
+    Attendance, Avatar, BROWSE_CHANNELS, Chat, NEW_CHANNEL, Presence, SERVER_TITLE, ago_short,
+    away_label, badge_label, is_group, room_label,
 };
 
 /// What the row after the first few direct messages says, where an app lists only those
@@ -271,7 +272,8 @@ impl Chat {
         // Agent sessions and machines' threads are direct messages among people's, newest
         // first (the user's choice, 15 Nov 2026).
         let directs = self.listed_direct_rows();
-        let mut list = Vec::new();
+        // The Server channel first, always (the user's choice, 16 Nov 2026).
+        let mut list: Vec<ListRow> = self.server_list_row().into_iter().collect();
 
         let mut starred = Vec::new();
         for name in &self.stars {
@@ -360,11 +362,40 @@ impl Chat {
         list
     }
 
+    /// The Server channel's row: the newest thing the server or a service said under it, never
+    /// bold or counted.
+    fn server_list_row(&self) -> Option<ListRow> {
+        let server = &self.conversations[self.position(&self.server)?];
+        let newest = server.entries.last();
+        Some(ListRow {
+            name: server.name.clone(),
+            opens: true,
+            joined: true,
+            preview: newest.map(|entry| match &entry.kind {
+                super::EntryKind::Notice(text) | super::EntryKind::Message(text)
+                    if !entry.from.eq_ignore_ascii_case(&server.name) =>
+                {
+                    format!("{}: {text}", entry.from)
+                }
+                super::EntryKind::Notice(text) | super::EntryKind::Message(text) => text.clone(),
+                _ => String::new(),
+            }),
+            when: newest.map(|entry| ago_short(entry.time, (self.clock)())),
+            latest_ms: newest.map(|entry| entry.time.timestamp_millis()),
+            ..ListRow::new(
+                ListKind::Conversation,
+                Shelf::Server,
+                SERVER_TITLE.to_owned(),
+            )
+        })
+    }
+
     /// Whether `row` says [`NO_MESSAGES`] under its name: a channel's, a room's under its
     /// channel or a direct message's, with nothing to preview or note
     /// ([`Chat::nothing_said`]).
     fn says_no_messages(&self, row: &ListRow) -> bool {
         matches!(row.kind, ListKind::Conversation | ListKind::Room)
+            && row.shelf != Shelf::Server
             && row.preview.is_none()
             && row.note.is_none()
             && self.nothing_said(&row.name)
