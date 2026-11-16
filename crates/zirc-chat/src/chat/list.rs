@@ -929,13 +929,19 @@ impl Chat {
     /// The direct messages, one row each, whoever they're with, newest first, starred first
     /// as every list orders them: never a person's agents rolled under them, nor our own
     /// agents in a group. An old private conversation with a guest is listed only while
-    /// something in it is new, or it's shown: a guest is talked to in their room.
+    /// something in it is new, or it's shown: a guest is talked to in their room. Never one of
+    /// our own machines itself: its agents are talked to one at a time, in their own
+    /// conversations, never all at once (the user's choice, 15 Nov 2026). A teammate's
+    /// machine is, as their agents' messages to us arrive there.
     #[must_use]
     pub fn direct_rows(&self) -> Vec<DirectRow> {
         let mut rows: Vec<DirectRow> = self
             .list(SidebarSection::Direct)
             .into_iter()
             .map(|at| self.conversations[at].name.clone())
+            .filter(|name| {
+                !(self.direct_kind(name) == Some(DirectKind::Machine) && self.ours(name))
+            })
             // A guest is talked to in their room: an old private conversation with one is
             // listed only while something in it is new, or it's shown.
             .filter(|name| {
@@ -1017,15 +1023,6 @@ impl Chat {
                 row.folded = row.folded
                     || (self.quiet(&row.name, row.unread, None)
                         && (self.clock)() - ended >= ENDED_FOLD_AFTER);
-            }
-        } else if row.kind == DirectKind::Machine
-            && let Some((owner, _)) = self.whose(&row.name)
-        {
-            row.mine = owner.eq_ignore_ascii_case(&self.me);
-            if row.mine {
-                // Our agents' thread, not a conversation with ourselves: their glyph, not
-                // our photo.
-                row.avatars = vec![Self::agents_avatar()];
             }
         } else if row.kind == DirectKind::Person {
             row.presence = Some(self.standing(&row.name).presence());

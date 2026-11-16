@@ -3430,7 +3430,7 @@ fn files_what_our_agents_say_by_session() {
     assert_eq!(first.unread, 1);
     assert_eq!(first.mentions, 1, "a private message counts as a mention");
     assert_eq!(chat.title("me-mbp/cc-1531f8"), "cc-1531f8");
-    assert_eq!(chat.title("me-mbp"), "Your agents · me-mbp");
+    assert_eq!(chat.title("me-mbp"), "me · me-mbp");
     assert_eq!(chat.title("bob-mbp"), "bob · bob-mbp");
     assert_eq!(chat.title("#api"), "#api");
 }

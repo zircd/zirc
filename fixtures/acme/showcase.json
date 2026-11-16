@@ -73,19 +73,12 @@
       { "id": "a6", "kind": "message", "from": "maya-mbp/cc-4e21", "at": "09:24", "text": "The whole component, for the review:", "code": {"language": "tsx", "text": "import { useFontMetrics } from \"../fonts\";\n\nexport function CouponField(props: CouponFieldProps) {\n  const metrics = useFontMetrics(\"body\");\n  const minHeight = metrics.lineHeight + 2 * PADDING;\n\n  // step 1: keep the field's box stable while the font loads\n  // step 2: keep the field's box stable while the font loads\n  // step 3: keep the field's box stable while the font loads\n  // step 4: keep the field's box stable while the font loads\n  // step 5: keep the field's box stable while the font loads\n  // step 6: keep the field's box stable while the font loads\n  // step 7: keep the field's box stable while the font loads\n  // step 8: keep the field's box stable while the font loads\n  // step 9: keep the field's box stable while the font loads\n  // step 10: keep the field's box stable while the font loads\n  // step 11: keep the field's box stable while the font loads\n  // step 12: keep the field's box stable while the font loads\n  // step 13: keep the field's box stable while the font loads\n  // step 14: keep the field's box stable while the font loads\n  // step 15: keep the field's box stable while the font loads\n  // step 16: keep the field's box stable while the font loads\n  // step 17: keep the field's box stable while the font loads\n  // step 18: keep the field's box stable while the font loads\n  // step 19: keep the field's box stable while the font loads\n  // step 20: keep the field's box stable while the font loads\n  // step 21: keep the field's box stable while the font loads\n  // step 22: keep the field's box stable while the font loads\n  // step 23: keep the field's box stable while the font loads\n  // step 24: keep the field's box stable while the font loads\n  // step 25: keep the field's box stable while the font loads\n  // step 26: keep the field's box stable while the font loads\n  // step 27: keep the field's box stable while the font loads\n  // step 28: keep the field's box stable while the font loads\n  // step 29: keep the field's box stable while the font loads\n  // step 30: keep the field's box stable while the font loads\n  return (\n    <Field minHeight={minHeight} {...props} />\n  );\n}"} },
       { "id": "a4", "kind": "message", "from": "maya", "at": "09:25", "text": "Perfect, thanks! Landing it 🚀" }
     ],
-    "maya-mbp": [
-      { "id": "m1", "kind": "message", "from": "maya", "at": "07:50", "day": "Today", "text": "status, everyone?" },
-      { "id": "m2", "kind": "message", "from": "maya-mbp/cc-4e21", "at": "07:51", "text": "checkout: on the coupon field, nothing blocked" }
-    ],
     "leo": [
       { "id": "d1", "kind": "message", "from": "leo", "at": "08:51", "day": "Today", "text": "Got a minute for the rate limits plan?" },
       { "id": "d2", "kind": "message", "from": "maya", "at": "08:53", "text": "Sure, after standup" },
       { "id": "d3", "kind": "message", "from": "leo", "at": "08:54", "text": "My agent drafted it, it's in #api 👀" }
     ]
   },
-  "machines": [
-    { "conversation": "maya-mbp", "owner": "maya", "machine": "mbp", "title": "Your agents · mbp", "preview": "checkout: on the coupon field, nothing blocked", "last": "2h", "sessions": ["maya-mbp/cc-4e21"] }
-  ],
   "activity": {
     "maya-mbp/cc-4e21": [
       { "in": "#web/agents", "id": "r1" },

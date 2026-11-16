@@ -8,24 +8,16 @@
 //! from its machine's nick, so `(nick, session)` finds a session's every line in any channel.
 //! CI's landings and deploys come from CI's nick and only *name* the session, in their data
 //! ([`zirc_proto::ci::Data::session`]).
-//!
-//! The same file has the machine's own thread, `Your agents · matt`.
 
 use std::collections::HashSet;
 
-use serde::Serialize;
-use ts_rs::TS;
 use zirc_proto::{Event, ci};
 
 use super::conversation::{Conversation, Entry, EntryKind, Kind, agent};
-use super::list::Agent;
-use super::{Avatar, Chat, Face, SenderKind};
+use super::{Avatar, Chat, SenderKind};
 
-/// What a machine's thread is called when it's ours, before the machine's name:
-/// `Your agents · matt`.
-pub const YOUR_AGENTS: &str = "Your agents";
-
-/// The two letters on the machine thread's face: a glyph, never the person's photo.
+/// The two letters on a machine's face where it speaks itself: a glyph, never the person's
+/// photo.
 pub const AGENTS_GLYPH: &str = "AG";
 
 /// The label of the machine thread's [`Avatar::App`], for apps that draw it their own way.
@@ -95,24 +87,6 @@ pub struct AgentHeader {
     /// [`Self::heard`]; a teammate's agent's says whose it is first, `Maya Chen's agent ·
     /// Last heard 3m ago`, where ours needs no `Your agent`: its AGENT tag says it.
     pub line: String,
-}
-
-/// One of a machine's agent sessions, as the top of the machine's thread lists it, ready to
-/// draw and send as it is: every app reads this record, the phones through `UniFFI` and web
-/// as JSON.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(rename_all = "camelCase")]
-pub struct MachineSession {
-    /// Its conversation, `me-mbp/cc-1`, which a click opens.
-    pub conversation: String,
-    /// What it goes by, as its row says: `checkout`.
-    pub label: String,
-    /// Its face, as its row draws it.
-    pub face: Face,
-    /// What it's doing, marker first (`✎ about to change web/src · 4m`), or its card's
-    /// `Nothing in progress`.
-    pub now: Option<String>,
 }
 
 impl Chat {
@@ -297,44 +271,6 @@ impl Chat {
             glyph: AGENTS_GLYPH.to_owned(),
             label: AGENTS_LABEL.to_owned(),
         }
-    }
-
-    /// The agent sessions on our machine `nick`, as the top of its thread lists them: each
-    /// with its face, handle and what it's doing, newest first. Empty for a machine that
-    /// isn't ours.
-    #[must_use]
-    pub fn machine_sessions(&self, nick: &str) -> Vec<MachineSession> {
-        if !self.ours(nick) {
-            return Vec::new();
-        }
-        let mut sessions = self
-            .sessions(|n| n.eq_ignore_ascii_case(nick))
-            .into_iter()
-            .filter_map(|name| {
-                let (nick, session) = agent(&name)?;
-                let (_, machine_name) = self.machine(nick)?;
-                let agent = self.session_row(nick, session, machine_name);
-                // Its Now line, whether or not it registered a title.
-                let now = self.agent_header(&agent.name).map(|header| header.now);
-                Some((agent, now))
-            })
-            .collect::<Vec<(Agent, Option<String>)>>();
-        sessions.sort_by_key(|(agent, _)| std::cmp::Reverse(agent.latest));
-        sessions
-            .into_iter()
-            .map(|(agent, now)| MachineSession {
-                face: self.face(&agent.avatar),
-                conversation: agent.name,
-                label: agent.label,
-                now,
-            })
-            .collect()
-    }
-
-    /// Whether the conversation `name` is the thread with one of our own machines.
-    #[must_use]
-    pub fn is_machine_thread(&self, name: &str) -> bool {
-        agent(name).is_none() && !super::is_channel(name) && self.ours(name)
     }
 }
 

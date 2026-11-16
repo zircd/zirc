@@ -242,60 +242,22 @@ fn a_conversation_with_nothing_yet_says_so_and_has_an_intro() {
 }
 
 #[test]
-fn our_machines_thread_is_our_agents_with_their_glyph_and_sessions() {
+fn our_machine_is_never_a_direct_message_of_its_own() {
     let mut chat = scene();
     hear_checkout(&mut chat);
+    // Said to our machine from a plain IRC client, and from it with no session: neither
+    // makes a conversation to list, as its agents are talked to one at a time.
     feed(
         &mut chat,
-        &[":me!u@h PRIVMSG me-mbp :/agent hello everyone"],
+        &[
+            ":me!u@h PRIVMSG me-mbp :hello everyone",
+            ":me-mbp!u@machine/me PRIVMSG me :all agents: stand by",
+        ],
     );
-    assert_eq!(chat.title("me-mbp"), "Your agents · me-mbp");
-    assert_eq!(chat.short_title("me-mbp"), "every agent on me-mbp");
-    // A teammate's machine is not ours.
-    assert_eq!(chat.title("bob-laptop"), "bob · bob-laptop");
-    assert!(chat.is_machine_thread("me-mbp"));
-    assert!(!chat.is_machine_thread("bob-laptop"));
-    let sessions: Vec<_> = chat
-        .machine_sessions("me-mbp")
-        .into_iter()
-        .map(|s| (s.conversation, s.label))
-        .collect();
-    assert_eq!(
-        sessions,
-        [
-            ("me-mbp/cc-1".into(), "checkout".into()),
-            ("me-mbp/cc-2".into(), "docs".into())
-        ]
-    );
-    // Each row's Now line, for a session that never registered a title card too.
-    let nows: Vec<_> = chat
-        .machine_sessions("me-mbp")
-        .into_iter()
-        .map(|s| s.now)
-        .collect();
-    assert_eq!(
-        nows,
-        [
-            Some("⟶ the login page · 2h".to_owned()),
-            Some("⟶ the docs · 1h".to_owned())
-        ]
-    );
-    // Each with its face as its row draws it: the session's, on our machine.
-    let faces: Vec<_> = chat
-        .machine_sessions("me-mbp")
-        .into_iter()
-        .map(|s| s.face)
-        .collect();
-    let rows: Vec<_> = ["me-mbp/cc-1", "me-mbp/cc-2"]
-        .iter()
-        .map(|name| chat.face(&chat.agent(name).unwrap().avatar))
-        .collect();
-    assert_eq!(faces, rows);
-    assert!(matches!(
-        &faces[0],
-        crate::chat::Face::Agent { session: Some(session), .. } if session == "cc-1"
-    ));
-    assert!(chat.machine_sessions("bob-laptop").is_empty());
+    let direct: Vec<String> = chat.direct_rows().into_iter().map(|row| row.name).collect();
+    assert!(!direct.iter().any(|name| name == "me-mbp"), "{direct:?}");
+    // Its name is its machine's, ours as a teammate's would be.
+    assert_eq!(chat.title("me-mbp"), "me · me-mbp");
 }
 
 #[test]

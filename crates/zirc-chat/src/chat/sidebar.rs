@@ -278,7 +278,7 @@ impl Chat {
         let groups = self.listed_channel_groups();
         // Agent sessions and machines' threads are direct messages among people's, newest
         // first (the user's choice, 15 Nov 2026).
-        let directs = self.listed_direct_rows(&self.our_machines());
+        let directs = self.listed_direct_rows();
         let mut list = Vec::new();
 
         let mut starred = Vec::new();
@@ -399,13 +399,13 @@ impl Chat {
     }
 
     /// The direct messages the sidebar lists, newest first: every one of [`Chat::direct_rows`]
-    /// a person's, a group's or a guest's; an agent session's or a machine's thread only once
-    /// something's been said in it, there and not in a channel (the user's choice, 15 Nov
+    /// a person's, a group's or a guest's; an agent session's or a teammate's machine's only
+    /// once something's been said in it, there and not in a channel (the user's choice, 15 Nov
     /// 2026), as an agent that exists but never wrote to us is nothing to read. An agent
     /// session quiet for longer than [`super::ROOM_QUIET_AFTER`] ([`DirectRow::folded`])
     /// isn't listed either: Jump to… and search still find it, and it's back once it's opened
     /// or says something again. The one shown is always listed.
-    fn listed_direct_rows(&self, online: &[String]) -> Vec<DirectRow> {
+    fn listed_direct_rows(&self) -> Vec<DirectRow> {
         let shown = &self.selected().name;
         let said = |name: &str| {
             self.conversation(name)
@@ -422,7 +422,7 @@ impl Chat {
                         DirectKind::Person | DirectKind::Group => true,
                     }
             })
-            .filter(|row| !self.left_out(row, online))
+            .filter(|row| !self.left_out(row))
             .collect();
         rows.sort_by_cached_key(|row| (std::cmp::Reverse(row.latest), fold(&row.name)));
         rows

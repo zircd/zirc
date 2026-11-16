@@ -91,8 +91,8 @@ use zirc_proto::{Event, Message};
 
 pub use activity::{ActivityKind, ActivityRow, InboxButton, MENTIONED, REACTED, REPLIED, UNREAD};
 pub use agent_activity::{
-    AGENTS_GLYPH, AGENTS_LABEL, ActivityEntry, AgentHeader, AgentIntro, MachineSession,
-    ReadOnlyNote, YOUR_AGENTS, activity_conversation,
+    AGENTS_GLYPH, AGENTS_LABEL, ActivityEntry, AgentHeader, AgentIntro, ReadOnlyNote,
+    activity_conversation,
 };
 pub use agent_card::{AgentCard, MESSAGE, OPEN_SESSION};
 pub use avatar::{initials, nick_degrees};
@@ -105,7 +105,7 @@ pub use both::{
     both_changing_files_label, both_changing_words,
 };
 pub use channel_rows::ChannelRow;
-pub use closing::{BUILD_GONE_AFTER, Closed, is_build_machine};
+pub use closing::Closed;
 pub use code::{Role, Token, highlight};
 pub use code_ref::{
     CodeAction, CodePreview, CodeRef, EDITOR_AUTOMATIC, EDITOR_FORGE, Editor, EditorOption,
@@ -607,9 +607,6 @@ pub struct Chat {
     tab: list::SidebarSection,
     /// Folded direct message name → when the person closed it ([`Chat::close_direct`]).
     closed: HashMap<String, DateTime<Utc>>,
-    /// Folded nick → when it went offline, while it's gone: which of our builds' machines'
-    /// threads have been gone long enough to leave the sidebar.
-    gone: HashMap<String, DateTime<Utc>>,
     /// The organisation's kept guests, as zirc.dev lists them to owners and admins
     /// ([`Chat::set_kept_guests`]).
     kept_guests: Vec<guest_rooms::KeptGuest>,
@@ -712,7 +709,6 @@ impl Chat {
             collapsed: std::collections::HashSet::from([list::Shelf::Feeds]),
             tab: list::SidebarSection::Channels,
             closed: HashMap::new(),
-            gone: HashMap::new(),
             kept_guests: Vec::new(),
             guest_rooms_open: HashMap::new(),
             notify: notify::NotifySettings::default(),

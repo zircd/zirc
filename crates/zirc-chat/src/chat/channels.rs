@@ -302,7 +302,6 @@ impl Chat {
                 }
             }
             "QUIT" => {
-                self.went(from, Some(time));
                 self.presence.quit(from);
                 self.live_gone(from, time);
                 self.away.remove(&fold(from));
@@ -342,7 +341,6 @@ impl Chat {
                 .insert(fold(from), (account != "*").then(|| account.clone()));
         }
         if !me {
-            self.went(from, None);
             if let Some(at) = self.position(channel) {
                 self.conversations[at].add_member(from);
                 let entry = Entry {

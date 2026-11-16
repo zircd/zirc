@@ -4,8 +4,8 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::{
-    Chat, Kind, Line, SenderKind, YOUR_AGENTS, agent, agent_name, fold, group, is_channel,
-    is_group, machine_label, sender_kind,
+    Chat, Kind, Line, SenderKind, agent, agent_name, fold, group, is_channel, is_group,
+    machine_label, sender_kind,
 };
 
 /// What fills the window while nothing's joined and only the server's own conversation is
@@ -53,9 +53,6 @@ impl Chat {
             return self.guest_name(name);
         }
         let machine = |nick: &str| match self.machine(nick) {
-            // Our own machine's thread holds what we said to its agents, never a person: it
-            // reads as ours, not as a conversation with ourselves.
-            Some((_, machine)) if self.ours(nick) => format!("{YOUR_AGENTS} · {machine}"),
             Some((owner, machine)) => machine_label(&owner, &machine),
             None => nick.to_owned(),
         };
@@ -149,8 +146,6 @@ impl Chat {
                 self.sender_name(name, None)
             }
             None => match self.machine(name) {
-                // `Message every agent on matt`: what a message to our machine reaches.
-                Some((_, machine)) if self.ours(name) => format!("every agent on {machine}"),
                 Some((owner, machine)) => machine_label(&owner, &machine),
                 None => self.shown_name(name),
             },

@@ -119,7 +119,7 @@ fn a_part_with_nothing_in_it_is_left_out() {
 }
 
 #[test]
-fn agents_and_machines_are_direct_messages_once_they_have_said_something() {
+fn agents_are_direct_messages_once_they_have_said_something_and_our_machines_never() {
     let mut chat = Scene::in_api();
     feed(
         &mut chat,
@@ -152,18 +152,12 @@ fn agents_and_machines_are_direct_messages_once_they_have_said_something() {
     for name in ["me-mbp", "me-ci-9", "me-mbp/cc-2", "me-mbp/cc-old"] {
         assert!(!listed(&chat, name), "{name}");
     }
-    // A machine's thread is, once something's said in it.
+    // Our machine itself isn't, even once something's said to us as it.
     feed(
         &mut chat,
         &[":me-ci-9!u@machine/me PRIVMSG me :build green"],
     );
-    let rows = chat.sidebar_list(&all());
-    let ci = row(&rows, "me-ci-9");
-    assert_eq!(
-        (ci.shelf, ci.direct_kind),
-        (Shelf::Direct, Some(DirectKind::Machine))
-    );
-    assert!(ci.opens && ci.direct && ci.mine);
+    assert!(!listed(&chat, "me-ci-9"));
     // Opened, the quiet one is listed till something else is.
     let at = chat.position("me-mbp/cc-old").unwrap();
     let _ = chat.select(at);
@@ -176,50 +170,6 @@ fn agents_and_machines_are_direct_messages_once_they_have_said_something() {
 /// Whether a direct message called `name` is anywhere in the sidebar.
 fn listed(chat: &Chat, name: &str) -> bool {
     chat.sidebar_list(&all()).iter().any(|row| row.name == name)
-}
-
-#[test]
-fn a_builds_machine_leaves_the_sidebar_a_while_after_it_goes_offline() {
-    let mut chat = Scene::in_api();
-    feed(
-        &mut chat,
-        &[
-            ":build-2301!u@machine/me JOIN #api",
-            ":laptop!u@machine/me JOIN #api",
-            "@time=2026-10-30T11:40:00.000Z :build-2301!u@machine/me PRIVMSG me :all done",
-            "@time=2026-10-30T11:40:00.000Z :laptop!u@machine/me PRIVMSG me :asleep soon",
-        ],
-    );
-    let _ = chat.mark_read("build-2301");
-    let _ = chat.mark_read("laptop");
-    // Gone, with nothing unread: both are listed, as they wrote to us; a build's machine
-    // only till its grace is up, any other as a person's direct message is.
-    feed(
-        &mut chat,
-        &[
-            "@time=2026-10-30T11:58:00.000Z :build-2301!u@machine/me QUIT :done",
-            "@time=2026-10-30T11:50:00.000Z :laptop!u@machine/me QUIT :asleep",
-        ],
-    );
-    assert!(listed(&chat, "build-2301"));
-    assert!(listed(&chat, "laptop"));
-    chat.clock = || {
-        chrono::Utc
-            .with_ymd_and_hms(2026, 10, 30, 12, 10, 0)
-            .unwrap()
-    };
-    assert!(!listed(&chat, "build-2301"));
-    assert!(listed(&chat, "laptop"));
-    // With something unread, it's back.
-    feed(
-        &mut chat,
-        &["@time=2026-10-30T12:03:00.000Z :build-2301!u@machine/me PRIVMSG me :one more thing"],
-    );
-    assert!(listed(&chat, "build-2301"));
-    assert!(super::super::is_build_machine("build-2301"));
-    assert!(super::super::is_build_machine("build-0a1b2c3d"));
-    assert!(!super::super::is_build_machine("build-box"));
-    assert!(!super::super::is_build_machine("buildbox"));
 }
 
 #[test]
@@ -618,36 +568,6 @@ fn an_agent_at_work_that_wrote_to_us_has_its_direct_row_with_its_task() {
         .map(|r| r.name.as_str())
         .collect();
     assert_eq!(direct, ["me-mbp/cc-1", "carol", "bob"]);
-}
-
-#[test]
-fn our_machines_thread_is_a_direct_message_once_something_is_said_in_it() {
-    let mut chat = busy();
-    // Connected, with nothing said: not listed.
-    feed(&mut chat, &[":me-mbp!u@machine/me JOIN #api"]);
-    assert!(!listed(&chat, "me-mbp"));
-    feed(
-        &mut chat,
-        &[&dm(
-            "me-mbp",
-            zirc_proto::NO_SESSION,
-            "all agents: pause",
-            2,
-        )],
-    );
-    let rows = chat.sidebar_list(&all());
-    let thread = row(&rows, "me-mbp");
-    assert_eq!(thread.shelf, Shelf::Direct);
-    assert_eq!(rows.iter().filter(|r| r.name == "me-mbp").count(), 1);
-    // Offline, it's still listed, its dot gone.
-    feed(&mut chat, &[":me-mbp!u@machine/me QUIT :bye"]);
-    let rows = chat.sidebar_list(&all());
-    let thread = row(&rows, "me-mbp");
-    assert_eq!(thread.shelf, Shelf::Direct);
-    assert_eq!(thread.kind, ListKind::Conversation);
-    assert_eq!(thread.direct_kind, Some(DirectKind::Machine));
-    assert!(thread.mine && thread.direct);
-    assert_eq!(thread.faces, [chat.face(&Chat::agents_avatar())]);
 }
 
 #[test]
