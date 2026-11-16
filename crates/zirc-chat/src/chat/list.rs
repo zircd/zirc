@@ -1104,8 +1104,8 @@ pub enum Shelf {
 
 impl Shelf {
     /// The part's name, as every app heads it: `Starred`, `Channels`, `Direct messages`.
-    /// Where room is short, such as a tab bar, direct messages are
-    /// [`DIRECT_SHORT`](super::DIRECT_SHORT).
+    /// Where room is short, such as a tab bar, direct messages are what the sidebar's switch
+    /// says, [`SidebarSection::label`].
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {

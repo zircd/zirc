@@ -23,10 +23,6 @@ pub const NEW_CHANNEL: &str = "New channel";
 /// What the field for a new channel's name says while it's empty.
 pub const CHANNEL_NAME: &str = "Channel name";
 
-/// Direct messages where room is short, such as a tab bar: a heading says
-/// [`Shelf::Direct`](super::Shelf::Direct)'s label in full.
-pub const DIRECT_SHORT: &str = "DMs";
-
 /// Where a search looks when it isn't in a conversation.
 pub const EVERYWHERE: &str = "Everywhere";
 
@@ -360,7 +356,6 @@ mod tests {
         let names = [Shelf::Starred, Shelf::Channels, Shelf::Direct].map(Shelf::label);
         assert_eq!(names, ["Starred", "Channels", "Direct messages"]);
         assert_eq!(BROWSE_CHANNELS, "Browse channels");
-        assert_eq!(DIRECT_SHORT, "DMs");
     }
 
     #[test]
