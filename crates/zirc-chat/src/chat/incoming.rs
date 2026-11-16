@@ -416,6 +416,12 @@ impl Chat {
         let Some(at) = self.position(&self.server.clone()) else {
             return;
         };
+        // In the order it came, as a server's window shows it: what's typed there is stamped by
+        // this computer's clock, which may be ahead of the server's answer to it.
+        let time = self.conversations[at]
+            .entries
+            .last()
+            .map_or(time, |last| time.max(last.time));
         let entry = Entry {
             time,
             id: None,

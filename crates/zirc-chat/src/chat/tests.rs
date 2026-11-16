@@ -8481,9 +8481,14 @@ fn the_server_channel_shows_notices_and_sends_what_is_typed_there_as_it_is() {
         panic!("sent as it is: {ran:?}");
     };
     assert_eq!(texts(&lines), ["PRIVMSG NickServ :PUSH LIST"]);
+    // Typing there tells no one.
+    assert!(chat.typed(&name, false).is_empty());
+    // The answer comes after what asked, though the server's clock says a little earlier.
     feed(
         &mut chat,
-        &[":NickServ!NickServ@s NOTICE me :Nickname me has 1 push subscription(s)"],
+        &[
+            "@time=2000-01-01T00:00:00.000Z :NickServ!NickServ@s NOTICE me :Nickname me has 1 push subscription(s)",
+        ],
     );
     let said: Vec<&EntryKind> = chat.conversations()[0]
         .entries

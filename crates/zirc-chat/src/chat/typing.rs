@@ -96,7 +96,12 @@ impl Chat {
     /// when they cleared it. Returns what to send: `active` at most every [`EVERY`] while
     /// they type, and `done` once when they clear it.
     pub fn typed(&mut self, name: &str, empty: bool) -> Vec<Line> {
-        if !self.options.send_typing || !self.is_connected() || self.position(name).is_none() {
+        // Nobody reads the Server channel: the server would answer that there's no such nick.
+        if !self.options.send_typing
+            || !self.is_connected()
+            || self.position(name).is_none()
+            || self.is_server(name)
+        {
             return Vec::new();
         }
         let now = (self.clock)();
