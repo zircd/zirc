@@ -52,6 +52,7 @@ mod replay;
 mod repos;
 mod requests;
 mod respond;
+mod same_work;
 mod say;
 mod scans;
 mod sealing;
@@ -591,6 +592,9 @@ pub struct Daemon {
     /// The landings each session has been told its branch takes out, by session, commit and
     /// path ([`Daemon::check_undone`]).
     undone_told: BTreeSet<(String, String, String)>,
+    /// The tasks sessions here and elsewhere took on and haven't finished, to tell a session
+    /// taking on the same work ([`Daemon::same_work_taken`]).
+    open_tasks: same_work::OpenTasks,
     /// What the organisation last said its members' agents may do, from `#ops` as kept
     /// before it was last dropped ([`Daemon::colleagues`]).
     colleagues_said: Option<zirc_proto::colleagues::Colleagues>,
@@ -807,6 +811,7 @@ impl Daemon {
             ops: None,
             stacks_checked: None,
             undone_told: BTreeSet::new(),
+            open_tasks: same_work::OpenTasks::default(),
             colleagues_said: None,
             repos: BTreeMap::new(),
             topics: Topics::new(),

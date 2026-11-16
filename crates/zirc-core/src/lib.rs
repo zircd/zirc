@@ -34,6 +34,7 @@ pub mod paths;
 pub mod playbook;
 pub mod project;
 pub mod reports;
+pub mod same_work;
 pub mod sealed;
 pub mod search;
 pub mod secrets;

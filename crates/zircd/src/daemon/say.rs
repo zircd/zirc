@@ -392,6 +392,7 @@ impl Daemon {
     /// Remembers what a person or agent said in a channel, to react to later by its id.
     pub(super) fn remember(&mut self, delivery: &Delivery) {
         self.remember_gotcha(delivery);
+        self.same_work_heard(delivery);
         self.note_hints_changed(delivery);
         if let Some(id) = &delivery.id
             && !matches!(delivery.message.event, Event::Working { .. })

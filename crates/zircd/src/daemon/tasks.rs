@@ -123,8 +123,11 @@ pub(super) const DONE_ON_LANDING: &str = "done: landed (said by zircd)";
 
 impl Daemon {
     /// Before `session`'s post `text` goes to `channel`: a `taking:` starts a task,
-    /// replacing the one it was on.
+    /// replacing the one it was on, and the session hears of others' that look like it.
     pub(super) fn task_said(&mut self, session: &str, text: &str, channel: &str) {
+        if zirc_proto::says_taking(text) {
+            self.same_work_taken(session, text, channel);
+        }
         if zirc_proto::says_taking(text) && self.tasks.start(session, false) {
             self.tasks_taken_in
                 .insert(session.to_owned(), channel.to_owned());
@@ -147,6 +150,9 @@ impl Daemon {
             && let Err(err) = self.book.set(Field::Roles, session, String::new())
         {
             tracing::warn!("couldn't clear a session's roles: {err}");
+        }
+        if zirc_proto::says_finished(text) {
+            self.same_work_finished(session);
         }
         if zirc_proto::says_finished(text) && self.tasks.finish(session, super::now()) {
             self.tasks_taken_in.remove(session);
