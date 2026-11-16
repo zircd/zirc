@@ -9,13 +9,7 @@ use serde::Serialize;
 use crate::gotchas::{self, Gotcha};
 use crate::hints::{self, Hint, Layer};
 
-/// An id for a lesson or a hint, from its words: the first 8 bytes of their SHA-256, in hex.
-/// What usage records and retirings name, so no words leave the room they're kept in.
-#[must_use]
-pub fn fingerprint(text: &str) -> String {
-    let digest = ring::digest::digest(&ring::digest::SHA256, text.as_bytes());
-    zirc_proto::hex(&digest.as_ref()[..8])
-}
+pub use zirc_proto::hints::fingerprint;
 
 /// One hint and its layer, as `--json` gives it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -156,15 +150,6 @@ mod tests {
         assert_eq!(json["hints"][1]["when"]["lockfile"], true);
         assert_eq!(json["hints"].as_array().unwrap().len(), 2 + defaults.len());
         assert_eq!(json["gotchas"][0]["text"], "specs share state");
-    }
-
-    #[test]
-    fn a_fingerprint_is_short_and_says_which_words() {
-        let one = fingerprint("pnpm only");
-        assert_eq!(one.len(), 16);
-        assert!(one.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_eq!(one, fingerprint("pnpm only"));
-        assert_ne!(one, fingerprint("pnpm only."));
     }
 
     #[test]
