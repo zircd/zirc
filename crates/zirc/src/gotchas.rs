@@ -161,11 +161,7 @@ pub(crate) async fn list(socket: &Path, args: GotchasArgs, out: &mut impl Write)
     let GotchasArgs { path, json } = args;
     let (repo, paths) = here(socket, path.as_slice()).await?;
     let all = read(socket, &repo).await;
-    let found: Vec<&Gotcha> = if paths.is_empty() {
-        gotchas::under(&all, &[String::new()])
-    } else {
-        gotchas::under(&all, &paths)
-    };
+    let found: Vec<&Gotcha> = gotchas::about(&all, &paths);
     if json {
         writeln!(out, "{}", serde_json::to_string(&found)?)?;
         return Ok(());

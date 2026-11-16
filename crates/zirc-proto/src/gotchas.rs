@@ -4,6 +4,7 @@
 //! the team's Playbook page, keep the same ones ([`kept`]).
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::Event;
 
@@ -24,7 +25,8 @@ pub const READ: usize = 5000;
 pub const SHOWN: usize = 5;
 
 /// A lesson about some paths.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(optional_fields)]
 pub struct Gotcha {
     /// The paths it's about, relative to the repository's root: files or directories.
     pub paths: Vec<String>,
@@ -150,4 +152,82 @@ pub fn kept(said: impl IntoIterator<Item = Said>) -> Vec<Gotcha> {
         }
     }
     kept
+}
+
+/// One of a team's gotchas, as its server lists them for the Playbook page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(rename = "GotchaListed")]
+pub struct Listed {
+    /// The gotchas room it's kept in, such as `#api/gotchas`.
+    pub room: String,
+    /// The repository's channel, the room's parent: `#api`.
+    pub repository: String,
+    /// The gotcha.
+    pub gotcha: Gotcha,
+    /// The start of its id as zirc shows it (`[id 01jbx7ab]`), which `zirc gotcha --retire`
+    /// takes; empty without an id.
+    pub short: String,
+}
+
+impl Listed {
+    /// `gotcha`, kept in `room`.
+    #[must_use]
+    pub fn new(room: &str, gotcha: Gotcha) -> Self {
+        let short = gotcha
+            .id
+            .as_deref()
+            .map(|id| crate::short_id(id).to_owned())
+            .unwrap_or_default();
+        Self {
+            room: room.to_owned(),
+            repository: room
+                .rsplit_once('/')
+                .map_or(room, |(parent, _)| parent)
+                .to_owned(),
+            gotcha,
+            short,
+        }
+    }
+}
+
+/// A team's gotchas, as its server lists them: newest first.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(rename = "GotchaListing")]
+pub struct Listing {
+    /// The gotchas.
+    pub gotchas: Vec<Listed>,
+}
+
+/// How often one part of a team's playbook was used, and when last.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(rename = "PlaybookUsed")]
+pub struct Used {
+    /// How many times.
+    pub count: u64,
+    /// When last, in RFC 3339.
+    pub last: String,
+}
+
+/// How often each hint was shown and each gotcha told lately, as a team's server counts it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(rename = "PlaybookUsage")]
+pub struct Usage {
+    /// How many days back it counts.
+    pub days: u32,
+    /// By a hint's id.
+    pub hints: std::collections::BTreeMap<String, Used>,
+    /// By a gotcha's message id.
+    pub gotchas: std::collections::BTreeMap<String, Used>,
+}
+
+/// The TypeScript declarations of what zirc.dev's Playbook page reads of a team's gotchas.
+#[must_use]
+pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
+    vec![
+        Gotcha::decl(config),
+        Listed::decl(config),
+        Listing::decl(config),
+        Used::decl(config),
+        Usage::decl(config),
+    ]
 }

@@ -146,7 +146,7 @@ async fn list(home: &Path, socket: &Path, out: &mut impl Write) -> Result<()> {
     if let Some(problem) = problem {
         eprintln!("{PROGRAM}: {problem}");
     }
-    let tag = |hint: &hints::Hint| format!(" [hint {}]", &hint.id()[..8]);
+    let tag = |hint: &hints::Hint| zirc_proto::hints::tag(&hint.id());
     for hint in hints::personal_in(home) {
         writeln!(out, "{}", hints::line(hints::Layer::Personal, &hint))?;
     }
@@ -225,27 +225,7 @@ async fn scope_here(socket: &Path, org: bool) -> Result<(Option<ipc::Repo>, Stri
 fn hint_of(args: &AddArgs) -> Result<hints::Hint> {
     let level = serde_json::from_value(serde_json::json!(args.level))
         .map_err(|_| anyhow::anyhow!("--level is act, tell or quiet"))?;
-    let mut when = hints::When::default();
-    for condition in &args.when {
-        let Some((name, value)) = condition.split_once('=') else {
-            bail!("--when is name=value, such as lockfile=true");
-        };
-        let yes = || match value {
-            "true" => Ok(true),
-            "false" => Ok(false),
-            _ => Err(anyhow::anyhow!("{name} is true or false")),
-        };
-        match name {
-            "names_me" => when.names_me = Some(yes()?),
-            "lockfile" => when.lockfile = Some(yes()?),
-            "branch" => when.branch = Some(value.to_owned()),
-            "channel" => when.channel = Some(value.to_owned()),
-            "emoji" => when.emoji = Some(value.to_owned()),
-            _ => bail!(
-                "no condition {name}: there are names_me, lockfile, branch, channel and emoji"
-            ),
-        }
-    }
+    let when = hints::When::parse(&args.when).map_err(|why| anyhow::anyhow!("--when: {why}"))?;
     Ok(hints::Hint {
         kind: args.kind.clone(),
         when,
@@ -268,10 +248,10 @@ async fn add(home: &Path, socket: &Path, args: AddArgs, out: &mut impl Write) ->
     let stored = &change.hint;
     writeln!(
         out,
-        "added for {}: {} [hint {}]",
-        stored.scope,
+        "added for {}: {}{}",
+        stored.whose(),
         hints::line(stored.layer(), &stored.hint),
-        &stored.id[..8]
+        zirc_proto::hints::tag(&stored.id)
     )?;
     Ok(())
 }
@@ -287,17 +267,7 @@ async fn remove(
     let repo = repo_here(socket).await;
     let (org, server) = server_for(home, repo.as_ref())?;
     let listing = server.list().await.map_err(anyhow::Error::msg)?;
-    let id = id.trim_start_matches("[hint ").trim_end_matches(']').trim();
-    let found: Vec<&zirc_proto::hints::Stored> = listing
-        .hints
-        .iter()
-        .filter(|stored| !id.is_empty() && stored.id.starts_with(id))
-        .collect();
-    let stored = match found.as_slice() {
-        [stored] => *stored,
-        [] => bail!("the server keeps no hint with the id {id}: zirc hints lists them"),
-        _ => bail!("{} hints' ids start {id}: say more of it", found.len()),
-    };
+    let stored = listing.by_id(id).map_err(anyhow::Error::msg)?;
     let change = server
         .remove(&stored.id, session)
         .await
@@ -305,8 +275,8 @@ async fn remove(
     read_again(home, &org, &server).await;
     writeln!(
         out,
-        "removed from {}: {}",
-        change.hint.scope,
+        "removed for {}: {}",
+        change.hint.whose(),
         hints::line(change.hint.layer(), &change.hint.hint)
     )?;
     Ok(())

@@ -934,14 +934,12 @@ pub struct ChannelPresence {
     pub built: Vec<Built>,
 }
 
-/// How many characters of a message's id zirc shows, as in `[id 01jbx7ab]`: what `zirc react`,
-/// `zirc gotcha --retire` and the like take.
-pub const SHORT_ID: usize = 8;
+pub use zirc_proto::SHORT_ID;
 
 /// ` [id 01jbx7ab]`, the start of a message's id, to name it by: nothing without one.
 #[must_use]
 pub fn id_tag(id: Option<&str>) -> String {
-    id.map(|id| format!(" [id {}]", id.get(..SHORT_ID).unwrap_or(id)))
+    id.map(|id| format!(" [id {}]", zirc_proto::short_id(id)))
         .unwrap_or_default()
 }
 

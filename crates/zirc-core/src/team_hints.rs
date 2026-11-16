@@ -189,11 +189,7 @@ impl Server {
         // A session id is letters, digits, dashes, underscores and dots, which need no
         // escaping, and the server takes no other.
         let session = session
-            .filter(|session| {
-                session
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-            })
+            .filter(|session| zirc_proto::hints::is_session(session))
             .map(|session| format!("?session={session}"))
             .unwrap_or_default();
         let id: String = id.chars().filter(char::is_ascii_hexdigit).collect();

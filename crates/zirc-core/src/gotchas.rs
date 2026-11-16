@@ -98,6 +98,16 @@ pub fn under<'a>(gotchas: &'a [Gotcha], paths: &[String]) -> Vec<&'a Gotcha> {
     found
 }
 
+/// Those of `gotchas` about `paths` ([`under`]), or, without any, all of the repository's.
+#[must_use]
+pub fn about<'a>(gotchas: &'a [Gotcha], paths: &[String]) -> Vec<&'a Gotcha> {
+    if paths.is_empty() {
+        under(gotchas, &[String::new()])
+    } else {
+        under(gotchas, paths)
+    }
+}
+
 /// `gotcha` in a line: `2026-11-11 cc-1 (api): <text> (<paths>) [id 01jbx7ab]`, the id what
 /// `zirc gotcha --retire` takes.
 #[must_use]

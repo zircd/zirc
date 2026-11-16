@@ -60,11 +60,7 @@ pub(crate) async fn playbook(
         .filter(|path| !path.is_empty())
         .cloned()
         .unwrap_or_else(|| "the repository".to_owned());
-    let found = if paths.is_empty() {
-        gotchas::under(&all, &[String::new()])
-    } else {
-        gotchas::under(&all, &paths)
-    };
+    let found = gotchas::about(&all, &paths);
     let personal = hints::personal_in(home);
     let (team, problem) = hints::team(home, &repo);
     if let Some(problem) = problem {

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tracing::warn;
-use zirc_proto::hints::{Action, Change, Hint, Layer, Listing, ORG, Stored, check, is_scope};
+use zirc_proto::hints::{Action, Change, Hint, Listing, ORG, Stored, check, is_scope, layer_of};
 
 /// The file beside Ergo's history the hints are kept in.
 pub const KEPT: &str = "zirc-hints.json";
@@ -64,12 +64,8 @@ impl Kept {
                 "a hint is for {ORG} or a repository's channel, such as #api, in lower case"
             )));
         }
-        let layer = if scope == ORG {
-            Layer::Organisation
-        } else {
-            Layer::Repository
-        };
-        if let Some(problem) = check(std::slice::from_ref(&hint), layer).into_iter().next() {
+        let problem = check(std::slice::from_ref(&hint), layer_of(scope));
+        if let Some(problem) = problem.into_iter().next() {
             return Err(Refusal::Invalid(problem));
         }
         if hint.required && who.machine {

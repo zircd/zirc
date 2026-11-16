@@ -856,9 +856,9 @@ async fn read_history(
 /// messages it had since `since`: a catch-up's overview.
 /// The team's gotchas the person may read (`GET /gotchas` on the content API): those kept in
 /// each repository's gotchas room and not retired since ([`zirc_proto::gotchas::kept`]), as
-/// `{"gotchas": [{"room", "gotcha"}]}`, newest first.
+/// a [`zirc_proto::gotchas::Listing`], newest first.
 async fn list_gotchas(State(ergo): State<Arc<Ergo>>, headers: axum::http::HeaderMap) -> Response {
-    use zirc_proto::gotchas::{self, Gotcha, Said};
+    use zirc_proto::gotchas::{self, Gotcha, Listed, Listing, Said};
     let Ok(_running) = ergo.searches.try_acquire() else {
         return busy();
     };
@@ -880,7 +880,7 @@ async fn list_gotchas(State(ergo): State<Arc<Ergo>>, headers: axum::http::Header
     let since = nanos(now.checked_sub(REACH).unwrap_or(now));
     let path = ergo.history.clone();
     let read = tokio::task::spawn_blocking(move || {
-        let mut found: Vec<(String, Gotcha)> = Vec::new();
+        let mut found: Vec<Listed> = Vec::new();
         for room in rooms {
             let Some(conversation) = history::Conversation::parse(&room, &viewer.account) else {
                 continue;
@@ -919,55 +919,61 @@ async fn list_gotchas(State(ergo): State<Arc<Ergo>>, headers: axum::http::Header
             found.extend(
                 gotchas::kept(said)
                     .into_iter()
-                    .map(|gotcha| (room.clone(), gotcha)),
+                    .map(|gotcha| Listed::new(&room, gotcha)),
             );
         }
-        found.sort_by(|(_, a), (_, b)| b.at.cmp(&a.at));
-        Ok::<_, rusqlite::Error>(found)
+        found.sort_by(|a, b| b.gotcha.at.cmp(&a.gotcha.at));
+        Ok::<_, rusqlite::Error>(Listing { gotchas: found })
     })
     .await;
     match read {
-        Ok(Ok(found)) => Json(json!({
-            "gotchas": found
-                .into_iter()
-                .map(|(room, gotcha)| json!({"room": room, "gotcha": gotcha}))
-                .collect::<Vec<_>>()
-        }))
-        .into_response(),
+        Ok(Ok(listing)) => Json(listing).into_response(),
         Ok(Err(failure)) => ergo_failed(failure),
         Err(failure) => ergo_failed(failure),
     }
 }
 
-/// How often each hint was shown and each gotcha told in the last 90 days (`GET
-/// /playbook/usage` on the content API), from the activity store: by id, `{"count",
-/// "last"}`, `last` in RFC 3339.
+/// How many days back the Playbook page's counts go.
+const PLAYBOOK_DAYS: u32 = 90;
+
+/// How often each hint was shown and each gotcha told in the last [`PLAYBOOK_DAYS`] (`GET
+/// /playbook/usage` on the content API), from the activity store: a
+/// [`zirc_proto::gotchas::Usage`], which says the days it counts.
 async fn playbook_usage(State(ergo): State<Arc<Ergo>>) -> Response {
-    const WINDOW: std::time::Duration = std::time::Duration::from_hours(24 * 90);
+    use zirc_proto::gotchas::{Usage, Used};
+    let window = std::time::Duration::from_hours(24 * u64::from(PLAYBOOK_DAYS));
     let now = jiff::Timestamp::now();
     let since =
-        i64::try_from(now.checked_sub(WINDOW).unwrap_or(now).as_nanosecond()).unwrap_or_default();
+        i64::try_from(now.checked_sub(window).unwrap_or(now).as_nanosecond()).unwrap_or_default();
     let path = crate::activity::path_for(&ergo.history);
     let read = tokio::task::spawn_blocking(move || {
         let connection = crate::activity::open(&path)?;
         crate::activity::playbook_usage(&connection, since)
     })
     .await;
-    let shown = |used: std::collections::BTreeMap<String, crate::activity::Used>| -> Value {
+    let said = |used: std::collections::BTreeMap<String, crate::activity::Used>| {
         used.into_iter()
             .map(|(id, used)| {
                 let last = jiff::Timestamp::from_nanosecond(i128::from(used.last))
                     .map(|t| t.to_string())
                     .unwrap_or_default();
-                (id, json!({"count": used.count, "last": last}))
+                (
+                    id,
+                    Used {
+                        count: used.count,
+                        last,
+                    },
+                )
             })
-            .collect::<serde_json::Map<_, _>>()
-            .into()
+            .collect()
     };
     match read {
-        Ok(Ok((hints, gotchas))) => {
-            Json(json!({"hints": shown(hints), "gotchas": shown(gotchas)})).into_response()
-        }
+        Ok(Ok((hints, gotchas))) => Json(Usage {
+            days: PLAYBOOK_DAYS,
+            hints: said(hints),
+            gotchas: said(gotchas),
+        })
+        .into_response(),
         Ok(Err(failure)) => ergo_failed(failure),
         Err(failure) => ergo_failed(failure),
     }
@@ -1890,20 +1896,7 @@ async fn tell_colleagues(ergo: &Ergo, colleagues: Colleagues) {
     if *said == Some(colleagues) {
         return;
     }
-    let nick = zirc_proto::names::SYSTEM;
-    if integration_account(ergo, nick, false).await.is_err() {
-        warn!("couldn't make zirc's account to say what colleagues' agents may do");
-        return;
-    }
-    let config = say::config(
-        &ergo.irc.ip().to_string(),
-        ergo.irc.port(),
-        ergo.gate.as_deref(),
-        &ergo.token,
-        nick,
-    );
-    let message = zirc_proto::Message::new("server", colleagues.event());
-    match say::post(&config, zirc_proto::state::CHANNEL, &message).await {
+    match say_as_zirc(ergo, zirc_proto::state::CHANNEL, colleagues.event()).await {
         Ok(()) => {
             info!(?colleagues, "said what colleagues' agents may do");
             *said = Some(colleagues);
@@ -1912,15 +1905,12 @@ async fn tell_colleagues(ergo: &Ergo, colleagues: Colleagues) {
     }
 }
 
-/// Says a change to the team's hints, as zirc's own account, in the repository's channel, or
-/// `#ops` for the organisation's: what each machine's zircd takes to read them again, and what
-/// people see of who changed what. A failure is logged; machines read them again when they
-/// next connect.
-async fn tell_hints_changed(ergo: Arc<Ergo>, change: zirc_proto::hints::Change) {
+/// Says `event` in `channel` as zirc's own account ([`zirc_proto::names::SYSTEM`]), which no
+/// person or machine holds: what each machine's zircd takes as the server's word.
+async fn say_as_zirc(ergo: &Ergo, channel: &str, event: zirc_proto::Event) -> Result<(), String> {
     let nick = zirc_proto::names::SYSTEM;
-    if integration_account(&ergo, nick, false).await.is_err() {
-        warn!("couldn't make zirc's account to say the hints changed");
-        return;
+    if integration_account(ergo, nick, false).await.is_err() {
+        return Err("zirc's own account couldn't be made".to_owned());
     }
     let config = say::config(
         &ergo.irc.ip().to_string(),
@@ -1929,14 +1919,24 @@ async fn tell_hints_changed(ergo: Arc<Ergo>, change: zirc_proto::hints::Change) 
         &ergo.token,
         nick,
     );
+    let message = zirc_proto::Message::new("server", event);
+    say::post(&config, channel, &message)
+        .await
+        .map_err(|failure| failure.to_string())
+}
+
+/// Says a change to the team's hints, as zirc's own account, in the repository's channel, or
+/// `#ops` for the organisation's: what each machine's zircd takes to read them again, and what
+/// people see of who changed what. A failure is logged; machines read them again when they
+/// next connect.
+async fn tell_hints_changed(ergo: Arc<Ergo>, change: zirc_proto::hints::Change) {
     let channel = if change.hint.scope == zirc_proto::hints::ORG {
         zirc_proto::state::CHANNEL
     } else {
         change.hint.scope.as_str()
     };
     let changed = zirc_proto::hints::Changed::of_change(&change);
-    let message = zirc_proto::Message::new("server", changed.event(&change));
-    if let Err(failure) = say::post(&config, channel, &message).await {
+    if let Err(failure) = say_as_zirc(&ergo, channel, changed.event(&change)).await {
         warn!(%failure, channel, "couldn't say the hints changed");
     }
 }

@@ -504,6 +504,8 @@ pub fn typescript() -> String {
     .chain(crate::card::typescript(&config))
     .chain(crate::report::typescript(&config))
     .chain(crate::workflow::typescript(&config))
+    .chain(crate::hints::typescript(&config))
+    .chain(crate::gotchas::typescript(&config))
     .chain([
         format!("const CI_TOKEN_PATH = {CI_TOKEN_PATH:?};"),
         format!("const CI_TOKEN_REVOKE_PATH = {CI_TOKEN_REVOKE_PATH:?};"),

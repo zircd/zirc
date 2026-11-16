@@ -23,7 +23,7 @@
 //!   session. Each change is said, as zirc's own account, in the repository's channel or, for
 //!   the organisation's, `#ops`, which tells every machine to read them again. `GET /gotchas`
 //!   lists the gotchas kept in the repositories' gotchas rooms the person may read, and `GET
-//!   /playbook/usage` how often each hint and gotcha was used in the last 90 days, by id.
+//!   /playbook/usage` how often each hint and gotcha was used lately, by id.
 //! - owners and admins: `GET /guests` and `POST /guests/<name>/forget`.
 //! - owners: `GET /messages?q=`, `DELETE /messages/<msgid>`, `GET /export` (newline-delimited
 //!   JSON: a header, every message the owner may read, newest first, and an end line) and `GET
@@ -347,13 +347,7 @@ fn hints_who(ergo: &Ergo, caller: &Caller, session: Option<String>) -> crate::hi
     crate::hints::Who {
         account: caller.account.clone(),
         machine,
-        session: session.filter(|session| {
-            machine
-                && (1..=64).contains(&session.len())
-                && session
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
-        }),
+        session: session.filter(|session| machine && zirc_proto::hints::is_session(session)),
     }
 }
 

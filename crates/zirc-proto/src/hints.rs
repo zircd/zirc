@@ -10,6 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
+use ts_rs::TS;
 
 /// The kinds of events a hint can be for.
 pub mod kind {
@@ -136,8 +137,9 @@ pub const FIELDS: [&str; 9] = [
 ];
 
 /// What a hint asks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "kebab-case")]
+#[ts(rename = "HintLevel")]
 pub enum Level {
     /// Do what it says.
     Act,
@@ -187,8 +189,9 @@ impl Layer {
 }
 
 /// When a hint applies, beyond its kind: every condition given must hold.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(optional_fields, rename = "HintWhen")]
 pub struct When {
     /// The event names the session watching.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -224,6 +227,46 @@ impl When {
         self.count() == 0
     }
 
+    /// The conditions `given` says, each `name=value` as `zirc hints add --when` takes them,
+    /// such as `lockfile=true` or `branch=api-*`.
+    ///
+    /// # Errors
+    ///
+    /// When one isn't `name=value`, names no condition, or gives a yes-or-no one another value.
+    pub fn parse(given: &[String]) -> Result<Self, String> {
+        let mut when = Self::default();
+        for condition in given {
+            let Some((name, value)) = condition.split_once('=') else {
+                return Err("a condition is name=value, such as lockfile=true".to_owned());
+            };
+            let yes = || match value {
+                "true" => Ok(true),
+                "false" => Ok(false),
+                _ => Err(format!("{name} is true or false")),
+            };
+            match name {
+                "names_me" => when.names_me = Some(yes()?),
+                "lockfile" => when.lockfile = Some(yes()?),
+                "branch" => when.branch = Some(value.to_owned()),
+                "channel" => when.channel = Some(value.to_owned()),
+                "emoji" => when.emoji = Some(value.to_owned()),
+                _ => {
+                    return Err(format!(
+                        "no condition {name}: there are names_me, lockfile, branch, channel and emoji"
+                    ));
+                }
+            }
+        }
+        Ok(when)
+    }
+
+    /// Its conditions in words, as a hint's line says them: `lockfile = true, branch = api-*`;
+    /// empty without any.
+    #[must_use]
+    pub fn words(&self) -> String {
+        self.conditions().join(", ")
+    }
+
     /// Its conditions as a hints file says them, such as `lockfile = true, branch = api-*`.
     fn conditions(&self) -> Vec<String> {
         [
@@ -240,13 +283,14 @@ impl When {
 }
 
 /// One hint, as a layer's file says it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 pub struct Hint {
     /// The kind of event it's for ([`kind`]).
     pub kind: String,
     /// When it applies, beyond its kind.
     #[serde(default, skip_serializing_if = "When::is_empty")]
+    #[ts(as = "Option<When>", optional)]
     pub when: When,
     /// What it asks.
     pub level: Level,
@@ -254,6 +298,7 @@ pub struct Hint {
     pub text: String,
     /// Whether a layer above may not override it: the repository's and organisation's only.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
     pub required: bool,
 }
 
@@ -277,11 +322,11 @@ pub fn fingerprint(text: &str) -> String {
 /// `overlap (tell, repo) when lockfile = true: <text>`.
 #[must_use]
 pub fn line(layer: Layer, hint: &Hint) -> String {
-    let conditions = hint.when.conditions();
+    let conditions = hint.when.words();
     let when = if conditions.is_empty() {
         String::new()
     } else {
-        format!(" when {}", conditions.join(", "))
+        format!(" when {conditions}")
     };
     let required = if hint.required { ", required" } else { "" };
     format!(
@@ -350,8 +395,36 @@ pub fn is_scope(scope: &str) -> bool {
         })
 }
 
+/// The layer `scope`'s hints are: the organisation's, or a repository's.
+#[must_use]
+pub fn layer_of(scope: &str) -> Layer {
+    if scope == ORG {
+        Layer::Organisation
+    } else {
+        Layer::Repository
+    }
+}
+
+/// ` [hint 0123abcd]`, the start of a hint's id ([`crate::short_id`]), to name it by: what
+/// `zirc hints remove` takes.
+#[must_use]
+pub fn tag(id: &str) -> String {
+    format!(" [hint {}]", crate::short_id(id))
+}
+
+/// Whether `session` could be an agent session's id, as a change to the hints names who asked:
+/// letters, digits, dashes, underscores and dots, which need no escaping in an address.
+#[must_use]
+pub fn is_session(session: &str) -> bool {
+    (1..=64).contains(&session.len())
+        && session
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+}
+
 /// One of a team's hints, as its server keeps it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(rename = "StoredHint")]
 pub struct Stored {
     /// Its id ([`Hint::id`]).
     pub id: String,
@@ -363,6 +436,7 @@ pub struct Stored {
     pub by: String,
     /// The agent session that added it, when a machine's did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub session: Option<String>,
     /// When, in RFC 3339.
     pub at: String,
@@ -372,16 +446,23 @@ impl Stored {
     /// Its layer.
     #[must_use]
     pub fn layer(&self) -> Layer {
+        layer_of(&self.scope)
+    }
+
+    /// Whom it's for, in words: `the organisation`, or its repository's channel.
+    #[must_use]
+    pub fn whose(&self) -> &str {
         if self.scope == ORG {
-            Layer::Organisation
+            "the organisation"
         } else {
-            Layer::Repository
+            &self.scope
         }
     }
 }
 
 /// A team's hints, as its server lists them.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(rename = "HintListing")]
 pub struct Listing {
     /// How many changes there have been: a machine reads them again when it's told of a newer
     /// one ([`Changed`]).
@@ -391,6 +472,34 @@ pub struct Listing {
 }
 
 impl Listing {
+    /// The one whose id starts with `id`, as `[hint …]` shows it.
+    ///
+    /// # Errors
+    ///
+    /// When none does, or more than one, saying so.
+    pub fn by_id(&self, id: &str) -> Result<&Stored, String> {
+        let id = id
+            .trim()
+            .trim_start_matches("[hint ")
+            .trim_end_matches(']')
+            .trim();
+        let found: Vec<&Stored> = self
+            .hints
+            .iter()
+            .filter(|stored| !id.is_empty() && stored.id.starts_with(id))
+            .collect();
+        match found.as_slice() {
+            [stored] => Ok(stored),
+            [] => Err(format!(
+                "the server keeps no hint with the id {id}: zirc hints lists them"
+            )),
+            _ => Err(format!(
+                "{} hints' ids start {id}: say more of it",
+                found.len()
+            )),
+        }
+    }
+
     /// Those for `scope`.
     #[must_use]
     pub fn for_scope(&self, scope: &str) -> Vec<Hint> {
@@ -482,9 +591,9 @@ impl Changed {
             kind: CHANGED_KIND.to_owned(),
             data: serde_json::to_value(self).expect("a change serializes"),
             text: format!(
-                "{who} {did} a hint: {} [hint {}]",
+                "{who} {did} a hint: {}{}",
                 line(hint.layer(), &hint.hint),
-                hint.id
+                tag(&hint.id)
             ),
         }
     }
@@ -499,6 +608,19 @@ impl Changed {
             _ => None,
         }
     }
+}
+
+/// The TypeScript declarations of what zirc.dev's Playbook page reads of a team's hints.
+#[must_use]
+pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
+    vec![
+        Level::decl(config),
+        When::decl(config),
+        Hint::decl(config),
+        Stored::decl(config),
+        Listing::decl(config),
+        format!("const HINTS_ORG_SCOPE = {ORG:?};"),
+    ]
 }
 
 #[cfg(test)]
@@ -591,13 +713,30 @@ mod tests {
         };
         assert_eq!(
             text,
-            "ada-mbp/cc-1 added a hint: overlap (tell, repo): ask first [hint 0123456789abcdef]"
+            "ada-mbp/cc-1 added a hint: overlap (tell, repo): ask first [hint 01234567]"
         );
         let listing = Listing {
             version: 3,
             hints: vec![stored],
         };
         assert_eq!(listing.for_scope("#API").len(), 1);
+        assert_eq!(listing.by_id("[hint 0123]").map(Stored::whose), Ok("#api"));
+        assert!(
+            listing
+                .by_id("ffff")
+                .unwrap_err()
+                .contains("no hint with the id")
+        );
+        assert!(listing.by_id("").is_err());
+        assert!(is_session("cc-1a2b3c") && !is_session("") && !is_session("a b"));
+        let when = When::parse(&["lockfile=true".into(), "branch=api-*".into()]).unwrap();
+        assert_eq!(when.words(), "lockfile = true, branch = api-*");
+        assert!(
+            When::parse(&["nope=1".into()])
+                .unwrap_err()
+                .contains("no condition nope")
+        );
+        assert!(When::parse(&["lockfile=maybe".into()]).is_err());
         assert!(listing.for_scope(ORG).is_empty());
     }
 }

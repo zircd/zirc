@@ -1429,6 +1429,16 @@ pub fn decode(body: &str) -> Result<Option<Message>, Error> {
     from_payload(payload).map(Some)
 }
 
+/// How many characters of an id zirc shows, as in `[id 01jbx7ab]` and `[hint 0123abcd]`: what
+/// `zirc react`, `zirc gotcha --retire`, `zirc hints remove` and the like take.
+pub const SHORT_ID: usize = 8;
+
+/// The start of `id`, as zirc shows it ([`SHORT_ID`]).
+#[must_use]
+pub fn short_id(id: &str) -> &str {
+    id.get(..SHORT_ID).unwrap_or(id)
+}
+
 /// The custom event kind leases are agreed through (zirc-core's `leases`).
 pub const LEASE_KIND: &str = "x-zirc/lease";
 
