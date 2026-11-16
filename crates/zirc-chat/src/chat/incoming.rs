@@ -528,8 +528,9 @@ impl Chat {
         self.arrived(&name, &entry.from);
         let theirs = !entry.from.eq_ignore_ascii_case(&self.me);
         let fresh = theirs && !entry.history && self.conversations[at].shows(&entry);
-        let unread = theirs
-            && self.conversations[at].shows(&entry)
+        // Unread is what [`Conversation::counts`] says, as every recount has it: a session's
+        // title card is shown nowhere, so it's nothing to read.
+        let unread = self.conversations[at].counts(&entry, &self.me)
             && match self.conversations[at].read {
                 Some(read) => entry.time > read,
                 None => fresh,

@@ -778,3 +778,49 @@ fn a_channel_previews_its_own_words_and_each_thread_its_own() {
         Some("carol: retried with a 30s cap")
     );
 }
+
+/// What the Messages tab counts, and what its rows count between them.
+fn messages_counts(chat: &Chat) -> (u32, u32) {
+    let tab = chat
+        .tabs()
+        .into_iter()
+        .find(|tab| tab.section == SidebarSection::Direct)
+        .unwrap();
+    let rows = chat.sidebar_list(&ListOptions {
+        tab: Some(SidebarSection::Direct),
+        ..all()
+    });
+    (tab.badge, rows.iter().map(|row| row.badge).sum())
+}
+
+#[test]
+fn the_messages_tab_counts_only_what_a_row_of_it_shows() {
+    let mut chat = Scene::in_api();
+    // An agent's title card alone, as `zirc name --title` sends it: nothing said, so no row,
+    // and nothing unread.
+    let card = zirc_proto::session::SessionCard {
+        session: "cc-1".into(),
+        name: Some("analytics".into()),
+        title: "Fix the login bug on phones".into(),
+        tool: Some(zirc_proto::CLAUDE_CODE.into()),
+    };
+    let card = format!(
+        "@time=2026-10-30T11:55:00.000Z;msgid=card1 :{} PRIVMSG me :{}",
+        source("me-mbp"),
+        zirc_proto::encode(&Message::new("cc-1", card.event())).unwrap()
+    );
+    feed(&mut chat, &[&card]);
+    assert_eq!(messages_counts(&chat), (0, 0));
+    assert_eq!(chat.badge_total(), 0);
+    // A machine's own word is in its own thread, which no list shows: not counted either.
+    feed(
+        &mut chat,
+        &[&dm("me-mbp", zirc_proto::NO_SESSION, "from the machine", 4)],
+    );
+    assert_eq!(messages_counts(&chat), (0, 0));
+    assert_eq!(chat.badge_total(), 0);
+    // What an agent says is counted, on its row.
+    feed(&mut chat, &[&dm("me-mbp", "cc-1", "which branch?", 5)]);
+    assert_eq!(messages_counts(&chat), (1, 1));
+    assert_eq!(chat.badge_total(), 1);
+}

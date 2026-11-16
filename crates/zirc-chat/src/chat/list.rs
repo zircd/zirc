@@ -1222,7 +1222,12 @@ impl Chat {
                 let (unread, badge) = self
                     .conversations
                     .iter()
-                    .filter(|c| c.kind != Kind::Server && SidebarSection::of(&c.name) == section)
+                    // Only what has a row: never the Server channel, nor a machine's own thread.
+                    .filter(|c| {
+                        c.kind != Kind::Server
+                            && SidebarSection::of(&c.name) == section
+                            && self.direct_kind(&c.name) != Some(DirectKind::Machine)
+                    })
                     .fold((false, 0usize), |(unread, badge), c| {
                         (
                             // A feed's traffic never makes its half bold: its mentions count.
@@ -1328,10 +1333,15 @@ impl Chat {
     /// what mentions us in a channel, and everything unread in a direct message, which is
     /// meant for us. Unread that isn't counted shows only as a bold row. A muted channel,
     /// or one set to notify nothing, still counts what mentions us; a direct message set to
-    /// notify nothing counts nothing.
+    /// notify nothing counts nothing, nor does a machine's own thread, which has no row.
     #[must_use]
     pub fn badge(&self, name: &str) -> usize {
         let quiet = self.level(name) == super::Level::Nothing;
+        // A machine's own thread is in no list ([`Chat::direct_rows`]): a count for it would
+        // be one no row shows.
+        if self.direct_kind(name) == Some(DirectKind::Machine) {
+            return 0;
+        }
         self.conversation(name)
             .map_or(0, |conversation| match conversation.kind {
                 Kind::Server => 0,
