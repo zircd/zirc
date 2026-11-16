@@ -245,7 +245,9 @@ impl Client {
         let interval = Duration::from_secs(started.interval.max(1).into());
         let deadline = tokio::time::Instant::now() + Duration::from_secs(started.expires_in.into());
         loop {
-            let last_chance = tokio::time::Instant::now() + interval > deadline;
+            // A poll due when the login expires would be too late: at `>`, whether one more
+            // was made hung on two readings of the clock being apart.
+            let last_chance = tokio::time::Instant::now() + interval >= deadline;
             match self.status(&started.id).await {
                 Ok(LoginStatus::Done(credentials)) => return Ok(credentials),
                 Ok(LoginStatus::Denied) => return Err(Error::Denied),

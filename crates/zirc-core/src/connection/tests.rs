@@ -118,13 +118,11 @@ async fn connects_again_when_the_server_closes_the_connection() {
 
 #[tokio::test]
 async fn backs_off_while_it_cant_connect_and_says_why() {
-    // Nothing listens on the port once the listener's gone.
-    let port = TcpListener::bind("127.0.0.1:0")
-        .await
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
+    // A port nothing listens on, and that no test is ever given: below every ephemeral range,
+    // and listening on it takes root. A port freed by dropping its listener was given to
+    // another test's web server, which this test's client then reached (build 3841); one
+    // bound and not listening refuses on Linux, but times out on macOS.
+    let port = 1;
     let mut supervisor = supervisor(port, quick());
     let mut waits = Vec::new();
     for _ in 0..5 {
