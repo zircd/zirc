@@ -522,9 +522,12 @@ mod tests {
             ..quick()
         };
         let gaps = gaps(port, policy, 6).await;
-        // Each connection lasted past `stable`, so each wait is the first's, not doubled:
-        // by the fifth, a doubling wait would be 640 ms.
-        let most = up + policy.first_retry + Duration::from_millis(150);
-        assert!(gaps.iter().all(|gap| *gap < most), "{gaps:?}");
+        // Each connection lasted past `stable`, so each wait is the first's, not doubled. A
+        // doubling wait is told apart once it has grown: the fifth would be 640 ms, cut by up
+        // to half, so its gap at least the connection's 200 ms and 320 more, where the first's
+        // is 220 to 240. Every gap held within 10 ms of that failed when one slow moment
+        // under load took the first to 397 ms (build 3886).
+        let doubled = up + policy.first_retry * (1 << 4) / 2;
+        assert!(gaps.last().is_some_and(|gap| *gap < doubled), "{gaps:?}");
     }
 }
