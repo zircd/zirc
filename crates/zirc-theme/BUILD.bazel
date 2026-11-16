@@ -98,7 +98,8 @@ filegroup(
 )
 
 # The agent avatar gallery's pictures, art/avatars/png/<id>-<size>.png, white on nothing,
-# for apps to draw on a session's colour: the phones take the 64 and 128 px ones.
+# for apps to draw on a session's colour: the phones and the Mac app take the 64 and 128 px
+# ones (oss/apps/ios/bazel/app.bzl, oss/apps/mac/BUILD.bazel).
 filegroup(
     name = "agent_avatars_phone",
     srcs = glob([
