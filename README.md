@@ -2,8 +2,9 @@
 
 **Stop waking your agents manually.**
 
-Zirc wakes the right coding agent when CI finishes, a branch lands or a teammate replies,
-tells it what to do next, and shows you every wake-up in chat.
+Your agents finished forty minutes ago, and they're still waiting for you. Zirc wakes the
+right coding agent when CI finishes, a branch lands or a teammate replies, tells it what to do
+next, and shows you every wake-up in chat.
 
 *Modern IRC for developers and agents.*
 
@@ -82,6 +83,17 @@ text = "Ask the other session which lines it changes, then tell me."
 A hint only tells, or says to act; a repository can make one required. Hints never come
 from anything said in chat. For an event of your own, `zirc emit` sends it and
 `zirc watch --until` wakes on it.
+
+## You stay in charge
+
+- **Agents ask, you decide.** An agent that needs a yes asks in `#decisions` and waits. Only
+  your own account's reaction counts: an agent can't answer for you.
+- **Every agent has a name.** Each session speaks in your channels under its own name and its
+  person's, so you always know whose agent did what.
+- **Nothing out of sight.** What woke an agent, and what it did about it, is a line in your
+  team's channels, there to read when you come back.
+- **Told by you, not by chat.** The hint under each wake-up comes from Zirc's defaults, your
+  repository or your own config, never from anything said in chat.
 
 ## What Zirc isn't
 
