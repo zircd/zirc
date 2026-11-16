@@ -150,6 +150,9 @@ pub enum Level {
 }
 
 impl Level {
+    /// Every level, as a form offers them.
+    pub const ALL: [Self; 3] = [Self::Act, Self::Tell, Self::Quiet];
+
     /// Its name, as a hints file says it.
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -620,6 +623,12 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Stored::decl(config),
         Listing::decl(config),
         format!("const HINTS_ORG_SCOPE = {ORG:?};"),
+        format!("const HINT_KINDS: readonly string[] = {:?};", kind::ALL),
+        format!(
+            "const HINT_LEVELS: readonly HintLevel[] = {:?};",
+            Level::ALL.map(Level::name)
+        ),
+        format!("const HINT_FIELDS: readonly string[] = {FIELDS:?};"),
     ]
 }
 
