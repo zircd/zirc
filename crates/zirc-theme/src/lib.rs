@@ -132,8 +132,8 @@ pub mod fonts {
     }
 }
 
-/// zirc's macOS app icons on Apple's template, a rounded square in the stone's colour with
-/// the braid in the middle, with its shadow, 16 to 1024 px at 1x and 2x: `art/icons/zirc-<variant>.icns`; and the iOS app
+/// zirc's macOS app icons on Apple's template, a rounded square filled with the stone's
+/// facets and the braid in the middle, with its shadow, 16 to 1024 px at 1x and 2x: `art/icons/zirc-<variant>.icns`; and the iOS app
 /// icon; as bytes, for an app bundle built from the crate.
 pub mod icons {
     /// On the dark ground: the default.
@@ -205,8 +205,8 @@ pub mod android {
 }
 
 /// How the logo is put together: a hash braided from four strands. Alone, with zirc's name
-/// after it, it is the wordmark; set in the stone, a rounded square of one colour, it is the
-/// mark that app icons and favicons show. Both are drawn on a box of [`Logo::BOX`], about its middle.
+/// after it, it is the wordmark; set in a cut stone, it is the mark that app icons and
+/// favicons show. Both are drawn on a box of [`Logo::BOX`], about its middle.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Logo {
@@ -220,8 +220,10 @@ pub struct Logo {
     pub braid: Braid,
     /// The stone, and the braid set in it.
     pub stone: Stone,
-    /// How much of an icon's side the braid takes, on the stone and alone in one colour
-    /// (Android's themed icon) alike.
+    /// How much of an app icon's side the stone takes.
+    pub icon_mark_side: f32,
+    /// How much of an icon's side the braid takes where it stands alone, in one colour:
+    /// Android's themed icon.
     pub icon_braid_side: f32,
 }
 
@@ -373,18 +375,59 @@ impl Strands {
     }
 }
 
-/// The stone: what an icon's braid is set in, one solid colour whatever the theme, as other
-/// apps' icons are. Where a system doesn't cut an icon to its own shape, it is a rounded
-/// square, as Apple's template has it.
+/// The stone: a square with its corners cut, in four facets that meet at its middle, lit
+/// from the top left, with a braid set in it.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Stone {
-    /// Its colour.
-    pub colour: Rgb,
+    /// Its side.
+    pub side: f32,
+    /// How much of a side each cut corner takes.
+    pub cut: f32,
+    /// Its facets' colours: the top, the left, the right and the bottom.
+    pub facets: ByMode<[Rgb; 4]>,
     /// The braid set in it.
     pub strands: Strands,
     /// The colour of that braid.
     pub set: Rgb,
+}
+
+impl Stone {
+    /// Its facets as their corners: the top, the left, the right and the bottom.
+    #[must_use]
+    pub fn facets(&self) -> [[Point; 5]; 4] {
+        let middle = Logo::BOX / 2.0;
+        let (lo, hi) = (middle - self.side / 2.0, middle + self.side / 2.0);
+        let (cut, half) = (self.cut, self.cut / 2.0);
+        let centre = (middle, middle);
+        // Where the lines from the middle to the square's corners cross the cuts.
+        let (top_left, top_right) = ((lo + half, lo + half), (hi - half, lo + half));
+        let (bottom_left, bottom_right) = ((lo + half, hi - half), (hi - half, hi - half));
+        [
+            [top_left, (lo + cut, lo), (hi - cut, lo), top_right, centre],
+            [
+                top_left,
+                centre,
+                bottom_left,
+                (lo, hi - cut),
+                (lo, lo + cut),
+            ],
+            [
+                top_right,
+                (hi, lo + cut),
+                (hi, hi - cut),
+                bottom_right,
+                centre,
+            ],
+            [
+                bottom_left,
+                centre,
+                bottom_right,
+                (hi - cut, hi),
+                (lo + cut, hi),
+            ],
+        ]
+    }
 }
 
 /// Dark or light.
@@ -1565,6 +1608,7 @@ mod tests {
     fn reads_the_logo() {
         let logo = Logo::get();
         assert_eq!(logo.wordmark, "zirc");
+        assert!((logo.icon_mark_side - 0.7).abs() < f32::EPSILON);
         assert_eq!(logo.stone.set.hex(), "#FFFFFF");
     }
 
@@ -1596,19 +1640,27 @@ mod tests {
             let (left, top, right, bottom) = strands.bounds();
             assert!(left >= 0.0 && top >= 0.0 && right <= Logo::BOX && bottom <= Logo::BOX);
         }
-        // At its size on an icon, the braid stays inside the circle every Android launcher
-        // shows whole: 66 dp across of the 72 dp it shows of an adaptive icon.
-        let strands = &logo.stone.strands;
-        let (left, top, right, bottom) = strands.bounds();
-        let (cx, cy) = (f32::midpoint(left, right), f32::midpoint(top, bottom));
-        let reach = strands
-            .pieces()
+        let stone = &logo.stone;
+        let (left, top, right, bottom) = stone.strands.bounds();
+        let edge = (Logo::BOX - stone.side) / 2.0 + stone.cut / 2.0;
+        assert!(left > edge && top > edge);
+        assert!(right < Logo::BOX - edge && bottom < Logo::BOX - edge);
+        // The facets tile the stone: together, the square less its four cut corners.
+        let area: f32 = stone
+            .facets()
             .iter()
-            .flat_map(|piece| piece.points)
-            .map(|(x, y)| (x - cx).hypot(y - cy))
-            .fold(0.0, f32::max);
-        let on_icon = reach / (right - left).max(bottom - top) * logo.icon_braid_side;
-        assert!(on_icon < 33.0 / 72.0, "{on_icon}");
+            .map(|facet| {
+                let turned = facet.iter().cycle().skip(1);
+                let twice: f32 = facet
+                    .iter()
+                    .zip(turned)
+                    .map(|(a, b)| a.0 * b.1 - b.0 * a.1)
+                    .sum();
+                twice.abs() / 2.0
+            })
+            .sum();
+        let whole = stone.side * stone.side - 2.0 * stone.cut * stone.cut;
+        assert!((area - whole).abs() < 0.01, "{area} of {whole}");
     }
 
     #[test]
