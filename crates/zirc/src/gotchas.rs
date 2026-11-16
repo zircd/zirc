@@ -46,7 +46,7 @@ pub(crate) struct GotchasArgs {
 }
 
 /// The watched repository here, its root, and `paths` relative to that root.
-async fn here(socket: &Path, paths: &[PathBuf]) -> Result<(Repo, Vec<String>)> {
+pub(crate) async fn here(socket: &Path, paths: &[PathBuf]) -> Result<(Repo, Vec<String>)> {
     let Response::Repos { repos } = ask(socket, Request::RepoList).await? else {
         return Err(crate::client::unexpected());
     };
@@ -70,7 +70,7 @@ async fn here(socket: &Path, paths: &[PathBuf]) -> Result<(Repo, Vec<String>)> {
 }
 
 /// The gotchas in `repo`'s room, oldest first; none when its history can't be read.
-async fn read(socket: &Path, repo: &Repo) -> Vec<Gotcha> {
+pub(crate) async fn read(socket: &Path, repo: &Repo) -> Vec<Gotcha> {
     let room = format!("{}/{}", repo.channel, gotchas::ROOM);
     let read = Request::Read {
         target: room,

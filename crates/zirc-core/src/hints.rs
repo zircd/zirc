@@ -248,6 +248,52 @@ impl When {
     fn is_empty(&self) -> bool {
         self.count() == 0
     }
+
+    /// Its conditions as a hints file says them, such as `lockfile = true, branch = api-*`.
+    fn conditions(&self) -> Vec<String> {
+        [
+            self.names_me.map(|it| format!("names_me = {it}")),
+            self.lockfile.map(|it| format!("lockfile = {it}")),
+            self.branch.as_ref().map(|it| format!("branch = {it}")),
+            self.channel.as_ref().map(|it| format!("channel = {it}")),
+            self.emoji.as_ref().map(|it| format!("emoji = {it}")),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    }
+}
+
+impl Level {
+    /// Its name, as a hints file says it.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Act => "act",
+            Self::Tell => "tell",
+            Self::Quiet => "quiet",
+        }
+    }
+}
+
+/// `hint` from `layer` in a line, as `zirc hints` and `zirc playbook` list it:
+/// `overlap (tell, repo) when lockfile = true: <text>`.
+#[must_use]
+pub fn line(layer: Layer, hint: &Hint) -> String {
+    let conditions = hint.when.conditions();
+    let when = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" when {}", conditions.join(", "))
+    };
+    let required = if hint.required { ", required" } else { "" };
+    format!(
+        "{} ({}, {}{required}){when}: {}",
+        hint.kind,
+        hint.level.name(),
+        layer.name(),
+        hint.text
+    )
 }
 
 /// A layer's file: `[[hint]]` tables.

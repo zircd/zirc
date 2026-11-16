@@ -31,6 +31,7 @@ pub mod media;
 pub mod notes;
 pub mod owners;
 pub mod paths;
+pub mod playbook;
 pub mod project;
 pub mod reports;
 pub mod sealed;

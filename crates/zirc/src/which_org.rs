@@ -42,6 +42,7 @@ const ACTS: &[(&str, Acts)] = &[
     ("stack", Acts::One),
     ("gotcha", Acts::Repo),
     ("gotchas", Acts::Repo),
+    ("playbook", Acts::Repo),
     ("workflow check", Acts::Machine),
     ("workflow deploy", Acts::Repo),
     ("workflow run", Acts::Repo),

@@ -67,40 +67,15 @@ pub(crate) fn hints_command(
         })
         .unwrap_or_default();
     let layers = [
-        ("personal", personal),
-        ("repo", repo),
-        ("default", hints::defaults()),
+        (hints::Layer::Personal, personal),
+        (hints::Layer::Repository, repo),
+        (hints::Layer::Default, hints::defaults()),
     ];
     for (layer, hint) in layers
         .iter()
         .flat_map(|(layer, hints)| hints.iter().map(move |hint| (*layer, hint)))
     {
-        let level = match hint.level {
-            hints::Level::Act => "act",
-            hints::Level::Tell => "tell",
-            hints::Level::Quiet => "quiet",
-        };
-        let w = &hint.when;
-        let conditions: Vec<String> = [
-            w.names_me.map(|it| format!("names_me = {it}")),
-            w.lockfile.map(|it| format!("lockfile = {it}")),
-            w.branch.as_ref().map(|it| format!("branch = {it}")),
-            w.channel.as_ref().map(|it| format!("channel = {it}")),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        let when = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!(" when {}", conditions.join(", "))
-        };
-        let required = if hint.required { ", required" } else { "" };
-        writeln!(
-            out,
-            "{} ({level}, {layer}{required}){when}: {}",
-            hint.kind, hint.text
-        )?;
+        writeln!(out, "{}", hints::line(layer, hint))?;
     }
     Ok(())
 }

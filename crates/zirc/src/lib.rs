@@ -15,6 +15,7 @@ mod lines;
 mod log;
 mod logout;
 mod paint;
+mod playbook;
 mod post;
 mod queries;
 mod react;
@@ -184,6 +185,7 @@ const EXAMPLES: &[(&str, &[&str])] = &[
             "zirc gotcha src/login",
         ],
     ),
+    ("playbook", &["zirc playbook src/login", "zirc playbook"]),
     ("join", &["zirc join auth --session cc-1"]),
     (
         "workflow",
@@ -255,8 +257,8 @@ const GROUPS: &[(&str, &[&str])] = &[
     (
         "Coordinate",
         &[
-            "who", "intend", "lease", "state", "wait", "stack", "gotcha", "join", "workflow",
-            "role", "step",
+            "who", "intend", "lease", "state", "wait", "stack", "gotcha", "playbook", "join",
+            "workflow", "role", "step",
         ],
     ),
     (
@@ -564,6 +566,16 @@ enum Command {
     /// List the lessons sessions kept about a path, newest first (zirc gotcha).
     #[command(hide = true)]
     Gotchas(gotchas::GotchasArgs),
+    /// Show the team's playbook for a path: its hints and gotchas.
+    ///
+    /// Show what agents hear about a path: the team's hints and the gotchas kept there.
+    ///
+    /// Hints say what to do when something happens, from your ~/.zirc/config.toml and the
+    /// repository's .zirc/hints.toml on its default branch, over zirc's own, which it counts
+    /// (zirc hints lists them). They apply throughout the repository. Gotchas are lessons
+    /// about paths, newest first: those about the path, what's in it and what holds it.
+    #[command(after_long_help = examples("playbook", ""))]
+    Playbook(playbook::PlaybookArgs),
     /// Leave a note for one agent session.
     ///
     /// A report or a heads-up only it need read.
@@ -978,6 +990,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Role(command) => workflows::role(&socket, command, out).await,
         Command::Gotcha(args) => gotchas::gotcha(&socket, args, out).await,
         Command::Gotchas(args) => gotchas::list(&socket, args, out).await,
+        Command::Playbook(args) => playbook::playbook(&home, &socket, args, out).await,
         Command::Note(args) => queries::note(&socket, args, out).await,
         Command::Ask(args) => queries::query(&socket, args, out).await,
         Command::Reply(args) => queries::reply(&socket, args, out).await,
