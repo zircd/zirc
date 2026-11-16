@@ -83,7 +83,10 @@ impl Daemon {
                         path: root.clone(),
                         branch: set.branch,
                     };
-                    (worktree, set.session.map(str::to_owned), set.paths)
+                    // Its own commits that haven't landed are its work as much as what's
+                    // uncommitted.
+                    let paths = set.paths.union(&set.committed).cloned().collect();
+                    (worktree, set.session.map(str::to_owned), paths)
                 })
             })
             .collect()
@@ -228,6 +231,7 @@ impl Daemon {
     /// which lines they share, in a task of its own ([`Input::Predicted`]).
     pub(super) fn check_overlaps(&mut self, channel: &str) {
         self.predict_remote(channel);
+        self.refresh_pairs(channel);
         let mine = self.mine(channel);
         let alerts: Vec<(Response, bool)> = self
             .presence

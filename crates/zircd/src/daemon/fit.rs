@@ -11,6 +11,7 @@
 //! commit, as before fetching it, it can't tell.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use zirc_core::fit::{Fit, Shared};
@@ -30,14 +31,27 @@ pub(super) struct Predictions {
     pairs: BTreeMap<[PathBuf; 2], Predicted>,
     /// The same of a worktree here and another machine's session.
     remote: BTreeMap<RemoteKey, Predicted>,
+    /// For each pair, what its prediction was made from ([`stamp`]): it's made again only
+    /// once that changes.
+    stamps: BTreeMap<[PathBuf; 2], u64>,
 }
 
 /// Of the files two sides both change, the lines both change in each that has some, and
 /// the files both change in different parts.
-pub(super) type Predicted = (BTreeMap<String, Vec<[u32; 2]>>, BTreeSet<String>);
+pub(crate) type Predicted = (BTreeMap<String, Vec<[u32; 2]>>, BTreeSet<String>);
 
 /// A worktree here, by its root, and another machine's session, by its nick and session.
-pub(super) type RemoteKey = (PathBuf, String, String);
+pub(crate) type RemoteKey = (PathBuf, String, String);
+
+/// What a task predicting lines for intents' fits found.
+#[derive(Debug)]
+pub(crate) enum Found {
+    /// Of worktrees here and other machines' sessions, from the lines those said
+    /// ([`Daemon::predict_remote`]).
+    Remote(Vec<(RemoteKey, Predicted)>),
+    /// Of pairs of worktrees here, with what each was made from ([`Daemon::refresh_pairs`]).
+    Pairs(Vec<(u64, LocalOverlap)>),
+}
 
 /// What predicting a worktree here against another machine's lines takes.
 struct Job {
@@ -62,6 +76,7 @@ impl Predictions {
     /// Forgets the pairs that the worktree at `root`, gone, was in.
     pub(super) fn forget(&mut self, root: &Path) {
         self.pairs.retain(|[a, b], _| a != root && b != root);
+        self.stamps.retain(|[a, b], _| a != root && b != root);
         self.remote.retain(|(here, _, _), _| here != root);
     }
 
@@ -123,13 +138,16 @@ impl Daemon {
         let theirs: BTreeSet<String> = if local {
             self.session_paths(channel, sender)
         } else {
-            self.presence
-                .members(channel)
-                .into_iter()
-                .filter(|member| {
-                    member.nick == delivery.from && member.session.as_deref() == Some(sender)
-                })
+            // Its uncommitted paths, and what its commits change that hasn't landed.
+            let changing = self.presence.members(channel).into_iter().filter(|member| {
+                member.nick == delivery.from && member.session.as_deref() == Some(sender)
+            });
+            let built = self.presence.built(channel).into_iter().filter(|built| {
+                built.nick == delivery.from && built.session.as_deref() == Some(sender)
+            });
+            changing
                 .flat_map(|member| member.paths)
+                .chain(built.flat_map(|built| built.changed))
                 .collect()
         };
         let theirs: Vec<String> = presence::touching(&theirs, &intended);
@@ -188,9 +206,101 @@ impl Daemon {
         })
     }
 
+    /// Predicts again, in a task of its own, each pair of worktrees in `channel` here that
+    /// change some of the same files, where what they change there has changed since it
+    /// was last predicted ([`Found::Pairs`]). Only overlaps that were news were
+    /// predicted before, so a pair told of once kept its first prediction, or none: a
+    /// quarter of intents between two sessions here said "lines unknown" (15 Nov 2026).
+    pub(super) fn refresh_pairs(&mut self, channel: &str) {
+        let local = self.local(channel);
+        let mut due = Vec::new();
+        for (i, (a, _, a_paths)) in local.iter().enumerate() {
+            for (b, _, b_paths) in &local[i + 1..] {
+                let shared: Vec<String> = a_paths.intersection(b_paths).cloned().collect();
+                if shared.is_empty() || a.path == b.path {
+                    continue;
+                }
+                let mut key = [a.path.clone(), b.path.clone()];
+                key.sort();
+                let stamp = self.stamp(&key, &shared);
+                if self.predictions.stamps.get(&key) == Some(&stamp) {
+                    continue;
+                }
+                let mut worktrees = [a.clone(), b.clone()];
+                worktrees.sort();
+                due.push((
+                    stamp,
+                    LocalOverlap {
+                        channel: channel.to_owned(),
+                        worktrees,
+                        paths: shared,
+                        same_lines: BTreeMap::new(),
+                        apart: Vec::new(),
+                        why: None,
+                    },
+                ));
+            }
+        }
+        if due.is_empty() {
+            return;
+        }
+        let inputs = self.inputs.clone();
+        self.checking += 1;
+        tokio::spawn(async move {
+            for (_, overlap) in &mut due {
+                super::predict(overlap).await;
+            }
+            let _ = inputs.send(Input::Fitted(Found::Pairs(due)));
+        });
+    }
+
+    /// Notes what a task predicting lines found.
+    pub(super) fn fitted(&mut self, found: Found) {
+        self.checking = self.checking.saturating_sub(1);
+        match found {
+            Found::Remote(predicted) => {
+                for (key, it) in predicted {
+                    self.predictions.remote.insert(key, it);
+                }
+            }
+            Found::Pairs(predicted) => self.pairs_predicted(predicted),
+        }
+    }
+
+    /// Notes what [`Daemon::refresh_pairs`] found.
+    fn pairs_predicted(&mut self, predicted: Vec<(u64, LocalOverlap)>) {
+        for (stamp, overlap) in predicted {
+            self.predictions.note(&overlap);
+            let mut key = [
+                overlap.worktrees[0].path.clone(),
+                overlap.worktrees[1].path.clone(),
+            ];
+            key.sort();
+            self.predictions.stamps.insert(key, stamp);
+        }
+    }
+
+    /// What a prediction of the worktrees at `key` for `shared` is made from: the files,
+    /// and what each worktree is built on and changes in them.
+    fn stamp(&self, key: &[PathBuf; 2], shared: &[String]) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        shared.hash(&mut hasher);
+        for root in key {
+            if let Some(watched) = self.repos.get(root) {
+                let snapshot = &watched.snapshot;
+                (&snapshot.base, &snapshot.head).hash(&mut hasher);
+                for path in shared {
+                    snapshot.lines.get(path).hash(&mut hasher);
+                    snapshot.dirty.contains(path).hash(&mut hasher);
+                }
+            }
+        }
+        hasher.finish()
+    }
+
     /// Predicts, in a task of its own, each worktree in `channel` here against the lines
     /// each other machine's session there said, where both change some of the same files
-    /// ([`Input::RemotePredicted`]).
+    /// ([`Found::Remote`]).
     pub(super) fn predict_remote(&mut self, channel: &str) {
         let Some(me) = self.client.as_ref().map(|client| client.nick().to_owned()) else {
             return;
@@ -241,16 +351,8 @@ impl Daemon {
                     predicted.push((job.key, it));
                 }
             }
-            let _ = inputs.send(Input::RemotePredicted(predicted));
+            let _ = inputs.send(Input::Fitted(Found::Remote(predicted)));
         });
-    }
-
-    /// Notes what [`Daemon::predict_remote`] found.
-    pub(super) fn remote_predicted(&mut self, predicted: Vec<(RemoteKey, Predicted)>) {
-        self.checking = self.checking.saturating_sub(1);
-        for (key, it) in predicted {
-            self.predictions.remote.insert(key, it);
-        }
     }
 }
 

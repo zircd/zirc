@@ -102,9 +102,8 @@ pub enum Input {
     /// The overlaps between this machine's worktrees in this channel, with the lines Git
     /// says they share ([`Daemon::check_overlaps`]).
     Predicted(String, Vec<LocalOverlap>),
-    /// Of this machine's worktrees and other machines' sessions, the lines both change, as
-    /// Git says from the lines those sessions said ([`Daemon::predict_remote`]).
-    RemotePredicted(Vec<(fit::RemoteKey, fit::Predicted)>),
+    /// The lines both sides change, for intents' fits, as Git says ([`fit::Found`]).
+    Fitted(fit::Found),
     /// The request waiting on the server with this token has waited long enough.
     Expired(u64),
     /// Whether this daemon watches the repository with this root, or will once its restore
@@ -446,9 +445,15 @@ impl Watched {
         }
         // A plain checkout's changes are its one session's; one that several share, as the
         // main checkout was, has nobody's: each of its sessions was woken by every intent,
-        // push and commit touching any of them (6 Nov 2026).
+        // push and commit touching any of them (6 Nov 2026). Its own commits that haven't
+        // landed are its work too: a session that commits every turn had none, and heard of
+        // nobody else's change to them (15 Nov 2026).
         if self.sessions.names().count() == 1 {
-            self.snapshot.dirty.clone()
+            self.snapshot
+                .dirty
+                .union(&self.snapshot.committed)
+                .cloned()
+                .collect()
         } else {
             BTreeSet::new()
         }
@@ -1022,7 +1027,7 @@ impl Daemon {
             }
             Input::PushChecked(clashes) => self.push_checked(clashes),
             Input::Predicted(channel, overlaps) => self.predicted(&channel, overlaps),
-            Input::RemotePredicted(predicted) => self.remote_predicted(predicted),
+            Input::Fitted(found) => self.fitted(found),
             Input::Holds(root, answer) => {
                 let _ = answer.send(self.holds(&root));
             }

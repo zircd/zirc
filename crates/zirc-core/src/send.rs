@@ -587,6 +587,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_sessions_lines_fit_lines_of_their_own_however_many_files_and_however_long() {
+        // As long as this repository's longest paths, and longer.
+        let long = "oss/apps/android/src/main/kotlin/dev/zirc/android/ui/conversation/ConversationScreen.kt";
+        let spans: Vec<[u32; 2]> = (0..8).map(|n| [n * 100 + 1, 3]).collect();
+        let files: std::collections::BTreeMap<String, Vec<[u32; 2]>> = (0..12)
+            .map(|n| (format!("{long}.{n}"), spans.clone()))
+            .collect();
+        let lines = zirc_proto::lines::Lines {
+            base: "8c7edf24b123".into(),
+            continued: false,
+            lines: files.clone(),
+        };
+        let sender = Message::new("cc-c03fab", lines.event());
+        let parts = fitting_as(&sender, lines.event());
+        assert!(parts.len() > 1);
+        let mut heard = std::collections::BTreeMap::new();
+        for (i, part) in parts.iter().enumerate() {
+            assert!(zirc_proto::encode(&Message::new("cc-c03fab", part.clone())).is_ok());
+            let said = zirc_proto::lines::Lines::of(part).expect("lines");
+            assert_eq!(said.continued, i > 0);
+            heard.extend(said.lines);
+        }
+        // Every file is said, its spans merged where they had to be, never dropped.
+        assert_eq!(
+            heard.keys().collect::<Vec<_>>(),
+            files.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn long_file_names_are_shortened_keeping_their_extension() {
         let file = |name: &str, mime: &str| {
             Event::File(zirc_proto::File {

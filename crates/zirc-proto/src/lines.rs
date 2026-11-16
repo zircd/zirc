@@ -39,17 +39,16 @@ pub struct Lines {
 }
 
 impl Lines {
-    /// It as the event that says it.
+    /// It as the event that says it. It has no words: it's live, which apps don't show and
+    /// plain IRC clients never get, and words go in a line twice, in the payload and after
+    /// it, which left no room for a single file's lines on a long path (12,865 dropped in a
+    /// day, 14 to 16 Nov 2026).
     #[must_use]
     pub fn event(&self) -> Event {
-        let files = self.lines.len();
         Event::Custom {
             kind: KIND.to_owned(),
             data: serde_json::to_value(self).unwrap_or_default(),
-            text: format!(
-                "changing lines in {files} file{}",
-                if files == 1 { "" } else { "s" }
-            ),
+            text: String::new(),
         }
     }
 

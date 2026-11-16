@@ -165,14 +165,16 @@ impl Daemon {
     }
 
     /// Tells `channel` the lines `said`, `session`'s set, changes, in as many parts as it
-    /// takes.
+    /// takes. Unsigned, without the session's name, tool and picture: its working set says
+    /// those, and a line has room for a file's lines only without them.
     pub(super) fn publish_lines(&mut self, channel: &str, session: &str, said: &Said) {
         let Some(event) = said.lines() else {
             return;
         };
-        let parts = zirc_core::send::fitting_as(&self.signed(session, event.clone()), event);
+        let parts =
+            zirc_core::send::fitting_as(&zirc_proto::Message::new(session, event.clone()), event);
         for part in parts {
-            self.publish(channel, session, part);
+            self.publish_message(channel, zirc_proto::Message::new(session, part));
         }
     }
 
