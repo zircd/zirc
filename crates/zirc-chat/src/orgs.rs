@@ -306,9 +306,10 @@ impl AsMut<Self> for Chat {
 // The words of signing out, for every app, the web chat's too: zirc-core's `account_text`
 // says them through these.
 
-/// A sign-out sheet: what it asks, what it says, and the destructive button.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Sheet {
+/// A sign-out sheet: what it asks, what it says, and the destructive button. Every app reads
+/// this record, the phones through `UniFFI` and the web chat as JSON.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+pub struct SignOutSheet {
     /// The title.
     pub title: String,
     /// The body.
@@ -432,7 +433,7 @@ pub fn signed_out(org: &str) -> String {
 /// self-hosted and has none). The apps' sign-out sheets and `zirc logout` say it here
 /// once.
 #[must_use]
-pub fn sign_out_sheet(org: &str, others: &[String], self_hosted: bool) -> Sheet {
+pub fn sign_out_sheet(org: &str, others: &[String], self_hosted: bool) -> SignOutSheet {
     let name = display_name(org);
     let title = format!("Sign out of {name}?");
     if !others.is_empty() {
@@ -440,7 +441,7 @@ pub fn sign_out_sheet(org: &str, others: &[String], self_hosted: bool) -> Sheet 
             [one] => format!("You stay signed in to {}.", display_name(one)),
             _ => "You stay signed in to your other organisations.".to_owned(),
         };
-        return Sheet {
+        return SignOutSheet {
             title,
             body: format!(
                 "{name}'s messages, notifications and settings leave this device. {stay}"
@@ -453,7 +454,7 @@ pub fn sign_out_sheet(org: &str, others: &[String], self_hosted: bool) -> Sheet 
     } else {
         ", so this also signs you out of zirc.dev here".to_owned()
     };
-    Sheet {
+    SignOutSheet {
         title,
         body: format!("{name} is the only organisation on this device{also}."),
         confirm: SIGN_OUT.to_owned(),
@@ -490,7 +491,11 @@ const NAMED: usize = 3;
 /// read as `names`: up to three of them, then how many more, and zirc.dev last when
 /// `zirc_dev` (any of them is on it).
 #[must_use]
-pub fn sign_out_everything_sheet(names: &[String], zirc_dev: bool, place: SignOutPlace) -> Sheet {
+pub fn sign_out_everything_sheet(
+    names: &[String],
+    zirc_dev: bool,
+    place: SignOutPlace,
+) -> SignOutSheet {
     let mut said: Vec<String> = names.iter().take(NAMED).cloned().collect();
     if names.len() > NAMED {
         said.push(format!("{} more", names.len() - NAMED));
@@ -502,7 +507,7 @@ pub fn sign_out_everything_sheet(names: &[String], zirc_dev: bool, place: SignOu
         SignOutPlace::Device => "on this device",
         SignOutPlace::Browser => "in this browser",
     };
-    Sheet {
+    SignOutSheet {
         title: format!("{SIGN_OUT_EVERYTHING_NAME}?"),
         body: format!("Signs you out of {} {place}.", sentence(&said)),
         confirm: SIGN_OUT_EVERYTHING_NAME.to_owned(),

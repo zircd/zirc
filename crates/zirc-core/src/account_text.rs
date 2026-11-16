@@ -11,7 +11,8 @@
 
 use zirc_chat::chat::Chat;
 pub use zirc_chat::orgs::{
-    Card, CardAction, Sheet, display_name, org_card, sign_out_label, sign_out_sheet, signed_out,
+    Card, CardAction, SignOutSheet, display_name, org_card, sign_out_label, sign_out_sheet,
+    signed_out,
 };
 use zirc_chat::orgs::{SignOutPlace, org_colour, org_initials, tile_a11y};
 
@@ -125,7 +126,7 @@ impl OrgSummary {
 /// whether it is self-hosted: zirc-chat's [`zirc_chat::orgs::sign_out_everything_sheet`],
 /// on this device, naming zirc.dev when any of them is on it.
 #[must_use]
-pub fn sign_out_everything_sheet(orgs: &[(String, bool)]) -> Sheet {
+pub fn sign_out_everything_sheet(orgs: &[(String, bool)]) -> SignOutSheet {
     let names: Vec<String> = orgs.iter().map(|(org, _)| display_name(org)).collect();
     let zirc_dev = orgs.iter().any(|(_, self_hosted)| !self_hosted);
     zirc_chat::orgs::sign_out_everything_sheet(&names, zirc_dev, SignOutPlace::Device)
@@ -135,7 +136,7 @@ impl<T: AsRef<Chat> + AsMut<Chat>> Account<T> {
     /// What the sheet for signing out of `org` says ([`sign_out_sheet`]). `None` when not
     /// signed in to it.
     #[must_use]
-    pub fn sign_out_text(&self, org: &str) -> Option<Sheet> {
+    pub fn sign_out_text(&self, org: &str) -> Option<SignOutSheet> {
         let session = self.get(org)?;
         let others: Vec<String> = self
             .iter()
@@ -147,7 +148,7 @@ impl<T: AsRef<Chat> + AsMut<Chat>> Account<T> {
 
     /// What the sheet for signing out of everything says ([`sign_out_everything_sheet`]).
     #[must_use]
-    pub fn sign_out_everything_text(&self) -> Sheet {
+    pub fn sign_out_everything_text(&self) -> SignOutSheet {
         let orgs: Vec<(String, bool)> = self
             .iter()
             .map(|(org, session)| (org.to_owned(), session.self_hosted()))

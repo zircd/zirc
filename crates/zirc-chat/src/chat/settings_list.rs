@@ -198,6 +198,28 @@ pub fn confirms_deletion(email: &str, typed: &str) -> bool {
 /// nothing is.
 pub const THEMES: [(&str, &str); 3] = [("system", "System"), ("light", "Light"), ("dark", "Dark")];
 
+/// One of Appearance's looks ([`THEMES`]), as every app offers it: the phones read this
+/// record through `UniFFI`, the web chat as JSON.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+pub struct ThemeChoice {
+    /// What it's kept as: `system`, `light` or `dark`.
+    pub key: String,
+    /// What Appearance offers it as.
+    pub label: String,
+}
+
+/// Appearance's looks, the system's first ([`THEMES`]).
+#[must_use]
+pub fn themes() -> Vec<ThemeChoice> {
+    THEMES
+        .iter()
+        .map(|(key, label)| ThemeChoice {
+            key: (*key).to_owned(),
+            label: (*label).to_owned(),
+        })
+        .collect()
+}
+
 /// Whether the app is dark with `theme` kept ([`THEMES`]) and the system `dark` or not.
 #[must_use]
 pub fn theme_dark(theme: Option<&str>, dark: bool) -> bool {

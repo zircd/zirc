@@ -35,6 +35,26 @@ pub fn edited((text, at): (String, usize)) -> (String, u32) {
     (text, cursor)
 }
 
+/// Text with a choice written in, such as a mention completed, as every app takes it back:
+/// the text and where the caret goes, in UTF-16 code units. The phones read this record
+/// through `UniFFI`, the web chat as JSON.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+pub struct Completed {
+    /// The text now.
+    pub text: String,
+    /// Where the caret goes, after the choice and a space, in UTF-16 code units.
+    pub cursor: u32,
+}
+
+impl Completed {
+    /// An edit's text and its caret's byte offset ([`edited`]).
+    #[must_use]
+    pub fn of(edit: (String, usize)) -> Self {
+        let (text, cursor) = edited(edit);
+        Self { text, cursor }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

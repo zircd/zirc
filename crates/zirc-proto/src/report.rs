@@ -187,10 +187,10 @@ pub struct BlockList {
     pub blocked: Vec<Blocked>,
 }
 
-/// The words of the report and block screens, one set for every app.
+/// The words of the report and block screens, one set for every app: the web chat reads it
+/// as JSON, the phones through `UniFFI`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(rename = "SafetyWords")]
-pub struct Words {
+pub struct SafetyWords {
     /// The menu item and the sheet's title for reporting a message.
     pub report_message: String,
     /// The menu item and the sheet's title for reporting a person.
@@ -211,12 +211,36 @@ pub struct Words {
     pub blocked_title: String,
     /// What it says when nobody's blocked.
     pub blocked_empty: String,
+    /// The longest note a report takes, in characters (Unicode scalars, not UTF-16 units),
+    /// [`NOTE_MAX_CHARS`].
+    pub note_max: u32,
+}
+
+/// A reason to report, as the apps list it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+pub struct ReasonChoice {
+    /// What a report says, as `harassment`: [`Reason::id`].
+    pub id: String,
+    /// What to show: [`Reason::label`].
+    pub label: String,
+}
+
+/// The reasons, in the order the apps list them.
+#[must_use]
+pub fn reasons() -> Vec<ReasonChoice> {
+    Reason::ALL
+        .into_iter()
+        .map(|reason| ReasonChoice {
+            id: reason.id().to_owned(),
+            label: reason.label().to_owned(),
+        })
+        .collect()
 }
 
 /// The words the apps show.
 #[must_use]
-pub fn words() -> Words {
-    Words {
+pub fn words() -> SafetyWords {
+    SafetyWords {
         report_message: "Report message".into(),
         report_person: "Report".into(),
         reasons_title: "Why are you reporting this?".into(),
@@ -227,6 +251,7 @@ pub fn words() -> Words {
         unblock: "Unblock".into(),
         blocked_title: "Blocked people".into(),
         blocked_empty: "You haven't blocked anyone. People you block are listed here, and can be unblocked.".into(),
+        note_max: u32::try_from(NOTE_MAX_CHARS).unwrap_or(u32::MAX),
     }
 }
 
@@ -255,7 +280,8 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Filed::decl(config),
         Blocked::decl(config),
         BlockList::decl(config),
-        Words::decl(config),
+        SafetyWords::decl(config),
+        ReasonChoice::decl(config),
     ]
 }
 

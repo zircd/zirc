@@ -32,9 +32,11 @@ pub enum Scope {
     AllServers,
 }
 
-/// What order results come in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Sort {
+/// What order results come in: as typed after `sort:`, which is how the web chat's JSON
+/// says it too.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchSort {
     /// The best matches first.
     Best,
     /// The newest first.
@@ -43,13 +45,23 @@ pub enum Sort {
     Old,
 }
 
-impl Sort {
-    fn token(self) -> &'static str {
+impl SearchSort {
+    /// How it's typed: `best`, `new` or `old`.
+    #[must_use]
+    pub const fn token(self) -> &'static str {
         match self {
             Self::Best => "best",
             Self::New => "new",
             Self::Old => "old",
         }
+    }
+
+    /// The order typed as `token`, as [`SearchSort::token`] writes it.
+    #[must_use]
+    pub fn from_token(token: &str) -> Option<Self> {
+        [Self::Best, Self::New, Self::Old]
+            .into_iter()
+            .find(|sort| sort.token() == token)
     }
 }
 
@@ -61,7 +73,7 @@ pub struct Query {
     /// Where to look.
     pub scope: Scope,
     /// The order asked for, if one was; see [`Query::sort`].
-    pub sort: Option<Sort>,
+    pub sort: Option<SearchSort>,
     /// Said by this nick or account.
     pub from: Option<String>,
     /// Said by this agent.
@@ -132,16 +144,10 @@ impl Query {
                 "after" => query.after = Some(day(value)?),
                 "before" => query.before = Some(day(value)?),
                 "sort" => {
-                    query.sort = Some(match value {
-                        "best" => Sort::Best,
-                        "new" => Sort::New,
-                        "old" => Sort::Old,
-                        _ => {
-                            return Err(Unreadable(format!(
-                                "sort is best, new or old, not {value}"
-                            )));
-                        }
-                    });
+                    let Some(sort) = SearchSort::from_token(value) else {
+                        return Err(Unreadable(format!("sort is best, new or old, not {value}")));
+                    };
+                    query.sort = Some(sort);
                 }
                 _ => words.push(token),
             }
@@ -153,10 +159,10 @@ impl Query {
     /// The order results come in: the one asked for, else the best first everywhere and the
     /// newest first in one conversation.
     #[must_use]
-    pub fn sort(&self) -> Sort {
+    pub fn sort(&self) -> SearchSort {
         self.sort.unwrap_or(match self.scope {
-            Scope::Server | Scope::AllServers => Sort::Best,
-            Scope::Conversation(_) | Scope::Agent { .. } => Sort::New,
+            Scope::Server | Scope::AllServers => SearchSort::Best,
+            Scope::Conversation(_) | Scope::Agent { .. } => SearchSort::New,
         })
     }
 
@@ -248,8 +254,8 @@ impl Query {
         params.push((
             "sort",
             match self.sort() {
-                Sort::Best => "best",
-                Sort::New | Sort::Old => "new",
+                SearchSort::Best => "best",
+                SearchSort::New | SearchSort::Old => "new",
             }
             .to_owned(),
         ));
@@ -369,10 +375,10 @@ mod tests {
     fn it_starts_where_it_was_opened_and_in_says_otherwise() {
         let here = Query::parse("timeout", Some("#API")).unwrap();
         assert_eq!(here.scope, Scope::Conversation("#api".into()));
-        assert_eq!(here.sort(), Sort::New);
+        assert_eq!(here.sort(), SearchSort::New);
         let home = Query::parse("timeout", None).unwrap();
         assert_eq!(home.scope, Scope::Server);
-        assert_eq!(home.sort(), Sort::Best);
+        assert_eq!(home.sort(), SearchSort::Best);
         let everywhere = Query::parse("in:* timeout", Some("#api")).unwrap();
         assert_eq!(everywhere.scope, Scope::Server);
         assert_eq!(
@@ -405,7 +411,7 @@ mod tests {
         assert_eq!(query.kinds, ["landing"]);
         assert_eq!(query.has, ["link"]);
         assert_eq!(query.after.as_deref(), Some("2026-11-01"));
-        assert_eq!(query.sort(), Sort::Old);
+        assert_eq!(query.sort(), SearchSort::Old);
         assert_eq!(query.text, r#""in:the box" https://x.dev/a"#);
         assert!(Query::parse("after:yesterday", None).is_err());
         assert!(Query::parse("after:2026-02-30", None).is_err());

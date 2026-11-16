@@ -9,7 +9,7 @@
 //! ([`LAST_SIGN_OUT_ENDS_ZIRC_DEV`]).
 
 use crate::account::LAST_SIGN_OUT_ENDS_ZIRC_DEV;
-use crate::account_text::{Sheet, sign_out_everything_sheet, sign_out_sheet};
+use crate::account_text::{SignOutSheet, sign_out_everything_sheet, sign_out_sheet};
 use crate::device_key::DeviceKey;
 use crate::login::Client;
 use std::path::Path;
@@ -115,7 +115,7 @@ impl Plan {
 
     /// The sheet it asks: the apps' words.
     #[must_use]
-    pub fn sheet(&self) -> Sheet {
+    pub fn sheet(&self) -> SignOutSheet {
         match self.leaving.as_slice() {
             [one] if !self.everything => {
                 let others: Vec<String> =

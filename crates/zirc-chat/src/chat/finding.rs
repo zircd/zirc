@@ -5,8 +5,8 @@
 //! chosen) is the app's.
 
 use super::{
-    Chat, SearchQuery, SearchScope, SearchScreen, SearchSegments, SearchSort, ServerSearch,
-    absorb_search, compose_search, search_segments, segment_scope,
+    Chat, ScreenChip, SearchQuery, SearchScope, SearchScreen, SearchSegments, SearchSort,
+    ServerSearch, absorb_search, compose_search, search_segments, segment_scope,
 };
 
 /// How long typing settles before the history is asked, in milliseconds, in every app.
@@ -198,6 +198,21 @@ impl Finding {
     #[must_use]
     pub fn segments(&self, screen: &SearchScreen, here: Option<String>) -> Option<SearchSegments> {
         search_segments(screen, self.opened_in.as_deref(), here)
+    }
+
+    /// The chips in the box, of `chips` ([`SearchScreen::chips`]): not the scope's when the
+    /// segmented control shows in its place (`segmented`), and a fixed search's scope can't be
+    /// taken away.
+    #[must_use]
+    pub fn chips(&self, chips: Vec<ScreenChip>, segmented: bool) -> Vec<ScreenChip> {
+        chips
+            .into_iter()
+            .filter(|chip| !(chip.scope && segmented))
+            .map(|chip| ScreenChip {
+                removable: !(chip.scope && self.fixed),
+                ..chip
+            })
+            .collect()
     }
 }
 

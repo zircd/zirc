@@ -459,6 +459,29 @@ impl Chat {
     }
 }
 
+/// A channel we aren't in, to browse and join, as every app lists it ([`Chat::browse`]): the
+/// phones read this record through `UniFFI`, the web chat as JSON.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+pub struct BrowseRow {
+    /// The channel: `#web`.
+    pub name: String,
+    /// How many are in it, as every app says it ([`super::members_label`]): `3 members`. None when
+    /// nobody is in it now, as for one we left that has history.
+    pub members: Option<String>,
+}
+
+/// `channels` with how many are in each, as [`Chat::browse`] lists them, as rows.
+#[must_use]
+pub fn browse_rows(channels: Vec<(String, usize)>) -> Vec<BrowseRow> {
+    channels
+        .into_iter()
+        .map(|(name, count)| BrowseRow {
+            name,
+            members: (count > 0).then(|| super::members_label(count)),
+        })
+        .collect()
+}
+
 /// Jump to's row for a channel nothing it lists is ([`Chat::join_offer`]).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 pub struct JoinOffer {

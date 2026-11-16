@@ -281,7 +281,7 @@ fn the_sort_menu_offers_oldest_disabled_with_a_reason_while_online() {
     let sorts: Vec<_> = screen
         .sorts
         .iter()
-        .map(|s| (s.label, s.unavailable.is_some()))
+        .map(|s| (s.label.as_str(), s.unavailable.is_some()))
         .collect();
     assert_eq!(
         sorts,

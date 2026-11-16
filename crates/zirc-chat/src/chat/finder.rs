@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Datelike as _, Duration, NaiveDateTime, Utc};
 use zirc_proto::login::{ConversationCount, HistoryPage};
-use zirc_proto::search::{Query as SearchQuery, Scope, Sort};
+use zirc_proto::search::{Query as SearchQuery, Scope, SearchSort as Sort};
 
 use super::conversation::{Kind, agent, fold, is_channel};
 use super::search::{Hit, SearchHit};
@@ -194,28 +194,36 @@ impl ServerSearch {
     }
 }
 
-/// A chip in the search box: a token of the query, which can be taken away.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A chip in the search box: a token of the query, which can be taken away. Every app reads
+/// this record, the phones through `UniFFI` and the web chat as JSON.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
 pub struct ScreenChip {
     /// What it shows: `in #api`, `from leo`.
     pub label: String,
-    /// The token it stands for: `in:#api`.
+    /// The token it stands for, to take it away: `in:#api`.
     pub token: String,
     /// What a screen reader says: "Searching in #api. Remove to search everywhere".
     pub a11y: String,
     /// Whether it's the scope.
     pub scope: bool,
+    /// Whether it can be taken away: a guest's scope can't ([`super::Finding::chips`]).
+    pub removable: bool,
 }
 
-/// One of the sort menu's choices.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One of the sort menu's choices. Every app reads this record, the phones through `UniFFI`
+/// and the web chat as JSON.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 pub struct SortChoice {
     /// The order.
     pub sort: Sort,
     /// What it's called: "Best match", "Newest", "Oldest".
-    pub label: &'static str,
+    pub label: String,
+    /// Whether it's the order the results are in.
+    pub chosen: bool,
     /// Why it can't be chosen, if it can't.
-    pub unavailable: Option<&'static str>,
+    pub unavailable: Option<String>,
 }
 
 /// A conversation's matches, in a search everywhere sorted best first: ready to draw and
@@ -681,8 +689,9 @@ impl Chat {
             .into_iter()
             .map(|choice| SortChoice {
                 sort: choice,
-                label: sort_name(choice),
-                unavailable: (choice == Sort::Old && online).then_some(OLDEST_NOT_YET),
+                label: sort_name(choice).to_owned(),
+                chosen: choice == sort,
+                unavailable: (choice == Sort::Old && online).then(|| OLDEST_NOT_YET.to_owned()),
             })
             .collect();
         let a11y = match (&header, &empty) {
@@ -1097,6 +1106,7 @@ fn screen_chips(query: &SearchQuery, scope_title: Option<&str>) -> Vec<ScreenChi
                 label,
                 token: chip.token,
                 scope: scope_chip,
+                removable: true,
             }
         })
         .collect()

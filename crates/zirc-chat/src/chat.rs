@@ -25,7 +25,7 @@ mod body;
 mod both;
 mod channel_rows;
 mod channels;
-pub use channels::{JoinOffer, create_label, join_label};
+pub use channels::{BrowseRow, JoinOffer, browse_rows, create_label, join_label};
 mod closing;
 mod code;
 mod code_ref;
@@ -199,8 +199,8 @@ pub use settings_list::{
     ADD_ORGANISATION, ADD_ORGANISATION_NAME, AWAY, AWAY_WHY, CHANGE_PICTURE, CHANGE_PICTURE_NAME,
     DELETE_ACCOUNT, ORGANISATIONS, SERVER, SETTINGS, SETTINGS_ACCOUNT, SETTINGS_APP,
     SIGN_OUT_EVERYTHING, SYSTEM_NOTIFICATIONS, SettingsApp, SettingsGroup, SettingsKind,
-    SettingsSection, THEMES, confirms_deletion, deletion_words, mute_org, mute_org_note,
-    settings_group_title, settings_sections, sign_out_of, theme_dark,
+    SettingsSection, THEMES, ThemeChoice, confirms_deletion, deletion_words, mute_org,
+    mute_org_note, settings_group_title, settings_sections, sign_out_of, theme_dark, themes,
 };
 pub use sharing::{
     SHARE_DEFAULT_HINT, SHARE_NAME, SHARE_NAME_DEFAULT, SHARE_NAME_HINT, SHARE_PICTURE,
@@ -238,7 +238,7 @@ pub use words::{
 };
 pub use working::{Intending, WorkingPerson, WorkingSet};
 pub use zirc_proto::search::{
-    Chip as SearchChip, Query as SearchQuery, Scope as SearchScope, Sort as SearchSort,
+    Chip as SearchChip, Query as SearchQuery, Scope as SearchScope, SearchSort,
     Unreadable as UnreadableSearch,
 };
 
