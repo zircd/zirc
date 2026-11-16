@@ -154,6 +154,7 @@ pub(crate) async fn wait(socket: &Path, command: WaitCommand, out: &mut impl Wri
     );
     let limit = tokio::time::sleep(Duration::from_secs(how.seconds));
     tokio::pin!(limit);
+    let started_by = std::os::unix::process::parent_id();
     loop {
         let next = tokio::select! {
             next = watching.next() => next,
@@ -163,7 +164,7 @@ pub(crate) async fn wait(socket: &Path, command: WaitCommand, out: &mut impl Wri
                 condition.describe()
             ),
             // Whatever started the wait is gone, and nobody reads it.
-            () = orphaned() => return Ok(()),
+            () = orphaned(started_by) => return Ok(()),
         };
         match next {
             Ok(Some(Heard::Message(delivery))) => {

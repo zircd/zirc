@@ -81,6 +81,7 @@ pub(crate) async fn watch_as(
         aside(how.once, out, &line)?;
     }
     let mut watched = socket_id(socket);
+    let started_by = std::os::unix::process::parent_id();
     let ending = async {
         match until {
             Some(until) => tokio::time::sleep_until(until).await,
@@ -102,7 +103,7 @@ pub(crate) async fn watch_as(
             // Quietly: a line would wake the session to say nothing.
             () = &mut ending => return Ok(()),
             () = bursting => return Ok(()),
-            () = orphaned() => return Ok(()),
+            () = orphaned(started_by) => return Ok(()),
         };
         let heard = match next {
             Ok(Some(heard)) => Some(heard),
@@ -150,21 +151,25 @@ async fn record_hints(socket: &Path, how: &How<'_>, session: Option<&str>) {
     }
 }
 
-/// Ends once this process is an orphan, its parent gone and itself handed to `init` or
-/// launchd (pid 1): the session that started the watch has ended, and nobody reads it.
-pub(crate) async fn orphaned() {
-    let mut every = tokio::time::interval(Duration::from_secs(30));
+/// Ends once this process is an orphan, `started_by` its parent no longer: the process that
+/// started it gone, and itself handed to `init`, launchd or a subreaper. Nobody reads it then,
+/// as a watch an agent started with `&` inside a command that has ended: what it took would be
+/// lost, so it stops before taking anything, and zircd keeps what comes for the session's next
+/// watch. Checked every second: at every 30 s, an answer to an agent's request reached such a
+/// watch first and was never read (the agent evals' S4, 16 Nov 2026).
+pub(crate) async fn orphaned(started_by: u32) {
+    let mut every = tokio::time::interval(Duration::from_secs(1));
     loop {
         every.tick().await;
-        if is_orphan(std::os::unix::process::parent_id()) {
+        if is_orphan(started_by, std::os::unix::process::parent_id()) {
             return;
         }
     }
 }
 
-/// Whether a process whose parent is `parent` was orphaned.
-pub(crate) fn is_orphan(parent: u32) -> bool {
-    parent == 1
+/// Whether a process started by `started_by` and whose parent is now `parent` was orphaned.
+pub(crate) fn is_orphan(started_by: u32, parent: u32) -> bool {
+    parent == 1 || parent != started_by
 }
 
 /// What a watch says once, at the start: that the session isn't registered, or that this
@@ -675,8 +680,10 @@ mod tests {
 
     #[test]
     fn a_watch_whose_session_is_gone_ends() {
-        assert!(is_orphan(1));
-        assert!(!is_orphan(std::os::unix::process::parent_id()));
+        let parent = std::os::unix::process::parent_id();
+        assert!(is_orphan(parent, 1));
+        assert!(is_orphan(parent, parent + 1), "handed to a subreaper");
+        assert!(!is_orphan(parent, parent));
     }
 
     #[test]

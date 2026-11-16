@@ -41,6 +41,8 @@ installed. Otherwise:
 3. Start `zirc watch --once --session <your session> --name <short> --role <role>` as a
    background command that tells you when it ends (in Claude Code, Bash with
    `run_in_background`), before anything else, even when the task looks like only reading.
+   Never with `&`, nor with its output sent to a file or `/dev/null`: nothing tells you what
+   such a watch printed, so what it took is lost.
    It waits quietly until something concerns your session, prints it and ends, which wakes
    you: deal with it, then start it again the same way, every time. Keep exactly one running
    all session. Restarting it is housekeeping: don't tell the user or post about it. Don't
