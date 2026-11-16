@@ -370,6 +370,48 @@ pub fn check_kind(kind: &str) -> Option<&'static str> {
     }
 }
 
+/// Every kind zirc's own custom events go by, as JSON's `.event.kind` says them: what a
+/// filter on zirc's events can name. zircd's own bookkeeping goes by `.event.type` instead
+/// ([`MACHINE_EVENTS`]).
+pub const ZIRC_KINDS: [&str; 20] = [
+    activity::WAKE_KIND,
+    activity::WAKE_OUTCOME_KIND,
+    activity::PROMPT_KIND,
+    activity::NOTICE_KIND,
+    ci::LANDING_KIND,
+    ci::DEPLOY_KIND,
+    ci::CHECK_KIND,
+    colleagues::KIND,
+    decision::KIND,
+    lines::KIND,
+    request::KIND,
+    run::KIND,
+    run::STEP_KIND,
+    session::KIND,
+    session::LIVE_KIND,
+    state::KIND,
+    thread::KIND,
+    workflow::KIND,
+    LEASE_KIND,
+    RENEWAL_KIND,
+];
+
+/// The first `x-zirc/…` kind `text` names, such as a jq filter, that zirc never sends: one
+/// that isn't in [`ZIRC_KINDS`]. A filter naming one can never pick anything out.
+#[must_use]
+pub fn unknown_zirc_kind(text: &str) -> Option<&str> {
+    text.match_indices("x-zirc/").find_map(|(at, _)| {
+        let rest = &text[at..];
+        let end = rest
+            .char_indices()
+            .skip("x-zirc/".len())
+            .find(|(_, c)| !(c.is_ascii_alphanumeric() || *c == '-'))
+            .map_or(rest.len(), |(end, _)| end);
+        let kind = &rest[..end];
+        (!ZIRC_KINDS.contains(&kind)).then_some(kind)
+    })
+}
+
 /// The [`Event`] kinds zircd sends on its own, as JSON's `type` says them: bookkeeping about
 /// who's changing what, rather than anything someone said ([`Event::is_machine`]).
 pub const MACHINE_EVENTS: [&str; 4] = ["intent", "working", "commit", "push"];
@@ -1841,6 +1883,23 @@ mod tests {
         for (role, _) in ROLE_WORDS {
             assert!(AGENT_AVATARS.iter().any(|(id, _)| *id == role), "{role}");
         }
+    }
+
+    #[test]
+    fn tells_a_kind_zirc_never_sends() {
+        let push = r#"select(.message.event.kind == "x-zirc/push")"#;
+        assert_eq!(unknown_zirc_kind(push), Some("x-zirc/push"));
+        let landing = r#"select(.message.event.kind == "x-zirc/landing" and (.x | test("a")))"#;
+        assert_eq!(unknown_zirc_kind(landing), None);
+        assert_eq!(unknown_zirc_kind(r#".kind == "x-acme/deploy""#), None);
+        // Every kind is told apart, none twice.
+        let kinds: std::collections::BTreeSet<_> = ZIRC_KINDS.iter().collect();
+        assert_eq!(kinds.len(), ZIRC_KINDS.len());
+        assert!(
+            ZIRC_KINDS
+                .iter()
+                .all(|kind| unknown_zirc_kind(kind).is_none())
+        );
     }
 
     #[test]

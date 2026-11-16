@@ -187,6 +187,21 @@ pub(crate) fn aside(once: bool, out: &mut impl Write, line: &str) -> Result<()> 
     Ok(())
 }
 
+/// The jq filter `jq`, given as `flag`, unless it names a kind zirc never sends, which would
+/// make it wait forever for nothing.
+fn filter_of(jq: &str, flag: &str) -> Result<Filter> {
+    if let Some(kind) = zirc_proto::unknown_zirc_kind(jq) {
+        bail!(
+            "{flag} names {kind}, a kind zirc never sends, so it would never match. zirc's own \
+             events go by .message.event.type: {}, such as `.message.event.type == \"push\"`; \
+             the rest by .message.event.kind: {}",
+            zirc_proto::MACHINE_EVENTS.join(", "),
+            zirc_proto::ZIRC_KINDS.join(", ")
+        );
+    }
+    Ok(Filter::new(jq)?)
+}
+
 /// Whether `filter` picks out `heard`: it outputs anything but `false` or `null`. A filter
 /// that fails on it, as on an event without the fields it reads, picks nothing.
 pub(crate) fn picks(filter: Option<&Filter>, heard: &Heard) -> bool {
@@ -515,10 +530,16 @@ pub(crate) async fn watch(
         level,
     } = args;
     name_session(socket, session.as_deref(), name).await?;
-    let filter = filter.as_deref().map(Filter::new).transpose()?;
+    let filter = filter
+        .as_deref()
+        .map(|jq| filter_of(jq, "--filter"))
+        .transpose()?;
     let stop_at = match said {
         Some(said) => Some(Filter::said(&said)),
-        None => until_jq.as_deref().map(Filter::new).transpose()?,
+        None => until_jq
+            .as_deref()
+            .map(|jq| filter_of(jq, "--until"))
+            .transpose()?,
     };
     let until = seconds.map(|seconds| tokio::time::Instant::now() + Duration::from_secs(seconds));
     // The repositories watched here, for their own hints: none if zircd can't say.
@@ -744,6 +765,20 @@ mod tests {
         assert!(is_noise(&Heard::Message(working)));
         let text = delivery(Event::Text { body: "hi".into() });
         assert!(!is_noise(&Heard::Message(text)));
+    }
+
+    #[test]
+    fn refuses_a_filter_naming_a_kind_zirc_never_sends() {
+        let refused = filter_of(r#"select(.message.event.kind == "x-zirc/push")"#, "--until")
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(refused.starts_with("--until names x-zirc/push, a kind zirc never sends"));
+        assert!(
+            refused.contains(r#".message.event.type == "push""#),
+            "{refused}"
+        );
+        assert!(filter_of(r#"select(.message.event.type == "push")"#, "--until").is_ok());
     }
 
     #[test]

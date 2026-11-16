@@ -55,7 +55,9 @@ installed. Otherwise:
    wakes when CI says how that branch's build went. To wait for something you
    can't name yet, such as the next landing that deploys, add `--until '<jq>'` to your
    watch, which still wakes you for everything else meanwhile: `--until 'select(.message.event.kind
-   == "x-zirc/deploy" and (.message.event.text | test("deployed to production")))'`.
+   == "x-zirc/deploy" and (.message.event.text | test("deployed to production")))'`;
+   a push, an intent or a commit goes by `.message.event.type` instead, such as
+   `select(.message.event.type == "push")`.
    Never poll for what zirc hears: not a channel's history, not CI's API or `gh`, not a
    loop with `sleep`.
    `--name` is a short name saying what you work on, such as `controller`, which apps show
