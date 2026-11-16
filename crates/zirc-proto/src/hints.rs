@@ -2,6 +2,11 @@
 //! ([`kind`]), with optional conditions ([`When`]) and a [`Level`], from a [`Layer`]. Said
 //! here, in the protocol, so zirc's core, which shows them, and the server's sidecar, which
 //! keeps a team's, read them alike; the core reads them from TOML and resolves which applies.
+//!
+//! A team's own hints, for a repository or the whole organisation, are kept on its server
+//! ([`Stored`], listed as a [`Listing`]): its people and their agents add and remove them,
+//! each change logged ([`Change`]) and said as a [`Changed`] event by zirc's own account, in the
+//! repository's channel or `#ops`, which tells every machine to read them again.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -328,6 +333,174 @@ fn placeholders(text: &str) -> Vec<&str> {
         .collect()
 }
 
+/// The scope of an organisation's own hints, rather than one repository's (`#<repo>`).
+pub const ORG: &str = "org";
+
+/// Whether `scope` is one hints are kept for: [`ORG`], or a repository's channel such as
+/// `#api`, in lower case.
+#[must_use]
+pub fn is_scope(scope: &str) -> bool {
+    scope == ORG
+        || scope.strip_prefix('#').is_some_and(|name| {
+            !name.is_empty()
+                && name.len() <= 64
+                && name
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "-_.".contains(c))
+        })
+}
+
+/// One of a team's hints, as its server keeps it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Stored {
+    /// Its id ([`Hint::id`]).
+    pub id: String,
+    /// What it's for: [`ORG`] or a repository's channel ([`is_scope`]).
+    pub scope: String,
+    /// The hint.
+    pub hint: Hint,
+    /// Who added it: the account, a person's or a machine's.
+    pub by: String,
+    /// The agent session that added it, when a machine's did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// When, in RFC 3339.
+    pub at: String,
+}
+
+impl Stored {
+    /// Its layer.
+    #[must_use]
+    pub fn layer(&self) -> Layer {
+        if self.scope == ORG {
+            Layer::Organisation
+        } else {
+            Layer::Repository
+        }
+    }
+}
+
+/// A team's hints, as its server lists them.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Listing {
+    /// How many changes there have been: a machine reads them again when it's told of a newer
+    /// one ([`Changed`]).
+    pub version: u64,
+    /// The hints, oldest first.
+    pub hints: Vec<Stored>,
+}
+
+impl Listing {
+    /// Those for `scope`.
+    #[must_use]
+    pub fn for_scope(&self, scope: &str) -> Vec<Hint> {
+        self.hints
+            .iter()
+            .filter(|stored| stored.scope.eq_ignore_ascii_case(scope))
+            .map(|stored| stored.hint.clone())
+            .collect()
+    }
+}
+
+/// What a change did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Action {
+    /// Added the hint.
+    Added,
+    /// Removed it.
+    Removed,
+}
+
+/// One change to a team's hints, as its server logs it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Change {
+    /// What it did.
+    pub action: Action,
+    /// The hint it added or removed.
+    pub hint: Stored,
+    /// Who did it, as [`Stored::by`].
+    pub by: String,
+    /// The agent session that did it, when a machine's did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// When, in RFC 3339.
+    pub at: String,
+    /// The version it made ([`Listing::version`]).
+    pub version: u64,
+}
+
+/// The kind of the event that says a team's hints changed ([`Changed`]).
+pub const CHANGED_KIND: &str = "x-zirc/hints-changed";
+
+/// That a team's hints changed, said by zirc's own account
+/// ([`crate::names::SYSTEM`]): what a machine takes, from that account alone, to read them again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Changed {
+    /// The version the change made.
+    pub version: u64,
+    /// What it did.
+    pub action: Action,
+    /// The hint's scope.
+    pub scope: String,
+    /// The hint's id.
+    pub id: String,
+    /// Who did it.
+    pub by: String,
+}
+
+impl Changed {
+    /// What `change` says.
+    #[must_use]
+    pub fn of_change(change: &Change) -> Self {
+        Self {
+            version: change.version,
+            action: change.action,
+            scope: change.hint.scope.clone(),
+            id: change.hint.id.clone(),
+            by: change.by.clone(),
+        }
+    }
+
+    /// As its event, saying in words for people what changed.
+    ///
+    /// # Panics
+    ///
+    /// Never: it serializes to JSON.
+    #[must_use]
+    pub fn event(&self, change: &Change) -> crate::Event {
+        let who = match &change.session {
+            Some(session) => format!("{}/{session}", change.by),
+            None => change.by.clone(),
+        };
+        let did = match change.action {
+            Action::Added => "added",
+            Action::Removed => "removed",
+        };
+        let hint = &change.hint;
+        crate::Event::Custom {
+            kind: CHANGED_KIND.to_owned(),
+            data: serde_json::to_value(self).expect("a change serializes"),
+            text: format!(
+                "{who} {did} a hint: {} [hint {}]",
+                line(hint.layer(), &hint.hint),
+                hint.id
+            ),
+        }
+    }
+
+    /// The change `event` says, if it says one.
+    #[must_use]
+    pub fn of(event: &crate::Event) -> Option<Self> {
+        match event {
+            crate::Event::Custom { kind, data, .. } if kind == CHANGED_KIND => {
+                serde_json::from_value(data.clone()).ok()
+            }
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,5 +557,47 @@ mod tests {
             problems.iter().any(|p| p.contains("only an act hint")),
             "{problems:?}"
         );
+    }
+
+    #[test]
+    fn a_scope_is_the_organisation_or_a_repositorys_channel() {
+        assert!(is_scope(ORG) && is_scope("#api") && is_scope("#web-app"));
+        assert!(!is_scope("#") && !is_scope("api") && !is_scope("#API") && !is_scope("#a b"));
+    }
+
+    #[test]
+    fn a_change_says_what_it_did_and_round_trips() {
+        let stored = Stored {
+            id: "0123456789abcdef".into(),
+            scope: "#api".into(),
+            hint: hint("overlap", Level::Tell, "ask first"),
+            by: "ada-mbp".into(),
+            session: None,
+            at: "2026-11-16T10:00:00Z".into(),
+        };
+        let change = Change {
+            action: Action::Added,
+            hint: stored.clone(),
+            by: "ada-mbp".into(),
+            session: Some("cc-1".into()),
+            at: stored.at.clone(),
+            version: 3,
+        };
+        let changed = Changed::of_change(&change);
+        let event = changed.event(&change);
+        assert_eq!(Changed::of(&event), Some(changed));
+        let crate::Event::Custom { text, .. } = &event else {
+            unreachable!()
+        };
+        assert_eq!(
+            text,
+            "ada-mbp/cc-1 added a hint: overlap (tell, repo): ask first [hint 0123456789abcdef]"
+        );
+        let listing = Listing {
+            version: 3,
+            hints: vec![stored],
+        };
+        assert_eq!(listing.for_scope("#API").len(), 1);
+        assert!(listing.for_scope(ORG).is_empty());
     }
 }

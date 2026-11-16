@@ -380,13 +380,14 @@ pub fn check_kind(kind: &str) -> Option<&'static str> {
 /// Every kind zirc's own custom events go by, as JSON's `.event.kind` says them: what a
 /// filter on zirc's events can name. zircd's own bookkeeping goes by `.event.type` instead
 /// ([`MACHINE_EVENTS`]).
-pub const ZIRC_KINDS: [&str; 22] = [
+pub const ZIRC_KINDS: [&str; 23] = [
     activity::WAKE_KIND,
     activity::WAKE_OUTCOME_KIND,
     activity::PROMPT_KIND,
     activity::NOTICE_KIND,
     activity::HINT_SHOWN_KIND,
     activity::GOTCHA_TOLD_KIND,
+    hints::CHANGED_KIND,
     ci::LANDING_KIND,
     ci::DEPLOY_KIND,
     ci::CHECK_KIND,

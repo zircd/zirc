@@ -11,6 +11,7 @@ pub mod ergo;
 pub mod exporter;
 pub mod gateway;
 pub mod guests;
+pub mod hints;
 pub mod history;
 pub mod index;
 pub mod janitor;

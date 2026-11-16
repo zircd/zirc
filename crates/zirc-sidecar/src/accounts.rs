@@ -187,6 +187,8 @@ struct Ergo {
     /// What members' agents may do with other members and theirs, as last said in `#ops`
     /// since the sidecar started ([`tell_colleagues`]).
     colleagues: tokio::sync::Mutex<Option<Colleagues>>,
+    /// The team's own hints (`crate::hints`).
+    hints: crate::hints::Store,
 }
 
 #[derive(Default)]
@@ -380,6 +382,7 @@ fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
         token_keys: tokio::sync::Mutex::default(),
         access: content::access_log(&history, jiff::Timestamp::now().as_second()),
         colleagues: tokio::sync::Mutex::new(None),
+        hints: crate::hints::Store::beside(&history),
         searches: tokio::sync::Semaphore::new(SEARCHES),
         gateway,
         history,
@@ -1741,6 +1744,35 @@ async fn tell_colleagues(ergo: &Ergo, colleagues: Colleagues) {
             *said = Some(colleagues);
         }
         Err(failure) => warn!(%failure, "couldn't say what colleagues' agents may do"),
+    }
+}
+
+/// Says a change to the team's hints, as zirc's own account, in the repository's channel, or
+/// `#ops` for the organisation's: what each machine's zircd takes to read them again, and what
+/// people see of who changed what. A failure is logged; machines read them again when they
+/// next connect.
+async fn tell_hints_changed(ergo: Arc<Ergo>, change: zirc_proto::hints::Change) {
+    let nick = zirc_proto::names::SYSTEM;
+    if integration_account(&ergo, nick, false).await.is_err() {
+        warn!("couldn't make zirc's account to say the hints changed");
+        return;
+    }
+    let config = say::config(
+        &ergo.irc.ip().to_string(),
+        ergo.irc.port(),
+        ergo.gate.as_deref(),
+        &ergo.token,
+        nick,
+    );
+    let channel = if change.hint.scope == zirc_proto::hints::ORG {
+        zirc_proto::state::CHANNEL
+    } else {
+        change.hint.scope.as_str()
+    };
+    let changed = zirc_proto::hints::Changed::of_change(&change);
+    let message = zirc_proto::Message::new("server", changed.event(&change));
+    if let Err(failure) = say::post(&config, channel, &message).await {
+        warn!(%failure, channel, "couldn't say the hints changed");
     }
 }
 

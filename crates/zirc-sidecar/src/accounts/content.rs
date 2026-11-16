@@ -16,7 +16,12 @@
 //! (`history::Viewer`), with the organisation's visibility; what they may change, their role:
 //!
 //! - anyone: `GET /me` (`{"account", "person", "role", "server"}`), `GET /history` and `GET
-//!   /conversations`, as `/v1/history` and `/v1/conversations` take them.
+//!   /conversations`, as `/v1/history` and `/v1/conversations` take them; and the team's
+//!   hints (`crate::hints`): `GET /hints` (a `zirc_proto::hints::Listing`), `GET /hints/log`
+//!   (`{"changes"}`, newest first), `POST /hints` (`{"scope", "hint", "session"}`, answered
+//!   with the change) and `DELETE /hints/<id>?session=`, a machine's asking for its agent
+//!   session. Each change is said, as zirc's own account, in the repository's channel or, for
+//!   the organisation's, `#ops`, which tells every machine to read them again.
 //! - owners and admins: `GET /guests` and `POST /guests/<name>/forget`.
 //! - owners: `GET /messages?q=`, `DELETE /messages/<msgid>`, `GET /export` (newline-delimited
 //!   JSON: a header, every message the owner may read, newest first, and an end line) and `GET
@@ -36,7 +41,7 @@
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::{Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -211,7 +216,10 @@ pub(super) fn router(ergo: Arc<Ergo>) -> Router {
     let anyone = Router::new()
         .route(&at("/me"), get(me))
         .route(&at("/history"), get(read_history))
-        .route(&at("/conversations"), get(list_conversations));
+        .route(&at("/conversations"), get(list_conversations))
+        .route(&at("/hints"), get(list_hints).post(add_hint))
+        .route(&at("/hints/log"), get(hints_log))
+        .route(&at("/hints/{id}"), delete(remove_hint));
     let staff = Router::new()
         .route(&at("/guests"), get(list_guests))
         .route(&at("/guests/{name}/forget"), post(forget_guest))
@@ -233,7 +241,7 @@ pub(super) fn router(ergo: Arc<Ergo>) -> Router {
 
 /// What a browser may send and read across origins.
 const ALLOW_METHODS: &str = "GET, POST, DELETE";
-const ALLOW_HEADERS: &str = "Authorization";
+const ALLOW_HEADERS: &str = "Authorization, Content-Type";
 const EXPOSE_HEADERS: &str = "Retry-After, Content-Disposition";
 
 /// Whether a browser at `origin` may ask, by the origins the server was told of.
@@ -298,6 +306,98 @@ async fn cors(State(ergo): State<Arc<Ergo>>, request: Request, next: Next) -> Re
 
 fn now() -> u64 {
     u64::try_from(jiff::Timestamp::now().as_second()).unwrap_or_default()
+}
+
+/// `GET /hints`: the team's hints.
+async fn list_hints(State(ergo): State<Arc<Ergo>>) -> Response {
+    Json(ergo.hints.listing().await).into_response()
+}
+
+/// `GET /hints/log`: the changes to them, newest first.
+async fn hints_log(State(ergo): State<Arc<Ergo>>) -> Response {
+    Json(json!({"changes": ergo.hints.log().await})).into_response()
+}
+
+/// What `POST /hints` is given.
+#[derive(Deserialize)]
+struct NewHint {
+    scope: String,
+    hint: zirc_proto::hints::Hint,
+    /// The agent session asking, when a machine is.
+    #[serde(default)]
+    session: Option<String>,
+}
+
+/// What `DELETE /hints/<id>` is asked.
+#[derive(Deserialize)]
+struct Asking {
+    #[serde(default)]
+    session: Option<String>,
+}
+
+/// Who `caller` is to the hints: a machine's account, whose agents may be asking, unless it's
+/// one of the person's own clients.
+fn hints_who(ergo: &Ergo, caller: &Caller, session: Option<String>) -> crate::hints::Who {
+    let machine =
+        caller.account != caller.person && !ergo.machines.clients().contains(&caller.account);
+    crate::hints::Who {
+        account: caller.account.clone(),
+        machine,
+        session: session.filter(|session| {
+            machine
+                && (1..=64).contains(&session.len())
+                && session
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+        }),
+    }
+}
+
+/// `POST /hints`: adds one.
+async fn add_hint(
+    State(ergo): State<Arc<Ergo>>,
+    Extension(caller): Extension<Caller>,
+    Json(given): Json<NewHint>,
+) -> Response {
+    let who = hints_who(&ergo, &caller, given.session);
+    let at = jiff::Timestamp::now().to_string();
+    let scope = given.scope.to_lowercase();
+    let made = ergo
+        .hints
+        .change(|kept| kept.add(&scope, given.hint, &who, &at))
+        .await;
+    changed(&ergo, made, StatusCode::CREATED)
+}
+
+/// `DELETE /hints/<id>`: removes one.
+async fn remove_hint(
+    State(ergo): State<Arc<Ergo>>,
+    Extension(caller): Extension<Caller>,
+    Path(id): Path<String>,
+    Query(asking): Query<Asking>,
+) -> Response {
+    let who = hints_who(&ergo, &caller, asking.session);
+    let at = jiff::Timestamp::now().to_string();
+    let made = ergo.hints.change(|kept| kept.remove(&id, &who, &at)).await;
+    changed(&ergo, made, StatusCode::OK)
+}
+
+/// The answer to a change of the hints, and, made, the change said for every machine.
+fn changed(
+    ergo: &Arc<Ergo>,
+    made: Result<zirc_proto::hints::Change, crate::hints::Refusal>,
+    status: StatusCode,
+) -> Response {
+    use crate::hints::Refusal;
+    match made {
+        Ok(change) => {
+            tokio::spawn(super::tell_hints_changed(ergo.clone(), change.clone()));
+            (status, Json(change)).into_response()
+        }
+        Err(Refusal::Invalid(why)) => error(StatusCode::BAD_REQUEST, "invalid", why),
+        Err(Refusal::NotFound) => error(StatusCode::NOT_FOUND, "not-found", "no hint has that id"),
+        Err(Refusal::Exists) => error(StatusCode::CONFLICT, "exists", "that hint is there already"),
+    }
 }
 
 /// Who the token says is asking; then the request goes on as theirs (`X-Zirc-As`, as the
