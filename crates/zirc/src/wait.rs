@@ -220,10 +220,16 @@ impl Place<'_> {
             .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
     }
 
+    /// Whether `delivery` was said here: in this organisation, in the repository's channel
+    /// or one under it.
+    fn says_here(&self, delivery: &Delivery) -> bool {
+        let elsewhere = matches!((&delivery.org, self.org), (Some(its), Some(ours)) if its != ours);
+        !elsewhere && self.has(&delivery.channel)
+    }
+
     /// How `delivery` ends the wait for `condition`, if it's said here and does.
     fn judge(&self, condition: &mut Condition, delivery: Delivery) -> Option<Ended> {
-        let elsewhere = matches!((&delivery.org, self.org), (Some(its), Some(ours)) if its != ours);
-        if elsewhere || !self.has(&delivery.channel) {
+        if !self.says_here(&delivery) {
             return None;
         }
         let outcome = condition.judge(&delivery.message.event)?;
@@ -259,8 +265,8 @@ impl Place<'_> {
     }
 
     /// How what was said here since `since` ends the wait for `condition`, if it does:
-    /// every channel's messages, oldest first; for a state, how it stands now, whenever
-    /// that was said.
+    /// every channel's messages, oldest first, as [`Condition::read_back`] reads them; for a
+    /// state, how it stands now, whenever that was said.
     async fn read_back(&self, condition: &mut Condition, since: u64) -> Result<Option<Ended>> {
         if matches!(condition, Condition::Stands { .. }) {
             let stands = self.stands(condition).await?;
@@ -297,9 +303,12 @@ impl Place<'_> {
         }
         // RFC 3339 in UTC, as the server stamps them, sorts as text.
         said.sort_by(|a, b| a.time.cmp(&b.time));
-        Ok(said
-            .into_iter()
-            .find_map(|delivery| self.judge(condition, delivery)))
+        said.retain(|delivery| self.says_here(delivery));
+        let answer = condition.read_back(said.iter().map(|delivery| &delivery.message.event));
+        Ok(answer.map(|(at, outcome)| Ended {
+            outcome,
+            delivery: Some(said.swap_remove(at)),
+        }))
     }
 }
 

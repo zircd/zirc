@@ -236,6 +236,69 @@ impl Condition {
     }
 }
 
+impl Condition {
+    /// How what was said, oldest first, answers the wait, and which of it does: its newest
+    /// answer, unless the branch waited on went to land again after it. CI queueing or
+    /// starting another landing of it leaves nothing answered yet, and so does a push of it
+    /// after it failed; a push after it landed changes nothing, as another machine's push
+    /// may be told after CI's line. A session that lands a branch again after it failed,
+    /// then waits, waits for that landing, not the one that failed.
+    pub fn read_back<'a>(
+        &mut self,
+        said: impl IntoIterator<Item = &'a Event>,
+    ) -> Option<(usize, Outcome)> {
+        let mut answer = None;
+        for (at, event) in said.into_iter().enumerate() {
+            match self.goes_again(event) {
+                Some(Again::Ci) => answer = None,
+                Some(Again::Pushed) => {
+                    if matches!(answer, Some((_, Outcome::Failed))) {
+                        answer = None;
+                    }
+                }
+                None => {
+                    if let Some(outcome) = self.judge(event) {
+                        answer = Some((at, outcome));
+                    }
+                }
+            }
+        }
+        answer
+    }
+
+    /// How `event` says the branch a landing's wait is on went to land again, if it does.
+    /// A build is answered once, so never for one.
+    fn goes_again(&self, event: &Event) -> Option<Again> {
+        let Self::Landed { on } = self else {
+            return None;
+        };
+        match event {
+            Event::Push { branch, .. } => (branch == on).then_some(Again::Pushed),
+            Event::Custom {
+                kind, data, text, ..
+            } if kind == LANDING_KIND => {
+                let said = Data::of(data);
+                let under_way = said.branch.as_deref() == Some(on.as_str())
+                    && matches!(said.state.as_deref(), Some("pending" | "running"));
+                let queued = matches!(
+                    landing_event(text, data).1,
+                    Some(Landing::Queued { branch, .. }) if &branch == on
+                );
+                (under_way || queued).then_some(Again::Ci)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// How a branch went to land again ([`Condition::read_back`]).
+enum Again {
+    /// CI says another landing of it is queued or under way.
+    Ci,
+    /// It was pushed.
+    Pushed,
+}
+
 /// What a wait names, as CI's data has it: `build 1299` and `build-1299` are the build 1299.
 fn named(on: &str) -> String {
     let on = on.trim();
@@ -322,6 +385,48 @@ mod tests {
             Some(Outcome::Failed)
         );
         assert_eq!(Condition::landed("login").judge(&queued), None);
+    }
+
+    #[test]
+    fn history_answers_with_its_newest_word_since_the_branch_last_went_to_land() {
+        let failed = landing(
+            "cc-2: build 1 failed: money in test",
+            json!({"branch": "money", "build": "1", "state": "failed"}),
+        );
+        let pushed: Event = serde_json::from_value(
+            json!({"type": "push", "branch": "money", "head": "431acc1", "forced": false}),
+        )
+        .unwrap();
+        let started = landing(
+            "landing started",
+            json!({"branch": "money", "build": "2", "state": "running"}),
+        );
+        let landed = landing(
+            "cc-2: landed money as 7d6db44 (build 2)",
+            json!({"branch": "money", "build": "2", "state": "passed"}),
+        );
+        let other = landing(
+            "cc-3: landed receipt as 1a2b3c4 (build 3)",
+            json!({"branch": "receipt", "build": "3", "state": "passed"}),
+        );
+        let answer =
+            |events: &[&Event]| Condition::landed("money").read_back(events.iter().copied());
+        assert_eq!(answer(&[&failed]), Some((0, Outcome::Failed)));
+        assert_eq!(answer(&[&failed, &other]), Some((0, Outcome::Failed)));
+        // Pushed or started again since it failed: what's left to hear is how that goes.
+        assert_eq!(answer(&[&failed, &pushed]), None);
+        assert_eq!(answer(&[&failed, &started]), None);
+        assert_eq!(
+            answer(&[&failed, &pushed, &started, &landed]),
+            Some((3, Outcome::Met))
+        );
+        // Its push told after CI said it landed, as another machine's may be, isn't another go.
+        assert_eq!(answer(&[&landed, &pushed]), Some((0, Outcome::Met)));
+        // A build is answered once, however its branch goes on.
+        assert_eq!(
+            Condition::landed("1").read_back([&failed, &pushed]),
+            Some((0, Outcome::Failed))
+        );
     }
 
     #[test]

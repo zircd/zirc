@@ -1004,6 +1004,50 @@ async fn a_wait_ends_when_ci_says_it_happened_or_failed() {
     assert!(waited.contains("master is ok"), "{waited}");
 }
 
+/// A wait for a branch landed again after it failed waits for that landing: the earlier
+/// build's failure, read back, doesn't end it (an agent's in an eval took it for this one).
+#[tokio::test]
+async fn a_wait_for_a_branch_landed_again_waits_past_its_earlier_failure() {
+    use serde_json::json;
+    let ergo = require_ergo!();
+    let alpha = home(&ergo, "alpha").await;
+    let _daemon = tokio::spawn(zircd::run(alpha.path().to_owned(), std::future::pending()));
+    until_connected(alpha.path()).await;
+    let clone = clone();
+    let here = clone.path().to_str().unwrap().to_owned();
+    zirc(alpha.path(), &["repo", "add", "--session", "cc-a", &here])
+        .await
+        .unwrap();
+    until_in(alpha.path(), "#web").await;
+    let landing = zirc_proto::ci::LANDING_KIND;
+    zirc_test_ergo::signin::register(ergo.port(), "zirc-ci", CI_PASSPHRASE).expect("CI's account");
+    let failed = json!({"branch": "money", "build": "1", "state": "failed"});
+    ci_says(
+        &ergo,
+        landing,
+        "cc-a: build 1 failed: money in test",
+        failed,
+    );
+    let started = json!({"branch": "money", "build": "2", "state": "running"});
+    ci_says(&ergo, landing, "landing started", started);
+
+    let alpha_home = alpha.path().to_owned();
+    let repo = here.clone();
+    let waiting = tokio::spawn(async move {
+        zirc(&alpha_home, &["wait", "landed", "money", "--repo", &repo]).await
+    });
+    until_watching(alpha.path()).await;
+    let landed = "cc-a: landed money as 7d6db44 (build 2)";
+    let data = json!({"branch": "money", "build": "2", "state": "passed"});
+    ci_says(&ergo, landing, landed, data);
+    let waited = tokio::time::timeout(WAIT, waiting)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(waited.contains(landed), "{waited}");
+}
+
 #[tokio::test]
 async fn says_who_may_query_this_machines_agents_and_warns_before_anyone() {
     let ergo = require_ergo!();
