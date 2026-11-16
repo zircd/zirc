@@ -11,126 +11,28 @@
 //! leaves out each gotcha retired after it was said. Saying the same lesson again later keeps it
 //! once more.
 
-use serde::{Deserialize, Serialize};
-use zirc_proto::Event;
+pub use zirc_proto::gotchas::{
+    Data, Gotcha, KIND, READ, RETIRED, ROOM, Retired, SHOWN, Said, is_kind, is_room, retired_text,
+};
 
 use crate::ipc::Delivery;
 use crate::presence::touches;
 
-/// The kind of a gotcha's event.
-pub const KIND: &str = "x-zirc/gotcha";
-
-/// The kind of the event that retires a gotcha.
-pub const RETIRED: &str = "x-zirc/gotcha-retired";
-
-/// The standing room under a repository's channel that holds its gotchas.
-pub const ROOM: &str = "gotchas";
-
-/// How many of a room's newest messages are read for its gotchas: all of them, as only
-/// gotchas go there.
-pub const READ: usize = 5000;
-
-/// How many gotchas `zirc intend`, and zircd's line on a session's first change, say at most.
-pub const SHOWN: usize = 5;
-
-/// A lesson about some paths.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Gotcha {
-    /// The paths it's about, relative to the repository's root: files or directories.
-    pub paths: Vec<String>,
-    /// The lesson.
-    pub text: String,
-    /// Who learnt it: the session, as it's called, or the machine's nick.
-    pub who: String,
-    /// When it was said, in RFC 3339, when the server says.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub at: Option<String>,
-    /// Its message's id, when the server gives one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-}
-
-/// What a gotcha's event carries besides its text: the paths it's about.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Data {
-    /// The paths it's about.
-    pub paths: Vec<String>,
-}
-
-/// What a retiring event carries: the gotcha it retires, by its paths and a hash of its
-/// words ([`Retired::sha`]), which match it on every machine whether or not the server gave
-/// its message an id there, and stay short when its text is cut to fit a line.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Retired {
-    /// The retired gotcha's paths.
-    pub paths: Vec<String>,
-    /// The start of the SHA-256 of the retired gotcha's words, in hex.
-    pub sha: String,
-}
-
-impl Retired {
-    /// What retires `gotcha`.
-    #[must_use]
-    pub fn of(gotcha: &Gotcha) -> Self {
-        Self {
-            paths: gotcha.paths.clone(),
-            sha: Self::sha(&gotcha.text),
-        }
-    }
-
-    /// The fingerprint of `lesson` ([`crate::playbook::fingerprint`]).
-    #[must_use]
-    pub fn sha(lesson: &str) -> String {
-        crate::playbook::fingerprint(lesson)
-    }
-
-    /// Whether it retires `gotcha`.
-    #[must_use]
-    pub fn retires(&self, gotcha: &Gotcha) -> bool {
-        self.paths == gotcha.paths && self.sha == Self::sha(&gotcha.text)
-    }
-}
-
-/// The text of the event retiring `gotcha`, for apps and plain IRC clients.
-#[must_use]
-pub fn retired_text(gotcha: &Gotcha) -> String {
-    format!(
-        "retired a gotcha about {}: {}",
-        gotcha.paths.join(", "),
-        gotcha.text
-    )
-}
-
 /// The retiring `delivery` says, if it's one.
 #[must_use]
 pub fn retired(delivery: &Delivery) -> Option<Retired> {
-    let Event::Custom { kind, data, .. } = &delivery.message.event else {
-        return None;
-    };
-    (kind == RETIRED)
-        .then(|| serde_json::from_value(data.clone()).ok())
-        .flatten()
-}
-
-/// Whether `kind` is one of a gotchas room's: a gotcha or its retiring, which wake no one.
-#[must_use]
-pub fn is_kind(kind: &str) -> bool {
-    kind == KIND || kind == RETIRED
+    zirc_proto::gotchas::retiring(&delivery.message.event)
 }
 
 /// The gotchas `deliveries`, a room's history oldest first, keep: each said and not retired
-/// since.
+/// since ([`zirc_proto::gotchas::kept`]).
 #[must_use]
 pub fn kept(deliveries: &[Delivery]) -> Vec<Gotcha> {
-    let mut kept: Vec<Gotcha> = Vec::new();
-    for delivery in deliveries {
-        if let Some(gotcha) = of(delivery) {
-            kept.push(gotcha);
-        } else if let Some(retired) = retired(delivery) {
-            kept.retain(|gotcha| !retired.retires(gotcha));
-        }
-    }
-    kept
+    zirc_proto::gotchas::kept(deliveries.iter().filter_map(|delivery| {
+        of(delivery)
+            .map(Said::Kept)
+            .or_else(|| retired(delivery).map(Said::Retired))
+    }))
 }
 
 /// The one of `gotchas` whose message's id starts with `id`, as `[id …]` shows it.
@@ -161,13 +63,7 @@ pub fn by_id<'a>(gotchas: &'a [Gotcha], id: &str) -> Result<&'a Gotcha, String> 
 /// The gotcha `delivery` says, if it's one.
 #[must_use]
 pub fn of(delivery: &Delivery) -> Option<Gotcha> {
-    let Event::Custom { kind, data, text } = &delivery.message.event else {
-        return None;
-    };
-    if kind != KIND {
-        return None;
-    }
-    let Data { paths } = serde_json::from_value(data.clone()).ok()?;
+    let (paths, text) = zirc_proto::gotchas::lesson(&delivery.message.event)?;
     let session = &delivery.message.session;
     let who = crate::clashes::label(
         &delivery.from,
@@ -176,19 +72,11 @@ pub fn of(delivery: &Delivery) -> Option<Gotcha> {
     );
     Some(Gotcha {
         paths,
-        text: text.clone(),
+        text,
         who,
         at: delivery.time.clone(),
         id: delivery.id.clone(),
     })
-}
-
-/// Whether `channel` is a repository's gotchas room.
-#[must_use]
-pub fn is_room(channel: &str) -> bool {
-    channel
-        .rsplit_once('/')
-        .is_some_and(|(parent, room)| parent.len() > 1 && room.eq_ignore_ascii_case(ROOM))
 }
 
 /// Those of `gotchas` about any of `paths`, or what's in them, or what they're in: newest
@@ -247,7 +135,7 @@ pub fn text(gotchas: &[&Gotcha]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use zirc_proto::Message;
+    use zirc_proto::{Event, Message};
 
     use super::*;
 

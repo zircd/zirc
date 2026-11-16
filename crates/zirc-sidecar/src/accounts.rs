@@ -823,6 +823,125 @@ async fn read_history(
 
 /// The conversations someone may read, each with its newest message's time and how many
 /// messages it had since `since`: a catch-up's overview.
+/// The team's gotchas the person may read (`GET /gotchas` on the content API): those kept in
+/// each repository's gotchas room and not retired since ([`zirc_proto::gotchas::kept`]), as
+/// `{"gotchas": [{"room", "gotcha"}]}`, newest first.
+async fn list_gotchas(State(ergo): State<Arc<Ergo>>, headers: axum::http::HeaderMap) -> Response {
+    use zirc_proto::gotchas::{self, Gotcha, Said};
+    let Ok(_running) = ergo.searches.try_acquire() else {
+        return busy();
+    };
+    let viewer = match viewer(&ergo, &headers).await {
+        Ok(viewer) => viewer,
+        Err(response) => return *response,
+    };
+    let rooms: Vec<String> = match crate::exporter::channels(&ergo.api, ergo.history.clone()).await
+    {
+        Ok(channels) => channels
+            .into_iter()
+            .map(|channel| channel.name)
+            .filter(|name| gotchas::is_room(name))
+            .collect(),
+        Err(failure) => return api_failed(failure),
+    };
+    let now = jiff::Timestamp::now();
+    let nanos = |t: jiff::Timestamp| i64::try_from(t.as_nanosecond()).unwrap_or(i64::MAX);
+    let since = nanos(now.checked_sub(REACH).unwrap_or(now));
+    let path = ergo.history.clone();
+    let read = tokio::task::spawn_blocking(move || {
+        let mut found: Vec<(String, Gotcha)> = Vec::new();
+        for room in rooms {
+            let Some(conversation) = history::Conversation::parse(&room, &viewer.account) else {
+                continue;
+            };
+            let query = history::Query {
+                conversation: Some(conversation),
+                since,
+                until: nanos(now),
+                limit: gotchas::READ,
+                events: true,
+                ..history::Query::default()
+            };
+            let page = history::search(&path, &viewer, &query)?;
+            // Oldest first, as they were said.
+            let said = page.messages.into_iter().rev().filter_map(|message| {
+                let zirc = message.zirc?;
+                // Who learnt it: its session, as zirc's own lines name it, or the nick.
+                let session = zirc
+                    .get("session")
+                    .and_then(Value::as_str)
+                    .filter(|session| !session.is_empty())
+                    .map(str::to_owned);
+                let event: zirc_proto::Event = serde_json::from_value(zirc).ok()?;
+                if let Some(retired) = gotchas::retiring(&event) {
+                    return Some(Said::Retired(retired));
+                }
+                let (paths, text) = gotchas::lesson(&event)?;
+                Some(Said::Kept(Gotcha {
+                    paths,
+                    text,
+                    who: session.unwrap_or(message.sender.nick),
+                    at: Some(message.time),
+                    id: Some(message.msgid),
+                }))
+            });
+            found.extend(
+                gotchas::kept(said)
+                    .into_iter()
+                    .map(|gotcha| (room.clone(), gotcha)),
+            );
+        }
+        found.sort_by(|(_, a), (_, b)| b.at.cmp(&a.at));
+        Ok::<_, rusqlite::Error>(found)
+    })
+    .await;
+    match read {
+        Ok(Ok(found)) => Json(json!({
+            "gotchas": found
+                .into_iter()
+                .map(|(room, gotcha)| json!({"room": room, "gotcha": gotcha}))
+                .collect::<Vec<_>>()
+        }))
+        .into_response(),
+        Ok(Err(failure)) => ergo_failed(failure),
+        Err(failure) => ergo_failed(failure),
+    }
+}
+
+/// How often each hint was shown and each gotcha told in the last 90 days (`GET
+/// /playbook/usage` on the content API), from the activity store: by id, `{"count",
+/// "last"}`, `last` in RFC 3339.
+async fn playbook_usage(State(ergo): State<Arc<Ergo>>) -> Response {
+    const WINDOW: std::time::Duration = std::time::Duration::from_hours(24 * 90);
+    let now = jiff::Timestamp::now();
+    let since =
+        i64::try_from(now.checked_sub(WINDOW).unwrap_or(now).as_nanosecond()).unwrap_or_default();
+    let path = crate::activity::path_for(&ergo.history);
+    let read = tokio::task::spawn_blocking(move || {
+        let connection = crate::activity::open(&path)?;
+        crate::activity::playbook_usage(&connection, since)
+    })
+    .await;
+    let shown = |used: std::collections::BTreeMap<String, crate::activity::Used>| -> Value {
+        used.into_iter()
+            .map(|(id, used)| {
+                let last = jiff::Timestamp::from_nanosecond(i128::from(used.last))
+                    .map(|t| t.to_string())
+                    .unwrap_or_default();
+                (id, json!({"count": used.count, "last": last}))
+            })
+            .collect::<serde_json::Map<_, _>>()
+            .into()
+    };
+    match read {
+        Ok(Ok((hints, gotchas))) => {
+            Json(json!({"hints": shown(hints), "gotchas": shown(gotchas)})).into_response()
+        }
+        Ok(Err(failure)) => ergo_failed(failure),
+        Err(failure) => ergo_failed(failure),
+    }
+}
+
 async fn list_conversations(
     State(ergo): State<Arc<Ergo>>,
     headers: axum::http::HeaderMap,

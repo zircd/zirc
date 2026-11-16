@@ -547,6 +547,60 @@ pub fn record_live(
     Ok(true)
 }
 
+/// How often one part of the team's playbook was used, and when last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Used {
+    /// How many times.
+    pub count: u64,
+    /// When last, in nanoseconds since the Unix epoch.
+    pub last: i64,
+}
+
+/// How often each hint was shown and each gotcha told since `since` (nanoseconds since the
+/// Unix epoch), by the hint's id and the gotcha's message id: the hints first, then the
+/// gotchas ([`zirc_proto::activity::HintShown`], [`zirc_proto::activity::GotchaTold`]).
+///
+/// # Errors
+///
+/// When the store can't be read.
+pub fn playbook_usage(
+    connection: &Connection,
+    since: i64,
+) -> rusqlite::Result<(
+    std::collections::BTreeMap<String, Used>,
+    std::collections::BTreeMap<String, Used>,
+)> {
+    use zirc_proto::activity::{GOTCHA_TOLD_KIND, HINT_SHOWN_KIND};
+    let sql = "SELECT kind, json_extract(data, CASE kind WHEN ?1 THEN '$.hint' ELSE '$.gotcha' END),                       COUNT(*), MAX(nanotime)                FROM rows WHERE kind IN (?1, ?2) AND nanotime >= ?3 GROUP BY 1, 2";
+    let mut statement = connection.prepare_cached(sql)?;
+    let found = statement.query_map(params![HINT_SHOWN_KIND, GOTCHA_TOLD_KIND, since], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, i64>(3)?,
+        ))
+    })?;
+    let (mut hints, mut gotchas) = (
+        std::collections::BTreeMap::new(),
+        std::collections::BTreeMap::new(),
+    );
+    for found in found {
+        let (kind, id, count, last) = found?;
+        let Some(id) = id else { continue };
+        let used = Used {
+            count: u64::try_from(count).unwrap_or(0),
+            last,
+        };
+        if kind == HINT_SHOWN_KIND {
+            hints.insert(id, used);
+        } else {
+            gotchas.insert(id, used);
+        }
+    }
+    Ok((hints, gotchas))
+}
+
 /// Takes out every row whose history row Ergo no longer has, and every live record older
 /// than the oldest message Ergo still keeps, and says how many.
 ///
@@ -978,6 +1032,59 @@ mod tests {
         let answered = metadata(&Message::new("cc-1", request.event())).unwrap();
         assert_eq!(answered["state"], "answered");
         assert!(!answered.to_string().contains("secret"), "{answered}");
+    }
+
+    #[test]
+    fn counts_each_hint_shown_and_gotcha_told_by_id_since_a_time() {
+        use zirc_proto::activity::{GotchaTold, HintShown, Told};
+        let dir = tempfile::tempdir().unwrap();
+        let path = history(dir.path());
+        let store = open(&path_for(&path)).unwrap();
+        let shown = |hint: &str| {
+            Message::new(
+                "cc-1",
+                HintShown {
+                    hint: hint.into(),
+                    kind: "overlap".into(),
+                    layer: "repo".into(),
+                }
+                .event(),
+            )
+        };
+        let told = Message::new(
+            "cc-1",
+            GotchaTold {
+                gotcha: "msg-1".into(),
+                how: Told::Intent,
+            }
+            .event(),
+        );
+        for (at, message) in [
+            (10, shown("aa")),
+            (20, shown("aa")),
+            (30, shown("bb")),
+            (40, told.clone()),
+            (5, told),
+        ] {
+            assert!(record_live(&store, at * SECOND, Some("ada-mbp".into()), &message).unwrap());
+        }
+        let (hints, gotchas) = playbook_usage(&store, 8 * SECOND).unwrap();
+        assert_eq!(
+            hints.get("aa"),
+            Some(&Used {
+                count: 2,
+                last: 20 * SECOND
+            })
+        );
+        assert_eq!(hints.get("bb").map(|used| used.count), Some(1));
+        // The one told before the window isn't counted.
+        assert_eq!(
+            gotchas.get("msg-1"),
+            Some(&Used {
+                count: 1,
+                last: 40 * SECOND
+            })
+        );
     }
 
     #[test]

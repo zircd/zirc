@@ -21,7 +21,9 @@
 //!   (`{"changes"}`, newest first), `POST /hints` (`{"scope", "hint", "session"}`, answered
 //!   with the change) and `DELETE /hints/<id>?session=`, a machine's asking for its agent
 //!   session. Each change is said, as zirc's own account, in the repository's channel or, for
-//!   the organisation's, `#ops`, which tells every machine to read them again.
+//!   the organisation's, `#ops`, which tells every machine to read them again. `GET /gotchas`
+//!   lists the gotchas kept in the repositories' gotchas rooms the person may read, and `GET
+//!   /playbook/usage` how often each hint and gotcha was used in the last 90 days, by id.
 //! - owners and admins: `GET /guests` and `POST /guests/<name>/forget`.
 //! - owners: `GET /messages?q=`, `DELETE /messages/<msgid>`, `GET /export` (newline-delimited
 //!   JSON: a header, every message the owner may read, newest first, and an end line) and `GET
@@ -53,8 +55,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
-    Ergo, error, find_messages, forget_guest, list_conversations, list_guests, read_history,
-    remove_message, valid_name, viewer,
+    Ergo, error, find_messages, forget_guest, list_conversations, list_gotchas, list_guests,
+    playbook_usage, read_history, remove_message, valid_name, viewer,
 };
 use crate::{gateway, history, signin, teams};
 
@@ -219,7 +221,9 @@ pub(super) fn router(ergo: Arc<Ergo>) -> Router {
         .route(&at("/conversations"), get(list_conversations))
         .route(&at("/hints"), get(list_hints).post(add_hint))
         .route(&at("/hints/log"), get(hints_log))
-        .route(&at("/hints/{id}"), delete(remove_hint));
+        .route(&at("/hints/{id}"), delete(remove_hint))
+        .route(&at("/gotchas"), get(list_gotchas))
+        .route(&at("/playbook/usage"), get(playbook_usage));
     let staff = Router::new()
         .route(&at("/guests"), get(list_guests))
         .route(&at("/guests/{name}/forget"), post(forget_guest))
