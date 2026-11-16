@@ -944,17 +944,16 @@ impl Chat {
     /// The direct messages, one row each, whoever they're with, newest first, starred first
     /// as every list orders them: never a person's agents rolled under them, nor our own
     /// agents in a group. An old private conversation with a guest is listed only while
-    /// something in it is new, or it's shown: a guest is talked to in their room. Never a
-    /// machine itself: its agents are talked to one at a time, in their own conversations,
-    /// never all at once (the user's choice, 15 Nov 2026), and a teammate's agent's messages
-    /// to us arrive in its own.
+    /// something in it is new, or it's shown: a guest is talked to in their room. A
+    /// machine's own thread, where zircd writes to its owner, is one of them, online or not
+    /// (the user's choice, 16 Nov 2026): its agents are still talked to one at a time, each
+    /// in its own conversation.
     #[must_use]
     pub fn direct_rows(&self) -> Vec<DirectRow> {
         let mut rows: Vec<DirectRow> = self
             .list(SidebarSection::Direct)
             .into_iter()
             .map(|at| self.conversations[at].name.clone())
-            .filter(|name| self.direct_kind(name) != Some(DirectKind::Machine))
             // A guest is talked to in their room: an old private conversation with one is
             // listed only while something in it is new, or it's shown.
             .filter(|name| {
@@ -1222,12 +1221,7 @@ impl Chat {
                 let (unread, badge) = self
                     .conversations
                     .iter()
-                    // Only what has a row: never the Server channel, nor a machine's own thread.
-                    .filter(|c| {
-                        c.kind != Kind::Server
-                            && SidebarSection::of(&c.name) == section
-                            && self.direct_kind(&c.name) != Some(DirectKind::Machine)
-                    })
+                    .filter(|c| c.kind != Kind::Server && SidebarSection::of(&c.name) == section)
                     .fold((false, 0usize), |(unread, badge), c| {
                         (
                             // A feed's traffic never makes its half bold: its mentions count.
@@ -1333,15 +1327,10 @@ impl Chat {
     /// what mentions us in a channel, and everything unread in a direct message, which is
     /// meant for us. Unread that isn't counted shows only as a bold row. A muted channel,
     /// or one set to notify nothing, still counts what mentions us; a direct message set to
-    /// notify nothing counts nothing, nor does a machine's own thread, which has no row.
+    /// notify nothing counts nothing.
     #[must_use]
     pub fn badge(&self, name: &str) -> usize {
         let quiet = self.level(name) == super::Level::Nothing;
-        // A machine's own thread is in no list ([`Chat::direct_rows`]): a count for it would
-        // be one no row shows.
-        if self.direct_kind(name) == Some(DirectKind::Machine) {
-            return 0;
-        }
         self.conversation(name)
             .map_or(0, |conversation| match conversation.kind {
                 Kind::Server => 0,

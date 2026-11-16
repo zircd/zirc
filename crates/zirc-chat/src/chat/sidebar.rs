@@ -8,10 +8,8 @@
 //! The parts, in order: the Server channel, alone and with no heading, in both halves of the
 //! sidebar; Starred (anything starred, there alone); Channels (each repository's
 //! channel with its rooms and its guests' rooms under it, then Browse channels); Direct
-//! messages (people, groups, agent sessions and our offline machines' threads, newest first;
-//! an agent session that ended and went quiet isn't listed, till it's opened); Your machines
-//! (our machines online, by name, each with its agent sessions under it, listed only while one
-//! is or its own thread is unread or shown). A guest is talked to in their room, under its
+//! messages (people, groups, agent sessions and machines' own threads, newest first; an
+//! agent session that ended and went quiet isn't listed, till it's opened). A guest is talked to in their room, under its
 //! channel, so there's no part for guests. A part with nothing in it is left out.
 
 use std::collections::HashMap;
@@ -422,8 +420,8 @@ impl Chat {
     }
 
     /// The direct messages the sidebar lists, newest first: every one of [`Chat::direct_rows`]
-    /// a person's, a group's or a guest's; an agent session's only once something's been said
-    /// in it, there and not in a channel (the user's choice, 15 Nov 2026), as an agent that exists but never wrote to us is nothing to read. An agent
+    /// a person's, a group's or a guest's; an agent session's or a machine's own thread only
+    /// once something's been said in it, there and not in a channel (the user's choice, 15 Nov 2026), as an agent that exists but never wrote to us is nothing to read. An agent
     /// session quiet for longer than [`super::ROOM_QUIET_AFTER`] ([`DirectRow::folded`])
     /// isn't listed either: Jump to… and search still find it, and it's back once it's opened
     /// or says something again. The one shown is always listed.
@@ -440,7 +438,8 @@ impl Chat {
                 shown.eq_ignore_ascii_case(&row.name)
                     || match row.kind {
                         DirectKind::Agent => said(&row.name) && !row.folded,
-                        DirectKind::Machine => false,
+                        // Whatever counts has a row: a machine's own thread too.
+                        DirectKind::Machine => said(&row.name),
                         DirectKind::Person | DirectKind::Group => true,
                     }
             })

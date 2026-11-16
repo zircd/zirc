@@ -120,7 +120,7 @@ fn a_part_with_nothing_in_it_is_left_out() {
 }
 
 #[test]
-fn agents_are_direct_messages_once_they_have_said_something_and_our_machines_never() {
+fn agents_and_machines_are_direct_messages_once_they_have_said_something() {
     let mut chat = Scene::in_api();
     feed(
         &mut chat,
@@ -153,12 +153,16 @@ fn agents_are_direct_messages_once_they_have_said_something_and_our_machines_nev
     for name in ["me-mbp", "me-ci-9", "me-mbp/cc-2", "me-mbp/cc-old"] {
         assert!(!listed(&chat, name), "{name}");
     }
-    // Our machine itself isn't, even once something's said to us as it.
+    // Our machine itself is, once something's said to us as it, counted on its row.
     feed(
         &mut chat,
         &[":me-ci-9!u@machine/me PRIVMSG me :build green"],
     );
-    assert!(!listed(&chat, "me-ci-9"));
+    let machine = row(&chat.sidebar_list(&all()), "me-ci-9").clone();
+    assert_eq!(
+        (machine.shelf, machine.direct_kind, machine.badge),
+        (Shelf::Direct, Some(DirectKind::Machine), 1)
+    );
     // Opened, the quiet one is listed till something else is.
     let at = chat.position("me-mbp/cc-old").unwrap();
     let _ = chat.select(at);
@@ -812,15 +816,16 @@ fn the_messages_tab_counts_only_what_a_row_of_it_shows() {
     feed(&mut chat, &[&card]);
     assert_eq!(messages_counts(&chat), (0, 0));
     assert_eq!(chat.badge_total(), 0);
-    // A machine's own word is in its own thread, which no list shows: not counted either.
+    // A machine's own word, as zircd's to its owner, is in its own thread, listed as any
+    // direct message is, while the machine is online too: counted, on its row.
     feed(
         &mut chat,
         &[&dm("me-mbp", zirc_proto::NO_SESSION, "from the machine", 4)],
     );
-    assert_eq!(messages_counts(&chat), (0, 0));
-    assert_eq!(chat.badge_total(), 0);
-    // What an agent says is counted, on its row.
-    feed(&mut chat, &[&dm("me-mbp", "cc-1", "which branch?", 5)]);
     assert_eq!(messages_counts(&chat), (1, 1));
     assert_eq!(chat.badge_total(), 1);
+    // What an agent says is counted, on its own row.
+    feed(&mut chat, &[&dm("me-mbp", "cc-1", "which branch?", 5)]);
+    assert_eq!(messages_counts(&chat), (2, 2));
+    assert_eq!(chat.badge_total(), 2);
 }

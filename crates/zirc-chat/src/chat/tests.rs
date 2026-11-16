@@ -4307,13 +4307,14 @@ fn lists_each_direct_conversation_on_its_own_newest_first() {
         .into_iter()
         .map(|row| (row.name, row.kind, row.folded))
         .collect();
-    // Newest first, each on its own: our agent, bob, the old agent session (folded, as it's
-    // been quiet a day), and the group nothing's been said in. Never bob's machine itself,
-    // whose plain word has no session to file it under.
+    // Newest first, each on its own: our agent, bob's machine itself, whose plain word has
+    // no session to file it under, bob, the old agent session (folded, as it's been quiet a
+    // day), and the group nothing's been said in.
     assert_eq!(
         rows,
         [
             ("me-mbp/cc-1".to_owned(), DirectKind::Agent, false),
+            ("bob-laptop".to_owned(), DirectKind::Machine, false),
             ("bob".to_owned(), DirectKind::Person, false),
             ("me-mini/cc-2".to_owned(), DirectKind::Agent, true),
             ("#dm-abc".to_owned(), DirectKind::Group, false),

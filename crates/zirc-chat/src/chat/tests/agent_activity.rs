@@ -242,11 +242,12 @@ fn a_conversation_with_nothing_yet_says_so_and_has_an_intro() {
 }
 
 #[test]
-fn our_machine_is_never_a_direct_message_of_its_own() {
+fn our_machines_own_thread_is_a_direct_message_as_any_other() {
     let mut chat = scene();
     hear_checkout(&mut chat);
-    // Said to our machine from a plain IRC client, and from it with no session: neither
-    // makes a conversation to list, as its agents are talked to one at a time.
+    // Said to our machine from a plain IRC client, and from it with no session, as zircd
+    // writes to its owner: its own thread, listed while it's online too (the user's choice,
+    // 16 Nov 2026), so what's unread in it has a row.
     feed(
         &mut chat,
         &[
@@ -255,7 +256,7 @@ fn our_machine_is_never_a_direct_message_of_its_own() {
         ],
     );
     let direct: Vec<String> = chat.direct_rows().into_iter().map(|row| row.name).collect();
-    assert!(!direct.iter().any(|name| name == "me-mbp"), "{direct:?}");
+    assert!(direct.iter().any(|name| name == "me-mbp"), "{direct:?}");
     // Its name is its machine's, ours as a teammate's would be.
     assert_eq!(chat.title("me-mbp"), "me · me-mbp");
 }
