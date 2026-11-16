@@ -445,15 +445,9 @@ impl Watched {
         }
         // A plain checkout's changes are its one session's; one that several share, as the
         // main checkout was, has nobody's: each of its sessions was woken by every intent,
-        // push and commit touching any of them (6 Nov 2026). Its own commits that haven't
-        // landed are its work too: a session that commits every turn had none, and heard of
-        // nobody else's change to them (15 Nov 2026).
+        // push and commit touching any of them (6 Nov 2026).
         if self.sessions.names().count() == 1 {
-            self.snapshot
-                .dirty
-                .union(&self.snapshot.committed)
-                .cloned()
-                .collect()
+            self.snapshot.dirty.clone()
         } else {
             BTreeSet::new()
         }

@@ -83,10 +83,7 @@ impl Daemon {
                         path: root.clone(),
                         branch: set.branch,
                     };
-                    // Its own commits that haven't landed are its work as much as what's
-                    // uncommitted.
-                    let paths = set.paths.union(&set.committed).cloned().collect();
-                    (worktree, set.session.map(str::to_owned), paths)
+                    (worktree, set.session.map(str::to_owned), set.paths)
                 })
             })
             .collect()
