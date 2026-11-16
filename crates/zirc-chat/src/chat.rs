@@ -102,8 +102,8 @@ pub use block::{
 };
 pub use body::{Body, formatted, keep_formatting, read, split_for_line, strip_formatting};
 pub use both::{
-    BOTH_CHANGING_KIND, BOTH_CHANGING_SHOWN, BothChanger, BothChanging, BothChangingLine,
-    both_changing_files_label, both_changing_words,
+    BOTH_CHANGING_KIND, BOTH_CHANGING_SHOWN, BothChanger, BothChanging, BothChangingCard,
+    BothChangingLine, both_changing_files_label, both_changing_words,
 };
 pub use channel_rows::ChannelRow;
 pub use closing::Closed;

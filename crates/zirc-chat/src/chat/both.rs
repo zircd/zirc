@@ -49,6 +49,15 @@ pub struct BothChanging {
 /// ([`super::more_paths_label`]).
 pub const BOTH_CHANGING_SHOWN: usize = 3;
 
+/// What a card lists of what a session or person shares ([`Chat::both_changing_card`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BothChangingCard {
+    /// Each file's line in full, as many as a card shows ([`BOTH_CHANGING_SHOWN`]).
+    pub lines: Vec<Parts>,
+    /// `and 2 more` for the rest, when there are more.
+    pub more: Option<String>,
+}
+
 /// What a list's caption says of several files others are changing too: `3 files others are
 /// changing`.
 #[must_use]
@@ -287,6 +296,22 @@ impl Chat {
             links: Vec::new(),
             time: now,
             until: now,
+        }
+    }
+
+    /// What a card lists of `items`, what a session or person shares
+    /// ([`Chat::both_changing_for`]), from `from`'s side: each file's line in full
+    /// ([`Chat::both_changing_line`]), up to [`BOTH_CHANGING_SHOWN`], then `and 2 more`.
+    #[must_use]
+    pub fn both_changing_card(&self, items: &[BothChanging], from: &str) -> BothChangingCard {
+        let hidden = items.len().saturating_sub(BOTH_CHANGING_SHOWN);
+        BothChangingCard {
+            lines: items
+                .iter()
+                .take(BOTH_CHANGING_SHOWN)
+                .map(|item| self.both_changing_line(item, from))
+                .collect(),
+            more: (hidden > 0).then(|| super::more_paths_label(hidden)),
         }
     }
 
