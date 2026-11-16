@@ -48,8 +48,9 @@ installed. Otherwise:
    all session. Restarting it is housekeeping: don't tell the user or post about it. Don't
    narrow it with `--filter`. To wait for a landing or a deploy you can name, start `zirc
    wait landed <branch or build>` or `zirc wait deployed <branch, build or commit>` as a
-   background command of its own: it ends when CI says it happened, at once if it already
-   has, and as failed when CI says it failed. Work that depends on it needn't wait: branch
+   background command of its own, with `--session <your session>`: it ends when CI says it
+   happened, at once if it already has, and as failed when CI says it failed, or when your
+   person or another session writes to you meanwhile, printing what they said. Work that depends on it needn't wait: branch
    from it and carry on, and `zirc stack --session <your session>` wakes you when it lands,
    for `zirc stack --rebase`, or when it's deleted without landing: then never land it
    yourself, but rebase past it as the line says. Where CI builds the branches you push rather than landing

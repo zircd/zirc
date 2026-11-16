@@ -94,6 +94,11 @@ pub(crate) struct HowArgs {
     /// The repository whose CI says it. Defaults to the current directory.
     #[arg(long)]
     pub(crate) repo: Option<PathBuf>,
+    /// The session waiting, whose messages end the wait too: a direct message or note to it,
+    /// or its person's answer to its request, printed so it can act on it at once, rather than
+    /// after the wait. Defaults to $ZIRC_SESSION.
+    #[arg(long, env = "ZIRC_SESSION")]
+    pub(crate) session: Option<String>,
     #[command(flatten)]
     pub(crate) org: OrgArg,
 }
@@ -172,6 +177,19 @@ pub(crate) async fn wait(socket: &Path, command: WaitCommand, out: &mut impl Wri
                     return ended.say(&condition, out);
                 }
             }
+            Ok(Some(heard)) if for_session(&heard, how.session.as_deref()) => {
+                let said = match &heard {
+                    Heard::Direct(direct) => crate::lines::direct_line(direct),
+                    Heard::Answered(answered) => crate::decide::answered_line(answered),
+                    _ => String::new(),
+                };
+                writeln!(out, "{said}")?;
+                bail!(
+                    "stopped waiting for {}: a message came for you, above. Act on it, then wait \
+                     again if you still need to",
+                    condition.describe()
+                );
+            }
             Ok(Some(_)) => {}
             // zircd stopped, as for an update: follow the new one, and read back what was
             // said meanwhile.
@@ -188,6 +206,23 @@ pub(crate) async fn wait(socket: &Path, command: WaitCommand, out: &mut impl Wri
             }
             Err(err) => return Err(err.into()),
         }
+    }
+}
+
+/// Whether `heard` is for `session` itself: a direct message or note to it, or its person's
+/// answer to its request. A wait run in the foreground holds its session's turn, so what its
+/// person says ends it: a "stop" sent while one waited for its landing was read only once the
+/// landing it should have cancelled had landed (the agent evals' M3, 16 Nov 2026).
+fn for_session(heard: &Heard, session: Option<&str>) -> bool {
+    let Some(session) = session.filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    match heard {
+        Heard::Direct(direct) => {
+            direct.session.as_deref() == Some(session) && direct.answer.is_none()
+        }
+        Heard::Answered(answered) => answered.request.session == session,
+        _ => false,
     }
 }
 
@@ -333,6 +368,42 @@ impl Ended {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_message_for_the_waiting_session_ends_its_wait() {
+        let direct = |to: Option<&str>, answer: Option<&str>| {
+            Heard::Direct(ipc::Direct {
+                from: "alice".into(),
+                from_session: None,
+                session: to.map(str::to_owned),
+                text: "stop the rename".into(),
+                query: None,
+                answer: answer.map(str::to_owned),
+                note: false,
+                colleague: false,
+                id: None,
+                why: None,
+                org: None,
+            })
+        };
+        assert!(for_session(&direct(Some("cc-1"), None), Some("cc-1")));
+        assert!(
+            !for_session(&direct(Some("cc-2"), None), Some("cc-1")),
+            "another session's"
+        );
+        assert!(
+            !for_session(&direct(None, None), Some("cc-1")),
+            "to the machine"
+        );
+        assert!(
+            !for_session(&direct(Some("cc-1"), Some("q1")), Some("cc-1")),
+            "an answer it waits on with zirc ask"
+        );
+        assert!(
+            !for_session(&direct(Some("cc-1"), None), None),
+            "no session said"
+        );
+    }
 
     #[test]
     fn listens_in_the_repositorys_channel_and_those_under_it() {
