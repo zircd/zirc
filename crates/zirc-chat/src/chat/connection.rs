@@ -169,6 +169,7 @@ impl Chat {
         let Some(line) = self.multiline.feed(line) else {
             return Vec::new();
         };
+        self.server_window(&line);
         // account-tag: whoever's line carries an account is logged in to it.
         if line
             .tag("account")

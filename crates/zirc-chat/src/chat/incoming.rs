@@ -128,14 +128,12 @@ impl Chat {
             }
             // RPL_LISTEND
             "323" => return self.list_ended(),
-            // The MOTD is the Server channel's, never the status's; its line that says the
-            // server logs what people send is seen where they type, too.
+            // The MOTD is the Server channel's ([`Chat::server_window`]); its line that says
+            // the server logs what people send is seen where they type, too.
             "372" => {
                 if let Some(logged) = Logged::from_motd(param(1)) {
                     self.status.logged = Some(logged);
                 }
-                let text = strip_formatting(param(1));
-                self.server_said(self.time_of(line), "", text);
             }
             // The server closing the connection; the rest of registration's chatter, the
             // welcome included, is left out.
@@ -155,12 +153,12 @@ impl Chat {
             }
             "FAIL" => {
                 let last = line.params.last().map_or("", String::as_str);
-                self.note(format!("{}: {last}", param(0)));
+                self.error(line, format!("{}: {last}", param(0)));
             }
-            // ERR_NOMOTD isn't worth saying.
+            // ERR_NOMOTD: the Server channel says so ([`Chat::server_window`]).
             "422" => {}
             numeric if numeric.starts_with(['4', '5']) && numeric.len() == 3 => {
-                self.note(line.params.get(1..).unwrap_or_default().join(" "));
+                self.error(line, line.params.get(1..).unwrap_or_default().join(" "));
             }
             _ => {}
         }
@@ -397,6 +395,75 @@ impl Chat {
             }
         };
         (entry, Some(session))
+    }
+
+    /// An error the server answered with: where the person is looking, and in the Server
+    /// channel, as an IRC client's server window keeps them, once.
+    fn error(&mut self, line: &Line, text: String) {
+        if self.selected().kind != Kind::Server {
+            self.server_said(self.time_of(line), "", strip_formatting(&text));
+        }
+        self.note(text);
+    }
+
+    /// What IRC clients show in their server window, kept in the Server channel (the user's
+    /// choice, 16 Nov 2026): the welcome, the server's features, how many are on, the MOTD,
+    /// login results and our modes; and in the seconds after a line was typed there, every
+    /// reply. Never the replies to what the apps ask by themselves (WHO, LIST, history), which
+    /// come by the hundred. Notices, services and errors come by [`Chat::server_notice`] and
+    /// [`Chat::error`].
+    pub(super) fn server_window(&mut self, line: &Line) {
+        let command = line.command.as_str();
+        let numeric = command.len() == 3 && command.bytes().all(|b| b.is_ascii_digit());
+        let typed = numeric
+            && !command.starts_with(['4', '5'])
+            && self.raw_until.is_some_and(|until| (self.clock)() <= until);
+        let ours = command == "MODE"
+            && line
+                .params
+                .first()
+                .is_some_and(|target| target.eq_ignore_ascii_case(&self.me));
+        let shown = matches!(
+            command,
+            "001"
+                | "002"
+                | "003"
+                | "004"
+                | "005"
+                | "221"
+                | "251"
+                | "252"
+                | "253"
+                | "254"
+                | "255"
+                | "265"
+                | "266"
+                | "372"
+                | "375"
+                | "376"
+                | "396"
+                | "422"
+                | "900"
+                | "901"
+                | "903"
+                | "904"
+                | "905"
+                | "906"
+                | "907"
+                | "908"
+        );
+        if !(shown || typed || ours) {
+            return;
+        }
+        // Our nick first, as every reply has it, is no one's news.
+        let params = line.params.get(1..).unwrap_or_default();
+        let text = match command {
+            // `<nick!user@host> <account> :You are now logged in as <account>`: its words.
+            "900" | "901" => params.last().cloned().unwrap_or_default(),
+            "MODE" => format!("your modes: {}", params.join(" ")),
+            _ => params.join(" "),
+        };
+        self.server_said(self.time_of(line), "", strip_formatting(&text));
     }
 
     /// What the server or one of its services (`from`, empty for the server) said: the status's

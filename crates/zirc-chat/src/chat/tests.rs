@@ -1386,8 +1386,8 @@ fn shows_a_channel_as_every_app_does() {
     assert_eq!(notices, ["Server restarting", "Closing link"]);
     assert_eq!(
         chat.conversations()[0].entries.len(),
-        2,
-        "the Server channel's"
+        3,
+        "the Server channel's: those two, and what connecting said"
     );
 }
 
@@ -8526,5 +8526,62 @@ fn the_server_channel_shows_notices_and_sends_what_is_typed_there_as_it_is() {
         chat.channel_rows()
             .iter()
             .all(|row| row.name != "irc.zirc.test")
+    );
+}
+
+#[test]
+fn the_server_channel_shows_what_irc_clients_show_but_not_the_apps_own_asking() {
+    let mut chat = Scene::in_api();
+    let before = chat.conversations()[0].entries.len();
+    feed(
+        &mut chat,
+        &[
+            ":irc.zirc.test 001 me :Welcome to the zirc IRC Network me",
+            ":irc.zirc.test 005 me CHANTYPES=# NETWORK=zirc :are supported by this server",
+            ":irc.zirc.test 251 me :There are 3 users and 0 invisible on 1 server(s)",
+            ":irc.zirc.test 375 me :- irc.zirc.test Message of the day - ",
+            ":irc.zirc.test 372 me :- be kind",
+            ":irc.zirc.test 376 me :End of MOTD command",
+            ":irc.zirc.test 900 me me!u@h me :You are now logged in as me",
+            // The apps' own asking: no one's to read.
+            ":irc.zirc.test 352 me #api u h irc.zirc.test bob H :0 Bob",
+            ":irc.zirc.test 322 me #web 3 :Web",
+        ],
+    );
+    let said = |chat: &Chat| -> Vec<String> {
+        chat.conversations()[0].entries[before..]
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                EntryKind::Notice(text) | EntryKind::Message(text) => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(
+        said(&chat),
+        [
+            "Welcome to the zirc IRC Network me",
+            "CHANTYPES=# NETWORK=zirc are supported by this server",
+            "There are 3 users and 0 invisible on 1 server(s)",
+            "- irc.zirc.test Message of the day - ",
+            "- be kind",
+            "End of MOTD command",
+            "You are now logged in as me",
+        ]
+    );
+
+    // Typed there, whatever answers it shows too, even what the apps read for themselves.
+    let _ = chat.open("irc.zirc.test");
+    let _ = ran(&mut chat, "irc.zirc.test", "WHOIS bob");
+    feed(
+        &mut chat,
+        &[
+            ":irc.zirc.test 311 me bob u h * :Bob",
+            ":irc.zirc.test 318 me bob :End of /WHOIS list",
+        ],
+    );
+    assert_eq!(
+        said(&chat)[7..],
+        ["WHOIS bob", "bob u h * Bob", "bob End of /WHOIS list"]
     );
 }

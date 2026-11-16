@@ -474,6 +474,9 @@ pub struct Chat {
     /// Whether the server's own conversation is shown as the Server channel
     /// ([`Chat::show_server`]), not as the stand-in for nothing shown that it is otherwise.
     server_shown: bool,
+    /// Until when every reply the server sends is the Server channel's too: a few seconds after
+    /// a line was typed there ([`Chat::server_window`]).
+    raw_until: Option<DateTime<Utc>>,
     /// Channels to join besides the server's own.
     joins: Vec<String>,
     /// The server's channels and how many are in each, from the last complete `LIST`, and
@@ -656,6 +659,7 @@ impl Chat {
             index: HashMap::from([(fold(server), 0)]),
             selected: 0,
             server_shown: false,
+            raw_until: None,
             joins,
             listed: Vec::new(),
             listing: Vec::new(),

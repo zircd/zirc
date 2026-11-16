@@ -87,6 +87,9 @@ fn note(words: impl Into<String>) -> Ran {
     Ran::Note(words.into())
 }
 
+/// For how many seconds after a line is typed in the Server channel every reply shows there.
+const RAW_REPLIES_FOR: i64 = 10;
+
 impl Chat {
     /// What's typed in the Server channel: a line that goes to the server as it is (the user's
     /// choice, 16 Nov 2026), and stays there under what it answers.
@@ -97,6 +100,8 @@ impl Chat {
         let now = (self.clock)();
         let me = self.me.clone();
         self.server_said(now, &me, text);
+        // What answers it, whatever it is, shows here too.
+        self.raw_until = Some(now + chrono::TimeDelta::seconds(RAW_REPLIES_FOR));
         Ran::Send(vec![line])
     }
 
