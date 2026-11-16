@@ -280,6 +280,19 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         app: Option<String>,
     },
+    /// Tell the tenant's recorder, for `session`, that a client used part of the team's
+    /// playbook: a hint `zirc watch` showed ([`zirc_proto::activity::HintShown`]) or a
+    /// gotcha `zirc intend` said ([`zirc_proto::activity::GotchaTold`]). zircd takes those
+    /// two kinds alone and answers [`Response::Done`], whether or not the recorder is there.
+    Record {
+        /// The session it was shown to.
+        session: String,
+        /// The record's kind, [`zirc_proto::activity::HINT_SHOWN_KIND`] or
+        /// [`zirc_proto::activity::GOTCHA_TOLD_KIND`].
+        kind: String,
+        /// The record.
+        data: serde_json::Value,
+    },
     /// Send something for the organisation's workflows ([`zirc_proto::workflow`]) to
     /// `channel`, in the organisation of the repository containing `repo`: a workflow's file
     /// to `#workflows`, what a worker did with a step ([`zirc_proto::run::StepAction`]), or

@@ -13,6 +13,26 @@ use zirc_proto::PROGRAM;
 
 use crate::gotchas::{here, read};
 
+/// Tells zircd's recorder, best effort and quickly, that `session` was shown `record`: part
+/// of the playbook in use ([`zirc_core::ipc::Request::Record`]). A zircd that predates it,
+/// or one that's slow, costs nothing.
+pub(crate) async fn used<R: zirc_proto::activity::Record>(
+    socket: &Path,
+    session: &str,
+    record: &R,
+) {
+    let Ok(data) = serde_json::to_value(record) else {
+        return;
+    };
+    let request = zirc_core::ipc::Request::Record {
+        session: session.to_owned(),
+        kind: R::KIND.to_owned(),
+        data,
+    };
+    let asking = crate::client::ask(socket, request);
+    let _ = tokio::time::timeout(std::time::Duration::from_millis(500), asking).await;
+}
+
 // `zirc playbook`'s arguments: their doc comments are its --help.
 #[derive(Debug, Args)]
 pub(crate) struct PlaybookArgs {

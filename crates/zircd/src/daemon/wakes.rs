@@ -335,7 +335,7 @@ impl Daemon {
     /// Sends `event`, an activity record of `session`'s, to the tenant's recorder alone, as a
     /// debug `TAGMSG`: best effort, as it isn't there on every server. Never from a guest's
     /// terminal, which sends nothing outside its guest's room (the gateway refuses it).
-    fn record(&self, session: &str, event: Event) {
+    pub(super) fn record(&self, session: &str, event: Event) {
         let Some(client) = self.client.as_ref().filter(|_| self.org.guest.is_none()) else {
             return;
         };
@@ -346,6 +346,29 @@ impl Daemon {
         {
             tracing::debug!("couldn't tell the recorder: {err}");
         }
+    }
+
+    /// Tells the recorder that a client used part of the playbook for `session`
+    /// ([`zirc_core::ipc::Request::Record`]): a hint shown or a gotcha told, and nothing else.
+    pub(super) fn used(
+        &self,
+        session: &str,
+        kind: String,
+        data: serde_json::Value,
+    ) -> anyhow::Result<Response> {
+        let fits = match kind.as_str() {
+            activity::HINT_SHOWN_KIND => {
+                serde_json::from_value::<activity::HintShown>(data.clone()).is_ok()
+            }
+            activity::GOTCHA_TOLD_KIND => {
+                serde_json::from_value::<activity::GotchaTold>(data.clone()).is_ok()
+            }
+            _ => anyhow::bail!("{kind}: only a hint shown or a gotcha told is recorded this way"),
+        };
+        anyhow::ensure!(fits, "{kind}: its data isn't one");
+        let text = kind.trim_start_matches("x-zirc/").to_owned();
+        self.record(session, Event::Custom { kind, data, text });
+        Ok(Response::Done)
     }
 
     /// Tells the recorder of `alert`, an overlap or a conflict ahead that zircd just told

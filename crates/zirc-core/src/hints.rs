@@ -267,6 +267,15 @@ impl When {
     }
 }
 
+impl Hint {
+    /// Its id: the fingerprint of the hint as JSON says it, every field, so a hint changed in
+    /// any way is another ([`crate::playbook::fingerprint`]).
+    #[must_use]
+    pub fn id(&self) -> String {
+        crate::playbook::fingerprint(&serde_json::to_string(self).unwrap_or_default())
+    }
+}
+
 impl Level {
     /// Its name, as a hints file says it.
     #[must_use]
@@ -683,6 +692,9 @@ fn ci_kind(
 /// A hint as `zirc watch` shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Shown {
+    /// The hint's id ([`Hint::id`]).
+    #[serde(default)]
+    pub id: String,
     /// The kind it's for.
     pub kind: String,
     /// What it asks.
@@ -715,6 +727,7 @@ pub fn resolve(layers: &[(Layer, &[Hint])], seen: &Seen) -> Option<Shown> {
         })
         .or_else(|| found.first())?;
     Some(Shown {
+        id: hint.id(),
         kind: hint.kind.clone(),
         level: hint.level,
         layer: *layer,
@@ -839,6 +852,8 @@ pub struct Watch {
     /// The rooms of the guests' terminals on this machine, lower case: what's said there is
     /// another organisation's.
     guest_rooms: Vec<String>,
+    /// Those shown since [`Watch::take_shown`] last took them, for usage records.
+    recent: Vec<Shown>,
 }
 
 /// The rooms of the guests' terminals `config.toml` in `home` names, lower case.
@@ -891,6 +906,7 @@ impl Watch {
             file,
             session: session.map(str::to_owned),
             guest_rooms: guest_rooms(home),
+            recent: Vec::new(),
         };
         (watch, problems)
     }
@@ -913,6 +929,11 @@ impl Watch {
         layers
     }
 
+    /// The hints shown since this was last asked, oldest first, for usage records.
+    pub fn take_shown(&mut self) -> Vec<Shown> {
+        std::mem::take(&mut self.recent)
+    }
+
     /// The hint for `heard`, if there's one the session hasn't seen as it is now.
     pub fn new_for(&mut self, heard: &Heard) -> Option<Shown> {
         let mut seen = seen(heard, self.session.as_deref())?;
@@ -926,6 +947,7 @@ impl Watch {
             return None;
         }
         self.shown.insert(shown.kind.clone(), shown.text.clone());
+        self.recent.push(shown.clone());
         if let Some(file) = &self.file {
             // Best effort: at worst, a hint is shown again.
             let _ = std::fs::create_dir_all(file.parent().unwrap_or(file));
@@ -1200,6 +1222,11 @@ mod tests {
         // Anywhere else, a post is a post.
         let elsewhere = watch.new_for(&said("#api")).map(|shown| shown.kind);
         assert_ne!(elsewhere.as_deref(), Some(kind::GUEST_ROOM));
+        // What was shown is kept for its usage records, once, each with its hint's id.
+        let taken = watch.take_shown();
+        assert_eq!(taken.first(), Some(&shown));
+        assert_eq!(shown.id.len(), 16);
+        assert!(watch.take_shown().is_empty());
     }
 
     #[test]

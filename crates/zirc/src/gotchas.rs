@@ -179,12 +179,23 @@ pub(crate) async fn list(socket: &Path, args: GotchasArgs, out: &mut impl Write)
     Ok(())
 }
 
-/// The gotchas under `paths`, relative to where this runs, as `zirc intend` says them; empty
-/// outside a watched repository or when there are none.
-pub(crate) async fn under_here(socket: &Path, paths: &[PathBuf]) -> String {
+/// The gotchas under `paths`, relative to where this runs, as `zirc intend` says them to
+/// `session`, telling the recorder of each it says; empty outside a watched repository or
+/// when there are none.
+pub(crate) async fn under_here(socket: &Path, session: &str, paths: &[PathBuf]) -> String {
     let Ok((repo, paths)) = here(socket, paths).await else {
         return String::new();
     };
     let all = read(socket, &repo).await;
-    gotchas::text(&gotchas::under(&all, &paths))
+    let found = gotchas::under(&all, &paths);
+    for gotcha in found.iter().take(gotchas::SHOWN) {
+        if let Some(id) = &gotcha.id {
+            let told = zirc_proto::activity::GotchaTold {
+                gotcha: id.clone(),
+                how: zirc_proto::activity::Told::Intent,
+            };
+            crate::playbook::used(socket, session, &told).await;
+        }
+    }
+    gotchas::text(&found)
 }

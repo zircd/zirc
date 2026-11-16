@@ -191,6 +191,11 @@ impl Daemon {
                 self.emit_custom(&repo, session, (kind, data, text), to, app)
                     .await?
             }
+            Request::Record {
+                session,
+                kind,
+                data,
+            } => self.used(&session, kind, data)?,
             Request::Role {
                 session,
                 role,

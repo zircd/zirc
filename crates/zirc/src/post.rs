@@ -109,7 +109,11 @@ pub(crate) async fn intend(
     if let Ok(text) = clashes_here(socket, &session, &paths).await {
         write!(out, "{text}")?;
     }
-    write!(out, "{}", crate::gotchas::under_here(socket, &paths).await)?;
+    write!(
+        out,
+        "{}",
+        crate::gotchas::under_here(socket, &session, &paths).await
+    )?;
     Ok(())
 }
 

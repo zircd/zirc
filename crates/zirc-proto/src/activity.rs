@@ -1,7 +1,9 @@
 //! What only a session's machine knows of how a team works together, for measuring it:
 //! which lines woke a session's watch ([`Wake`]), what the session did after
 //! ([`WakeOutcome`]), where each of its prompts came from and what it cost ([`Prompt`]), and
-//! what zircd told it of others changing what it changes ([`Notice`]). Each goes as a [`crate::Event::Custom`] of one of [`KINDS`], at debug: only
+//! what zircd told it of others changing what it changes ([`Notice`]), and which of the team's
+//! playbook it was shown: a hint under a line ([`HintShown`]) and the gotchas told it
+//! ([`GotchaTold`]), by their ids, for how often each is used. Each goes as a [`crate::Event::Custom`] of one of [`KINDS`], at debug: only
 //! true now ([`crate::live`]), so none is a line of any channel's history or chat, and
 //! nothing wakes on one. The tenant's recorder (its sidecar, nick [`RECORDER`]) hears them
 //! as they're sent and keeps a row of each beside the history, as long as the
@@ -28,8 +30,21 @@ pub const PROMPT_KIND: &str = "x-zirc/prompt";
 /// zircd told a session that another changes what it changes ([`Notice`]).
 pub const NOTICE_KIND: &str = "x-zirc/notice";
 
+/// A session's watch showed a hint under a line ([`HintShown`]).
+pub const HINT_SHOWN_KIND: &str = "x-zirc/hint-shown";
+
+/// A session was told a gotcha ([`GotchaTold`]).
+pub const GOTCHA_TOLD_KIND: &str = "x-zirc/gotcha-told";
+
 /// Every kind here: each is live ([`crate::live`]).
-pub const KINDS: [&str; 4] = [WAKE_KIND, WAKE_OUTCOME_KIND, PROMPT_KIND, NOTICE_KIND];
+pub const KINDS: [&str; 6] = [
+    WAKE_KIND,
+    WAKE_OUTCOME_KIND,
+    PROMPT_KIND,
+    NOTICE_KIND,
+    HINT_SHOWN_KIND,
+    GOTCHA_TOLD_KIND,
+];
 
 /// The nick a tenant's recorder goes by, to which machines send these events directly
 /// rather than to a channel, so no one else's client is sent them.
@@ -172,6 +187,40 @@ pub enum Noticed {
     Other,
 }
 
+/// A session's watch showed a hint under a line: which, by its id, never its words.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct HintShown {
+    /// The hint's id: the start of the SHA-256 of the hint as its file says it, so a changed
+    /// hint is another (`zirc_core::playbook::fingerprint`).
+    pub hint: String,
+    /// The kind of event it's for, such as `overlap`.
+    pub kind: String,
+    /// Its layer: `personal`, `repo`, `org` or `default`.
+    pub layer: String,
+}
+
+/// How a session was told a gotcha ([`GotchaTold`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Told {
+    /// `zirc intend` said it, under the paths it names.
+    Intent,
+    /// zircd said it as the session started changing files under its paths.
+    Start,
+    /// One a newer client says that this one doesn't know.
+    #[serde(other)]
+    Other,
+}
+
+/// A session was told a gotcha: which, by its message's id, never its words or paths.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct GotchaTold {
+    /// The gotcha's message id on the server (`msgid`).
+    pub gotcha: String,
+    /// How it was told.
+    pub how: Told,
+}
+
 /// One of these records as the event it goes as.
 pub trait Record: Serialize + for<'de> Deserialize<'de> {
     /// Its kind, one of [`KINDS`].
@@ -217,6 +266,14 @@ impl Record for Prompt {
 
 impl Record for Notice {
     const KIND: &'static str = NOTICE_KIND;
+}
+
+impl Record for HintShown {
+    const KIND: &'static str = HINT_SHOWN_KIND;
+}
+
+impl Record for GotchaTold {
+    const KIND: &'static str = GOTCHA_TOLD_KIND;
 }
 
 #[cfg(test)]

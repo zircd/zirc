@@ -3306,6 +3306,34 @@
           "properties": {
             "op": {
               "type": "string",
+              "const": "record"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session it was shown to."
+            },
+            "kind": {
+              "type": "string",
+              "description": "The record's kind, [`zirc_proto::activity::HINT_SHOWN_KIND`] or\n[`zirc_proto::activity::GOTCHA_TOLD_KIND`]."
+            },
+            "data": {
+              "description": "The record."
+            }
+          },
+          "required": [
+            "op",
+            "session",
+            "kind",
+            "data"
+          ],
+          "description": "Tell the tenant's recorder, for `session`, that a client used part of the team's\nplaybook: a hint `zirc watch` showed ([`zirc_proto::activity::HintShown`]) or a\ngotcha `zirc intend` said ([`zirc_proto::activity::GotchaTold`]). zircd takes those\ntwo kinds alone and answers [`Response::Done`], whether or not the recorder is there.",
+          "title": "RecordRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
               "const": "workflow"
             },
             "repo": {

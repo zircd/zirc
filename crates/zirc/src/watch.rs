@@ -126,6 +126,27 @@ pub(crate) async fn watch_as(
         } else if print_heard(heard, how, out)? && how.once {
             burst = Some(tokio::time::Instant::now() + ONCE_BURST);
         }
+        record_hints(socket, how, session).await;
+    }
+}
+
+/// Tells the recorder of each hint the watch just showed `session`, by its id.
+async fn record_hints(socket: &Path, how: &How<'_>, session: Option<&str>) {
+    let shown = how
+        .hints
+        .lock()
+        .map(|mut hints| hints.take_shown())
+        .unwrap_or_default();
+    let Some(session) = session else {
+        return;
+    };
+    for shown in shown {
+        let record = zirc_proto::activity::HintShown {
+            hint: shown.id,
+            kind: shown.kind,
+            layer: shown.layer.name().to_owned(),
+        };
+        crate::playbook::used(socket, session, &record).await;
     }
 }
 

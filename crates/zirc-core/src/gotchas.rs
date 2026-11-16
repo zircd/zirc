@@ -78,17 +78,10 @@ impl Retired {
         }
     }
 
-    /// The first 8 bytes of the SHA-256 of `lesson`, in hex.
+    /// The fingerprint of `lesson` ([`crate::playbook::fingerprint`]).
     #[must_use]
     pub fn sha(lesson: &str) -> String {
-        use std::fmt::Write as _;
-        let digest = ring::digest::digest(&ring::digest::SHA256, lesson.as_bytes());
-        digest.as_ref()[..8]
-            .iter()
-            .fold(String::new(), |mut hex, byte| {
-                let _ = write!(hex, "{byte:02x}");
-                hex
-            })
+        crate::playbook::fingerprint(lesson)
     }
 
     /// Whether it retires `gotcha`.

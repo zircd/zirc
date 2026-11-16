@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use zirc_core::gotchas::{self, Gotcha};
 use zirc_core::ipc::{Delivery, Response};
 use zirc_core::paths;
+use zirc_proto::activity::{self, GotchaTold, Record as _};
 use zirc_proto::{Event, Message};
 
 use super::{Daemon, WATCHER_SESSION, read_saved, save_saved};
@@ -87,6 +88,12 @@ impl Daemon {
             return;
         }
         let keys: Vec<String> = new.iter().map(|gotcha| key(gotcha)).collect();
+        // Those it's shown, for how often each is used: the first SHOWN, by id.
+        let ids: Vec<String> = new
+            .iter()
+            .take(gotchas::SHOWN)
+            .filter_map(|gotcha| gotcha.id.clone())
+            .collect();
         let body = format!(
             "{session}: you've started changing {}, where {}",
             dirs.join(", "),
@@ -94,6 +101,13 @@ impl Daemon {
         );
         for key in keys {
             self.gotchas_told.insert((session.to_owned(), key));
+        }
+        for gotcha in ids {
+            let told = GotchaTold {
+                gotcha,
+                how: activity::Told::Start,
+            };
+            self.record(session, told.event());
         }
         self.save_gotchas_told();
         let me = self.client.as_ref().map(|client| client.nick().to_owned());

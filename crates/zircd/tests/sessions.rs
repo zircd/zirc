@@ -536,6 +536,52 @@ async fn an_overlap_zircd_tells_of_goes_to_the_recorder_without_its_paths() {
 }
 
 #[tokio::test]
+async fn a_hint_a_client_showed_goes_to_the_recorder_and_nothing_else_does_that_way() {
+    use zirc_proto::activity::{HINT_SHOWN_KIND, HintShown, Record};
+    let ergo = require_ergo!();
+    let (machine, _main, _main_root, _login_root) = machine_with_a_session_worktree(&ergo).await;
+    let (_recorder, mut recorded) =
+        zirc_test_irc::person(&ergo, zirc_proto::activity::RECORDER).await;
+
+    let shown = HintShown {
+        hint: "0123456789abcdef".into(),
+        kind: "overlap".into(),
+        layer: "repo".into(),
+    };
+    let record = |kind: &str, data: serde_json::Value| Request::Record {
+        session: "cc-login".into(),
+        kind: kind.into(),
+        data,
+    };
+    // Not a playbook record, or not one of its kind: refused.
+    for (kind, data) in [
+        ("x-zirc/wake", serde_json::to_value(&shown).unwrap()),
+        (HINT_SHOWN_KIND, serde_json::json!({ "words": "x" })),
+    ] {
+        let refused = machine.try_request(record(kind, data)).await;
+        assert!(refused.is_err(), "{refused:?}");
+    }
+    let done = machine
+        .request(record(
+            HINT_SHOWN_KIND,
+            serde_json::to_value(&shown).unwrap(),
+        ))
+        .await;
+    assert!(matches!(done, Response::Done), "{done:?}");
+    let sent = loop {
+        let line =
+            zirc_test_irc::next_matching(&mut recorded, |line| line.command == "TAGMSG").await;
+        let sent = zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG).unwrap()).unwrap();
+        if HintShown::of(&sent.event).is_some() {
+            break sent;
+        }
+    };
+    assert_eq!(sent.session, "cc-login");
+    assert!(sent.is_live(), "never in history");
+    assert_eq!(HintShown::of(&sent.event), Some(shown));
+}
+
+#[tokio::test]
 async fn a_session_two_worktrees_register_is_warned_of_never_refused() {
     let ergo = require_ergo!();
     let (machine, main, _main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
