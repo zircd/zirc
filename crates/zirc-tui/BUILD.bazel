@@ -8,6 +8,6 @@ zirc_rust_library(
 # The user-facing source the words guard reads (//crates/zirc-app:zirc-app_words_guard_test).
 filegroup(
     name = "shell_sources",
-    srcs = glob(["src/**/*.rs"]),
+    srcs = glob(["src/**/*.rs", "tests/**/*.rs"]),
     visibility = ["//crates/zirc-app:__pkg__"],
 )

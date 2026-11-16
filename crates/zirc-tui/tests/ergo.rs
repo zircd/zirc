@@ -6,7 +6,7 @@ use std::time::Duration;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use zirc_core::chat::{Kind, is_group};
+use zirc_core::chat::{BROWSE_CHANNELS, Kind, is_group, members_label};
 use zirc_irc::{Config, Credentials, connect};
 use zirc_proto::{Event, Message};
 use zirc_test_ergo::{Ergo, require_ergo};
@@ -326,8 +326,11 @@ async fn browses_joins_and_leaves_once_asked() {
     .await;
     assert!(typed(&mut session, "/browse"));
     let shown = screen(&session.app);
-    assert!(shown.contains("Browse channels"), "{shown}");
-    assert!(shown.contains("#api/login  1 member"), "{shown}");
+    assert!(shown.contains(BROWSE_CHANNELS), "{shown}");
+    assert!(
+        shown.contains(&format!("#api/login  {}", members_label(1))),
+        "{shown}"
+    );
 
     // /join completes it from that list with Tab.
     for c in "/join #api/l".chars() {
@@ -348,7 +351,7 @@ async fn browses_joins_and_leaves_once_asked() {
     assert!(typed(&mut session, "/part"));
     let shown = screen(&session.app);
     assert!(
-        shown.contains("Leave #api/login? You can join it again from Browse channels."),
+        shown.contains(&session.app.chat.leave_prompt("#api/login")),
         "{shown}"
     );
     assert!(

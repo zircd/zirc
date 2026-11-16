@@ -1963,6 +1963,10 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
+    use zirc_core::chat::{
+        AGENT_TAG, BROWSE_CHANNELS, MACHINES, NO_OTHER_CHANNELS, PEOPLE_SECTION, SERVER_TITLE,
+        Shelf,
+    };
 
     fn noon() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 10, 30, 12, 0, 0).unwrap()
@@ -2214,7 +2218,7 @@ mod tests {
         // The title line says they're from outside, and to nobody yet; the line over the
         // input that it's a guest we're writing to.
         assert!(
-            rows[0].starts_with(" Anna  outside your organisation · unassigned"),
+            rows[0].starts_with(&format!(" Anna  {OUTSIDE} · {UNASSIGNED}")),
             "{}",
             rows[0]
         );
@@ -2467,7 +2471,7 @@ mod tests {
                 zirc_proto::Event::Custom {
                     kind: "x-acme/deploy".into(),
                     data: format!(
-                        r#"{{"card":{{"id":"d/42","title":"web · deploy 42","state":"failed","fields":[{{"label":"failed in","value":"smoke"}}],"actions":[{{"id":"retry","label":"Retry"}},{{"id":"cancel","label":"Cancel","who":"admins"}}],"note":"{note}"}}}}"#
+                        r#"{{"card":{{"id":"d/42","title":"web · deploy 42","state":"failed","fields":[{{"label":"failed in","value":"smoke"}}],"actions":[{{"id":"retry","label":"Redeploy"}},{{"id":"cancel","label":"Abort","who":"admins"}}],"note":"{note}"}}}}"#
                     )
                     .parse()
                     .unwrap(),
@@ -2484,15 +2488,15 @@ mod tests {
         let (rows, _) = draw(&app, 140, 24);
         row_with(&rows, "web · deploy 42");
         row_with(&rows, "failed in: smoke");
-        // The buttons we may press: Cancel is for admins.
+        // The buttons we may press: Abort is for admins.
         // Tonal words, apart from the card's text.
-        let (x, y) = place_of(&rows, " Retry ");
+        let (x, y) = place_of(&rows, " Redeploy ");
         let buffer = draw(&app, 140, 24).1;
         assert_eq!(
             buffer.backend().buffer()[(x, y)].bg,
             colour(app.theme.tonal_ground)
         );
-        assert!(!rows.iter().any(|row| row.contains("Cancel")));
+        assert!(!rows.iter().any(|row| row.contains("Abort")));
 
         // /press asks first; y presses, through zirc.dev.
         for c in "/press retry".chars() {
@@ -2500,7 +2504,7 @@ mod tests {
         }
         app.key(KeyEvent::from(KeyCode::Enter));
         let (rows, _) = draw(&app, 140, 24);
-        row_with(&rows, "press Retry? y/n");
+        row_with(&rows, "press Redeploy? y/n");
         let Action::Press(press) = app.key(KeyEvent::from(KeyCode::Char('y'))) else {
             panic!("y presses");
         };
@@ -2578,7 +2582,7 @@ mod tests {
         let (x, y) = place_of(&rows, "✳ zirc-chat mattias's agent  11:20");
         let mark = buffer[(x, y)].fg;
         assert_ne!(mark, colour(app.theme.muted));
-        assert!(!rows.iter().any(|row| row.contains("AGENT")));
+        assert!(!rows.iter().any(|row| row.contains(AGENT_TAG)));
         // The machine itself, with no session, is headed with its own name, not as an agent.
         let _ = place_of(&rows, "mbp  11:30");
         assert!(
@@ -2672,8 +2676,8 @@ mod tests {
         let (rows, terminal) = draw(&app, 120, 20);
         // Not a member like the people: in their own part, by name and zirc-chat's tag,
         // dimmed, with no presence.
-        assert!(row_with(&rows, "People").ends_with("│ People"));
-        assert!(row_with(&rows, "Apps").ends_with("│ Apps"));
+        assert!(row_with(&rows, PEOPLE_SECTION).ends_with(&format!("│ {PEOPLE_SECTION}")));
+        assert!(row_with(&rows, APPS_SECTION).ends_with(&format!("│ {APPS_SECTION}")));
         assert!(row_with(&rows, "CI APP").ends_with("│ CI APP"));
         let (x, y) = place_of(&rows, "CI APP");
         let buffer = terminal.backend().buffer();
@@ -2700,7 +2704,7 @@ mod tests {
             at("Messages"),
             Some(Target::Tab(zirc_core::chat::SidebarSection::Direct))
         );
-        let (x, y) = heading_at(&rows, "Channels");
+        let (x, y) = heading_at(&rows, Shelf::Channels.label());
         assert_eq!(
             target_at(&app, screen, x, y),
             Some(Target::Shelf(zirc_core::chat::Shelf::Channels))
@@ -2709,7 +2713,7 @@ mod tests {
         assert_eq!(at("○ mattias"), Some(Target::Member("mattias".into())));
         assert_eq!(at("morning"), Some(Target::Scrollback));
         // The member count, the header and the input line aren't anything to click.
-        assert_eq!(at("People"), None);
+        assert_eq!(at(PEOPLE_SECTION), None);
         assert_eq!(at("the API"), None);
         assert_eq!(at("#api ›"), None);
         // The last channel in the list, #web (A–Z), under the header naming it, then
@@ -2739,7 +2743,11 @@ mod tests {
         // Long names are cut to fit, the same way everywhere.
         assert_eq!(row_with(&rows, " #a-"), " #a-channel-with-a-very… │");
         // The Server channel is shown, and first in the list.
-        assert!(rows[0].starts_with(" Server"), "{}", rows[0]);
+        assert!(
+            rows[0].starts_with(&format!(" {SERVER_TITLE}")),
+            "{}",
+            rows[0]
+        );
         // Where we are on the left; the connection only when it's down, and what mentions
         // us, on the right.
         let status = row_with(&rows, "irc.zirc.test · ");
@@ -2805,7 +2813,7 @@ mod tests {
         let members: Vec<&str> = rows
             .iter()
             .filter_map(|row| row.rsplit_once('│').map(|(_, member)| member.trim()))
-            .skip_while(|member| *member != "People")
+            .skip_while(|member| *member != PEOPLE_SECTION)
             .skip(1)
             .take_while(|member| !member.is_empty())
             .collect();
@@ -2855,7 +2863,7 @@ mod tests {
                 .unwrap(),
         );
         let (rows, _) = draw(&app, 120, 16);
-        let members = row_with(&rows, "People");
+        let members = row_with(&rows, PEOPLE_SECTION);
         let border = members.chars().rev().position(|c| c == '│').unwrap();
         let x = members.chars().count() - 1 - border;
         assert_eq!(x, 90, "{}", rows.join("\n"));
@@ -3196,7 +3204,7 @@ mod tests {
                 .unwrap(),
         );
         let (rows, _) = draw(&app, 100, 16);
-        assert!(!row_with(&rows, "irc.zirc.test · ").contains("away"));
+        assert!(!row_with(&rows, "irc.zirc.test · ").contains(&away_label("")));
     }
 
     #[test]
@@ -3222,7 +3230,7 @@ mod tests {
                 .contains("11:02       ● cc-12 committed: Fix login  (main abc)")
         );
         assert!(!rows.iter().any(|row| row.contains("ZIRC")), "no payloads");
-        assert!(row_with(&rows, "People").contains("│ People"));
+        assert!(row_with(&rows, PEOPLE_SECTION).contains(&format!("│ {PEOPLE_SECTION}")));
         assert!(row_with(&rows, "alice op").contains("│ ● alice op"));
 
         assert!(rows.last().unwrap().starts_with("#api ›"));
@@ -3379,7 +3387,7 @@ mod tests {
             "@+zirc.dev/client=tui PRIVMSG me-laptop :cc-1531f8 run them again"
         );
         let (rows, _) = draw(&app, 120, 16);
-        assert!(row_with(&rows, "AGENT").contains("cc-1531f8 AGENT"));
+        assert!(row_with(&rows, AGENT_TAG).contains(&format!("cc-1531f8 {AGENT_TAG}")));
         row_with(&rows, "tests pass");
         assert!(
             rows.last().unwrap().starts_with("cc-1531f8 ›"),
@@ -3412,7 +3420,7 @@ mod tests {
         // Channels A–Z, then direct messages newest first, agent sessions among them.
         assert_eq!(
             listed,
-            ["Server", "#api", "#web", "bob", "cc-77aa01", "alice"]
+            [SERVER_TITLE, "#api", "#web", "bob", "cc-77aa01", "alice"]
         );
         let screen = Rect::new(0, 0, 100, 16);
         // The list under the switch.
@@ -3424,16 +3432,19 @@ mod tests {
                 .collect()
         };
         let (rows, _) = draw(&app, screen.width, screen.height);
+        let channels = format!(" {}", Shelf::Channels.label());
+        let browse = format!(" {BROWSE_CHANNELS}");
+        let direct = format!(" {}", Shelf::Direct.label());
         // The switch's Channels: A–Z and Browse channels, each with what was said last and
         // when, where it fits.
         assert_eq!(
             side(&rows, 4),
             [
                 // Unread in bold with a pip at the edge; a pill counts what mentions us.
-                " Channels",
+                channels.as_str(),
                 "▎#api cc-12: F… 58m 1",
                 "▎#web bob: deploy… 57m",
-                " Browse channels",
+                browse.as_str(),
             ]
         );
         // Its Messages: the direct messages newest first, every conversation on its own, our
@@ -3443,7 +3454,7 @@ mod tests {
         assert_eq!(
             side(&rows, 4),
             [
-                " Direct messages",
+                direct.as_str(),
                 // What a person last said, dimmed, and when; their presence in front.
                 "▎● bob hi       now 1",
                 // A session by what it goes by, its tool's mark in front in its colour; the
@@ -3539,9 +3550,9 @@ mod tests {
         // Agents at work that only posted in a channel aren't direct messages (the user's
         // choice, 15 Nov 2026): no row of theirs, and no Machines.
         assert!(
-            !side.iter().any(|row| row.contains("cc-1")
-                || row.contains("cc-9")
-                || row.contains("Machines")),
+            !side
+                .iter()
+                .any(|row| row.contains("cc-1") || row.contains("cc-9") || row.contains(MACHINES)),
             "{side:?}"
         );
         assert!(side.iter().any(|row| row.contains("bob")), "{side:?}");
@@ -3560,7 +3571,7 @@ mod tests {
         row_with(&rows, "#quiet");
         // A click on Channels folds it away: only what's new in it, or shown, stays, and its
         // heading says there's more.
-        let (x, y) = heading_at(&rows, "Channels");
+        let (x, y) = heading_at(&rows, Shelf::Channels.label());
         let _ = app.pointer(click, target_at(&app, screen, x, y));
         let (rows, _) = draw(&app, screen.width, screen.height);
         row_with(&rows, " Channels ▸");
@@ -3623,8 +3634,8 @@ mod tests {
         };
         typing(&mut app, "/browse");
         let (rows, _) = draw(&app, 100, 24);
-        row_with(&rows, "Browse channels");
-        row_with(&rows, "No other channels to join");
+        row_with(&rows, BROWSE_CHANNELS);
+        row_with(&rows, NO_OTHER_CHANNELS);
         for line in [
             ":s 322 me #api/checkout 3 :",
             ":s 322 me #api/login 1 :",
@@ -3633,15 +3644,18 @@ mod tests {
             app.handle(line.parse().unwrap());
         }
         let (rows, _) = draw(&app, 100, 24);
-        row_with(&rows, "#api/checkout  3 members");
-        row_with(&rows, "#api/login     1 member");
+        row_with(&rows, &format!("#api/checkout  {}", members_label(3)));
+        row_with(&rows, &format!("#api/login     {}", members_label(1)));
         app.key(KeyEvent::from(KeyCode::Esc));
         // Leaving asks on the line over the input, the keys in short where they don't fit.
         typing(&mut app, "/part");
         let (rows, _) = draw(&app, 120, 24);
         row_with(
             &rows,
-            " Leave #api? You can join it again from Browse channels.  y leaves · any other key",
+            &format!(
+                " {}  y leaves · any other key",
+                app.chat.leave_prompt("#api")
+            ),
         );
         let (rows, _) = draw(&app, 80, 24);
         let asked = row_with(&rows, " Leave #api?");
@@ -3924,12 +3938,14 @@ mod tests {
                 .map(|row| row.split('│').next().unwrap().trim_end().to_owned())
                 .collect::<Vec<_>>()
         };
+        let channels = format!(" {}", Shelf::Channels.label());
+        let starred = format!(" {}", Shelf::Starred.label());
         // The room under its repository's channel, the channels A–Z; the channel previews
         // its own words, not its room's.
         assert_eq!(
             side(&app),
             [
-                " Channels",
+                channels.as_str(),
                 "▎#api cc-12:… 58m 1",
                 "   └ login",
                 "▎#web bob: depl… 57m"
@@ -3942,9 +3958,9 @@ mod tests {
         assert_eq!(
             side(&app),
             [
-                " Starred",
+                starred.as_str(),
                 " #web* bob: dep… 57m",
-                " Channels",
+                channels.as_str(),
                 "▎#api cc-12:… 58m 1"
             ]
         );
@@ -4170,7 +4186,7 @@ mod tests {
         let _ = app.select(1);
         let (rows, _) = draw(&app, 40, 10);
         // No people beside it, nor the list (the header names how many, as the core says).
-        assert!(!rows.iter().any(|row| row.contains("People")));
+        assert!(!rows.iter().any(|row| row.contains(PEOPLE_SECTION)));
         assert!(!rows.iter().any(|row| row.contains("#web")));
         assert!(row_with(&rows, "alice").contains("alice"));
     }

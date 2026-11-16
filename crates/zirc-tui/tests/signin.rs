@@ -31,6 +31,7 @@ async fn signs_in_as_the_person_and_connects_as_their_account() {
         said.contains("https://zirc.test/login/WDJB-MJHT") && said.contains("WDJB-MJHT"),
         "{said}"
     );
+    // words-guard: the terminal's own line of where it signed in (src/signin.rs), not Settings' label
     assert!(said.contains("Signed in to 127.0.0.1 as mattias"), "{said}");
     let requests = served.join().unwrap();
     assert!(

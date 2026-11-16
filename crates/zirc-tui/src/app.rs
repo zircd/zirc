@@ -3219,10 +3219,7 @@ mod tests {
         let _ = app.select(app.chat.position("#api").unwrap());
         // Asked first, in zirc-chat's words; anything but y keeps it, and isn't typed.
         assert!(sent(typed(&mut app, "/part")).is_empty());
-        assert_eq!(
-            app.leaving().as_deref(),
-            Some("Leave #api? You can join it again from Browse channels.")
-        );
+        assert_eq!(app.leaving(), Some(app.chat.leave_prompt("#api")));
         assert!(press(&mut app, KeyCode::Char('n'), KeyModifiers::NONE).is_empty());
         assert_eq!((app.leaving(), app.input.text()), (None, ""));
         // Named, or with a reason, it still asks.
