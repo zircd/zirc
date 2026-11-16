@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-use zirc_core::fit::{Fit, Shared};
+use zirc_core::fit::{Fit, Shared, Verdict};
 use zirc_core::hunks::{self, Hunk, Hunks};
 use zirc_core::ipc::{Delivery, Response, Why};
 use zirc_core::presence::{self, LocalOverlap};
@@ -119,6 +119,42 @@ impl Daemon {
             delivery.fit = self.intent_fit(delivery, session).map(Box::new);
         }
         told
+    }
+
+    /// Whether `response`, another session's intent, needs nothing of `session` by how it
+    /// meets its work: it changes other files, or other parts of the same ones. Such an
+    /// intent waits for the session's next wake rather than making one: "different files"
+    /// woke sessions for nothing they then did, ten times in a day (15 Nov 2026). One that
+    /// has changed nothing there yet still wakes: it's a plan, said before the files show it.
+    pub(super) fn quiet_intent(&self, response: &Response, session: &str) -> bool {
+        let Response::Delivery(delivery) = response else {
+            return false;
+        };
+        self.intent_fit(delivery, session).is_some_and(|fit| {
+            matches!(fit.verdict(), Verdict::DifferentFiles | Verdict::Elsewhere)
+        })
+    }
+
+    /// Keeps for later, rather than waking them, the watching sessions whose reason in
+    /// `reasons` is an intent that needs nothing of them ([`Daemon::quiet_intent`]).
+    pub(super) fn hold_quiet_intents(&mut self, response: &Response, reasons: &mut [Option<Why>]) {
+        let quiet: Vec<String> = self
+            .watchers
+            .iter()
+            .zip(reasons.iter_mut())
+            .filter_map(|(watcher, why)| {
+                let session = watcher.session.clone()?;
+                if *why != Some(Why::Intent) || !self.quiet_intent(response, &session) {
+                    return None;
+                }
+                *why = None;
+                Some(session)
+            })
+            .collect();
+        for session in quiet {
+            let dressed = self.dressed(response, Some(Why::Intent), Some(&session));
+            self.keep_for_later(&session, &dressed, Why::Intent);
+        }
     }
 
     /// How `delivery`, another session's intent, meets the work of `session` here.

@@ -435,15 +435,17 @@ async fn an_automatic_intent_said_again_for_the_same_directory_wakes_a_session_o
     fleet.beta.edits("web/login.ts", "export {}\n");
     fleet.beta.sees_changes_by("beta").await;
     let mut watching = fleet.beta.watch().await;
-    // cc-a starts changing web/: its automatic intent for it wakes cc-b, changing a file there.
-    fleet.alpha.edits("web/cart.ts", "export {}\n");
+    // cc-a starts changing cc-b's file in web/: its automatic intent for it wakes cc-b.
+    fleet.alpha.edits("web/login.ts", "export {}\n");
     let first = next_intent(&mut watching).await;
     assert_eq!(first.why, Some(Why::Intent));
     // Committed, its changes are gone and the intent withdrawn; then it changes web/ again,
     // and zircd says the same intent again: nothing new to cc-b.
-    std::fs::remove_file(fleet.alpha.clone.path().join("web/cart.ts")).unwrap();
+    std::fs::remove_file(fleet.alpha.clone.path().join("web/login.ts")).unwrap();
     fleet.beta.sees_no_intent_of("cc-a").await;
-    fleet.alpha.edits("web/cart.ts", "export const total = 0\n");
+    fleet
+        .alpha
+        .edits("web/login.ts", "export const total = 0\n");
     fleet
         .beta
         .sees_intent_of("cc-a", |paths| paths == ["web"])
@@ -496,12 +498,12 @@ async fn on_one_machine_an_automatic_intent_said_again_wakes_another_session_onc
                 == present
         }
     };
-    edit(&theirs, "web/cart.ts", "export {}\n");
+    edit(&theirs, "web/login.ts", "export {}\n");
     let first = next_intent(&mut watching).await;
     assert_eq!(first.why, Some(Why::Intent));
-    std::fs::remove_file(theirs.path().join("web/cart.ts")).unwrap();
+    std::fs::remove_file(theirs.path().join("web/login.ts")).unwrap();
     until_who(&machine, lists("cc-a", false), "cc-a's intent withdrawn").await;
-    edit(&theirs, "web/cart.ts", "export const total = 0\n");
+    edit(&theirs, "web/login.ts", "export const total = 0\n");
     until_who(&machine, lists("cc-a", true), "cc-a's intent again").await;
     post(&machine, theirs.path(), "cc-a", "cc-b: marker").await;
     let heard = until_marker(&mut watching, |heard| says(heard, "marker")).await;
@@ -509,7 +511,7 @@ async fn on_one_machine_an_automatic_intent_said_again_wakes_another_session_onc
 }
 
 #[tokio::test]
-async fn an_intent_says_how_it_meets_the_work_of_the_session_it_wakes() {
+async fn an_intent_in_other_files_waits_for_the_next_wake_and_says_how_it_meets_the_work() {
     let ergo = require_ergo!();
     let machine = Machine::start(&ergo, "alpha").await;
     let (theirs, mine) = (clone(), clone());
@@ -547,12 +549,36 @@ async fn an_intent_says_how_it_meets_the_work_of_the_session_it_wakes() {
     .await;
     let mut watching = machine.watch(Some("cc-b")).await;
 
-    // cc-a changes another file in web/: its automatic intent for web/ wakes cc-b, saying
-    // whose files are whose, and that they're different ones.
+    // cc-a changes another file in web/: its automatic intent for web/ needs nothing of
+    // cc-b, so it waits for cc-b's next wake, saying whose files are whose, and that
+    // they're different ones.
     edit(&theirs, "web/cart.ts");
-
-    let delivery = next_intent(&mut watching).await;
-    assert_eq!(delivery.why, Some(Why::Intent));
+    until_who(
+        &machine,
+        |channels| {
+            channels
+                .iter()
+                .any(|c| c.intents.iter().any(|i| i.session == "cc-a"))
+        },
+        "cc-a's intent",
+    )
+    .await;
+    post(&machine, theirs.path(), "cc-a", "cc-b: marker").await;
+    let heard = until_marker(&mut watching, |heard| says(heard, "marker")).await;
+    // It came with the marker's wake, under the line saying what waited for it.
+    let meanwhile = heard
+        .iter()
+        .position(|heard| says(heard, "needing nothing yet"))
+        .expect("what waited, said with the next wake");
+    let delivery = heard[meanwhile..]
+        .iter()
+        .find_map(|heard| match heard {
+            Heard::Message(delivery) if matches!(delivery.message.event, Event::Intent { .. }) => {
+                Some(delivery.clone())
+            }
+            _ => None,
+        })
+        .expect("cc-a's intent, with the next wake");
     let fit = delivery.fit.expect("the intent's fit");
     assert_eq!(fit.theirs, ["web/cart.ts"]);
     assert_eq!(fit.mine, ["web/login.ts"]);

@@ -56,6 +56,7 @@ impl Daemon {
         // Told another's branch changes its files, a session waits for it to land.
         self.follow_branches(response, &reasons);
         self.hold_reports(response, &mut reasons);
+        self.hold_quiet_intents(response, &mut reasons);
         self.gate_wakes(response, &mut reasons);
         // Before what waited is taken: a state fine again takes back its note that it broke.
         let waking: BTreeSet<String> = self
@@ -153,6 +154,11 @@ impl Daemon {
                 || (why == Why::Awaited && later::apple_pass(response))
             {
                 self.keep_for_later(&session, response, why);
+                continue;
+            }
+            if why == Why::Intent && self.quiet_intent(response, &session) {
+                let dressed = self.dressed(response, Some(why), Some(&session));
+                self.keep_for_later(&session, &dressed, why);
                 continue;
             }
             let earlier = self.take_later(&session);
