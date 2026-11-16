@@ -337,6 +337,7 @@ pub async fn run(options: Options) -> anyhow::Result<()> {
 
     let outcome = tokio::select! {
         status = ergo.wait() => Err(anyhow::anyhow!("Ergo stopped: {}", status?)),
+        unanswered = api_never_answers(&options.inside.api_listen, &secrets.api_token) => Err(unanswered),
         ended = sidecar => Err(anyhow::anyhow!("the sidecar stopped: {:?}", ended?)),
         ended = web_side => Err(anyhow::anyhow!("the HTTPS side stopped: {:?}", ended?)),
         ended = async {
@@ -509,6 +510,32 @@ fn web_side(
     );
     let router = crate::proxy::router(&options.inside, std::sync::Arc::new(media), store);
     Ok((router, beside_side))
+}
+
+/// How long Ergo has to answer on its API once it runs.
+const API_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Ergo runs on without its API when it can't listen on its port, as when another process has
+/// it: the sidecar and media then fail one call at a time. This waits for the API to answer,
+/// then for ever; only if it never does, it ends, saying why.
+async fn api_never_answers(at: &SocketAddr, token: &str) -> anyhow::Error {
+    let api = zirc_sidecar::ergo::Api::new(format!("http://{at}"), token);
+    let answered = tokio::time::timeout(API_DEADLINE, async {
+        while api
+            .call::<serde_json::Value>("status", serde_json::json!({}))
+            .await
+            .is_err()
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    })
+    .await;
+    if answered.is_ok() {
+        std::future::pending::<()>().await;
+    }
+    anyhow::anyhow!(
+        "Ergo's API never answered at {at}: Ergo runs on without it when it can't listen there"
+    )
 }
 
 /// Runs a one-off Ergo command, saying what it wrote only when it fails.

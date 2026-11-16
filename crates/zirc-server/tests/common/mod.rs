@@ -107,11 +107,14 @@ pub async fn start_with(change: impl Fn(&mut Options)) -> Option<Running> {
     for attempt in 1..=ATTEMPTS {
         match started(&change, &ergo, &ergo_config).await {
             Ok(running) => return Some(running),
-            // A port taken: Ergo says so in its log, above, and stops; the server's own parts
-            // say it. A config Ergo can't load would stop it every time, which the last says.
+            // A port taken: Ergo says so in its log, above, and stops, or for its API's port
+            // runs on without it, which the server says; the server's own parts say it. A
+            // config Ergo can't load would stop it every time, which the last says.
             Err(ended)
                 if attempt < ATTEMPTS
-                    && (ended.contains("Ergo stopped") || ended.contains("AddrInUse")) =>
+                    && (ended.contains("Ergo stopped")
+                        || ended.contains("Ergo's API never answered")
+                        || ended.contains("AddrInUse")) =>
             {
                 eprintln!("the server stopped as it started ({ended}): again, on other ports");
             }

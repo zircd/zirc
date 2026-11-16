@@ -76,3 +76,25 @@ async fn the_content_api_is_on_the_https_side() {
         .unwrap();
     assert_eq!(health.status(), 200);
 }
+
+/// Ergo runs on without its API when another process has the API's port: the server stops,
+/// saying so, rather than run without it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_taken_api_port_stops_the_server_saying_why() {
+    let Some((ergo, config)) = common::ergo() else {
+        return;
+    };
+    let data = tempfile::tempdir().unwrap();
+    let options = common::options(data.path(), ergo, config);
+    let _taken = std::net::TcpListener::bind(options.inside.api_listen).unwrap();
+
+    let ended = tokio::time::timeout(Duration::from_secs(60), zirc_server::run::run(options))
+        .await
+        .expect("the server stopped")
+        .unwrap_err();
+
+    assert!(
+        ended.to_string().contains("Ergo's API never answered"),
+        "{ended}"
+    );
+}
