@@ -145,13 +145,23 @@ pub struct Query {
     pub limit: usize,
     /// Older than this point, from the page before's `next`.
     pub before: Option<Cursor>,
-    /// zircd's automatic events and notices too, not only what people and agents say.
+    /// zircd's automatic events and notices too, not only what people and agents say. A
+    /// search for text finds them anyway ([`Query::wants_events`]).
     pub events: bool,
     /// The best matches first (FTS5's bm25, then the newest), not the newest first. Only for
     /// text the index can find; otherwise newest first.
     pub best: bool,
     /// How many best matches to skip, from the page before's `next` (`b<offset>`).
     pub skip: usize,
+}
+
+impl Query {
+    /// Whether zircd's events and notices count: when asked for, and in any search for text,
+    /// which finds them by their data too ([`zirc_proto::Message::search_text`]).
+    #[must_use]
+    pub fn wants_events(&self) -> bool {
+        self.events || self.text.is_some()
+    }
 }
 
 /// A point in the history: a message's time and id, which together order everything.
@@ -436,7 +446,7 @@ fn filters(query: &Query, phrase: String) -> Vec<rusqlite::types::Value> {
     vec![
         phrase.into(),
         query.sender.as_ref().map(|s| s.to_lowercase()).into(),
-        i64::from(query.events).into(),
+        i64::from(query.wants_events()).into(),
     ]
 }
 
@@ -710,7 +720,7 @@ pub(crate) fn indexed(data: &[u8]) -> Option<Indexed> {
         said: by_someone,
         session: zirc.as_ref().map(|m| m.session.clone()),
         text: match zirc {
-            Some(message) => message.event.human_text(),
+            Some(message) => message.search_text(),
             None => said.text,
         },
     })
@@ -773,17 +783,20 @@ fn read(row: &Row, query: &Query) -> Option<Message> {
         && zirc
             .as_ref()
             .is_none_or(|m| matches!(m.event, zirc_proto::Event::Text { .. }));
-    if !query.events && !said_by_someone {
+    if !query.wants_events() && !said_by_someone {
         return None;
     }
     let text = match &zirc {
         Some(message) => message.event.human_text(),
         None => said.text.clone(),
     };
-    if let Some(wanted) = &query.text
-        && !text.to_lowercase().contains(&wanted.to_lowercase())
-    {
-        return None;
+    if let Some(wanted) = &query.text {
+        let found = zirc
+            .as_ref()
+            .map_or_else(|| text.clone(), zirc_proto::Message::search_text);
+        if !found.to_lowercase().contains(&wanted.to_lowercase()) {
+            return None;
+        }
     }
     Some(Message {
         msgid: row.msgid.clone(),
@@ -1104,6 +1117,31 @@ mod tests {
             ..query()
         };
         assert_eq!(ids(&path, &alice, &with_bob), ["d1"]);
+    }
+
+    #[test]
+    fn a_search_finds_a_message_by_its_data_with_or_without_the_index() {
+        let (_dir, path) = sample();
+        let alice = viewer("alice", &["#team"], Visibility::Participant);
+        let find = |text: &str| Query {
+            text: Some(text.into()),
+            ..query()
+        };
+        let task = find("t-abc123");
+        // Only in the post's data, and in the working set's path: found, events included.
+        let path_of = find("a.rs");
+        let scanned = (ids(&path, &alice, &task), ids(&path, &alice, &path_of));
+        assert_eq!(scanned, (vec!["m4".to_owned()], vec!["m5".to_owned()]));
+        let mut index = crate::index::open(&crate::index::path_for(&path)).unwrap();
+        crate::index::catch_up(&mut index, &path).unwrap();
+        assert_eq!(
+            (ids(&path, &alice, &task), ids(&path, &alice, &path_of)),
+            scanned
+        );
+        // A field's name finds nothing.
+        assert!(ids(&path, &alice, &find("paths")).is_empty());
+        // Without text, zircd's events stay out unless asked for.
+        assert!(!ids(&path, &alice, &query()).contains(&"m5".to_owned()));
     }
 
     /// The sample's history with its index built.

@@ -654,6 +654,46 @@ impl Message {
         }
     }
 
+    /// What a search finds it by, for every search alike (the server's index, a
+    /// conversation's loaded messages): its text as people read it ([`Event::human_text`]),
+    /// then every value its data carries, one a line, such as a working set's paths, a
+    /// push's branch and commits or a CI line's build, and its session, name and task. Never
+    /// the fields' names nor its kind's, so searching `paths` or `branch` doesn't find every
+    /// message that has one. Its sealed parts travel apart from it ([`sealed::TAG`]), so
+    /// none is here.
+    #[must_use]
+    pub fn search_text(&self) -> String {
+        fn values(value: &serde_json::Value, out: &mut Vec<String>) {
+            match value {
+                serde_json::Value::String(text) if !text.is_empty() => out.push(text.clone()),
+                serde_json::Value::Number(number) => out.push(number.to_string()),
+                serde_json::Value::Array(items) => items.iter().for_each(|v| values(v, out)),
+                serde_json::Value::Object(fields) => fields.values().for_each(|v| values(v, out)),
+                _ => {}
+            }
+        }
+        let mut lines = vec![self.event.human_text()];
+        if let Ok(serde_json::Value::Object(mut fields)) = serde_json::to_value(&self.event) {
+            fields.remove("type");
+            values(&serde_json::Value::Object(fields), &mut lines);
+        }
+        lines.extend(
+            [
+                &Some(self.session.clone()),
+                &self.name,
+                &self.task,
+                &self.app,
+            ]
+            .into_iter()
+            .flatten()
+            .filter(|value| !value.is_empty())
+            .cloned(),
+        );
+        let mut seen = std::collections::HashSet::new();
+        lines.retain(|line| seen.insert(line.clone()));
+        lines.join("\n")
+    }
+
     /// What it asks of whoever reads it, when its sender or its kind says: the level it
     /// carries; else, for one of CI's lines, the level its state says ([`Level::of_state`]);
     /// else the level of its kind of event ([`Event::level`]). `None` only for a line of
@@ -1450,6 +1490,28 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_search_finds_a_message_by_its_data_but_not_its_field_names() {
+        let event: Event = serde_json::from_value(serde_json::json!({
+            "type": "push",
+            "branch": "login-page",
+            "head": "0123456789abcdef",
+            "forced": false,
+            "subjects": ["Sign in with a passkey"],
+        }))
+        .unwrap();
+        let mut message = Message::new("cc-1", event);
+        message.task = Some("t-abc".into());
+        let text = message.search_text();
+        assert!(text.starts_with(&message.event.human_text()));
+        for wanted in ["0123456789abcdef", "login-page", "t-abc", "cc-1", "passkey"] {
+            assert!(text.contains(wanted), "{wanted} in {text}");
+        }
+        for unwanted in ["branch", "subjects", "push\n", "type"] {
+            assert!(!text.contains(unwanted), "{unwanted} in {text}");
+        }
+    }
 
     #[test]
     fn a_task_starts_with_taking_and_its_id_carries_no_text() {

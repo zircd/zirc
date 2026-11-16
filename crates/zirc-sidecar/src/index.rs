@@ -13,7 +13,8 @@
 //! emptied, so their words leave the disk as [`crate::trim`] makes them leave Ergo's.
 //!
 //! It holds no text: the FTS5 table is contentless (`content=''`), so what was said stays in
-//! Ergo's history alone, and the index only says which rows have which three-letter runs.
+//! Ergo's history alone, and the index only says which rows have which three-letter runs: of
+//! a zirc message's [`zirc_proto::Message::search_text`], its data's values included.
 //! Who may read a row is checked when searching, never stored here.
 
 use std::path::{Path, PathBuf};
@@ -23,7 +24,7 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use tracing::{info, warn};
 
 /// The index's format. A file with another is built again from Ergo's history.
-pub const VERSION: &str = "2";
+pub const VERSION: &str = "3";
 
 /// How many history rows one step of [`catch_up`] reads and commits.
 const BATCH: usize = 1_000;

@@ -5062,6 +5062,109 @@ fn searches_what_is_loaded_then_asks_the_server_for_older() {
 }
 
 #[test]
+fn a_search_finds_a_loaded_zirc_message_by_its_data() {
+    let mut chat = Scene::in_api();
+    let mut post = zirc_proto::Message::new(
+        "cc-1",
+        zirc_proto::Event::Text {
+            body: "taking: the tests".into(),
+        },
+    );
+    post.task = Some("t-abc123".into());
+    let body = zirc_proto::encode(&post).unwrap();
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #api",
+            &format!(
+                "@time=2026-10-30T11:00:00.000Z;msgid=m1 :ada-mbp!u@machine/ada PRIVMSG #api :{body}"
+            ),
+        ],
+    );
+    let ids = |query: &str| -> Vec<Option<String>> {
+        chat.search("#api", query)
+            .hits
+            .into_iter()
+            .map(|hit| hit.id)
+            .collect()
+    };
+    assert_eq!(ids("t-abc123"), [Some("m1".to_owned())]);
+    assert_eq!(ids("the tests"), [Some("m1".to_owned())]);
+    assert!(ids("task").is_empty(), "a field's name finds nothing");
+}
+
+#[test]
+fn a_message_s_details_list_what_s_attached_and_its_data_as_json() {
+    let mut chat = Scene::in_api();
+    let mut post = zirc_proto::Message::new(
+        "cc-1",
+        zirc_proto::Event::Text {
+            body: "taking: the tests".into(),
+        },
+    );
+    post.task = Some("t-abc123".into());
+    post.name = Some("login".into());
+    let body = zirc_proto::encode(&post).unwrap();
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #api",
+            &format!(
+                "@time=2026-10-30T11:00:00.000Z;msgid=m1 :ada-mbp!u@machine/ada PRIVMSG #api :{body}"
+            ),
+        ],
+    );
+    let details = chat.details("#api", "m1").unwrap();
+    assert_eq!(details.title, crate::chat::MESSAGE_DETAILS);
+    let rows: Vec<(&str, &str)> = details
+        .rows
+        .iter()
+        .map(|row| (row.label.as_str(), row.value.as_str()))
+        .filter(|(label, _)| *label != "Level")
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("Id", "m1"),
+            ("Time", "2026-10-30T11:00:00.000Z"),
+            ("Kind", "text"),
+            ("From", "ada-mbp"),
+            ("Machine of", "ada"),
+            ("Session", "cc-1"),
+            ("Session name", "login"),
+            ("Task", "t-abc123"),
+            ("Format", "1"),
+        ]
+    );
+    let data: serde_json::Value = serde_json::from_str(details.data.as_deref().unwrap()).unwrap();
+    assert_eq!(
+        (&data["task"], &data["event"]["body"]),
+        (&"t-abc123".into(), &"taking: the tests".into())
+    );
+}
+
+#[test]
+fn a_plain_message_s_details_have_no_data() {
+    let mut chat = Scene::in_api();
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #api",
+            "@time=2026-10-30T11:01:00.000Z;msgid=m2 :bob!u@h PRIVMSG #api :hello",
+        ],
+    );
+    let plain = chat.details("#api", "m2").unwrap();
+    assert_eq!(plain.data, None);
+    assert!(
+        plain
+            .rows
+            .iter()
+            .any(|row| row.label == "Kind" && row.value == "message")
+    );
+    assert_eq!(chat.details("#api", "gone"), None);
+}
+
+#[test]
 fn a_search_reads_from_and_quotes_as_every_app_and_the_cli_do() {
     let mut chat = Scene::in_api();
     feed(

@@ -13,8 +13,8 @@ use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
 use zirc_core::chat::{
-    Chat, Conversation, Entry, Face, GuestRequest, Here, Kind, ListKind, ListOptions, ListRow,
-    Options, Quote, Ran, Shelf, complete_mention, copy_text, entry_text, first_link, fold,
+    Chat, Conversation, Details, Entry, Face, GuestRequest, Here, Kind, ListKind, ListOptions,
+    ListRow, Options, Quote, Ran, Shelf, complete_mention, copy_text, entry_text, first_link, fold,
     is_channel,
 };
 use zirc_irc::Line;
@@ -251,6 +251,9 @@ pub struct App {
     picked: Option<(String, String)>,
     /// The reaction picker, when it's open.
     picker: Option<Picker>,
+    /// The picked message's details, shown over the scrollback (`i`), and how many of its
+    /// lines are scrolled past.
+    details: Option<(Details, u16)>,
     /// The emoji reacted with lately, which the picker offers first.
     pub recent: Recent,
     /// The message about to be trimmed, waiting for the person to confirm it.
@@ -398,6 +401,7 @@ impl App {
             agent: None,
             picked: None,
             picker: None,
+            details: None,
             recent: Recent::default(),
             trimming: None,
             leaving: None,
@@ -1101,6 +1105,15 @@ impl App {
         self.view_of(&laid, height).rows
     }
 
+    /// The picked message's details while they're shown (`i`), and how many of their lines
+    /// are scrolled past.
+    #[must_use]
+    pub fn details(&self) -> Option<(&Details, u16)> {
+        self.details
+            .as_ref()
+            .map(|(details, scrolled)| (details, *scrolled))
+    }
+
     /// The id of the message picked to react to in the conversation shown, if one is.
     #[must_use]
     pub fn picked(&self) -> Option<&str> {
@@ -1438,6 +1451,34 @@ impl App {
         }
     }
 
+    /// Takes in a key while a profile is shown: Enter talks to them, Esc closes it, and
+    /// anything else closes it and goes on as usual (`None`).
+    fn profile_key(&mut self, key: KeyEvent) -> Option<Action> {
+        let nick = self.profile.take()?;
+        match key.code {
+            KeyCode::Esc => Some(Action::Send(Vec::new())),
+            KeyCode::Enter if !nick.eq_ignore_ascii_case(self.nick()) => {
+                Some(Action::Send(self.chat.open(&nick)))
+            }
+            _ => None,
+        }
+    }
+
+    /// Takes in a key while a message's details are shown: ↑/↓ and PgUp/PgDn scroll them,
+    /// anything else closes them. `None` while none are shown.
+    fn details_key(&mut self, key: KeyEvent, ctrl: bool) -> Option<Action> {
+        let (_, scrolled) = self.details.as_mut()?;
+        match key.code {
+            KeyCode::Up => *scrolled = scrolled.saturating_sub(1),
+            KeyCode::Down => *scrolled = scrolled.saturating_add(1),
+            KeyCode::PageUp => *scrolled = scrolled.saturating_sub(10),
+            KeyCode::PageDown => *scrolled = scrolled.saturating_add(10),
+            KeyCode::Char('c') if ctrl => return Some(Action::Quit(vec![quit(None)])),
+            _ => self.details = None,
+        }
+        Some(Action::Send(Vec::new()))
+    }
+
     /// Lets go of the picked message, hiding any sealed part revealed in it.
     fn let_go(&mut self) {
         self.picked.take();
@@ -1446,8 +1487,8 @@ impl App {
 
     /// Takes in a key while a message is picked and nothing's typed: ↑ and ↓ pick another,
     /// `r` starts a reply to it, `e` corrects it when it's ours, `y` copies it and `l` its
-    /// link, `s` shows or hides its sealed parts. Returns what to send, if it was one of
-    /// those.
+    /// link, `s` shows or hides its sealed parts, `i` shows its details. Returns what to send,
+    /// if it was one of those.
     fn picked_key(&mut self, key: KeyEvent) -> Option<Vec<Line>> {
         match key.code {
             KeyCode::Up => return Some(self.pick(-1)),
@@ -1465,6 +1506,13 @@ impl App {
             KeyCode::Char('y') => self.copy(false),
             KeyCode::Char('l') => self.copy(true),
             KeyCode::Char('s') => self.reveal(),
+            KeyCode::Char('i') => {
+                let name = self.current().name.clone();
+                self.details = self
+                    .picked()
+                    .and_then(|id| self.chat.details(&name, id))
+                    .map(|details| (details, 0));
+            }
             _ => return None,
         }
         Some(Vec::new())
@@ -1594,7 +1642,12 @@ impl App {
             }
             return Action::Send(self.trimming_key(key));
         }
-        if let Some(action) = self.leaving_key(key).or_else(|| self.pressing_key(key)) {
+        if let Some(action) = self
+            .details_key(key, ctrl)
+            .or_else(|| self.leaving_key(key))
+            .or_else(|| self.pressing_key(key))
+            .or_else(|| self.profile_key(key))
+        {
             return action;
         }
         // The sessions panel: Esc closes it, and anything else closes it and goes on. Browse
@@ -1602,17 +1655,6 @@ impl App {
         let sessions = self.sessions.take().is_some() | self.agent.take().is_some();
         if key.code == KeyCode::Esc && (sessions || self.browsing.take().is_some()) {
             return Action::Send(Vec::new());
-        }
-        // A profile shown: Enter talks to them, Esc closes it, and anything else closes it
-        // and goes on as usual.
-        if let Some(nick) = self.profile.take() {
-            match key.code {
-                KeyCode::Esc => return Action::Send(Vec::new()),
-                KeyCode::Enter if !nick.eq_ignore_ascii_case(self.nick()) => {
-                    return Action::Send(self.chat.open(&nick));
-                }
-                _ => {}
-            }
         }
         if self.picked().is_some()
             && self.input.text().is_empty()

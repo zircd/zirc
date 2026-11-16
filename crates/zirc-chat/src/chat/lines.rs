@@ -149,6 +149,8 @@ pub struct LineActions {
     pub edit: bool,
     /// Deleting it for everyone (an IRCv3 `REDACT`): only our own.
     pub delete: bool,
+    /// Showing what's attached to it ([`Chat::details`]): any line with the server's id.
+    pub details: bool,
 }
 
 impl LineActions {
@@ -170,6 +172,7 @@ impl LineActions {
             copy_link: named,
             edit: named && editable,
             delete: named && said && mine,
+            details: id.is_some(),
         }
     }
 }
@@ -1400,6 +1403,7 @@ mod tests {
                 copy_link: true,
                 edit: false,
                 delete: false,
+                details: true,
             }
         );
         assert_eq!(

@@ -412,6 +412,9 @@ pub struct Words {
     pub copy_message_link: String,
     /// A message's menu, copying what it says: `Copy text`.
     pub copy_text: String,
+    /// A message's menu, showing what's attached to it, and the title of what that opens:
+    /// `Message details`.
+    pub message_details: String,
     /// A message's menu, deleting it: `Delete`.
     pub delete: String,
     /// Settings' section for deleting the account, and that page's title: `Delete
@@ -567,6 +570,7 @@ pub fn words() -> Words {
         copy_link: COPY_LINK.to_owned(),
         copy_message_link: COPY_MESSAGE_LINK.to_owned(),
         copy_text: COPY_TEXT.to_owned(),
+        message_details: super::MESSAGE_DETAILS.to_owned(),
         delete: DELETE.to_owned(),
         delete_account: settings_list::DELETE_ACCOUNT.to_owned(),
         delete_my_account: DELETE_MY_ACCOUNT.to_owned(),

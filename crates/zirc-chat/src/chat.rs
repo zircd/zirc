@@ -34,6 +34,7 @@ mod conversation;
 mod copied;
 mod correcting;
 mod describe;
+mod details;
 mod face;
 pub mod file;
 mod finder;
@@ -122,6 +123,7 @@ pub use correcting::{EDIT_LABEL, EDITED, EDITING, STOP_EDITING, TOO_LATE_TO_EDIT
 pub use describe::{
     Described, EventKind, RUN_GAP, copy_text, describe, entry_text, first_link, notice_text, sender,
 };
+pub use details::{DATA, Detail, Details, MESSAGE_DETAILS, details};
 pub use face::{Face, LineSpeaker};
 pub use finder::{
     Elsewhere, GROUP_HITS, GROUPS_SHOWN, MORE_RESULTS, PAGE, RECENT_SEARCHES, RecentSearches,

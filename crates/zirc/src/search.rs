@@ -44,7 +44,8 @@ pub struct SearchArgs {
     /// The most messages to show, the newest.
     #[arg(long, default_value_t = 100)]
     limit: usize,
-    /// zircd's events too, such as commits, pushes and working sets.
+    /// zircd's events too, such as commits, pushes and working sets, when reading without
+    /// text: a search for text finds them anyway, by their data as well as their words.
     #[arg(long)]
     events: bool,
     /// One JSON object a line, oldest first, for scripts and agents.

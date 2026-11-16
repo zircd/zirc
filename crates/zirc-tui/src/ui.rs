@@ -212,6 +212,69 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
     if let Some((nick, session)) = app.agent() {
         agent_card(frame, app, nick, session, areas.scrollback);
     }
+    if let Some((details, scrolled)) = app.details() {
+        details_card(frame, app, details, scrolled, areas.scrollback);
+    }
+}
+
+/// A message's details over the scrollback, `area`, as zirc-chat says them
+/// ([`zirc_core::chat::Details`]): its title, a row a detail, then its data's heading over the
+/// JSON, scrolled past `scrolled` lines.
+fn details_card(
+    frame: &mut Frame<'_>,
+    app: &App,
+    details: &zirc_core::chat::Details,
+    scrolled: u16,
+    area: Rect,
+) {
+    let theme = app.theme;
+    let width = area.width.clamp(30, 96).min(area.width);
+    let text = usize::from(width).saturating_sub(4);
+    let bold = fg(theme.text).add_modifier(Modifier::BOLD);
+    let muted = fg(theme.muted);
+    let label_width = details
+        .rows
+        .iter()
+        .map(|row| row.label.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut lines = vec![Line::styled(fit(&details.title, text), bold)];
+    for row in &details.rows {
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:label_width$}  ", row.label), muted),
+            Span::styled(
+                fit(&row.value, text.saturating_sub(label_width + 2)),
+                fg(theme.text),
+            ),
+        ]));
+    }
+    if let Some(data) = &details.data {
+        lines.push(Line::default());
+        lines.push(Line::styled(fit(&details.data_heading, text), bold));
+        lines.extend(
+            data.lines()
+                .map(|line| Line::styled(fit(line, text), fg(theme.text))),
+        );
+    }
+    let height = u16::try_from(lines.len() + 2)
+        .unwrap_or(u16::MAX)
+        .min(area.height);
+    let most = u16::try_from(lines.len())
+        .unwrap_or(u16::MAX)
+        .saturating_sub(height.saturating_sub(2));
+    let card = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + u16::from(area.height > height),
+        width,
+        height,
+    };
+    frame.render_widget(Clear, card);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .scroll((scrolled.min(most), 0))
+            .block(panel_block(theme).padding(ratatui::widgets::Padding::horizontal(1))),
+        card,
+    );
 }
 
 /// How many files an agent card says it's changing with others before `and 2 more`, as
@@ -1796,7 +1859,7 @@ fn status_left(app: &App) -> Line<'static> {
         spans.push(Span::styled(format!("  · {copied}"), fg(theme.ok)));
     } else if app.picked().is_some() && app.input.text().is_empty() {
         spans.push(Span::styled(
-            "  · ↑/↓ pick, y copies, l its link, e edits yours, s unseals, Esc lets go",
+            "  · ↑/↓ pick, y copies, l its link, e edits yours, s unseals, i details, Esc lets go",
             hint,
         ));
     }
@@ -1997,6 +2060,51 @@ mod tests {
             })
             .collect();
         (rows, terminal)
+    }
+
+    #[test]
+    fn i_on_a_picked_message_shows_its_details_and_data_until_esc() {
+        let mut app = app();
+        let _ = app.select(1);
+        let mut post = zirc_proto::Message::new(
+            "cc-7",
+            zirc_proto::Event::Text {
+                body: "taking: the tests".into(),
+            },
+        );
+        post.task = Some("t-abc123".into());
+        let body = zirc_proto::encode(&post).unwrap();
+        app.handle(
+            format!(
+                "@time=2026-10-30T11:04:00.000Z;msgid=m9 :mattias-mbp!u@machine/mattias PRIVMSG #api :{body}"
+            )
+            .parse()
+            .unwrap(),
+        );
+        let screen = Rect::new(0, 0, 120, 40);
+        app.view = scrollback_size(&app, screen);
+        app.key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
+        assert_eq!(app.picked(), Some("m9"));
+        let (rows, _) = draw(&app, screen.width, screen.height);
+        row_with(&rows, "i details");
+        app.key(KeyEvent::from(KeyCode::Char('i')));
+        let (rows, _) = draw(&app, screen.width, screen.height);
+        row_with(&rows, zirc_core::chat::MESSAGE_DETAILS);
+        assert!(row_with(&rows, "Session ").contains("cc-7"));
+        assert!(row_with(&rows, "Task ").contains("t-abc123"));
+        row_with(&rows, zirc_core::chat::DATA);
+        row_with(&rows, "\"task\": \"t-abc123\"");
+        // ↓ scrolls it rather than picking another message.
+        app.key(KeyEvent::from(KeyCode::Down));
+        assert_eq!(app.picked(), Some("m9"));
+        app.key(KeyEvent::from(KeyCode::Esc));
+        let (rows, _) = draw(&app, screen.width, screen.height);
+        assert!(
+            !rows
+                .iter()
+                .any(|row| row.contains(zirc_core::chat::MESSAGE_DETAILS))
+        );
+        assert_eq!(app.picked(), Some("m9"), "Esc closes the details first");
     }
 
     fn row_with<'a>(rows: &'a [String], text: &str) -> &'a str {

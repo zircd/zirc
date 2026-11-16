@@ -460,9 +460,12 @@ impl Chat {
                     ),
                     _ => continue,
                 };
-                if from.as_ref().is_some_and(|from| fold(&entry.from) != *from)
-                    || (!text_wanted.is_empty() && highlights(&text, text_wanted).is_empty())
-                {
+                // What it says, or else what its data carries ([`zirc_proto::Message::search_text`]).
+                let found = |text: &str| !highlights(text, text_wanted).is_empty();
+                let matches = text_wanted.is_empty()
+                    || found(&text)
+                    || matches!(&entry.kind, EntryKind::Zirc(message) if found(&message.search_text()));
+                if from.as_ref().is_some_and(|from| fold(&entry.from) != *from) || !matches {
                     continue;
                 }
                 if let Some(id) = &entry.id {
