@@ -35,7 +35,7 @@ pub const DAYS: u32 = 7;
 pub const DRAFT_SECS: u64 = 3_600;
 
 /// How many days a muted suggestion stays quiet.
-pub const MUTED_DAYS: u32 = 30;
+pub const MUTED_DAYS: u32 = 7;
 
 /// The reaction that keeps a proposed lesson.
 pub const KEEP: &str = "👍";

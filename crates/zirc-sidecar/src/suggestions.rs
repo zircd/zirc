@@ -793,7 +793,7 @@ mod tests {
     }
 
     #[test]
-    fn unanswered_for_an_hour_the_plain_facts_are_proposed_and_muted_it_rests_thirty_days() {
+    fn unanswered_for_an_hour_the_plain_facts_are_proposed_and_muted_it_rests_seven_days() {
         let person = |account: &str| account == "ada";
         let mut kept = Kept::default();
         let asked = kept.notice(vec![found()], 0);
