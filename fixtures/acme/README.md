@@ -1,7 +1,7 @@
 # Acme
 
 Acme is the made-up team everything zirc shows of itself uses: the phones' store
-screenshots, the web client's shots and the live demo on zirc.dev. (zirc.dev's home page's
+screenshots and the web client's shots. (zirc.dev's home page's
 picture and the docs' terminals are another team of the same shape, `../home`.) It's defined here once, and each of those reads it. Nothing in it is a real
 person, company or piece of data.
 

@@ -1,9 +1,9 @@
 //! Guests' rooms, as every app lists them for an organisation's owners and admins: each guest
 //! of a public channel has a room of their own beside it (`#support/guest-21042`,
 //! [`zirc_proto::guest_room`]), which the server keeps secret, so it's in no `LIST`. zirc.dev
-//! knows every guest the organisation keeps (14 days after they were last seen; an hour on
-//! the demo), connected or not, and tells owners and admins at [`KEPT_GUESTS_PATH`]; the app
-//! hands that to [`Chat::set_kept_guests`].
+//! knows every guest the organisation keeps (14 days after they were last seen), connected or
+//! not, and tells owners and admins at [`KEPT_GUESTS_PATH`]; the app hands that to
+//! [`Chat::set_kept_guests`].
 //!
 //! Each channel's row of the list then has its guests' rooms under it
 //! ([`super::ChannelGroup::guests`]), by the guest's name when they gave one and else their

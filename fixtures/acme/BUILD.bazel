@@ -1,7 +1,7 @@
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-# Acme, the made-up team every app's screenshots, the live demo, zirc.dev's home page and its
-# docs show (README.md): showcase.json is the team and its morning.
+# Acme, the made-up team every app's screenshots, zirc.dev's home page and its docs show
+# (README.md): showcase.json is the team and its morning.
 exports_files(
     [
         "coupon-before-after.png",
@@ -17,8 +17,6 @@ exports_files(
         "//oss/apps/mac:__pkg__",
         # The web client's screenshots, zirc.dev's home page's among them, stage it too.
         "//oss/web:__pkg__",
-        # The live demo the tenant sidecar plays (zirc-sidecar's src/demo.rs).
-        "//crates/zirc-sidecar:__pkg__",
         # The desktop's showcase, whose lines zirc-app's tests stage (src/showcase.rs).
         "//crates/zirc-app:__pkg__",
     ],

@@ -19,11 +19,6 @@
 //!   their conversation, only that someone joined it;
 //! - a few connections per address, and so many guests at once per organisation.
 //!
-//! On a demo server (`spec.demo`, zirc.dev's live demo), whose only agents are the made-up
-//! team the sidecar plays (`crate::demo`), a guest hears agents in their channel too, may write
-//! privately to the cast and hear its answers, and the gateway tells the cast each time a guest
-//! is in, in place of telling staff they're waiting.
-//!
 //! With `spec.accounts.guests`, each guest also has an always-on account of their own, named as
 //! they are, which the gateway makes as they first come (at most [`GUEST_ACCOUNTS_MAX`](crate::limits::GUEST_ACCOUNTS_MAX) an organisation)
 //! and logs them in to with SASL, with a passphrase only it knows. Ergo then keeps what staff
@@ -160,13 +155,12 @@ pub fn person(account: &str) -> bool {
 
 /// What a guest is sent of what comes from Ergo for them (`me`, lower case): everything but
 /// private messages, notices and tags from anyone but a person on staff or a service, talk
-/// from agents anywhere (but on a `demo` server, whose agents are the sidecar's cast, which
-/// talks to them in their channel and privately), and the team's events but "joined".
+/// from agents anywhere, and the team's events but "joined".
 ///
 /// A multiline message's opening, `BATCH +<ref> draft/multiline <target>`, is judged as its
 /// message is, and the lines inside it go as it does ([`Multiline`]): only the opening has the
 /// sender's account.
-pub fn delivered(line: &Line, me: &str, demo: bool) -> bool {
+pub fn delivered(line: &Line, me: &str) -> bool {
     let at = match line.command.as_str() {
         "PRIVMSG" | "NOTICE" | "TAGMSG" => 0,
         "BATCH" if multiline_opening(line).is_some() => 2,
@@ -195,11 +189,9 @@ pub fn delivered(line: &Line, me: &str, demo: bool) -> bool {
     let agent = account.as_deref().is_some_and(|a| !person(a));
     let to_them = line.params.get(at).is_some_and(|t| t.to_lowercase() == me);
     if to_them {
-        account.as_deref().is_some_and(person)
-            || SERVICES.contains(&nick.as_str())
-            || (demo && account.as_deref().is_some_and(crate::demo::is_cast))
+        account.as_deref().is_some_and(person) || SERVICES.contains(&nick.as_str())
     } else {
-        !agent || demo
+        !agent
     }
 }
 
@@ -216,9 +208,9 @@ pub struct Multiline(HashMap<String, bool>);
 
 impl Multiline {
     /// Whether `line` goes to `me`: as [`delivered`] says, or as its multiline message does.
-    pub fn delivered(&mut self, line: &Line, me: &str, demo: bool) -> bool {
+    pub fn delivered(&mut self, line: &Line, me: &str) -> bool {
         if let Some(reference) = multiline_opening(line) {
-            let goes = delivered(line, me, demo);
+            let goes = delivered(line, me);
             // A few at once at most; more is a sender that never closes them.
             if self.0.len() > 64 {
                 self.0.clear();
@@ -234,7 +226,7 @@ impl Multiline {
         }
         match line.tag("batch").and_then(|r| self.0.get(r)) {
             Some(goes) => *goes,
-            None => delivered(line, me, demo),
+            None => delivered(line, me),
         }
     }
 }
@@ -248,8 +240,6 @@ pub enum Alert {
     None,
     /// When a guest comes into a public channel: zirc's own server, for its support channel.
     Arrivals,
-    /// When a guest writes in a public channel: the live demo's server.
-    Messages,
 }
 
 impl Alert {
@@ -287,10 +277,6 @@ pub struct Public {
     /// Guests get accounts (`spec.accounts.guests`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub accounts: bool,
-    /// The live demo's server (`spec.demo`): its guests hear the cast's agents, and are
-    /// kept [`crate::demo::KEPT`].
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub demo: bool,
     /// The server runs its organisation's workflows (`spec.workflows`, `crate::workflows`):
     /// off unless zirc.dev turns them on, so no other organisation sees their host.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -324,7 +310,6 @@ impl Default for Public {
             key: None,
             cap: Self::CAP,
             accounts: false,
-            demo: false,
             workflows: false,
             alert: Alert::None,
         }
@@ -601,8 +586,6 @@ pub struct Gateway {
     seen: Mutex<HashMap<String, (jiff::Timestamp, String)>>,
     /// Ergo's API, to make guests' accounts with, and the secret their passphrases come from.
     accounts: Option<(crate::ergo::Api, String)>,
-    /// On a demo server, where to say a guest's room is ready (`crate::demo`).
-    arrivals: Mutex<Option<tokio::sync::mpsc::UnboundedSender<crate::demo::Arrival>>>,
     /// The owners' handles (the accounts to tell a visitor is here), and what's waiting to be
     /// told them.
     owners: Mutex<Vec<String>>,
@@ -701,22 +684,11 @@ impl Gateway {
             repliers: Mutex::new(HashMap::new()),
             seen: Mutex::new(HashMap::new()),
             accounts,
-            arrivals: Mutex::new(None),
             owners: Mutex::new(Vec::new()),
             visitors: Mutex::new(crate::visitors::Visitors::new()),
             pushing: tokio::sync::Mutex::new(()),
             proofs: Mutex::new(HashMap::new()),
         })
-    }
-
-    /// Where to say, on a demo server, that a guest's room is ready.
-    pub fn on_arrival(&self, to: tokio::sync::mpsc::UnboundedSender<crate::demo::Arrival>) {
-        *lock(&self.arrivals) = Some(to);
-    }
-
-    /// Whether this is the live demo's server.
-    pub fn is_demo(&self) -> bool {
-        lock(&self.public).demo
     }
 
     /// Whether the server runs its organisation's workflows, as the controller says, now and
@@ -876,17 +848,6 @@ impl Gateway {
         }
     }
 
-    /// `guest` wrote `text` in `place`, a public channel.
-    fn visitor_said(self: &Arc<Self>, guest: &str, text: &str, place: &str, room: &str) {
-        if lock(&self.public).alert != Alert::Messages {
-            return;
-        }
-        let text = lock(&self.visitors).said(guest, text, place, room, Instant::now());
-        if let Some(text) = text {
-            self.push(text);
-        }
-    }
-
     /// Tells the owners what has waited long enough; called every so often.
     pub fn push_due(self: &Arc<Self>) {
         let place = self
@@ -949,18 +910,6 @@ impl Gateway {
         lock(&self.public).channels.iter().cloned().collect()
     }
 
-    /// On a demo server, tells the cast `guest` is in `channel` (`crate::demo`).
-    fn arrived(&self, channel: &str, guest: &str) {
-        if self.is_demo()
-            && let Some(to) = lock(&self.arrivals).as_ref()
-        {
-            let _ = to.send(crate::demo::Arrival {
-                room: channel.to_owned(),
-                guest: guest.to_owned(),
-            });
-        }
-    }
-
     /// Makes `room` secret, so it's in no channel list, and, when nobody else is in it,
     /// tells `parent` that `guest` is waiting there, from zirc's own [`crate::visitors::FROM`]
     /// (apps show it as System), one at a time as its pushes are.
@@ -976,8 +925,6 @@ impl Gateway {
             return;
         };
         let (room, parent) = (room.to_owned(), parent.to_owned());
-        // On a demo server too, where its owners look in on visitors (the user's decision,
-        // 8 Nov 2026): the cast comes in after this, so the room is empty now.
         let text = (!others_here).then(|| waiting(guest, name, &room));
         // Logged by guest, never by room: a room is a channel, and logs go to Google.
         let guest = guest.to_owned();
@@ -1282,7 +1229,6 @@ struct Passing {
     me: String,
     /// The guest they are, lowercased: the same but for a terminal.
     who: String,
-    demo: bool,
     /// Whether the gateway logged in to their account.
     logs_in: bool,
     /// Whom they may answer.
@@ -1294,9 +1240,8 @@ struct Passing {
     registered: bool,
     /// For a room of their own, its public channel.
     room: Option<String>,
-    /// Until their room is set up, whether anyone else is there (by its NAMES); on a demo
-    /// server, until the cast has been told they're in. None from the first for a terminal,
-    /// which comes in beside its guest, who has been: neither the cast nor the team is told
+    /// Until their room is set up, whether anyone else is there (by its NAMES). None from the
+    /// first for a terminal, which comes in beside its guest, who has been: the team isn't told
     /// again.
     arriving: Option<bool>,
     multiline: Multiline,
@@ -1308,18 +1253,16 @@ impl Passing {
         gateway: &Arc<Gateway>,
         guest: Token,
         nick: &str,
-        demo: bool,
         logs_in: bool,
         repliers: HashSet<String>,
     ) -> Self {
         let room = zirc_proto::guest_room_of(&guest.channel).map(|(parent, _)| parent.to_owned());
-        let set_up = (room.is_none() && !demo) || guest.machine.is_some();
+        let set_up = room.is_none() || guest.machine.is_some();
         Self {
             gateway: Arc::clone(gateway),
             channel: guest.channel.clone(),
             me: nick.to_lowercase(),
             who: guest.guest.to_lowercase(),
-            demo,
             logs_in,
             repliers,
             own_caps: Some(own_caps(logs_in)),
@@ -1362,16 +1305,6 @@ impl Passing {
                 let refused = say("FAIL", &[command.as_str(), "GUEST_ONLY", why.as_str()]);
                 send(socket, refused).await?;
                 continue;
-            }
-            if command == "PRIVMSG"
-                && line
-                    .params
-                    .first()
-                    .is_some_and(|t| t.eq_ignore_ascii_case(channel))
-                && let Some(text) = line.params.get(1)
-            {
-                let room = self.room.as_deref().unwrap_or(channel);
-                self.gateway.visitor_said(&self.who, text, room, channel);
             }
             if command == "TAGMSG" && line.tag("+draft/react").is_some() {
                 info!("a guest reacted"); // never to what, nor with which
@@ -1419,7 +1352,7 @@ impl Passing {
                     _ => {}
                 }
             }
-            if !self.multiline.delivered(&line, &self.me, self.demo) {
+            if !self.multiline.delivered(&line, &self.me) {
                 return Ok(FromErgo::Kept);
             }
             if !self.heard(to_ergo, &line).await? {
@@ -1488,7 +1421,6 @@ impl Passing {
                     self.gateway
                         .set_up_room(channel, parent, &self.who, name, others_here);
                 }
-                self.gateway.arrived(channel, &self.who);
                 let room = self.room.as_deref().unwrap_or(channel);
                 self.gateway.visitor_arrived(&self.who, name, room, channel);
             }
@@ -1578,18 +1510,13 @@ async fn session(
     }
 
     let (channel, who) = (guest.channel.clone(), guest.guest.to_lowercase());
-    let demo = public.demo;
     gateway.note(&who, &channel);
-    let mut repliers = gateway.repliers(&who).await;
-    // On a demo server, the cast may be written to from the first: that's the demo.
-    if demo {
-        repliers.extend(crate::demo::cast().iter().cloned());
-    }
+    let repliers = gateway.repliers(&who).await;
     let mut refill = tokio::time::interval(EVERY);
     refill.tick().await;
     let mut refill_quiet = tokio::time::interval(QUIET_EVERY);
     refill_quiet.tick().await;
-    let mut passing = Passing::new(&gateway, guest, &nick, demo, login.is_some(), repliers);
+    let mut passing = Passing::new(&gateway, guest, &nick, login.is_some(), repliers);
     // Whether it was ended by the gateway (connected elsewhere, forgotten, or not let in)
     // rather than by them.
     let ended = loop {
@@ -1967,7 +1894,7 @@ mod tests {
 
     #[test]
     fn a_guest_hears_from_people_on_staff_and_never_from_agents() {
-        let heard = |text: &str| delivered(&text.parse::<Line>().unwrap(), "guest-7k2q", false);
+        let heard = |text: &str| delivered(&text.parse::<Line>().unwrap(), "guest-7k2q");
         // People on staff, privately and in the channel.
         assert!(heard(
             "@account=mattias :mattias!m@h PRIVMSG guest-7k2q :happy to help"
@@ -2015,34 +1942,6 @@ mod tests {
     }
 
     #[test]
-    fn on_a_demo_server_a_guest_hears_the_casts_agents_in_their_room_only() {
-        let heard = |text: &str| delivered(&text.parse::<Line>().unwrap(), "guest-7k2q", true);
-        assert!(heard(
-            "@account=maya-mbp :maya-mbp!m@h PRIVMSG #web/guest-7k2q :about to change Coupon.tsx"
-        ));
-        assert!(heard(
-            "@account=zirc-ci :zirc-ci!c@h PRIVMSG #web/guest-7k2q :landed checkout"
-        ));
-        // Privately too, from the cast, answering them.
-        assert!(heard(
-            "@account=maya-mbp :maya-mbp!m@h PRIVMSG guest-7k2q :hi"
-        ));
-        assert!(heard("@account=maya :maya!m@h PRIVMSG guest-7k2q :hi"));
-        // But never from another guest, nor from a nick the cast doesn't have.
-        assert!(!heard(
-            "@account=guest-9x8w :guest-9x8w!g@h PRIVMSG guest-7k2q :hi"
-        ));
-        assert!(!heard(
-            "@account=stranger-mbp :stranger-mbp!s@h PRIVMSG guest-7k2q :hi"
-        ));
-        // Nor anywhere else.
-        let elsewhere = |text: &str| delivered(&text.parse::<Line>().unwrap(), "guest-7k2q", false);
-        assert!(!elsewhere(
-            "@account=maya-mbp :maya-mbp!m@h PRIVMSG guest-7k2q :hi"
-        ));
-    }
-
-    #[test]
     fn a_guests_talk_has_its_own_pace_and_what_their_app_sends_by_itself_another() {
         let talk = |text: &str| is_talk(&text.parse::<Line>().unwrap());
         assert!(talk("PRIVMSG #web/guest-7k2q :hi"));
@@ -2080,11 +1979,11 @@ mod tests {
 
     #[test]
     fn a_multiline_message_goes_as_its_opening_does() {
-        fn lines(texts: &[String], demo: bool) -> Vec<bool> {
+        fn lines(texts: &[String]) -> Vec<bool> {
             let mut multiline = Multiline::default();
             texts
                 .iter()
-                .map(|t| multiline.delivered(&t.parse::<Line>().unwrap(), "guest-7k2q", demo))
+                .map(|t| multiline.delivered(&t.parse::<Line>().unwrap(), "guest-7k2q"))
                 .collect()
         }
         fn from(account: &str, target: &str) -> Vec<String> {
@@ -2096,11 +1995,10 @@ mod tests {
             ]
         }
         // From staff, privately: all of it.
-        assert_eq!(lines(&from("mattias", "guest-7k2q"), false), [true; 4]);
-        // From an agent: none of it, privately or in their channel, but on the demo's server.
-        assert_eq!(lines(&from("maya-mbp", "guest-7k2q"), false), [false; 4]);
-        assert_eq!(lines(&from("maya-mbp", "#support"), false), [false; 4]);
-        assert_eq!(lines(&from("maya-mbp", "guest-7k2q"), true), [true; 4]);
+        assert_eq!(lines(&from("mattias", "guest-7k2q")), [true; 4]);
+        // From an agent: none of it, privately or in their channel.
+        assert_eq!(lines(&from("maya-mbp", "guest-7k2q")), [false; 4]);
+        assert_eq!(lines(&from("maya-mbp", "#support")), [false; 4]);
         // History's batches aren't multiline messages: their lines are judged one by one.
         let history = [
             "BATCH +h chathistory #support",
@@ -2109,18 +2007,7 @@ mod tests {
             "BATCH -h",
         ]
         .map(String::from);
-        assert_eq!(lines(&history, false), [true, false, true, true]);
-    }
-
-    #[test]
-    fn on_a_demo_server_a_guest_may_write_to_the_cast_but_not_to_another_guest() {
-        let mut repliers: HashSet<String> = HashSet::new();
-        repliers.extend(crate::demo::cast().iter().cloned());
-        let may = |text: &str| allowed(&text.parse::<Line>().unwrap(), "#web", &repliers);
-        assert!(may("PRIVMSG maya :hi"));
-        assert!(may("PRIVMSG maya-mbp :what are you doing?"));
-        assert!(!may("PRIVMSG guest-9x8w :hi"));
-        assert!(!may("PRIVMSG mattias :hi"));
+        assert_eq!(lines(&history), [true, false, true, true]);
     }
 
     #[test]
@@ -2142,6 +2029,11 @@ mod tests {
         assert!(!json.contains("alert"));
         let on: Public = serde_json::from_str(r#"{"alert":"arrivals"}"#).unwrap();
         assert_eq!(on.alert, Alert::Arrivals);
+        // An older controller's word for the retired live demo's server is ignored.
+        let older: Public =
+            serde_json::from_value(serde_json::json!({"channels": ["#web"], "demo": true}))
+                .unwrap();
+        assert_eq!(older.channels.len(), 1);
     }
 
     #[test]
@@ -2150,7 +2042,6 @@ mod tests {
         // Nothing asked: nothing waits, however many come.
         for i in 0..3 {
             gateway.visitor_arrived(&format!("guest-{i}"), None, "#support", "#support");
-            gateway.visitor_said("guest-1", "hi", "#support", "#support");
         }
         assert!(
             lock(&gateway.visitors)

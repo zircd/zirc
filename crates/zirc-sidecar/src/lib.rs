@@ -5,7 +5,6 @@
 pub mod accounts;
 pub mod activity;
 pub mod config;
-pub mod demo;
 pub mod environment;
 pub mod ergo;
 pub mod exporter;

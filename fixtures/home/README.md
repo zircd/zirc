@@ -19,4 +19,4 @@ checks it names only what it has.
 `zirc/backend`. `//crates/zirc:zirc_terminals_test` runs it for real and fails when zirc
 prints something else; `bazel run //fixtures/home:terminals` brings the file up to date.
 
-Acme stays the team of the store screenshots and the live demo until they move to this one.
+Acme stays the team of the store screenshots until they move to this one.

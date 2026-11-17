@@ -13,8 +13,8 @@ What it does:
   own disk.
 - **History** (`history`, `trim`): searches Ergo's own SQLite history on someone's behalf, under
   the organisation's choice of who may read what, and scrubs what was removed off the disk.
-- **Gateway** (`gateway`, `guests`, `visitors`, `demo`): a WebSocket for the public channels'
-  guests, who aren't IRC users, and the demo server's scripted cast.
+- **Gateway** (`gateway`, `guests`, `visitors`): a WebSocket for the public channels' guests,
+  who aren't IRC users.
 - **Push** (`pusher`): what reaches people's phones while their app is closed, decided here by
   zirc-chat's push rule (mentions, replies, reactions, direct messages, and conversations set to
   All, by each phone's own levels and mutes), sent encrypted for the phone to zirc.dev, which

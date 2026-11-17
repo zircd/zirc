@@ -6,8 +6,7 @@
 //! member's account, with the guest as the correspondent, and under the guest's own account
 //! once they have one). Forgetting a guest deletes all of it, through Ergo, which serves
 //! CHATHISTORY from it, so nobody gets it back; `crate::trim` then scrubs it off the disk.
-//! Fourteen days after a guest was last there, the sidecar forgets them by itself; on the live
-//! demo's server, an hour after (`crate::demo::KEPT`).
+//! Fourteen days after a guest was last there, the sidecar forgets them by itself ([`KEPT`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -302,10 +301,8 @@ impl Mailed {
 }
 
 /// The guests to forget at `now`: last there [`KEPT`] or longer ago, and not on now.
-/// The guests last there `kept` or longer ago, and not there now: [`KEPT`], or on the demo's
-/// server [`crate::demo::KEPT`].
 #[must_use]
-pub fn due(guests: &[Guest], now: Timestamp, kept: Duration) -> Vec<String> {
+pub fn due(guests: &[Guest], now: Timestamp) -> Vec<String> {
     guests
         .iter()
         .filter(|g| !g.connected)
@@ -313,7 +310,7 @@ pub fn due(guests: &[Guest], now: Timestamp, kept: Duration) -> Vec<String> {
             g.last_seen
                 .as_deref()
                 .and_then(|t| t.parse::<Timestamp>().ok())
-                .is_none_or(|seen| now.duration_since(seen).unsigned_abs() >= kept)
+                .is_none_or(|seen| now.duration_since(seen).unsigned_abs() >= KEPT)
         })
         .map(|g| g.name.clone())
         .collect()
@@ -476,12 +473,6 @@ mod tests {
             guest("guest-on", Some("2026-11-01T00:00:00Z"), true),
             guest("guest-unknown", None, false),
         ];
-        assert_eq!(due(&guests, now, KEPT), ["guest-old", "guest-unknown"]);
-        // On the demo's server, an hour.
-        let demo = [
-            guest("guest-gone", Some("2026-11-19T22:59:00Z"), false),
-            guest("guest-just-left", Some("2026-11-19T23:30:00Z"), false),
-        ];
-        assert_eq!(due(&demo, now, crate::demo::KEPT), ["guest-gone"]);
+        assert_eq!(due(&guests, now), ["guest-old", "guest-unknown"]);
     }
 }

@@ -93,7 +93,7 @@ use tracing::{debug, info, warn};
 
 use crate::ergo::{Api, Operator, OperatorError};
 use crate::history::{self, Conversation, Viewer};
-use crate::{demo, gateway, guests, profiles, say, signin, teams, trim, usage};
+use crate::{gateway, guests, profiles, say, signin, teams, trim, usage};
 use zirc_proto::colleagues::Colleagues;
 use zirc_proto::desired::Visibility;
 
@@ -297,15 +297,6 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
             !someones(&ergo, &nick).await && integration_account(&ergo, &nick, false).await.is_ok()
         }
     }));
-    // The live demo's cast, which plays only on a demo server, as the gateway says.
-    let (arrived, arrivals) = tokio::sync::mpsc::unbounded_channel();
-    ergo.gateway.on_arrival(arrived);
-    let cast = demo::Options {
-        irc: options.irc,
-        gate: ergo.gate.clone(),
-        secret: options.oper_password.clone(),
-    };
-    tokio::spawn(demo::run(ergo.api.clone(), cast, arrivals));
     // Ergo's logins: when the socket can't be had, passphrases still work, as Ergo checks
     // them itself when the sidecar doesn't answer, and everything else here goes on.
     let socket = options
@@ -573,12 +564,10 @@ async fn set_teams(
     match teams::reconcile(&ergo.api, &ergo.operator, &desired).await {
         Ok(outcome) => {
             info!(channels = outcome.len(), "teams set");
-            // Public channels hide their guests from each other (+u), but for the live demo's,
-            // where visitors trying it at once see and talk to each other.
-            let hidden = if ergo.gateway.is_demo() { "-u" } else { "+u" };
+            // Public channels hide their guests from each other (+u).
             for channel in &desired.public.channels {
-                if let Err(failure) = ergo.operator.modes(channel, hidden).await {
-                    warn!(%failure, hidden, "couldn't set a public channel's +u");
+                if let Err(failure) = ergo.operator.modes(channel, "+u").await {
+                    warn!(%failure, "couldn't set a public channel's +u");
                 }
             }
             *owners = Owners {
@@ -2297,13 +2286,10 @@ async fn forget(ergo: &Ergo, guest: &str) -> Result<usize, String> {
     Ok(deleted)
 }
 
-/// Every so often, forgets the guests last there [`guests::KEPT`] or longer ago; on the demo's
-/// server, more often, those last there [`demo::KEPT`] ago.
+/// Every [`guests::SWEEP`], forgets the guests last there [`guests::KEPT`] or longer ago.
 async fn forget_guests(ergo: Arc<Ergo>) {
     loop {
-        let demo = ergo.gateway.is_demo();
-        tokio::time::sleep(if demo { demo::SWEEP } else { guests::SWEEP }).await;
-        let kept = if demo { demo::KEPT } else { guests::KEPT };
+        tokio::time::sleep(guests::SWEEP).await;
         let list = match guests(&ergo).await {
             Ok(list) => list,
             Err(failure) => {
@@ -2311,7 +2297,7 @@ async fn forget_guests(ergo: Arc<Ergo>) {
                 continue;
             }
         };
-        for guest in guests::due(&list, jiff::Timestamp::now(), kept) {
+        for guest in guests::due(&list, jiff::Timestamp::now()) {
             if let Err(failure) = forget(&ergo, &guest).await {
                 warn!(guest, %failure, "couldn't forget a guest");
             }
