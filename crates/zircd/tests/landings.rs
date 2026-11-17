@@ -737,6 +737,201 @@ async fn a_session_stacked_on_a_branch_dropped_unlanded_is_told_what_to_do() {
     );
 }
 
+/// A session that says what it's stacked on only once that branch is gone from origin, as
+/// `zirc stack` finds it from its clone's stale ref, is told it was dropped all the same: in
+/// the agent evals' PL2 probe (17 Nov 2026) such a session waited the run out.
+#[tokio::test]
+async fn a_session_that_says_its_stack_once_its_base_is_gone_is_told_too() {
+    let ergo = require_ergo!();
+    let clock = zircd::Clock::default();
+    let hooks = zircd::Hooks {
+        clock: clock.clone(),
+        ..zircd::Hooks::default()
+    };
+    let machine = Machine::hooked(&ergo, "alpha", hooks).await;
+    let remote = tempfile::tempdir().unwrap();
+    git(remote.path(), &["init", "--quiet", "--bare"]);
+    let clone = clone();
+    let root = clone.path();
+    git(
+        root,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            remote.path().to_str().unwrap(),
+        ],
+    );
+    git(root, &["push", "--quiet", "origin", "main"]);
+    git(root, &["switch", "--quiet", "-c", "money"]);
+    std::fs::write(root.join("money.py"), "def format_cents(c): ...\n").unwrap();
+    git(root, &["add", "money.py"]);
+    git(root, &["commit", "--quiet", "--message", "Money"]);
+    git(root, &["push", "--quiet", "origin", "money"]);
+    let tip = String::from_utf8(
+        std::process::Command::new("git")
+            .args(["rev-parse", "money"])
+            .current_dir(root)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    machine
+        .request(Request::RepoAdd {
+            path: root.to_owned(),
+            session: Some("cc-top".into()),
+        })
+        .await;
+    let mut top = machine.watch(Some("cc-top")).await;
+    let stack = |branch: Option<&str>, tip: Option<&str>| Request::Stack {
+        session: "cc-top".into(),
+        branch: branch.map(str::to_owned),
+        tip: tip.map(str::to_owned),
+        drop: false,
+    };
+    // Dropped before the session says its stack.
+    git(remote.path(), &["branch", "-D", "money"]);
+    machine
+        .request(stack(Some("money"), Some(tip.trim())))
+        .await;
+    let mut looks = 0;
+    let line = loop {
+        looks += 1;
+        assert!(looks <= 20, "never told money was dropped");
+        clock.advance(std::time::Duration::from_mins(1));
+        let Ok(heard) =
+            tokio::time::timeout(std::time::Duration::from_secs(2), next(&mut top)).await
+        else {
+            continue;
+        };
+        if let Event::Text { body } = &heard.message.event
+            && body.contains("deleted from origin without landing")
+        {
+            assert!(heard.why.is_some(), "{heard:?}");
+            break body.clone();
+        }
+    };
+    assert!(
+        line.starts_with("cc-top: money, which your work is stacked on"),
+        "{line}"
+    );
+    assert!(line.contains("don't land it yourself"), "{line}");
+    let Response::Stacks { stacks } = machine.request(stack(None, None)).await else {
+        panic!("its stacks");
+    };
+    assert!(
+        stacks.iter().any(|s| s.branch == "money" && s.dropped),
+        "{stacks:?}"
+    );
+}
+
+/// A session that pushes a branch built on another, not landed, and never says `zirc stack`
+/// is stacked on it all the same, by what its push shows, so it's told when that base is
+/// dropped: in the agent evals' PL2 probe (17 Nov 2026) one that hadn't said waited for good.
+#[tokio::test]
+async fn a_session_that_pushed_on_a_base_and_never_said_so_is_told_its_dropped() {
+    let ergo = require_ergo!();
+    let clock = zircd::Clock::default();
+    let hooks = zircd::Hooks {
+        clock: clock.clone(),
+        ..zircd::Hooks::default()
+    };
+    let machine = Machine::hooked(&ergo, "alpha", hooks).await;
+    let remote = tempfile::tempdir().unwrap();
+    git(remote.path(), &["init", "--quiet", "--bare"]);
+    let clone = clone();
+    let root = clone.path();
+    git(
+        root,
+        &[
+            "remote",
+            "set-url",
+            "origin",
+            remote.path().to_str().unwrap(),
+        ],
+    );
+    git(root, &["push", "--quiet", "origin", "main"]);
+    git(root, &["switch", "--quiet", "-c", "money"]);
+    std::fs::write(root.join("money.py"), "def format_cents(c): ...\n").unwrap();
+    git(root, &["add", "money.py"]);
+    git(root, &["commit", "--quiet", "--message", "Money"]);
+    git(root, &["push", "--quiet", "origin", "money"]);
+    let tip = String::from_utf8(
+        std::process::Command::new("git")
+            .args(["rev-parse", "money"])
+            .current_dir(root)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    machine
+        .request(Request::RepoAdd {
+            path: root.to_owned(),
+            session: Some("cc-top".into()),
+        })
+        .await;
+    let mut top = machine.watch(Some("cc-top")).await;
+    let stack = |branch: Option<&str>, tip: Option<&str>| Request::Stack {
+        session: "cc-top".into(),
+        branch: branch.map(str::to_owned),
+        tip: tip.map(str::to_owned),
+        drop: false,
+    };
+    // Built on money and pushed, with no word of a stack.
+    git(root, &["switch", "--quiet", "-c", "receipt"]);
+    std::fs::write(root.join("receipt.py"), "from money import format_cents\n").unwrap();
+    git(root, &["add", "receipt.py"]);
+    git(root, &["commit", "--quiet", "--message", "Receipt"]);
+    git(root, &["push", "--quiet", "origin", "receipt"]);
+    let mut noted = false;
+    for _ in 0..50 {
+        let Response::Stacks { stacks } = machine.request(stack(None, None)).await else {
+            panic!("its stacks");
+        };
+        if stacks
+            .iter()
+            .any(|s| s.branch == "money" && s.tip == tip.trim())
+        {
+            noted = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    assert!(noted, "its push never showed its stack on money");
+    git(remote.path(), &["branch", "-D", "money"]);
+    let mut looks = 0;
+    let line = loop {
+        looks += 1;
+        assert!(looks <= 20, "never told money was dropped");
+        clock.advance(std::time::Duration::from_mins(1));
+        let Ok(heard) =
+            tokio::time::timeout(std::time::Duration::from_secs(2), next(&mut top)).await
+        else {
+            continue;
+        };
+        if let Event::Text { body } = &heard.message.event
+            && body.contains("deleted from origin without landing")
+        {
+            assert!(heard.why.is_some(), "{heard:?}");
+            break body.clone();
+        }
+    };
+    assert!(
+        line.starts_with("cc-top: money, which your work is stacked on"),
+        "{line}"
+    );
+    assert!(line.contains("don't land it yourself"), "{line}");
+    let Response::Stacks { stacks } = machine.request(stack(None, None)).await else {
+        panic!("its stacks");
+    };
+    assert!(
+        stacks.iter().any(|s| s.branch == "money" && s.dropped),
+        "{stacks:?}"
+    );
+}
+
 /// A push of a branch built on another session's, not landed, wakes that session, so it doesn't
 /// rewrite its own from under the other, nor wait on it: the agent evals' S3 deadlock.
 #[tokio::test]

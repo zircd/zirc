@@ -22,6 +22,7 @@ use super::{
 impl Daemon {
     /// Tells every watcher, each with why it concerns the session watching, if it does.
     pub(super) fn tell_watchers(&mut self, response: &Response) {
+        self.keep_said(response);
         // Agents don't hear guests: a guest's line wakes no session and is no session's
         // watch line, even with `--all`. Only a watch with no session, a person's, sees it.
         // (A guest's message to this machine never gets here: guests have no account.) A
@@ -303,6 +304,13 @@ impl Daemon {
                     .then_some(Why::ReactionAwaited)
             }),
             Response::Answered(answered) => answered_concerns(answered, session),
+            // With the branch the session built on, in its files alone, there's nothing to
+            // ask: it's what it built on.
+            Response::Overlap(overlap)
+                if session.is_some_and(|s| self.awaits.in_its_base(s, &overlap.paths)) =>
+            {
+                None
+            }
             Response::Overlap(overlap) => {
                 let mine = self.paths_in(&overlap.channel, session);
                 overlap
@@ -579,7 +587,8 @@ impl Daemon {
         let topic = self.in_topic(channel, session)
             && !routine(&delivery.from, &delivery.message)
             && !landings(channel);
-        if mentions(body, names) || self.broadcast(delivery) {
+        if mentions(body, names) || self.broadcast(delivery) || self.stacked_on_named(body, session)
+        {
             Some(Why::Mention)
         } else if self.is_area_room(&delivery.channel) {
             // An area's room: news to whom it names, to a session changing a
@@ -599,6 +608,20 @@ impl Daemon {
         } else {
             topic.then_some(Why::Topic)
         }
+    }
+
+    /// Whether `body` names a branch `session` is stacked on that hasn't landed: what its
+    /// owner says of it, such as that it's dropped and why, is the news the session waits
+    /// on, though it names no session. In the agent evals' PL2 probe (17 Nov 2026) a
+    /// colleague's `checkout is dropped: the team decided against the move` reached nobody,
+    /// and the session built on it asked its person whether the branch was lost.
+    fn stacked_on_named(&self, body: &str, session: Option<&str>) -> bool {
+        session.is_some_and(|session| {
+            self.awaits
+                .stacks(session)
+                .iter()
+                .any(|stack| !stack.landed && names_branch(body, &stack.branch))
+        })
     }
 
     /// Whether `decision`, heard in `channel`, concerns `session`: the person here hears every
@@ -761,6 +784,17 @@ pub(super) fn names_session(name: &str, session: &str) -> bool {
 fn under_way(message: &Message, data: &serde_json::Value) -> bool {
     let data = zirc_proto::ci::Data::of(data);
     message.is_live() || (data.state.as_deref() == Some("running") && !data.steps.is_empty())
+}
+
+/// Whether `text` names `branch` as a word of its own, in backticks or not: `checkout`, not
+/// `checkouts` nor `pre-checkout`.
+pub(super) fn names_branch(text: &str, branch: &str) -> bool {
+    let part = |c: char| c.is_alphanumeric() || "-_/.".contains(c);
+    !branch.is_empty()
+        && text.match_indices(branch).any(|(at, _)| {
+            !text[..at].chars().next_back().is_some_and(part)
+                && !text[at + branch.len()..].chars().next().is_some_and(part)
+        })
 }
 
 #[cfg(test)]

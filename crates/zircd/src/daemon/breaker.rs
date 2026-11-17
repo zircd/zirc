@@ -415,7 +415,7 @@ impl Daemon {
         // middle of master breaking (11 Nov 2026). Nor do they count: counted, they paused
         // the session a production deploy's failures were for, on its next wake (13 Nov
         // 2026).
-        owners_word(response) || urgent(response)
+        owners_word(response) || urgent(response) || super::dropped::about_a_drop(response, session)
     }
 
     /// Whether `session`'s catch-up, a wake of its own, is held: what it missed then
@@ -899,6 +899,52 @@ mod tests {
             daemon.why(&given("flaky-1", "fix", "m3-mac/cc-1"), Some("cc-1")),
             Some(Why::Mention)
         );
+    }
+
+    #[tokio::test]
+    async fn a_post_naming_the_branch_a_session_is_stacked_on_is_its_news() {
+        let home = tempfile::tempdir().unwrap();
+        let (mut daemon, _hears) = daemon_watched_by_cc1(home.path());
+        let said = |text: &str| {
+            Response::Delivery(Delivery::new(
+                "#zirc",
+                "alice-mac",
+                Message::new("cc-9", Event::Text { body: text.into() }),
+            ))
+        };
+        let dropped = said("`checkout` is dropped: the team decided against the move");
+        assert_eq!(daemon.why(&dropped, Some("cc-1")), None);
+        daemon.awaits.stack("cc-1", "checkout", "abcdef0");
+        assert_eq!(daemon.why(&dropped, Some("cc-1")), Some(Why::Mention));
+        // Another branch's news, or a word that only holds its name, isn't.
+        assert_eq!(daemon.why(&said("`money` is dropped"), Some("cc-1")), None);
+        assert_eq!(
+            daemon.why(&said("the checkouts page is slow"), Some("cc-1")),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dropped_base_is_told_through_a_paused_breaker() {
+        let home = tempfile::tempdir().unwrap();
+        let (mut daemon, _hears) = daemon_watched_by_cc1(home.path());
+        let note = |to: &str| {
+            Response::Delivery(Delivery::new(
+                "#api",
+                "m3-mac",
+                Message::new(
+                    WATCHER_SESSION,
+                    Event::Text {
+                        body: format!(
+                            "{to}: checkout, which your work is stacked on, was deleted from \
+                             origin without landing: dropped"
+                        ),
+                    },
+                ),
+            ))
+        };
+        assert!(daemon.never_held(&note("cc-1"), "cc-1", Why::Mention));
+        assert!(!daemon.never_held(&note("cc-2"), "cc-1", Why::Mention));
     }
 
     #[test]

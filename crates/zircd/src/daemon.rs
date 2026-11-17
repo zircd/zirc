@@ -113,6 +113,12 @@ pub enum Input {
     /// The branches sessions are stacked on that origin no longer has, each with the
     /// repository it was asked from ([`Daemon::check_stacks`]).
     StacksChecked(Vec<(PathBuf, String)>),
+    /// A session pushed a branch built on this one, not landed, at this head of it
+    /// ([`Daemon::note_stack`]).
+    StackFound(String, String, String),
+    /// The paths the branch a session is stacked on changes: the session, the branch, its
+    /// head and the paths ([`Daemon::read_base`]).
+    BaseRead(String, String, String, Vec<String>),
     /// The landings by others a session's branch, in the channel, takes out
     /// ([`Daemon::check_undone`]).
     UndoneChecked(String, String, Vec<git::Undone>),
@@ -592,6 +598,9 @@ pub struct Daemon {
     /// The landings each session has been told its branch takes out, by session, commit and
     /// path ([`Daemon::check_undone`]).
     undone_told: BTreeSet<(String, String, String)>,
+    /// What people and sessions last said in words, newest last, for what was said of a
+    /// branch once it's dropped ([`Daemon::said_of`]): who, and what.
+    said_lately: VecDeque<(String, String)>,
     /// The tasks sessions here and elsewhere took on and haven't finished, to tell a session
     /// taking on the same work ([`Daemon::same_work_taken`]).
     open_tasks: same_work::OpenTasks,
@@ -805,6 +814,7 @@ impl Daemon {
             ops: None,
             stacks_checked: None,
             undone_told: BTreeSet::new(),
+            said_lately: VecDeque::new(),
             open_tasks: same_work::OpenTasks::default(),
             colleagues_said: None,
             repos: BTreeMap::new(),
@@ -1067,6 +1077,11 @@ impl Daemon {
             }
             Input::PushChecked(clashes) => self.push_checked(clashes),
             Input::StacksChecked(gone) => self.stacks_checked(gone),
+            Input::StackFound(session, on, tip) => self.stack_found(&session, &on, &tip),
+            Input::BaseRead(session, on, tip, paths) => {
+                self.awaits.base_changes(&session, &on, &tip, paths);
+                self.save_awaits();
+            }
             Input::UndoneChecked(channel, session, found) => {
                 self.undone_checked(&channel, &session, found);
             }

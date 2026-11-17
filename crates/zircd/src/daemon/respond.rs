@@ -677,6 +677,7 @@ impl Daemon {
                 tracing::info!("{session} is stacked on {branch} at {tip}");
                 self.awaits.stack(session, branch, tip);
                 self.save_awaits();
+                self.read_base(session, branch, tip);
             }
             _ => {}
         }

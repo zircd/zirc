@@ -304,6 +304,7 @@ impl Daemon {
                 let me = self.client.as_ref().map(|client| client.nick().to_owned());
                 self.check_push(&channel, &me.unwrap_or_default(), &event);
                 self.check_undone(root, &session, &event);
+                self.note_stack(root, &session, &event);
             }
         }
     }

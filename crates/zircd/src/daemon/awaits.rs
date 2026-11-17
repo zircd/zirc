@@ -137,6 +137,10 @@ struct Stacked {
     /// drops work, which the session must not land in its place ([`super::dropped`]).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     dropped: bool,
+    /// The paths the branch changes, as the session's repository says once it's read
+    /// ([`super::dropped`]): an overlap in only these is the base it built on, no news.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    paths: Vec<String>,
 }
 
 /// Whether two commits, either perhaps shortened, are the same.
@@ -385,6 +389,14 @@ impl Awaits {
     /// in place of any wait on it it had.
     pub(super) fn stack(&mut self, session: &str, branch: &str, tip: &str) {
         let waits = self.0.entry(session.to_owned()).or_default();
+        // Said again of a base known dropped, as `zirc stack` does from a clone's stale
+        // ref, it's dropped still: said anew, the session was told so again each minute.
+        let known = waits
+            .iter()
+            .filter(|wait| wait.live() && wait.on == branch)
+            .find_map(|wait| wait.stack.clone().filter(|s| s.tip == tip));
+        let dropped = known.as_ref().is_some_and(|s| s.dropped);
+        let paths = known.map(|s| s.paths).unwrap_or_default();
         waits.retain(|wait| wait.live() && !(wait.on_landing() && wait.on == branch));
         waits.push(Wait {
             on: branch.to_owned(),
@@ -396,10 +408,46 @@ impl Awaits {
                 tip: tip.to_owned(),
                 landed: false,
                 moved: None,
-                dropped: false,
+                dropped,
+                paths,
             }),
             reaction: None,
         });
+    }
+
+    /// Notes the paths `branch`, which `session` is stacked on at `tip`, changes.
+    pub(super) fn base_changes(
+        &mut self,
+        session: &str,
+        branch: &str,
+        tip: &str,
+        paths: Vec<String>,
+    ) {
+        let stacked = self.0.get_mut(session).and_then(|waits| {
+            waits
+                .iter_mut()
+                .filter(|wait| wait.on == branch)
+                .find_map(|wait| wait.stack.as_mut().filter(|s| s.tip == tip))
+        });
+        if let Some(stacked) = stacked {
+            stacked.paths = paths;
+        }
+    }
+
+    /// Whether every one of `paths` is changed by a branch `session` is stacked on that's
+    /// neither landed nor dropped: what it built on, which it knows.
+    pub(super) fn in_its_base(&self, session: &str, paths: &[String]) -> bool {
+        let Some(waits) = self.0.get(session) else {
+            return false;
+        };
+        let base: std::collections::BTreeSet<&str> = waits
+            .iter()
+            .filter(|wait| wait.live())
+            .filter_map(|wait| wait.stack.as_ref())
+            .filter(|s| !s.landed && !s.dropped)
+            .flat_map(|s| s.paths.iter().map(String::as_str))
+            .collect();
+        !paths.is_empty() && paths.iter().all(|path| base.contains(path.as_str()))
     }
 
     /// Forgets that `session` is stacked on `branch`.
@@ -828,6 +876,31 @@ mod tests {
         awaits.heard(landed, branch);
         assert_eq!(awaits.concerns("cc-1", landed, branch), None);
         assert!(awaits.of("cc-1").is_empty());
+    }
+
+    #[test]
+    fn an_overlap_in_only_what_a_stacks_base_changes_is_no_news() {
+        let mut awaits = Awaits::default();
+        let paths = |names: &[&str]| names.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
+        awaits.stack("cc-1", "checkout", "aaaa111");
+        assert!(
+            !awaits.in_its_base("cc-1", &paths(&["shop/pricing.py"])),
+            "not read yet"
+        );
+        awaits.base_changes(
+            "cc-1",
+            "checkout",
+            "aaaa111",
+            paths(&["shop/pricing.py", "shop/tax.py"]),
+        );
+        assert!(awaits.in_its_base("cc-1", &paths(&["shop/pricing.py"])));
+        assert!(!awaits.in_its_base("cc-1", &paths(&["shop/pricing.py", "shop/orders.py"])));
+        assert!(!awaits.in_its_base("cc-2", &paths(&["shop/pricing.py"])));
+        // Said again, as `zirc stack` does, it keeps what was read; dropped, it's no base.
+        awaits.stack("cc-1", "checkout", "aaaa111");
+        assert!(awaits.in_its_base("cc-1", &paths(&["shop/tax.py"])));
+        assert!(awaits.dropped("cc-1", "checkout").is_some());
+        assert!(!awaits.in_its_base("cc-1", &paths(&["shop/tax.py"])));
     }
 
     #[test]

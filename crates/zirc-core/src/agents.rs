@@ -298,8 +298,10 @@ pub fn no_such_session(session: &str) -> String {
 pub const REFUSED: &str = "refused: ";
 
 /// What a refusal says to do instead of waiting.
-const INSTEAD: &str = "Don't wait for an answer: post in the repository's channel naming \
-    its person, or go ahead and say what you're changing with `zirc intend`.";
+const INSTEAD: &str = "Don't ask again, and don't wait for an answer: go ahead, say what \
+    you're changing with `zirc intend`, and land when your own checks pass; your watch says if \
+    theirs comes to change the same lines. To leave word, post once in the repository's \
+    channel naming its person.";
 
 /// Whose machine the sender of a line with `source` (`nick!user@host`) is, as the server says
 /// by its host (`zirc_proto::names::machine_host`): None for a person, their own client, or a

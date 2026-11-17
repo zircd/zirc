@@ -182,6 +182,9 @@ pub(crate) async fn wait(
         };
         match next {
             Ok(Some(Heard::Message(delivery))) => {
+                if noted_for(&delivery, how.session.as_deref()) {
+                    return stop_for(&Heard::Message(delivery), &mut hints, &condition, out);
+                }
                 if let Some(ended) = place.judge(&mut condition, delivery) {
                     return ended.say(&condition, out);
                 }
@@ -219,6 +222,7 @@ fn stop_for(
     let said = match heard {
         Heard::Direct(direct) => crate::lines::direct_line(direct),
         Heard::Answered(answered) => crate::decide::answered_line(answered),
+        Heard::Message(delivery) => crate::lines::text_of(delivery),
         _ => String::new(),
     };
     writeln!(out, "{said}")?;
@@ -230,6 +234,21 @@ fn stop_for(
          you still need to",
         condition.describe()
     );
+}
+
+/// Whether `delivery` is a zircd's own note to `session`, as `cc-1: api-auth, which your work
+/// is stacked on, was deleted from origin without landing…`: what it waits on may never
+/// come. A session waiting for a dropped branch to land, its wait its only listener, never
+/// read that it was dropped (the agent evals' PL2 probe, 17 Nov 2026).
+fn noted_for(delivery: &Delivery, session: Option<&str>) -> bool {
+    let Some(session) = session.filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    let zirc_proto::Event::Text { body } = &delivery.message.event else {
+        return false;
+    };
+    delivery.message.session == zirc_proto::NO_SESSION
+        && zirc_proto::addressed(body).is_some_and(|(to, _)| to.eq_ignore_ascii_case(session))
 }
 
 /// Whether `heard` is for `session` itself: a direct message or note to it, or its person's
@@ -391,6 +410,31 @@ impl Ended {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_zircds_note_to_the_waiting_session_ends_its_wait() {
+        let note = |session: &str, body: &str| {
+            Delivery::new(
+                "#zirc",
+                "ada-mbp",
+                zirc_proto::Message::new(session, zirc_proto::Event::Text { body: body.into() }),
+            )
+        };
+        let dropped = "cc-1: api-auth, which your work is stacked on, was deleted from origin";
+        assert!(noted_for(
+            &note(zirc_proto::NO_SESSION, dropped),
+            Some("cc-1")
+        ));
+        assert!(!noted_for(
+            &note(zirc_proto::NO_SESSION, dropped),
+            Some("cc-2")
+        ));
+        assert!(
+            !noted_for(&note("cc-9", dropped), Some("cc-1")),
+            "a session's post"
+        );
+        assert!(!noted_for(&note(zirc_proto::NO_SESSION, dropped), None));
+    }
 
     #[test]
     fn a_message_for_the_waiting_session_ends_its_wait() {

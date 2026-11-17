@@ -140,8 +140,18 @@ async fn stack_on(zircd: &Zircd<'_>, branch: &str, drop: bool, out: &mut impl Wr
         writeln!(out, "not stacked on {branch} any more")?;
         return Ok(());
     }
-    let tip = tip_of(branch)?;
+    let (tip, gone) = tip_of(branch)?;
     zircd.ask(Some(branch), Some(&tip), false).await?;
+    if gone {
+        writeln!(
+            out,
+            "{branch} is gone from origin: stacked on it at {}, as your clone last saw it. If \
+             it landed, `zirc stack` says so now; if it was dropped, your watch wakes within \
+             a minute or two with what to do. Don't land yours with its commits in it.",
+            short(&tip)
+        )?;
+        return Ok(());
+    }
     writeln!(
         out,
         "stacked on {branch} at {}: your watch wakes when it lands or moves, and `zirc stack \
@@ -218,10 +228,11 @@ fn step(stack: &Stack, has_tip: bool, default: &str) -> Step {
         }
         return Step::Say {
             line: format!(
-                "{branch} was deleted from origin without landing: dropped, so don't land it \
-                 yourself. `zirc stack --rebase` rebases yours onto {default} past it (`git \
-                 fetch origin {default} && git rebase --onto origin/{default} {tip}`); then keep \
-                 in yours what it needs of {branch}'s work"
+                "{branch} was deleted from origin without landing: dropped, so it won't land, \
+                 and don't land it yourself. Build yours on {default} without it: `zirc stack \
+                 --rebase` rebases yours onto {default} past it (`git fetch origin {default} && \
+                 git rebase --onto origin/{default} {tip}`); where yours used what {branch} \
+                 added, do it again in yours as {default} has it"
             ),
             blocks: true,
         };
@@ -465,11 +476,15 @@ fn short(commit: &str) -> &str {
     commit.get(..7).unwrap_or(commit)
 }
 
-/// `branch`'s head on origin, fetched now, which this branch must already hold.
-fn tip_of(branch: &str) -> Result<String> {
+/// `branch`'s head on origin, fetched now, which this branch must already hold, and whether
+/// origin no longer has it: then its head as this clone last saw it, which zircd finds
+/// landed or dropped. An agent that built on a branch deleted since was told to push it
+/// first, kept no stack and waited on it for good (the agent evals' PL2, 17 Nov 2026).
+fn tip_of(branch: &str) -> Result<(String, bool)> {
     let here = Path::new(".");
     let fetched = git(here, &["fetch", "-q", "origin", branch])?;
-    if !fetched.status.success() {
+    let gone = !fetched.status.success();
+    if gone && !rev(here, &format!("origin/{branch}")).is_ok_and(|tip| has_commit(here, &tip)) {
         bail!("couldn't fetch {branch} from origin: push it first, or name a branch that's there");
     }
     let Ok(tip) = rev(here, &format!("origin/{branch}")) else {
@@ -481,7 +496,7 @@ fn tip_of(branch: &str) -> Result<String> {
              then stack again"
         );
     }
-    Ok(tip)
+    Ok((tip, gone))
 }
 
 /// Whether HEAD at `dir` holds `commit`.
