@@ -22,7 +22,7 @@ use super::face::Face;
 use super::list::{ChannelGroup, DirectKind, DirectRow, Shelf, SidebarSection};
 use super::{
     Attendance, Avatar, BROWSE_CHANNELS, Chat, NEW_CHANNEL, Presence, SERVER_TITLE, ago_short,
-    away_label, badge_label, is_group, room_label,
+    badge_label, is_group, room_label,
 };
 
 /// What the row after the first few direct messages says, where an app lists only those
@@ -128,8 +128,6 @@ pub struct ListRow {
     pub faces: Vec<Face>,
     /// A person's or a guest's dot, a guest's room's (here while they're connected).
     pub presence: Option<Presence>,
-    /// That a person in a direct message is away, after their name ([`away_label`]).
-    pub away_label: Option<String>,
     /// The newest thing said in it, or under it for a channel, as every list previews it;
     /// [`NO_MESSAGES`] for a conversation whose history came back with nothing said
     /// ([`ListRow::placeholder`]).
@@ -192,7 +190,6 @@ impl ListRow {
             direct_kind: None,
             faces: Vec::new(),
             presence: None,
-            away_label: None,
             preview: None,
             placeholder: false,
             when: None,
@@ -621,9 +618,6 @@ impl Chat {
             direct_kind: Some(row.kind),
             faces: row.avatars.iter().map(|avatar| self.face(avatar)).collect(),
             presence: row.presence,
-            away_label: (row.kind == DirectKind::Person)
-                .then(|| self.away(&row.name).map(away_label))
-                .flatten(),
             preview: row.preview.clone(),
             when: row.when.clone(),
             latest_ms: row.latest.map(|at| at.timestamp_millis()),
