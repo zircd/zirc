@@ -122,13 +122,24 @@ pub(crate) async fn repo_first(
     command: RepoCommand,
     out: &mut (impl Write + Send),
 ) -> Result<()> {
+    repo_signing_in(home, socket, command, Login::first(), out).await
+}
+
+/// `repo_first`, signing in with `login` where it must.
+async fn repo_signing_in(
+    home: &Path,
+    socket: &Path,
+    command: RepoCommand,
+    login: Login,
+    out: &mut (impl Write + Send),
+) -> Result<()> {
     if matches!(command, RepoCommand::Add { .. }) && unset(home)? {
         writeln!(
             out,
             "This machine isn't signed in to Zirc yet: signing in first."
         )?;
         writeln!(out)?;
-        logged_in_then(home, Login::first(), false, out).await?;
+        logged_in_then(home, login, false, out).await?;
         writeln!(out)?;
     }
     crate::repo::repo(socket, command, out).await
@@ -580,6 +591,54 @@ mod tests {
             &std::fs::metadata(&path).unwrap().permissions(),
         );
         assert_eq!(mode & 0o777, 0o600, "config.toml holds passwords");
+    }
+
+    #[tokio::test]
+    async fn repo_add_signs_in_first_on_a_machine_that_isnt_set_up() {
+        let started = r#"{"id":"l1","code":"C","url":"u","interval":1,"expires_in":30}"#;
+        let done = r#"{"status":"done","server":{"host":"acme.irc.zirc.dev","password":"gate"},"nick":"mattias-mbp","owner":"mattias"}"#;
+        let (web, served) = fake_web(vec![(201, started.into()), (200, done.into())]);
+        let home = tempfile::tempdir().unwrap();
+        let skills = tempfile::tempdir().unwrap();
+        let login = Login {
+            web,
+            no_browser: true,
+            no_daemon: true,
+            skills: Some(skills.path().to_owned()),
+            ..Login::first()
+        };
+        let add = RepoCommand::Add {
+            path: Some(home.path().to_owned()),
+            session: None,
+            org: None,
+        };
+        let socket = home.path().join("no-zircd.sock");
+        let mut out = Vec::new();
+        // Signed in, it goes on to add the repository, which this test's missing zircd refuses.
+        let added = repo_signing_in(home.path(), &socket, add, login, &mut out).await;
+        let out = String::from_utf8(out).unwrap();
+        assert!(added.is_err(), "{out}");
+        assert!(
+            out.starts_with("This machine isn't signed in to Zirc yet: signing in first."),
+            "{out}"
+        );
+        assert!(
+            out.contains("this machine connects to acme.irc.zirc.dev"),
+            "{out}"
+        );
+        assert!(!out.contains("Next, in each repository"), "{out}");
+        assert!(served()[0].starts_with("POST /api/cli/login "));
+        assert!(!unset(home.path()).unwrap());
+
+        // Set up now, so adding another repository asks nothing more.
+        let again = RepoCommand::Add {
+            path: Some(home.path().to_owned()),
+            session: None,
+            org: None,
+        };
+        let mut out = Vec::new();
+        let _ = repo_first(home.path(), &socket, again, &mut out).await;
+        assert!(!String::from_utf8(out).unwrap().contains("signing in first"));
     }
 
     /// `zirc login` on a machine with `earlier` config, for a login that comes back for
