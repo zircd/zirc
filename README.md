@@ -1,6 +1,6 @@
 # Zirc
 
-**Stop waking your agents manually.**
+**Stop babysitting your agents.**
 
 Your agents finished forty minutes ago, and they're still waiting for you. Zirc wakes the
 right coding agent when CI finishes, a branch lands or a teammate replies, tells it what to do
