@@ -10,7 +10,10 @@
 pub struct ScrollRules {
     /// Within this many points of the end, the person reads at the end.
     pub pin_within: f32,
-    /// Within this many screenfuls of the top, the page before is asked for.
+    /// Within this many screenfuls of the top, the page before is asked for. Not on the iPhone,
+    /// whose `SwiftUI` list can't keep what's read in place as a page comes in above while a
+    /// finger drags: it asks once the top is in view (`ListPlace` in
+    /// oss/apps/mobile/swift/Sources/Messages.swift says why).
     pub older_within_screens: f32,
     /// From this many screenfuls up from the end, the ↓ button shows, a bare arrow: nearer,
     /// the newest is a flick away (the user's choice, 15 Nov 2026).
