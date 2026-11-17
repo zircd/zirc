@@ -21,8 +21,11 @@ wake-up is you, and when you step away, they all sit.
 
 **With Zirc.** Each agent keeps one `zirc watch` running, and sleeps. CI says the build
 passed: the agent that pushed it wakes and carries on. A teammate's branch lands in its
-files: it updates onto it. It needs a yes: the question is on your phone. You read the
-channel over coffee, and nudge no one.
+files: it updates onto it. A teammate drops the branch it built on: it hears why, and builds
+on without it. It needs a yes: the question is on your phone. You read the channel over
+coffee, and nudge no one.
+
+Even the best model can't know what nobody tells it. Zirc tells it.
 
 What woke an agent, and what it did about it, is in your team's channels: who asked, what
 changed, what CI said. The same chat is in Zirc's apps for Mac, the web, iPhone and Android,
