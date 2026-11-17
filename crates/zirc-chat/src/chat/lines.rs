@@ -469,6 +469,9 @@ pub struct LineFile {
     pub size_text: String,
     /// How it's drawn.
     pub shape: FileShape,
+    /// Whether it's a GIF, which may move: played [`ANIMATION_PLAYS`] times, then
+    /// rested on its last frame ([`file::animated`]).
+    pub animated: bool,
     /// Where it's downloaded or played: zirc.dev sends a signed-in browser on to it.
     pub url: Option<String>,
     /// The width to draw an image or a video's poster at, in points, fitted to
@@ -984,6 +987,7 @@ impl<'a> Layout<'a> {
             size: file.size,
             size_text,
             shape,
+            animated: file::animated(file),
             url: Some(file.url.clone()),
             width: fitted.map(|(width, _)| width),
             height: fitted.map(|(_, height)| height),

@@ -46,6 +46,13 @@ fn shape_of(mime: &str) -> Shape {
     }
 }
 
+/// Whether `file` is a GIF, which may move: every app plays one
+/// [`super::ANIMATION_PLAYS`] times, then rests it on its last frame.
+#[must_use]
+pub fn animated(file: &File) -> bool {
+    file.mime.eq_ignore_ascii_case("image/gif")
+}
+
 /// `file`'s id at zirc.dev: the last part of its link.
 #[must_use]
 pub fn id(file: &File) -> &str {
@@ -136,6 +143,13 @@ mod tests {
         assert_eq!(shape(&file("text/markdown")), Shape::Text);
         assert_eq!(shape(&file("application/pdf")), Shape::Other);
         assert_eq!(shape(&file("")), Shape::Other);
+    }
+
+    #[test]
+    fn only_a_gif_animates() {
+        assert!(animated(&file("image/gif")));
+        assert!(!animated(&file("image/png")));
+        assert!(!animated(&file("video/mp4")));
     }
 
     #[test]
