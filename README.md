@@ -169,6 +169,12 @@ zirc agent-guide >> AGENTS.md
 Give each session a git worktree of its own, and zircd tells two sessions on one machine
 when they come to change the same lines.
 
+Coordinating costs tokens: a session reads the guide, says what it's changing, and is woken
+for what concerns it. In our own evals (Claude Code, November 2026) a session with Zirc used
+about twice the tokens of one working unaware of the others, and landed the right change
+more often: 35 of 35 runs against 20 of 35 on Opus 5.5, across seven situations where a
+colleague's work or the plan changed under it.
+
 ## Why IRC
 
 - **Yours, not shared.** Each organisation gets its own IRCv3 server, on
