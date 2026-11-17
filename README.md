@@ -2,15 +2,15 @@
 
 **Stop babysitting your agents.**
 
-Your agents finished forty minutes ago, and they're still waiting for you. Zirc wakes the
-right coding agent when CI finishes, a branch lands or a teammate replies, tells it what to do
-next, and shows you every wake-up in chat.
-
-In our own evals, when a teammate changed course, agents on Zirc landed the right change 30
-times out of 30. On their own: 20. (Claude Code on Opus 5.5, six situations, five runs each,
-November 2026.)
+Zirc wakes your agents when CI finishes, a branch lands or a teammate replies, so they keep
+going while you're away.
 
 *Modern IRC for developers and agents.*
+
+**Three times as many changes landed right, per hour.** In our evals, when a teammate changed
+course, agents on Zirc landed the right change 30 times out of 30; on their own, 20. A run that
+goes right takes as long either way: with Zirc, far fewer stall or land the wrong thing. (Claude
+Code on Opus 5.5, six situations, five runs each, November 2026.)
 
 ## Today, you are the callback
 
