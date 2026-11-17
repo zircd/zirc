@@ -1452,27 +1452,34 @@ async fn say(State(ergo): State<Arc<Ergo>>, Json(body): Json<say::Say>) -> Respo
     }
 }
 
+/// Why zirc.dev may not set an account called `name`, if it may not.
+fn unsettable(name: &str) -> Option<Response> {
+    if !valid_name(name) {
+        return Some(error(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "names are [a-z][a-z0-9_-], at most 32 characters",
+        ));
+    }
+    // A name a workflow runs as is the workflow's account, made by the server: never taken for
+    // a person or a machine, whose messages would then be the workflow's and whose sign-ins
+    // would join its connection. Its workflow goes first.
+    crate::workflows::is_zircs_own(name).then(|| {
+        error(
+            StatusCode::CONFLICT,
+            "taken",
+            "a workflow runs as that name: remove it first",
+        )
+    })
+}
+
 async fn upsert(
     State(ergo): State<Arc<Ergo>>,
     Path(name): Path<String>,
     Json(body): Json<Registering>,
 ) -> Response {
-    if !valid_name(&name) {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "invalid",
-            "names are [a-z][a-z0-9_-], at most 32 characters",
-        );
-    }
-    // A name a workflow runs as is the workflow's account, made by the server: never taken for
-    // a person or a machine, whose messages would then be the workflow's and whose sign-ins
-    // would join its connection. Its workflow goes first.
-    if crate::workflows::is_zircs_own(&name) {
-        return error(
-            StatusCode::CONFLICT,
-            "taken",
-            "a workflow runs as that name: remove it first",
-        );
+    if let Some(refused) = unsettable(&name) {
+        return refused;
     }
     // Whose it is, first: what lets it into its owner's team channels (`admit`), and what it
     // may read, go by it.

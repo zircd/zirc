@@ -288,7 +288,7 @@ impl Chat {
         let Ok(ask) = serde_json::from_str::<Ask>(value) else {
             return Vec::new();
         };
-        let member = self.from_member(line);
+        let member = self.sent_by_member(line);
         let now = (self.clock)();
         let lately = self
             .sealing
@@ -322,7 +322,7 @@ impl Chat {
 
     /// Whether `line` comes from a member's own device: signed in to an account, never a guest
     /// or a machine. Only such a one is handed the key, and only such a one may hand it over.
-    fn from_member(&self, line: &Line) -> bool {
+    fn sent_by_member(&self, line: &Line) -> bool {
         line.tag("account")
             .is_some_and(|account| !account.is_empty() && account != "*")
             && !self.is_guest(super::nick_of(line))
@@ -343,7 +343,7 @@ impl Chat {
             .sealing
             .device
             .as_ref()
-            .filter(|_| to_me && self.sealing.asking && self.from_member(line))
+            .filter(|_| to_me && self.sealing.asking && self.sent_by_member(line))
         else {
             return;
         };
