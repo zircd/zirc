@@ -496,10 +496,10 @@ pub mod menu_bar {
     }
 
     /// The [`CONVERSATION`] menu's items for `app`, in order (the user's choice, 17 Nov
-    /// 2026): both desktops draw it from here. The Mac has no New Message yet, as it can't
-    /// start one.
+    /// 2026): both desktops draw it from here, the same for each now the Mac starts a New
+    /// Message too.
     #[must_use]
-    pub fn conversation(app: MenuApp) -> Vec<Item> {
+    pub fn conversation(_app: MenuApp) -> Vec<Item> {
         [
             (Command::PreviousConversation, PREVIOUS_CONVERSATION),
             (Command::NextConversation, NEXT_CONVERSATION),
@@ -513,7 +513,6 @@ pub mod menu_bar {
             (Command::Search, SEARCH),
         ]
         .into_iter()
-        .filter(|(command, _)| app == MenuApp::Desktop || *command != Command::NewMessage)
         .map(|(command, label)| Item { command, label })
         .collect()
     }
@@ -556,7 +555,7 @@ mod tests {
 
     #[test]
     fn the_menu_bar_has_what_each_desktop_can_do() {
-        use menu_bar::{Command, MenuApp, conversation};
+        use menu_bar::{MenuApp, conversation};
         let labels = |app| {
             conversation(app)
                 .iter()
@@ -578,12 +577,7 @@ mod tests {
                 "Search…",
             ]
         );
-        assert!(
-            conversation(MenuApp::Mac)
-                .iter()
-                .all(|item| item.command != Command::NewMessage)
-        );
-        assert_eq!(conversation(MenuApp::Mac).len(), 9);
+        assert_eq!(conversation(MenuApp::Mac), conversation(MenuApp::Desktop));
     }
 
     #[test]
@@ -729,6 +723,10 @@ pub struct Words {
     /// Under `asking_zirc_dev` once a sign-in waits, before its code: `Check that the page in
     /// your browser shows`.
     pub check_the_code: String,
+    /// New message's To: field's label: `To`.
+    pub to: String,
+    /// What New message's To: field says while it's empty: `Type a name`.
+    pub type_a_name: String,
     /// What a video's player says while its copy is made: `Getting the video ready…`.
     pub video_making: String,
     /// What a video's player says when zirc.dev can't be reached: `Couldn't reach zirc.dev
@@ -936,6 +934,8 @@ pub fn words() -> Words {
         dismiss: DISMISS.to_owned(),
         done: DONE.to_owned(),
         check_the_code: CHECK_THE_CODE.to_owned(),
+        to: super::TO.to_owned(),
+        type_a_name: super::TYPE_A_NAME.to_owned(),
         video_making: super::VIDEO_MAKING.to_owned(),
         video_unreachable: super::VIDEO_UNREACHABLE.to_owned(),
         earlier_reply: EARLIER_REPLY.to_owned(),

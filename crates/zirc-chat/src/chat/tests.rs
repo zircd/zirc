@@ -3676,6 +3676,35 @@ fn says_who_a_private_conversation_is_with_for_its_avatar() {
 }
 
 #[test]
+fn new_message_offers_people_and_starts_a_direct_message_or_a_group() {
+    use crate::chat::in_label;
+    let mut chat = Scene::in_api();
+    feed(
+        &mut chat,
+        &[
+            ":bob!u@h PRIVMSG me :hi",
+            ":me!u@h JOIN #web",
+            ":s 353 me = #web :me carol bob",
+        ],
+    );
+    // Those we have direct messages with first, then the channels' people, saying where.
+    let people = chat.pickable_people();
+    let nicks: Vec<&str> = people.iter().map(|p| p.nick.as_str()).collect();
+    assert_eq!(nicks, ["bob", "carol"]);
+    assert_eq!(people[1].note, Some(in_label("#web")));
+    // Nobody until something's typed, and never someone chosen already.
+    assert!(chat.pick_people("", &[]).is_empty());
+    assert_eq!(chat.pick_people("car", &[])[0].nick, "carol");
+    assert!(chat.pick_people("car", &["carol".into()]).is_empty());
+    // One person opens their direct message; several make a group.
+    let one = chat.start_message(&["bob".into()]);
+    assert_eq!((one.open.as_deref(), one.lines.len()), (Some("bob"), 0));
+    let group = chat.start_message(&["bob".into(), "carol".into()]);
+    assert_eq!(group.open, None);
+    assert!(texts(&group.lines)[0].starts_with("JOIN #dm-"));
+}
+
+#[test]
 fn a_group_shows_two_faces_whoever_spoke_last_first() {
     let mut chat = Scene::in_api();
     let members = ["bob".into(), "carol".into(), "dave".into(), "me".into()];

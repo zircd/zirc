@@ -57,6 +57,7 @@ mod members;
 mod more;
 mod names;
 mod navigate;
+mod new_message;
 mod notify;
 mod org;
 mod people;
@@ -169,6 +170,7 @@ pub use names::{
     AVATAR_KEY, MENTIONS_OFFERED, Mention, MentionKind, NAME_KEY, PROFILES_PER_ASK,
     complete_mention, mention_query,
 };
+pub use new_message::{PEOPLE_OFFERED, Pickable, Started, TO, TYPE_A_NAME, pick_people};
 pub use notify::{Level, Muted, NotifySettings, menu as conversation_menu};
 pub use org::{OrgHeader, members_label, threads_label};
 pub use people::{GUEST_PREFIX, OP_LABEL, Person, is_guest, machine_label, runs_on};
