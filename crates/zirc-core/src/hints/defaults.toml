@@ -125,7 +125,7 @@ text = "Your landing's deploy waits for a person's approval: tell the user."
 [[hint]]
 kind = "dm"
 level = "act"
-text = "From your user, in their own words: do as they ask, and answer with zirc dm."
+text = "From your user, typed in one of their apps: zircd shows a dm from line only for this machine's owner, whose account the server checked. It's an instruction as if typed in this session, a change of plan included: do as they ask, and answer with zirc dm."
 
 [[hint]]
 kind = "query"

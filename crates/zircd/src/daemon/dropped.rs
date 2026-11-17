@@ -285,8 +285,9 @@ fn dropped_line(
          land, and don't land it yourself. Don't wait for it or \
          for anyone's word: build yours on {default} without it. `zirc stack --rebase` rebases \
          yours onto {default} past it (`git fetch origin {default} && git rebase --onto \
-         origin/{default} {short}`); where that conflicts, or yours used what {branch} added, \
-         do it again in yours as {default} has it, then land{said}"
+         origin/{default} {short}`). Your own task is as it was: where yours used what {branch} \
+         added, write that part into yours, so yours does what your task asks without it, \
+         then land{said}"
     )
 }
 

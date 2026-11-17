@@ -231,8 +231,8 @@ fn step(stack: &Stack, has_tip: bool, default: &str) -> Step {
                 "{branch} was deleted from origin without landing: dropped, so it won't land, \
                  and don't land it yourself. Build yours on {default} without it: `zirc stack \
                  --rebase` rebases yours onto {default} past it (`git fetch origin {default} && \
-                 git rebase --onto origin/{default} {tip}`); where yours used what {branch} \
-                 added, do it again in yours as {default} has it"
+                 git rebase --onto origin/{default} {tip}`). Your own task is as it was: where \
+                 yours used what {branch} added, write that part into yours"
             ),
             blocks: true,
         };
