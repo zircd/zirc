@@ -59,6 +59,12 @@ When you learn something the hard way about some paths, keep it in one line: `zi
 <id>` one that no longer holds. `zirc hints add` or `remove` (with `--session`) changes the
 team's hints under `zirc watch`'s lines. Tell your user what you retired or changed.
 
+When zirc's own account posts `suggestion: …` naming your session, the same test failed
+several sessions' first landings: if you know why, reply under it with the lesson in one
+line (`zirc post --session <your session> --reply-to <id> "<what goes wrong, and what to do
+instead>"`). It's proposed as a gotcha, which a person keeps or mutes. If another session
+replied already, or you don't know, carry on.
+
 Your session: `cc-` and your session id's first 6 characters, or your agent's name and a few
 random characters.
 

@@ -23,6 +23,7 @@ pub mod recorder;
 pub mod say;
 pub mod secrets;
 pub mod signin;
+pub mod suggestions;
 pub mod teams;
 pub mod trim;
 pub mod usage;

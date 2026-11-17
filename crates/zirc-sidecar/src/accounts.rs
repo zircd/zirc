@@ -223,6 +223,7 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
     tokio::spawn(forget_guests(ergo.clone()));
     tokio::spawn(keep_profiles(ergo.clone()));
     tokio::spawn(push_visitors(ergo.clone()));
+    tokio::spawn(suggest(ergo.clone()));
     // The recorder of machines' activity records, beside the history (crate::recorder).
     let recorder = crate::recorder::Recorder {
         host: ergo.irc.ip().to_string(),
@@ -1902,6 +1903,38 @@ async fn tell_colleagues(ergo: &Ergo, colleagues: Colleagues) {
             *said = Some(colleagues);
         }
         Err(failure) => warn!(%failure, "couldn't say what colleagues' agents may do"),
+    }
+}
+
+/// Keeps the playbook's suggestions going ([`crate::suggestions`]): what the history shows of
+/// replies and reactions to them every [`crate::suggestions::EVERY`], what the activity store
+/// shows worth suggesting every [`crate::suggestions::LOOK`], each step said as zirc's own
+/// account. A person here is a person's account or one of their own clients, never a machine.
+async fn suggest(ergo: Arc<Ergo>) {
+    use crate::suggestions::{EVERY, LOOK, round};
+    let mut every = tokio::time::interval(EVERY);
+    let mut looked: Option<tokio::time::Instant> = None;
+    loop {
+        every.tick().await;
+        let look = looked.is_none_or(|at| at.elapsed() >= LOOK);
+        if look {
+            looked = Some(tokio::time::Instant::now());
+        }
+        let (history, clients) = (ergo.history.clone(), ergo.machines.clients());
+        let now = u64::try_from(jiff::Timestamp::now().as_second()).unwrap_or_default();
+        let person = move |account: &str| is_person(account) || clients.contains(account);
+        let says = tokio::task::spawn_blocking(move || round(&history, person, look, now)).await;
+        match says {
+            Ok(Ok(says)) => {
+                for say in says {
+                    if let Err(failure) = say_as_zirc(&ergo, &say.channel, say.event).await {
+                        warn!(%failure, "couldn't say a suggestion");
+                    }
+                }
+            }
+            Ok(Err(error)) => warn!(%error, "couldn't read for suggestions"),
+            Err(_) => {}
+        }
     }
 }
 

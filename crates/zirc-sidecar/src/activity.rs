@@ -472,7 +472,7 @@ fn read_new(connection: &mut Connection) -> rusqlite::Result<usize> {
     }
 }
 
-fn insert(
+pub(crate) fn insert(
     connection: &Connection,
     ergo: Option<i64>,
     msgid: Option<&str>,
