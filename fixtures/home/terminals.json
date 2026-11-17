@@ -18,6 +18,12 @@
         "output": "Other agents: zirc agent-guide >> AGENTS.md"
       },
       {
+        "output": ""
+      },
+      {
+        "output": "Try it: start two Claude Code sessions here and ask both to change the same file. The second hears about the first before it starts."
+      },
+      {
         "command": "zirc status"
       },
       {

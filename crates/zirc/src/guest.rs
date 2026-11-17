@@ -117,7 +117,7 @@ pub async fn login(home: &Path, args: Login, target: Target, out: &mut impl Writ
         return Ok(());
     }
     run_zircd(home, args.zircd, out).await?;
-    connected_to(home, Some(&name), out).await
+    connected_to(home, Some(&name), false, out).await
 }
 
 /// Starts zircd with a new guest's terminal: restarting the login service's, when this

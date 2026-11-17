@@ -16,6 +16,7 @@ use zirc_proto::login::{Credentials, LoginRequest};
 
 use crate::client::{shown, tail};
 use crate::daemon::{stop, zircd_binary};
+use crate::repo::RepoCommand;
 use crate::skill::install_skill;
 use crate::{guest, service};
 
@@ -46,6 +47,28 @@ pub(crate) struct Login {
     /// Claude Code's skills directory. ~/.claude/skills unless set.
     #[arg(long, hide = true)]
     pub(crate) skills: Option<PathBuf>,
+}
+
+impl Login {
+    /// The login `zirc repo add` starts on a machine that isn't set up yet: to zirc.dev, or
+    /// `ZIRC_WEB`, as `zirc login` with no flags would be.
+    pub(crate) fn first() -> Self {
+        Self {
+            target: None,
+            web: std::env::var("ZIRC_WEB").unwrap_or_else(|_| login::WEB.to_owned()),
+            no_browser: false,
+            no_daemon: false,
+            force: false,
+            org: None,
+            zircd: std::env::var_os("ZIRC_ZIRCD").map(PathBuf::from),
+            skills: None,
+        }
+    }
+}
+
+/// Whether this machine has no setup yet: nothing logged in, and no server of its own.
+pub(crate) fn unset(home: &Path) -> Result<bool> {
+    Ok(earlier_setup(&paths::config(home), false)?.is_none())
 }
 
 #[derive(Debug, Args)]
@@ -88,6 +111,36 @@ pub(crate) fn earlier_setup(path: &Path, force: bool) -> Result<Option<Settings>
 }
 
 pub(crate) async fn login(home: &Path, args: Login, out: &mut (impl Write + Send)) -> Result<()> {
+    logged_in_then(home, args, true, out).await
+}
+
+/// `zirc repo`, whose `add` is the first step and needs nothing before it: on a machine that
+/// isn't set up, it signs in first, as `zirc login` does, then carries on adding the repository.
+pub(crate) async fn repo_first(
+    home: &Path,
+    socket: &Path,
+    command: RepoCommand,
+    out: &mut (impl Write + Send),
+) -> Result<()> {
+    if matches!(command, RepoCommand::Add { .. }) && unset(home)? {
+        writeln!(
+            out,
+            "This machine isn't signed in to Zirc yet: signing in first."
+        )?;
+        writeln!(out)?;
+        logged_in_then(home, Login::first(), false, out).await?;
+        writeln!(out)?;
+    }
+    crate::repo::repo(socket, command, out).await
+}
+
+/// The login itself; `next` says whether to end on what to do next, `zirc repo add`.
+async fn logged_in_then(
+    home: &Path,
+    args: Login,
+    next: bool,
+    out: &mut (impl Write + Send),
+) -> Result<()> {
     // A machine that's set up keeps its setup, and its gate password, unless the login is
     // for the same server (an upgrade, such as to an account of its own) or it's asked to.
     let path = paths::config(home);
@@ -161,7 +214,7 @@ pub(crate) async fn login(home: &Path, args: Login, out: &mut (impl Write + Send
     let socket = paths::socket(home);
     let _ = stop(&socket, &mut std::io::sink()).await;
     service::install(home, &zircd_binary(args.zircd)?, &mut std::io::sink())?;
-    connected_to(home, None, out).await
+    connected_to(home, None, next, out).await
 }
 
 /// Starts a login for this machine at `args.web`, says where to confirm it, and waits until
@@ -308,11 +361,12 @@ pub(crate) fn login_settings(
 pub(crate) const CONNECT_WAIT: Duration = Duration::from_secs(20);
 
 /// Waits for the zircd just started to connect, and says how it went: connected and what
-/// to do next, or what its log says went wrong. With `guest`, its connection as that guest's
-/// terminal.
+/// to do next (unless `next` is false), or what its log says went wrong. With `guest`, its
+/// connection as that guest's terminal.
 pub(crate) async fn connected_to(
     home: &Path,
     guest: Option<&str>,
+    next: bool,
     out: &mut impl Write,
 ) -> Result<()> {
     let socket = paths::socket(home);
@@ -337,8 +391,10 @@ pub(crate) async fn connected_to(
                 "zircd is running at login, connected to {} as {nick}.",
                 status.server
             )?;
-            writeln!(out)?;
-            writeln!(out, "Next, in each repository you work in: zirc repo add")?;
+            if next {
+                writeln!(out)?;
+                writeln!(out, "Next, in each repository you work in: zirc repo add")?;
+            }
             return Ok(());
         }
         if tokio::time::Instant::now() > deadline {

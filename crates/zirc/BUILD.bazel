@@ -18,12 +18,14 @@ zirc_rust_binary(
     },
 )
 
-# What zirc login, zirc ci token, zirc request and zirc skill install print, which zirc.dev's home page shows
-# as it would on a Mac (web/src/lib/setup-terminals.ts); its test checks them against these.
+# What zirc login (and zirc repo add, which signs in first), zirc ci token, zirc request and zirc skill
+# install print, which zirc.dev's home page shows as it would on a Mac (web/src/lib/setup-terminals.ts);
+# its test checks them against these.
 exports_files(
     [
         "src/ci.rs",
         "src/decide.rs",
+        "src/repo.rs",
         "src/setup.rs",
         "src/skill.rs",
     ],

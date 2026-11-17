@@ -52,7 +52,7 @@ use crate::daemon::DaemonCommand;
 use crate::hints::{HintsCommand, hints_command};
 use crate::post::{TopicArgs, intend, topic, trim_help};
 use crate::queries::AgentsCommand;
-use crate::repo::{RepoCommand, repo};
+use crate::repo::RepoCommand;
 use crate::sessions::{avatar_named, avatars_text, name_session, tool_here};
 use crate::setup::{Init, Login};
 use crate::skill::{REFERENCE, SkillCommand, refresh_skill, skills_dir};
@@ -980,7 +980,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
             let out = &mut paint::Lines::new(out, paint::status, !json && paint::wanted());
             status(&socket, json, session.as_deref(), out).await
         }
-        Command::Repo(command) => repo(&socket, command, out).await,
+        Command::Repo(command) => setup::repo_first(&home, &socket, command, out).await,
         Command::Post(args) => post::post(&socket, name, args, out).await,
         Command::Dm(args) => post::dm(&socket, args, out).await,
         Command::Decide(args) => decide::decide(&socket, args, out).await,

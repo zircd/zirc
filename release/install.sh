@@ -175,9 +175,8 @@ main() {
         say "zircd $version is running. Check it with: zirc status"
     else
         [ "$on_path" = yes ] || say "Once $(shown "$install_dir") is on your PATH:"
-        say "Next, log in at zirc.dev, which sets this machine up for your organisation and runs zircd:"
-        say "  zirc login"
-        say "Then watch a repository from inside it with: zirc repo add"
+        say "Next, in a repository you work in (it signs you in at zirc.dev the first time):"
+        say "  zirc repo add"
         say ""
         say "For a server of your own instead: zirc init --server <host>, then zirc daemon install"
     fi

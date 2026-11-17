@@ -74,7 +74,7 @@ expect "Installed zirc, zircd and zirc-remote $version in ~/.local/bin"
 expect 'export PATH="$HOME/.local/bin:$PATH"'
 expect "signed in as yourself: zirc tui"
 expect "isn't on your PATH"
-expect "  zirc login"
+expect "  zirc repo add"
 if [ "$(uname -s)" != Darwin ]; then
     grep -qF "zirc app" "$out" && fail "offered the Mac app on $(uname -s)"
 fi

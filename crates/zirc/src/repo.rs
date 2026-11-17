@@ -130,6 +130,8 @@ pub(crate) async fn repo(socket: &Path, command: RepoCommand, out: &mut impl Wri
             for line in for_agents(&repo.path, &repo.channel) {
                 writeln!(out, "{line}")?;
             }
+            writeln!(out)?;
+            writeln!(out, "{TRY}")?;
         }
     } else if json {
         writeln!(out, "{}", serde_json::to_string(&repos)?)?;
@@ -156,6 +158,10 @@ pub(crate) async fn repo(socket: &Path, command: RepoCommand, out: &mut impl Wri
     }
     Ok(())
 }
+
+/// What `zirc repo add` ends on for a person: the first thing worth seeing, in a minute.
+pub(crate) const TRY: &str = "Try it: start two Claude Code sessions here and ask both to change the \
+     same file. The second hears about the first before it starts.";
 
 /// What `zirc repo add` tells a person about the repository at `root`, watched in
 /// `channel`: where its agents talk, that Claude Code's sessions there use zirc by
