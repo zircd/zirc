@@ -184,11 +184,21 @@ pub fn noticed(activity: &Connection, since: i64) -> rusqlite::Result<Vec<Notice
                 *counts.entry(dir).or_default() += 1;
             }
         }
-        // Those more than one of the branches changed, the most shared first.
+        // Those more than one of the branches changed, the most shared first, and none that
+        // holds another of them: a gotcha for `web` would be told to whoever changes anything
+        // there, when `web/e2e` says where it happened.
         let mut shared: Vec<(&str, usize)> = counts.into_iter().filter(|(_, n)| *n > 1).collect();
         shared.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        let holds = |dir: &str| {
+            shared.iter().any(|(other, _)| {
+                other
+                    .strip_prefix(dir)
+                    .is_some_and(|rest| rest.starts_with('/'))
+            })
+        };
         let paths: Vec<String> = shared
             .iter()
+            .filter(|(dir, _)| !holds(dir))
             .take(PATHS)
             .map(|(dir, _)| (*dir).to_owned())
             .collect();
@@ -572,7 +582,11 @@ mod tests {
             "nav",
             "failed",
             &e2e,
-            &["web/e2e/nav.spec.ts", "web/src/app/nav.tsx"],
+            &[
+                "web/e2e/nav.spec.ts",
+                "web/src/app/nav.tsx",
+                "web/package.json",
+            ],
         );
         landing(
             &store,
@@ -581,7 +595,11 @@ mod tests {
             "tabs",
             "failed",
             &e2e,
-            &["web/e2e/tabs.spec.ts", "docs/tabs.md"],
+            &[
+                "web/e2e/tabs.spec.ts",
+                "docs/tabs.md",
+                "web/next.config.mjs",
+            ],
         );
         landing(
             &store,
@@ -628,7 +646,8 @@ mod tests {
                 repo: "#api".into(),
                 target: "//web:e2e".into(),
                 sessions: vec!["cc-a".into(), "cc-b".into(), "cc-c".into()],
-                // Those more than one branch changed, the most shared first.
+                // Those more than one branch changed, the most shared first; not `web`, which
+                // two changed too, as it holds the others.
                 paths: vec!["web/e2e".into(), "web/src/app".into()],
             }]
         );
