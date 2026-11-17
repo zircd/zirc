@@ -293,8 +293,11 @@ impl Kept {
         says
     }
 
-    /// Takes what was `noticed`, at `now`: each not yet suggested is asked about.
-    pub fn notice(&mut self, noticed: Vec<Noticed>, now: u64) -> Vec<Say> {
+    /// Takes what was `noticed`, at `now`: the one not yet suggested that the most sessions
+    /// met is asked about. One each time, so a channel hears them a look apart ([`LOOK`]),
+    /// never all at once as the first look at a week would have it.
+    pub fn notice(&mut self, mut noticed: Vec<Noticed>, now: u64) -> Vec<Say> {
+        noticed.sort_by_key(|found| std::cmp::Reverse(found.sessions.len()));
         let mut says = Vec::new();
         for found in noticed {
             let id = Suggestion::id_of(&found.repo, &found.target);
@@ -319,6 +322,7 @@ impl Kept {
             };
             says.push(entry.say());
             self.suggestions.insert(id, entry);
+            break;
         }
         says
     }
@@ -750,6 +754,23 @@ mod tests {
         // Decided, it's never suggested again.
         assert!(kept.heard(&react("ada", MUTE), person, 600).is_empty());
         assert!(kept.notice(vec![found()], 700).is_empty());
+    }
+
+    #[test]
+    fn several_noticed_at_once_are_asked_about_one_each_look_the_most_met_first() {
+        let smoke = Noticed {
+            target: "//web:smoke".into(),
+            sessions: vec!["cc-a".into(), "cc-b".into(), "cc-c".into(), "cc-d".into()],
+            ..found()
+        };
+        let mut kept = Kept::default();
+        let first = kept.notice(vec![found(), smoke.clone()], 0);
+        assert_eq!(first.len(), 1);
+        assert_eq!(state_of(&first[0]).target, "//web:smoke");
+        let second = kept.notice(vec![found(), smoke.clone()], 600);
+        assert_eq!(second.len(), 1);
+        assert_eq!(state_of(&second[0]).target, "//web:e2e");
+        assert!(kept.notice(vec![found(), smoke], 1_200).is_empty());
     }
 
     #[test]
