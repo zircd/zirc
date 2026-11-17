@@ -737,7 +737,8 @@ pub struct DirectRow {
     pub owner: Option<String>,
     /// Whether it's with one of our own agents or machines.
     pub mine: bool,
-    /// Its avatar: the agent's, or those it's with, a group's up to three.
+    /// Its avatar: the agent's, or those it's with, a group's [`super::GROUP_FACES`]
+    /// ([`Chat::faces_of`]).
     pub avatars: Vec<super::Avatar>,
     /// What's unread in it.
     pub unread: usize,
@@ -1000,9 +1001,8 @@ impl Chat {
             owner: None,
             mine: false,
             avatars: self
-                .others(&name)
+                .faces_of(&name)
                 .iter()
-                .take(3)
                 .map(|nick| person(nick))
                 .collect(),
             unread,

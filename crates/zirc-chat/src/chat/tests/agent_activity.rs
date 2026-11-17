@@ -350,6 +350,23 @@ fn a_header_has_the_now_line_for_an_untitled_session_too() {
 }
 
 #[test]
+fn an_agents_header_line_is_its_now_line() {
+    use crate::chat::HeaderLineKind;
+    let mut chat = scene();
+    hear_checkout(&mut chat);
+    let at_work = chat.header_line("me-mbp/cc-1").unwrap();
+    assert_eq!(
+        (at_work.text.as_str(), at_work.kind),
+        ("⟶ the login page · 2h", HeaderLineKind::AgentAtWork)
+    );
+    let quiet = chat.header_line("me-mbp/cc-9").unwrap();
+    assert_eq!(
+        (quiet.text.as_str(), quiet.kind),
+        ("Not heard yet", HeaderLineKind::Agent)
+    );
+}
+
+#[test]
 fn a_landing_for_another_machines_session_of_the_same_id_is_not_ours() {
     let mut chat = scene();
     hear_checkout(&mut chat);

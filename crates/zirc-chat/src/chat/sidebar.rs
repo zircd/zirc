@@ -123,8 +123,8 @@ pub struct ListRow {
     pub badge_label: Option<String>,
     /// For a direct message, what it's with.
     pub direct_kind: Option<DirectKind>,
-    /// For a direct message or a guest, its avatar: the agent's, the person's, a group's up
-    /// to three.
+    /// For a direct message or a guest, its avatar: the agent's, the person's, a group's
+    /// [`super::GROUP_FACES`], the first drawn in front ([`super::Chat::faces_of`]).
     pub faces: Vec<Face>,
     /// A person's or a guest's dot, a guest's room's (here while they're connected).
     pub presence: Option<Presence>,

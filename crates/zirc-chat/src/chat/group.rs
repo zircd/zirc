@@ -11,10 +11,14 @@ use std::hash::{BuildHasher as _, Hasher as _};
 
 use zirc_line::Line;
 
-use super::conversation::is_channel;
+use super::conversation::{fold, is_channel};
 
 /// What every group's name starts with.
 pub const GROUP_PREFIX: &str = "#dm-";
+
+/// How many faces a group's avatar shows, the latest to speak first and drawn in front, over
+/// the other's corner, in every app (the user's choice, 17 Nov 2026).
+pub const GROUP_FACES: usize = 2;
 
 /// How many random letters and digits follow [`GROUP_PREFIX`].
 const RANDOM_LEN: usize = 10;
@@ -42,6 +46,34 @@ impl super::Chat {
                 .map(|member| member.nick.clone())
                 .collect()
         })
+    }
+
+    /// Whose faces the private conversation `name`'s avatar shows, by nick: the other
+    /// person, an agent session's machine, or [`GROUP_FACES`] of a group's others, whoever
+    /// spoke in it last first (drawn in front), then the rest by nick.
+    #[must_use]
+    pub fn faces_of(&self, name: &str) -> Vec<String> {
+        let mut others = self.others(name);
+        if let Some(group) = self.conversation(name).filter(|_| is_group(name)) {
+            let mut spoke: Vec<&str> = Vec::new();
+            for entry in group.entries.iter().rev().filter(|entry| entry.is_said()) {
+                if !spoke
+                    .iter()
+                    .any(|nick| nick.eq_ignore_ascii_case(&entry.from))
+                {
+                    spoke.push(&entry.from);
+                }
+            }
+            let rank = |nick: &str| {
+                spoke
+                    .iter()
+                    .position(|said| said.eq_ignore_ascii_case(nick))
+                    .unwrap_or(usize::MAX)
+            };
+            others.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| fold(a).cmp(&fold(b))));
+        }
+        others.truncate(GROUP_FACES);
+        others
     }
 }
 

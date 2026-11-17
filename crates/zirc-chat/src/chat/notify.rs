@@ -12,8 +12,9 @@ use super::conversation::{Conversation, Entry, EntryKind, fold, is_channel};
 use super::{Chat, is_group};
 
 /// How much a conversation notifies.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(rename = "NotifyLevel", rename_all = "lowercase")]
 pub enum Level {
     /// Every new message: what Watch was.
     All,

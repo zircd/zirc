@@ -3676,6 +3676,37 @@ fn says_who_a_private_conversation_is_with_for_its_avatar() {
 }
 
 #[test]
+fn a_group_shows_two_faces_whoever_spoke_last_first() {
+    let mut chat = Scene::in_api();
+    let members = ["bob".into(), "carol".into(), "dave".into(), "me".into()];
+    let sent = texts(&chat.create_group(&members));
+    let group = sent[0].strip_prefix("JOIN ").unwrap().to_owned();
+    feed(
+        &mut chat,
+        &[
+            &format!(":me!u@h JOIN {group}"),
+            &format!(":bob!u@h JOIN {group}"),
+            &format!(":carol!u@h JOIN {group}"),
+            &format!(":dave!u@h JOIN {group}"),
+        ],
+    );
+    // Nobody has spoken: the first two by nick.
+    assert_eq!(chat.faces_of(&group), ["bob", "carol"]);
+    feed(
+        &mut chat,
+        &[
+            &format!(":carol!u@h PRIVMSG {group} :hi"),
+            &format!(":dave!u@h PRIVMSG {group} :hello"),
+            &format!(":me!u@h PRIVMSG {group} :hey"),
+        ],
+    );
+    // Dave spoke last of the others, then Carol; never us.
+    assert_eq!(chat.faces_of(&group), ["dave", "carol"]);
+    assert_eq!(crate::chat::GROUP_FACES, 2);
+    assert_eq!(chat.faces_of("bob"), ["bob"]);
+}
+
+#[test]
 fn joins_groups_by_invitation_never_from_the_list() {
     let mut chat = marking();
     feed(&mut chat, &[":me!u@h JOIN #api"]);
@@ -4014,6 +4045,37 @@ fn a_channels_header_says_its_people_threads_and_topic() {
     assert_eq!(chat.channel_about("#quiet").as_deref(), Some("1 member"));
     assert_eq!(chat.channel_about("bob"), None);
     assert_eq!(threads_label(1), "1 thread");
+}
+
+#[test]
+fn a_header_says_one_line_the_first_there_is() {
+    use crate::chat::{HeaderLine, HeaderLineKind};
+    let mut scene = Scene::api_with_away();
+    scene.hears(&[
+        ":me!u@h JOIN #web",
+        ":s 353 me = #web :me carol",
+        ":s 332 me #web :The web app",
+        ":bob!u@h PRIVMSG me :hi",
+        ":bob!u@h AWAY :lunch",
+        ":dana!u@h PRIVMSG me :hello",
+    ]);
+    let line = |text: &str, kind| {
+        Some(HeaderLine {
+            text: text.to_owned(),
+            kind,
+        })
+    };
+    // A channel's people, threads and topic.
+    assert_eq!(
+        scene.header_line("#web"),
+        line("2 members · The web app", HeaderLineKind::About)
+    );
+    // A person away, in a direct message; none for one who's here.
+    assert_eq!(
+        scene.header_line("bob"),
+        line("Away: lunch", HeaderLineKind::Away)
+    );
+    assert_eq!(scene.header_line("dana"), None);
 }
 
 #[test]

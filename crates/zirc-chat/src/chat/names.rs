@@ -64,6 +64,10 @@ pub struct Mention {
     pub avatar: super::Avatar,
 }
 
+/// How many people a composer offers for `@` at once, in every app (the user's choice, 17 Nov
+/// 2026), as [`crate::emoji::OFFERED`] says how many emoji.
+pub const MENTIONS_OFFERED: usize = 8;
+
 impl Chat {
     /// Who the composer offers for `@` and `prefix` in the conversation shown: the people in
     /// it other than us, the agent sessions that have spoken in it, and zirc's apps in it,

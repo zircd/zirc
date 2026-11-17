@@ -409,16 +409,16 @@ fn an_agent_s_conversation_is_searched_as_its_session_s_lines() {
 
 #[test]
 fn a_hit_says_its_day_and_time_from_the_person_s_today() {
-    use crate::chat::hit_when;
+    use crate::chat::list_when;
     let at = |text: &str| chrono::NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M").unwrap();
     let now = at("2026-11-07 17:00");
-    assert_eq!(hit_when(at("2026-11-07 00:00"), now), "00:00");
-    assert_eq!(hit_when(at("2026-11-06 23:59"), now), "Yesterday 23:59");
-    assert_eq!(hit_when(at("2026-11-03 16:20"), now), "Tue 16:20");
-    assert_eq!(hit_when(at("2026-11-01 08:00"), now), "Sun 08:00");
-    assert_eq!(hit_when(at("2026-10-31 08:00"), now), "31 Oct 08:00");
-    assert_eq!(hit_when(at("2026-01-01 08:00"), now), "1 Jan 08:00");
-    assert_eq!(hit_when(at("2025-12-31 23:30"), now), "31 Dec 2025 23:30");
+    assert_eq!(list_when(at("2026-11-07 00:00"), now), "00:00");
+    assert_eq!(list_when(at("2026-11-06 23:59"), now), "Fri 23:59");
+    assert_eq!(list_when(at("2026-11-03 16:20"), now), "Tue 16:20");
+    assert_eq!(list_when(at("2026-11-01 08:00"), now), "Sun 08:00");
+    assert_eq!(list_when(at("2026-10-31 08:00"), now), "31 Oct");
+    assert_eq!(list_when(at("2026-01-01 08:00"), now), "1 Jan");
+    assert_eq!(list_when(at("2025-12-31 23:30"), now), "31 Dec 2025");
 }
 
 #[test]
@@ -440,7 +440,7 @@ fn a_hit_s_day_is_the_person_s_own_around_midnight() {
         None,
     ));
     let utc = chat.search_screen(&query, Some(&server), true, false, wall);
-    assert_eq!(utc.hits[0].when, "Yesterday 23:30");
+    assert_eq!(utc.hits[0].when, "Fri 23:30");
     assert_eq!(utc.hits[0].clock, "23:30");
     let east = |t: DateTime<Utc>| t.naive_utc() + chrono::Duration::hours(1);
     let paris = chat.search_screen(&query, Some(&server), true, false, east);

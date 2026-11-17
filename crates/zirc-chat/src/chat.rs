@@ -44,6 +44,7 @@ mod forge;
 mod group;
 mod guest_rooms;
 mod guests;
+mod header_line;
 mod history;
 mod incoming;
 mod layout;
@@ -65,6 +66,7 @@ mod profile;
 pub mod push;
 mod rich;
 mod roster;
+mod row_menu;
 mod run;
 mod scroll;
 mod sealing;
@@ -131,8 +133,7 @@ pub use finder::{
     Elsewhere, GROUP_HITS, GROUPS_SHOWN, MORE_RESULTS, PAGE, RECENT_SEARCHES, RecentSearches,
     SEARCH_EVERYWHERE, SEARCHING, ScreenChip, SearchEmpty, SearchFilter, SearchGroup, SearchLimits,
     SearchScreen, SearchSegments, ServerSearch, SortChoice, absorb as absorb_search,
-    compose as compose_search, hit_when, segment_scope, segments as search_segments, sort_a11y,
-    sort_name,
+    compose as compose_search, segment_scope, segments as search_segments, sort_a11y, sort_name,
 };
 pub use finding::{Finding, SEARCH_SETTLE_MS};
 pub use flat::{
@@ -140,7 +141,7 @@ pub use flat::{
     RichSpanKind, RichStub, TASK_MARKERS, highlighted_lines,
 };
 pub use forge::{branch_link, commit_link, link_blocks, link_words};
-pub use group::{GROUP_PREFIX, is_group};
+pub use group::{GROUP_FACES, GROUP_PREFIX, is_group};
 pub use guest_rooms::{
     GuestRoom, GuestRooms, KEPT_GUESTS_EVERY, KEPT_GUESTS_PATH, KeptGuest, is_guest_room,
     kept_guests_path, parse_kept_guests,
@@ -149,6 +150,7 @@ pub use guests::{
     COMPOSER_NOTE, GATEWAY_REALNAME, GUEST_PILL, GuestAction, GuestHeader, GuestRequest, OUTSIDE,
     SIGNED_IN_KEY, assigned_label, guest_label, support_text,
 };
+pub use header_line::{HeaderLine, HeaderLineKind};
 pub use layout::{COMPACT_SETTING, ClockAt, Heading, Layout};
 pub use lines::{
     ANIMATION_PLAYS, CardAction, CardButtons, FileShape, LineActions, LineFile, LineKind, LineMore,
@@ -164,7 +166,8 @@ pub use list::{
 pub use members::{MemberMachine, MemberRow, MemberSession};
 pub use more::{CODE_LINES, More, PROSE_LINES, Shown, cut};
 pub use names::{
-    AVATAR_KEY, Mention, MentionKind, NAME_KEY, PROFILES_PER_ASK, complete_mention, mention_query,
+    AVATAR_KEY, MENTIONS_OFFERED, Mention, MentionKind, NAME_KEY, PROFILES_PER_ASK,
+    complete_mention, mention_query,
 };
 pub use notify::{Level, Muted, NotifySettings, menu as conversation_menu};
 pub use org::{OrgHeader, members_label, threads_label};
@@ -176,12 +179,13 @@ pub use preview::Preview;
 pub use profile::{
     BACKGROUND_AWAY, BARE_AWAY, Card, CardWork, IDLE_AFTER_SECS, IDLE_AWAY, LOCKED_AWAY,
     OFFLINE_AWAY, Presence, Profile, Standing, ago, ago_short, away_label, away_reason, away_title,
-    card_time, clock, span,
+    card_time, clock, list_when, span,
 };
 pub use rich::{
     Block, CellAlign, LINK_LABEL_CHARS, ListItem, Span, SpanKind, TableSource, addressed,
     each_span, link_label, map_spans, media_link, rich, tables_in,
 };
+pub use row_menu::{LevelChoice, MuteChoice, RowMenu};
 pub use run::{Here, Ran};
 pub use scroll::{SCROLL_RULES, ScrollRules, Splice, splices};
 pub use sealing::{

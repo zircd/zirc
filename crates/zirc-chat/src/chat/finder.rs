@@ -13,7 +13,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use chrono::{DateTime, Datelike as _, Duration, NaiveDateTime, Utc};
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use zirc_proto::login::{ConversationCount, HistoryPage};
 use zirc_proto::search::{Query as SearchQuery, Scope, SearchSort as Sort};
 
@@ -500,23 +500,6 @@ fn conversations(n: usize) -> String {
         "1 conversation".to_owned()
     } else {
         format!("{n} conversations")
-    }
-}
-
-/// When a hit was, its day and time on the app's clock, from `now` there: `16:58` today,
-/// `Yesterday 08:00`, `Sat 08:00` within the week before, `2 Nov 08:00` earlier this year and
-/// `2 Nov 2025 08:00` before it. Both are wall times in the app's time zone, so a day is the
-/// person's own, whatever UTC says.
-#[must_use]
-pub fn hit_when(at: NaiveDateTime, now: NaiveDateTime) -> String {
-    let time = super::clock(at);
-    let days = (now.date() - at.date()).num_days();
-    match days {
-        0 => time,
-        1 => format!("Yesterday {time}"),
-        2..7 => format!("{} {time}", at.format("%a")),
-        _ if at.date().year() == now.date().year() => format!("{} {time}", at.format("%-d %b")),
-        _ => format!("{} {time}", at.format("%-d %b %Y")),
     }
 }
 

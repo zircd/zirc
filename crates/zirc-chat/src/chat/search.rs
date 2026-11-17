@@ -234,8 +234,8 @@ pub struct SearchHit {
     /// shown for a channel or an agent's; for direct messages, `DM` when the other person
     /// said it and `to Leo Okafor` when you did, so the name isn't said twice.
     pub place: String,
-    /// Its day and time, as a search's hit says it: `15:48` today, `Yesterday 08:00`,
-    /// `Sat 08:00`, `2 Nov 08:00`, `2 Nov 2025 08:00` ([`super::finder::hit_when`]).
+    /// Its day and time, as every list says it: `15:48` today, `Sat 08:00` within the
+    /// week, `2 Nov`, `2 Nov 2025` ([`super::list_when`]).
     pub when: String,
     /// What a screen reader says of it: "Leo Okafor in #api, 9:14: the gateway's upstream
     /// timeout is 30s".
@@ -268,7 +268,7 @@ impl Chat {
         let parts = parts(&hit.text, &highlights(&hit.text, words));
         let said: String = parts.iter().map(|part| part.text.as_str()).collect();
         let speaker = self.sender_name(&hit.from, hit.session.as_deref());
-        let when = super::finder::hit_when(wall(hit.time), now);
+        let when = super::list_when(wall(hit.time), now);
         SearchHit {
             a11y: format!("{speaker} in {title}, {when}: {said}"),
             conversation: name.to_owned(),

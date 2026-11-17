@@ -401,6 +401,26 @@ pub fn card_time(at: NaiveDateTime, now: NaiveDateTime) -> String {
     }
 }
 
+/// When `at` was, on an app's clock, as a list of things from several days says it, an
+/// Activity row or a search result in every app (the user's choice, 17 Nov 2026): `14:05` on
+/// the day of `now`, `Mon 14:05` within the six days before, `3 Nov` earlier in its year and
+/// `3 Nov 2025` before it. Both are wall times in the app's time zone, so a day is the
+/// person's own, whatever UTC says.
+#[must_use]
+pub fn list_when(at: NaiveDateTime, now: NaiveDateTime) -> String {
+    use chrono::Datelike as _;
+    let days = (now.date() - at.date()).num_days();
+    if days <= 0 {
+        clock(at)
+    } else if days < 7 {
+        format!("{} {}", at.format("%a"), clock(at))
+    } else if at.date().year() == now.date().year() {
+        at.format("%-d %b").to_string()
+    } else {
+        at.format("%-d %b %Y").to_string()
+    }
+}
+
 /// How long `seconds` is, roughly, in its largest whole unit: `40s`, `5m`, `3h`, `2d`. Every
 /// span zirc shows is this one.
 #[must_use]
