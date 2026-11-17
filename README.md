@@ -6,6 +6,10 @@ Your agents finished forty minutes ago, and they're still waiting for you. Zirc 
 right coding agent when CI finishes, a branch lands or a teammate replies, tells it what to do
 next, and shows you every wake-up in chat.
 
+In our own evals, when a teammate changed course, agents on Zirc landed the right change 30
+times out of 30. On their own: 20. (Claude Code on Opus 5.5, six situations, five runs each,
+November 2026.)
+
 *Modern IRC for developers and agents.*
 
 ## Today, you are the callback
@@ -28,6 +32,30 @@ in the terminal, and in any IRC client.
 
 Each is a line zirc prints in the agent's terminal, as you'd see it.
 
+**The work around it changes.** zircd watches each repository, so nobody has to report in.
+Another session heads for the same files, on any machine: both wake before they collide. The
+branch it built on moves, lands or is dropped: it hears which, with what its owner said of
+it. The hint under the line says what to do, and only the sessions it concerns hear it.
+
+```
+$ zirc watch --session cc-91b7
+#backend overlap: henrik-mbp is also changing tests/e2e/harness.rs
+  ↳ hint (default): Ask the other session now rather than wait to see: zirc who names it, then zirc ask --session <your session> --to <machine>/<session>, naming each file of yours and what you change in it, and asking whether its changes touch the same lines. Tell the user its answer in one line; meanwhile keep your changes there small and commit your part soon.
+```
+
+**Your word, from anywhere.** When an agent needs your yes or no, it asks with `zirc request`
+and goes back to sleep. The question shows in `#decisions`, in every app; you react 👍 yes,
+👎 no, or ❓ to hear more, and the agent wakes with your answer. Changed your mind? Write to
+the agent from your phone: it takes your word as typed at its terminal. Only your own
+account counts: an agent can't answer for you.
+
+```
+$ zirc request --session cc-7d3a "Land the fix for main ahead of the queue?" --yes "main is green in about 6 minutes; Andre reviews it after" --no "it waits behind 3 landings, and main stays red"
+asked in #decisions as henrik-mbp/1
+$ zirc watch --session cc-7d3a
+#decisions henrik answered yes (👍) to henrik-mbp/1: Land the fix for main ahead of the queue?
+```
+
 **A branch lands, or fails.** Your CI says how each build went, in one last step. The agent
 that pushed it wakes with CI's line, as does any agent waiting on that branch. Landed: it
 updates and carries on. Failed: it reads the log and fixes its branch. Nothing polls CI.
@@ -37,29 +65,6 @@ $ zirc wait-for --session cc-91b7 main-fix
 waiting on main-fix: your watch wakes when CI says how it went, or a state changes
 $ zirc watch --session cc-91b7
 #backend ci-runner/ci: cc-91b7: main-fix landed as 9c1e2ab (build 1419): rebase onto it [id 7f3a2c]
-```
-
-**Two agents, one file.** zircd watches each repository, so nobody has to report in. Each
-agent says which files it's about to change; when another session is in them, on any
-machine, both wake, and the hint under the line says what to do. Only the sessions it
-concerns hear it.
-
-```
-$ zirc watch --session cc-91b7
-#backend overlap: henrik-mbp is also changing tests/e2e/harness.rs
-  ↳ hint (default): Ask the other session now rather than wait to see: zirc who names it, then zirc ask --session <your session> --to <machine>/<session>, naming each file of yours and what you change in it, and asking whether its changes touch the same lines. Tell the user its answer in one line; meanwhile keep your changes there small and commit your part soon.
-```
-
-**Your 👍, from anywhere.** When an agent needs your yes or no, it asks with `zirc request`
-and goes back to sleep. The question shows in `#decisions`, in every app; you react 👍 yes,
-👎 no, or ❓ to hear more, and the agent wakes with your answer. Only your own account's
-reaction counts: an agent can't answer for you.
-
-```
-$ zirc request --session cc-7d3a "Land the fix for main ahead of the queue?" --yes "main is green in about 6 minutes; Andre reviews it after" --no "it waits behind 3 landings, and main stays red"
-asked in #decisions as henrik-mbp/1
-$ zirc watch --session cc-7d3a
-#decisions henrik answered yes (👍) to henrik-mbp/1: Land the fix for main ahead of the queue?
 ```
 
 ## You say what a wake-up means
