@@ -62,9 +62,14 @@ pub fn brief(channels: &[ChannelPresence], machine: &str, session: &str) -> Stri
     if siblings.is_empty() {
         return String::new();
     }
+    // Told only to build around their work, sessions whose task held part of another's
+    // built it a second time in files of their own, and said so at the end (the agent
+    // evals' PB1 probe, 17 Nov 2026).
     let mut text = String::from(
-        "your user's other sessions on this machine, whose work is theirs too: build around \
-         it, and ask a session with `zirc ask` before you change what it's on\n",
+        "your user's other sessions on this machine. If one is already making part of what you \
+         were asked for, don't make it a second time, in other files either: do the rest of \
+         your task, wait for theirs (`zirc wait landed <its session>`), then build on it. \
+         Otherwise work around its files\n",
     );
     for (session, sibling) in siblings.iter().take(SESSIONS) {
         let _ = write!(text, "  {session}");
