@@ -347,7 +347,7 @@ impl Daemon {
 
     /// The paths `session` is changing in `channel`'s repositories; for the person here,
     /// every worktree's.
-    fn paths_in(&self, channel: &str, session: Option<&str>) -> BTreeSet<String> {
+    pub(super) fn paths_in(&self, channel: &str, session: Option<&str>) -> BTreeSet<String> {
         match session {
             Some(session) => self.session_paths(channel, session),
             None => self

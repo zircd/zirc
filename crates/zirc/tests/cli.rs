@@ -904,6 +904,47 @@ fn ci_says(ergo: &zirc_test_ergo::Ergo, kind: &str, text: &str, data: serde_json
         .expect("CI said it");
 }
 
+/// Where no CI has said a landing yet, none would say this one: the wait says so at once and
+/// waits for nothing (an agent in the evals' PN1 probe waited its whole run), unless it's
+/// told to wait anyway, as for a CI's first.
+#[tokio::test]
+async fn a_wait_for_a_landing_no_ci_would_say_is_refused() {
+    use serde_json::json;
+    let ergo = require_ergo!();
+    let alpha = home(&ergo, "alpha").await;
+    let _alpha_daemon = tokio::spawn(zircd::run(alpha.path().to_owned(), std::future::pending()));
+    until_connected(alpha.path()).await;
+    let alpha_clone = clone();
+    let here = alpha_clone.path().to_str().unwrap().to_owned();
+    zirc(alpha.path(), &["repo", "add", "--session", "cc-a", &here])
+        .await
+        .unwrap();
+    until_in(alpha.path(), "#web").await;
+    let landing = zirc_proto::ci::LANDING_KIND;
+    zirc_test_ergo::signin::register(ergo.port(), "zirc-ci", CI_PASSPHRASE).expect("CI's account");
+    let refused = zirc(alpha.path(), &["wait", "landed", "login", "--repo", &here]).await;
+    assert!(
+        refused.is_err_and(|err| err.to_string().contains("no CI has said a landing")),
+        "a wait no CI would end"
+    );
+    let alpha_home = alpha.path().to_owned();
+    let repo = here.clone();
+    let waiting = tokio::spawn(async move {
+        let wait = ["wait", "landed", "first", "--anyway", "--repo", &repo];
+        zirc(&alpha_home, &wait).await
+    });
+    until_watching(alpha.path()).await;
+    let first = "cc-2: landed first as 0f0f0f0 (build 6)";
+    let data = json!({"branch": "first", "build": "6", "commit": "0f0f0f0f0f", "state": "passed"});
+    ci_says(&ergo, landing, first, data);
+    let waited = tokio::time::timeout(WAIT, waiting)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(waited.contains(first), "{waited}");
+}
+
 /// `zirc wait` is a command that ends when CI says what it waits for happened: at once for
 /// what was said before it started, read back from the channel, and as failed when CI says
 /// it failed. No loop on a channel's history.

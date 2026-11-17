@@ -113,6 +113,12 @@ pub enum Input {
     /// The branches sessions are stacked on that origin no longer has, each with the
     /// repository it was asked from ([`Daemon::check_stacks`]).
     StacksChecked(Vec<(PathBuf, String)>),
+    /// What origin answered for watched repositories' default branches: the channel, a
+    /// root to ask from, the branch and its head ([`Daemon::check_default`]).
+    DefaultHeads(Vec<(String, PathBuf, String, String)>),
+    /// A default branch that moved with nobody saying so, fetched and read
+    /// ([`Daemon::default_heads`]).
+    DefaultMoved(moved::Brought),
     /// A session pushed a branch built on this one, not landed, at this head of it
     /// ([`Daemon::note_stack`]).
     StackFound(String, String, String),
@@ -535,6 +541,7 @@ pub async fn run(mut daemon: Daemon, mut received: mpsc::UnboundedReceiver<Input
                 start = Instant::now();
                 daemon.find_worktrees().await;
                 daemon.check_stacks();
+                daemon.check_default();
             }
             _ = leases.tick() => {
                 start = Instant::now();
@@ -1077,6 +1084,8 @@ impl Daemon {
             }
             Input::PushChecked(clashes) => self.push_checked(clashes),
             Input::StacksChecked(gone) => self.stacks_checked(gone),
+            Input::DefaultHeads(heads) => self.default_heads(heads),
+            Input::DefaultMoved(brought) => self.default_moved(&brought),
             Input::StackFound(session, on, tip) => self.stack_found(&session, &on, &tip),
             Input::BaseRead(session, on, tip, paths) => {
                 self.awaits.base_changes(&session, &on, &tip, paths);

@@ -99,6 +99,9 @@ pub(crate) struct HowArgs {
     /// after the wait. Defaults to $ZIRC_SESSION.
     #[arg(long, env = "ZIRC_SESSION")]
     pub(crate) session: Option<String>,
+    /// Wait even where no CI has said a landing here yet, as for a CI's first.
+    #[arg(long)]
+    pub(crate) anyway: bool,
     #[command(flatten)]
     pub(crate) org: OrgArg,
 }
@@ -135,6 +138,7 @@ pub(crate) async fn wait(
         org: org.as_deref(),
         channel: &repo.channel,
     };
+    let ci_awaited = matches!(asked, Asked::Ci(_));
     let mut condition = match asked {
         Asked::Ci(condition) => condition,
         Asked::State(name, level) => {
@@ -160,6 +164,9 @@ pub(crate) async fn wait(
     let since = now().saturating_sub(how.back);
     if let Some(ended) = place.read_back(&mut condition, since).await? {
         return ended.say(&condition, out);
+    }
+    if ci_awaited && !how.anyway {
+        place.ci_would_say().await?;
     }
     eprintln!(
         "waiting for {}: this ends when CI says it has, or that it failed, or in {} minutes",
@@ -296,6 +303,57 @@ impl Place<'_> {
         channel
             .strip_prefix(self.channel)
             .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+    }
+
+    /// Refuses a wait on CI's word where no CI has ever said a landing: none will say this
+    /// one, so it's said now, not waited on. An agent with no CI wired to zirc waited its
+    /// whole run on one (the agent evals' PN1 probe, 17 Nov 2026).
+    async fn ci_would_say(&self) -> Result<()> {
+        if !self.ci_speaks().await {
+            bail!(
+                "no CI has said a landing in {} yet, so none would say this one and this would \
+                 wait for good. Don't wait on zirc for it: look where your CI shows it, and \
+                 carry on. (`zirc ci token` makes the token a CI says its landings with.)",
+                self.channel
+            );
+        }
+        Ok(())
+    }
+
+    /// Whether any CI has said a landing or a deploy here, in the newest [`READ_BACK`]
+    /// messages of the repository's channels: yes when they can't be read, so a wait is
+    /// never refused on a guess.
+    async fn ci_speaks(&self) -> bool {
+        let Ok(Response::Status(status)) = ask(self.socket, Request::Status).await else {
+            return true;
+        };
+        let joined = match self.org {
+            Some(org) => status
+                .orgs
+                .iter()
+                .find(|it| it.name == org)
+                .map_or(&status.channels, |it| &it.channels),
+            None => &status.channels,
+        };
+        for channel in joined.iter().filter(|channel| self.has(channel)) {
+            let request = Request::Read {
+                target: channel.clone(),
+                limit: READ_BACK,
+                since: None,
+                until: None,
+            };
+            let Ok(Response::Messages { messages }) = ask_in(self.socket, self.org, request).await
+            else {
+                return true;
+            };
+            if messages.iter().any(|delivery| {
+                matches!(&delivery.message.event, zirc_proto::Event::Custom { kind, .. }
+                    if kind == zirc_proto::ci::LANDING_KIND || kind == zirc_proto::ci::DEPLOY_KIND)
+            }) {
+                return true;
+            }
+        }
+        false
     }
 
     /// Whether `delivery` was said here: in this organisation, in the repository's channel
