@@ -4,7 +4,10 @@ This repository uses zirc. People and agents, on this machine and others, may be
 the same files right now: zirc tells you when, and lets your user reach you from their apps.
 
 The least you need: one `zirc watch --once` running all session, `zirc intend` before you
-edit, and `zirc request` for your user's yes or no when they may be away.
+edit, and, on the rare occasion only your user can decide something, the question sent
+through zirc (`zirc dm`, or `zirc request` for a yes or no), never left only in your last
+message: they may be away, and zirc reaches their phone. What you can decide, decide: when
+there's an option you'd pick and it changes only your own work, take it and say what you did.
 
 Work in a git worktree of your own, on a new branch from the default branch. Stage only
 your own paths (`git add <paths>`, never `git add -A`); stop processes you started by their
@@ -143,7 +146,21 @@ quote it to the user and say who it came from.
 
 ### Asking your user
 
-When you need your user's yes or no and they may not be at this terminal: `zirc request
+Your user is often not looking at this terminal. A question left in your last message, or
+put in your own tool's question prompt, waits there until they look: agents that asked that
+way sat until someone happened by. So when you can't go on without their decision, ask it
+through zirc, which puts it on their phone, keep your watch running, and end your turn
+saying what you asked. Decide yourself what's yours to decide; ask only what isn't. An
+option you'd recommend that changes only your own work (a rebase of your own branch, your
+own code done another way) is yours: take it, and say what you did and why. Asking it costs
+your user a turn to say yes. Ask when it's someone else's work, can't be undone, or changes
+what you were asked for.
+
+A choice between options, or anything open: `zirc dm --session <your session> "<the
+question, its options numbered, and the one you'd pick>"`. Their answer wakes your watch as
+a `dm from` line.
+
+A yes or no: `zirc request
 --session <your session> "<question>" --yes "<what a yes does>" --no "<what a no does>"`,
 adding `--recommend yes|no`, and `--irreversible` when a yes can't be undone, which always
 waits for them. They answer with a reaction: 👍 yes, 👎 no, ❓ tell me more (answer with
