@@ -288,11 +288,7 @@ impl Chat {
         let Ok(ask) = serde_json::from_str::<Ask>(value) else {
             return Vec::new();
         };
-        let member = line
-            .tag("account")
-            .is_some_and(|account| !account.is_empty() && account != "*")
-            && !self.is_guest(from)
-            && super::owner_by_host(line).is_none();
+        let member = self.from_member(line);
         let now = (self.clock)();
         let lately = self
             .sealing
@@ -324,7 +320,20 @@ impl Chat {
         vec![line]
     }
 
-    /// Keeps the key an answer to our own ask hands this device, saying so once.
+    /// Whether `line` comes from a member's own device: signed in to an account, never a guest
+    /// or a machine. Only such a one is handed the key, and only such a one may hand it over.
+    fn from_member(&self, line: &Line) -> bool {
+        line.tag("account")
+            .is_some_and(|account| !account.is_empty() && account != "*")
+            && !self.is_guest(super::nick_of(line))
+            && super::owner_by_host(line).is_none()
+    }
+
+    /// Keeps the key an answer to our own ask hands this device, saying so once: only from a
+    /// member's own device, and only the key it asked for. A grant is encrypted to this
+    /// device's public key, which anyone in the channel saw in the ask, so it says nothing
+    /// of who sent it; taken from anyone, a machine or an outsider could make its own key
+    /// the one this device seals with.
     fn take_grant(&mut self, line: &Line, value: &str) {
         let to_me = line
             .params
@@ -334,14 +343,15 @@ impl Chat {
             .sealing
             .device
             .as_ref()
-            .filter(|_| to_me && self.sealing.asking)
+            .filter(|_| to_me && self.sealing.asking && self.from_member(line))
         else {
             return;
         };
         let Some(key) = open_grant(device, value) else {
             return;
         };
-        if self.sealing.keys.contains(&key) {
+        let asked_for = self.sealing.asked.contains("") || self.sealing.asked.contains(&key.id());
+        if !asked_for || self.sealing.keys.contains(&key) {
             return;
         }
         self.sealing.asking = false;

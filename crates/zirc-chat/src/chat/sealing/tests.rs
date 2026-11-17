@@ -343,6 +343,45 @@ fn hands_the_key_only_to_a_members_device_that_asked() {
 }
 
 #[test]
+fn takes_a_key_only_from_a_members_device_and_only_the_one_it_asked_for() {
+    use zirc_proto::sealed::{ASK_TAG, GRANT_TAG};
+    // Carol holds an older key, so joining asks for nothing; a part sealed with one she lacks
+    // makes her ask for that one, in #general.
+    let mut carol = chat("carol", vec![Key::new("acme", [8; KEY_LEN])]);
+    let device = DeviceKey::from_bytes([4; 32]).unwrap();
+    carol.set_device(device.clone());
+    let mut alice = chat("alice", vec![key()]);
+    assert!(tagged(in_general(&mut carol), ASK_TAG).is_none());
+    assert!(tagged(carol.receive(heard(&mut alice, "||sk_test_1||")), ASK_TAG).is_some());
+    let granted = |key: &Key, source: &str, account: Option<&str>| {
+        let value = crate::sealed::grant(key, &device.public(), [5; 32], [6; 12]).unwrap();
+        let mut line = Line::new("TAGMSG", ["carol"]);
+        line.tags = vec![(GRANT_TAG.into(), Some(value))];
+        from(line, source, account)
+    };
+    // While she's asking, a machine's, a guest's or an unsigned answer is passed over: anyone
+    // in the channel saw her device's key, and could encrypt a key of their own to it.
+    for (source, account) in [
+        ("ada-mbp!u@machine/ada", Some("ada-mbp")),
+        ("guest-21042!u@h", Some("guest-21042")),
+        ("dan!u@h", None),
+    ] {
+        carol.receive(granted(&Key::new("acme", [9; KEY_LEN]), source, account));
+        assert!(carol.take_received_keys().is_empty(), "{source}");
+    }
+    // A member's, but not the key she asked for: passed over too.
+    carol.receive(granted(
+        &Key::new("acme", [9; KEY_LEN]),
+        "bob!u@h",
+        Some("bob"),
+    ));
+    assert!(carol.take_received_keys().is_empty());
+    // The one she asked for, from a member: taken.
+    carol.receive(granted(&key(), "bob!u@h", Some("bob")));
+    assert_eq!(carol.take_received_keys(), [key()]);
+}
+
+#[test]
 fn asks_for_the_key_a_part_was_sealed_with() {
     use zirc_proto::sealed::ASK_TAG;
     let mut alice = chat("alice", vec![key()]);

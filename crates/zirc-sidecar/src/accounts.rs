@@ -291,7 +291,11 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
     let keeper = ergo.clone();
     tokio::spawn(workflows.run(move |nick| {
         let ergo = keeper.clone();
-        async move { integration_account(&ergo, &nick, false).await.is_ok() }
+        // Never a name the server knows as someone's: only zirc.dev registers people's and
+        // machines' accounts (`zirc_core::agents::standing` rests on it).
+        async move {
+            !someones(&ergo, &nick).await && integration_account(&ergo, &nick, false).await.is_ok()
+        }
     }));
     // The live demo's cast, which plays only on a demo server, as the gateway says.
     let (arrived, arrivals) = tokio::sync::mpsc::unbounded_channel();
@@ -1275,6 +1279,27 @@ struct Outcome {
     error: Option<String>,
 }
 
+/// Whether the server knows `name` as a person's or a machine's, as zirc.dev last told it: an
+/// owner, an admin, a machine or client, or the owner of one. A workflow's nick is never one
+/// of them: deployed as one, it would take that account before zirc.dev registers it.
+async fn someones(ergo: &Ergo, name: &str) -> bool {
+    let name = name.to_lowercase();
+    if ergo.owners.lock().await.accounts.contains(&name)
+        || ergo
+            .content
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|content| content.admins.contains(&name))
+        || ergo.machines.clients().contains(&name)
+    {
+        return true;
+    }
+    ergo.machines.owners().is_some_and(|owners| {
+        owners.contains_key(&name) || owners.values().any(|owner| *owner == name)
+    })
+}
+
 /// Makes sure the integration `nick` has an account whose passphrase is the one derived from
 /// the endpoint's token, which it logs in with. An account that exists is left as it is, as
 /// its passphrase is the derived one already, unless `reset` says it isn't (the token changed):
@@ -1437,6 +1462,16 @@ async fn upsert(
             StatusCode::BAD_REQUEST,
             "invalid",
             "names are [a-z][a-z0-9_-], at most 32 characters",
+        );
+    }
+    // A name a workflow runs as is the workflow's account, made by the server: never taken for
+    // a person or a machine, whose messages would then be the workflow's and whose sign-ins
+    // would join its connection. Its workflow goes first.
+    if crate::workflows::is_zircs_own(&name) {
+        return error(
+            StatusCode::CONFLICT,
+            "taken",
+            "a workflow runs as that name: remove it first",
         );
     }
     // Whose it is, first: what lets it into its owner's team channels (`admit`), and what it

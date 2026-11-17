@@ -72,6 +72,10 @@ pub struct Caller {
     pub person: String,
     /// Their role in the organisation.
     pub role: Role,
+    /// Whether the account is one of their machines', whose agents may be asking, rather than
+    /// theirs or one of their own clients'. A machine has its person's access and none of their
+    /// authority (docs/accounts.md): it reads what they may, and changes nothing only they may.
+    pub machine: bool,
 }
 
 /// A person's role, as zirc.dev's desired state gives it.
@@ -341,9 +345,8 @@ struct Asking {
 
 /// Who `caller` is to the hints: a machine's account, whose agents may be asking, unless it's
 /// one of the person's own clients.
-fn hints_who(ergo: &Ergo, caller: &Caller, session: Option<String>) -> crate::hints::Who {
-    let machine =
-        caller.account != caller.person && !ergo.machines.clients().contains(&caller.account);
+fn hints_who(caller: &Caller, session: Option<String>) -> crate::hints::Who {
+    let machine = caller.machine;
     crate::hints::Who {
         account: caller.account.clone(),
         machine,
@@ -357,7 +360,7 @@ async fn add_hint(
     Extension(caller): Extension<Caller>,
     Json(given): Json<NewHint>,
 ) -> Response {
-    let who = hints_who(&ergo, &caller, given.session);
+    let who = hints_who(&caller, given.session);
     let at = jiff::Timestamp::now().to_string();
     let scope = given.scope.to_lowercase();
     let made = ergo
@@ -374,7 +377,7 @@ async fn remove_hint(
     Path(id): Path<String>,
     Query(asking): Query<Asking>,
 ) -> Response {
-    let who = hints_who(&ergo, &caller, asking.session);
+    let who = hints_who(&caller, asking.session);
     let at = jiff::Timestamp::now().to_string();
     let made = ergo.hints.change(|kept| kept.remove(&id, &who, &at)).await;
     changed(&ergo, made, StatusCode::OK)
@@ -448,29 +451,40 @@ async fn authenticate(State(ergo): State<Arc<Ergo>>, mut request: Request, next:
         return refused("not an account");
     };
     request.headers_mut().insert("x-zirc-as", as_person);
+    let machine = account != person && !ergo.machines.clients().contains(&account);
     request.extensions_mut().insert(Caller {
         account,
         person,
         role,
+        machine,
     });
     next.run(request).await
 }
 
-/// Lets the request on only for `role` or above.
+/// Whether `caller` may use a route for `role` or above with `method`: a machine reads as its
+/// person may, but only the person changes what their role guards.
+fn reaches(role: Role, caller: &Caller, method: &Method) -> bool {
+    caller.role >= role && (*method == Method::GET || !caller.machine)
+}
+
+/// Lets the request on only for `role` or above, and, changing anything, only for a person.
 async fn at_least(role: Role, request: Request, next: Next) -> Response {
-    let reaches = request
-        .extensions()
-        .get::<Caller>()
-        .is_some_and(|caller| caller.role >= role);
-    if reaches {
-        next.run(request).await
-    } else {
-        let who = match role {
-            Role::Owner => "the organisation's owners",
-            Role::Admin | Role::Member => "the organisation's owners and admins",
-        };
-        error(StatusCode::FORBIDDEN, "role", format!("only {who} may"))
+    let caller = request.extensions().get::<Caller>();
+    if caller.is_some_and(|caller| reaches(role, caller, request.method())) {
+        return next.run(request).await;
     }
+    if caller.is_some_and(|caller| caller.role >= role) {
+        return error(
+            StatusCode::FORBIDDEN,
+            "role",
+            "a machine acts for no one here: its person does this",
+        );
+    }
+    let who = match role {
+        Role::Owner => "the organisation's owners",
+        Role::Admin | Role::Member => "the organisation's owners and admins",
+    };
+    error(StatusCode::FORBIDDEN, "role", format!("only {who} may"))
 }
 
 /// Writes every change, and every export, in the access log, with how it was answered.
@@ -707,6 +721,30 @@ mod tests {
         assert_eq!(role_of("grace", &owners, &content), Role::Admin);
         assert_eq!(role_of("linus", &owners, &content), Role::Member);
         assert!(Role::Owner > Role::Admin && Role::Admin > Role::Member);
+    }
+
+    #[test]
+    fn an_owners_machine_reads_as_the_owner_but_changes_nothing_only_they_may() {
+        let caller = |machine| Caller {
+            account: if machine { "m3-mac" } else { "ada" }.into(),
+            person: "ada".into(),
+            role: Role::Owner,
+            machine,
+        };
+        let (person, machine) = (caller(false), caller(true));
+        for role in [Role::Admin, Role::Owner] {
+            assert!(reaches(role, &person, &Method::GET));
+            assert!(reaches(role, &person, &Method::DELETE));
+            assert!(reaches(role, &person, &Method::POST));
+            assert!(reaches(role, &machine, &Method::GET));
+            assert!(!reaches(role, &machine, &Method::DELETE));
+            assert!(!reaches(role, &machine, &Method::POST));
+        }
+        let member = Caller {
+            role: Role::Member,
+            ..caller(false)
+        };
+        assert!(!reaches(Role::Admin, &member, &Method::GET));
     }
 
     #[test]

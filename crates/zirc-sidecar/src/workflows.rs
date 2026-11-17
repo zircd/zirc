@@ -23,7 +23,10 @@
 //! loopback, which says what its engine says. A nick that's already someone
 //! else's account is refused, never taken over: its passphrase isn't the derived one, so its
 //! login fails, and the deploy is answered with why, as `zirc-workflows`
-//! ([`zirc_proto::workflow::HOST`]).
+//! ([`zirc_proto::workflow::HOST`]). So is one the server knows as a person's or a machine's
+//! that zirc.dev hasn't registered yet, and zirc.dev's later registering refuses a name a
+//! workflow runs as rather than taking it over (`crate::accounts`): only zirc.dev makes
+//! people's and machines' accounts.
 //!
 //! Anyone in the organisation may deploy a workflow, from their own account or one of their
 //! machines; guests, integrations and workflows may not. Nothing anyone says is logged: only
