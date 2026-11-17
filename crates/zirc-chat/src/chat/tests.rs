@@ -4126,8 +4126,17 @@ fn heads_the_channel_list_with_the_organisation_and_its_people() {
             members: 3,
             members_label: "3 members".into(),
             stale: false,
+            mark_all_read: None,
         }
     );
+    // Mark all read, while anything's unread, and gone once it's all read.
+    feed(&mut chat, &[":bob!u@h PRIVMSG #web :hello"]);
+    assert_eq!(
+        chat.org_header().mark_all_read.as_deref(),
+        Some(crate::chat::conversation_menu::MARK_ALL_READ)
+    );
+    let _ = chat.mark_all_read();
+    assert_eq!(chat.org_header().mark_all_read, None);
     chat.set_org_name(Some("Acme Inc"));
     assert_eq!(chat.org_header().name, "Acme Inc");
     assert_eq!(chat.org_header().initials, "AI");
@@ -8421,9 +8430,10 @@ fn the_card_the_note_and_the_header_are_the_wire_records() {
             members: 3,
             members_label: "3 members".into(),
             stale: false,
+            mark_all_read: None,
         })
         .unwrap(),
-        json!({"name": "Acme", "initials": "A", "members": 3, "membersLabel": "3 members", "stale": false})
+        json!({"name": "Acme", "initials": "A", "members": 3, "membersLabel": "3 members", "stale": false, "markAllRead": null})
     );
 }
 

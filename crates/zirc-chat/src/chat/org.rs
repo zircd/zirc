@@ -19,6 +19,10 @@ pub struct OrgHeader {
     pub members_label: String,
     /// Whether it's as last known, offline ([`Chat::is_stale`]): apps dim it.
     pub stale: bool,
+    /// `Mark all read`, while anything in it is unread: in the menu atop the list on the
+    /// phones and web, as the desktops have it in their menu bar (the user's choice, 17 Nov
+    /// 2026). None, and no menu, while everything's read.
+    pub mark_all_read: Option<String>,
 }
 
 /// `count` people, as every app words a count of members: `1 member`, `3 members`.
@@ -111,6 +115,11 @@ impl Chat {
             members: u32::try_from(people.len()).unwrap_or(u32::MAX),
             members_label: members_label(people.len()),
             stale: self.is_stale(),
+            mark_all_read: self
+                .conversations
+                .iter()
+                .any(|conversation| conversation.unread > 0)
+                .then(|| super::conversation_menu::MARK_ALL_READ.to_owned()),
         }
     }
 }

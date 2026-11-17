@@ -49,6 +49,10 @@ pub mod menu {
     pub const UNSTAR: &str = "Unstar";
     /// Marks it read: offered only while something in it is unread.
     pub const MARK_READ: &str = "Mark as read";
+    /// Marks every conversation read, atop the list on the phones and web: offered only
+    /// while something is unread. The desktops' menu bars say it in title case
+    /// ([`crate::chat::menu_bar::MARK_ALL_READ`]), as macOS's menus do.
+    pub const MARK_ALL_READ: &str = "Mark all read";
     /// The heading over how long to mute it.
     pub const MUTE: &str = "Mute";
     /// Turns its notifications back on.
