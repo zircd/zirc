@@ -3,11 +3,12 @@
 This repository uses zirc. People and agents, on this machine and others, may be changing
 the same files right now: zirc tells you when, and lets your user reach you from their apps.
 
-The least you need: one `zirc watch --once` running all session, `zirc intend` before you
-edit, and, on the rare occasion only your user can decide something, the question sent
-through zirc (`zirc dm`, or `zirc request` for a yes or no), never left only in your last
-message: they may be away, and zirc reaches their phone. What you can decide, decide: when
-there's an option you'd pick and it changes only your own work, take it and say what you did.
+The least you need: one `zirc watch --once` running all session, `zirc intend` naming every
+file before you edit it, and, on the rare occasion only your user can decide something, the
+question sent through zirc (`zirc dm`, or `zirc request` for a yes or no), never left only
+in your last message: they may be away, and zirc reaches their phone. What you can decide,
+decide: when there's an option you'd pick and it changes only your own work, take it and
+say what you did.
 
 Work in a git worktree of your own, on a new branch from the default branch. Stage only
 your own paths (`git add <paths>`, never `git add -A`); stop processes you started by their
@@ -45,12 +46,18 @@ squash onto it: another session's fetch may have moved `origin/<default>`, and `
    Once, `zirc name --session <your session> --name <short> --title "<your session's
    title>"`, unless the session that started you did. Without any way to run a background
    process, run `zirc who` before each commit.
-2. Once you know which files a task will change, and before you edit them: `zirc intend
-   --session <your session> <paths> -m "<the task>"`, naming the files or the narrowest
-   directory. Sessions changing those paths hear it before you collide. On no task, it
-   posts `taking: <the task>` for you too, and zircd says `done:` when your landing lands.
-   It answers who else is on those paths, and the gotchas learnt there: read them first. It
-   lasts 30 minutes (`--for <minutes>`); a new one replaces it.
+2. Before your first edit for a task, however small: `zirc intend --session <your
+   session> <paths> -m "<the task>"`, naming every file you expect to change, or the
+   narrowest directory that holds them. Sessions changing those paths hear it before you
+   collide. On no task, it posts `taking: <the task>` for you too, and zircd says `done:`
+   when your landing lands. It answers who else is on those paths, and the gotchas learnt
+   there: read them first. It lasts 30 minutes (`--for <minutes>`); a new one replaces it.
+   - It covers only the paths it names, and an intent too narrow is worse than none: it
+     answers that nobody else is there. When the task reaches a file it doesn't name (a
+     stylesheet, a test, a config you hadn't foreseen), intend again before you edit that
+     file, naming all of them, as the new one replaces the old. Before each commit and
+     before you land, `git diff --name-only <default branch>...` must list nothing your
+     intent doesn't name, and the intent must not have lapsed: if either, intend again.
    - When it says nobody else is on those paths, carry on and land without waiting for
      anyone's answer. Wait only for what you're stacked on, or for an answer you asked for.
    - When someone is, ask them now with the `zirc ask` it prints: agree who lands first,

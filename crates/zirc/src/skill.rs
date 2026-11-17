@@ -95,7 +95,8 @@ pub(crate) fn skill() -> String {
          start `zirc watch`, which says whether this machine's zirc watches it, or as its \
          CLAUDE.md or AGENTS.md says the team uses zirc; when `zirc watch` prints a line (an \
          overlap, an intent, a push or conflict to update for, or a message or post that \
-         concerns the session); before editing for a task (`zirc intend`); and when you learn \
+         concerns the session); before editing any file for a task, and again whenever the task \
+         reaches a file its intent doesn't name (`zirc intend`); and when you learn \
          something the hard way about some paths that the next session changing them should \
          know (`zirc gotcha`).\"\n\
          ---\n\n{AGENT_GUIDE}",
