@@ -28,6 +28,35 @@ pub const MEDIA_HEIGHT: u32 = 240;
 /// 2026, for every app).
 pub const ANIMATION_PLAYS: u32 = 3;
 
+/// How a video plays in the apps that play it themselves, every one (the user's choice, 17
+/// Nov 2026: in the app where there's a player, the GPUI desktop opening the browser): the
+/// copy zirc.dev makes at most [`VideoPlan::lines`] high, or the screen's pixels if fewer,
+/// asked for again every [`VideoPlan::retry_ms`] while it's being made, [`VideoPlan::tries`]
+/// times, about two minutes, before saying zirc.dev couldn't be reached.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VideoPlan {
+    /// The tallest copy asked for, in pixels: 720.
+    pub lines: u32,
+    /// How long to wait before asking again while it's being made, as zirc.dev's
+    /// Retry-After says.
+    pub retry_ms: u64,
+    /// How many times to ask.
+    pub tries: u32,
+}
+
+/// How every app plays a video: see [`VideoPlan`].
+pub const VIDEO_PLAN: VideoPlan = VideoPlan {
+    lines: 720,
+    retry_ms: 5_000,
+    tries: 24,
+};
+
+/// What a video's player says while zirc.dev makes the copy it plays.
+pub const VIDEO_MAKING: &str = "Getting the video ready…";
+
+/// What a video's player says when zirc.dev couldn't be reached to play it.
+pub const VIDEO_UNREACHABLE: &str = "Couldn't reach zirc.dev to play it";
+
 /// What sort of line it is, for how it's drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

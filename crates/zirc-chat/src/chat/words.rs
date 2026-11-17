@@ -729,6 +729,11 @@ pub struct Words {
     /// Under `asking_zirc_dev` once a sign-in waits, before its code: `Check that the page in
     /// your browser shows`.
     pub check_the_code: String,
+    /// What a video's player says while its copy is made: `Getting the video ready…`.
+    pub video_making: String,
+    /// What a video's player says when zirc.dev can't be reached: `Couldn't reach zirc.dev
+    /// to play it`.
+    pub video_unreachable: String,
     /// What a reply says of a message no longer kept: `a reply to an earlier message`.
     pub earlier_reply: String,
     /// What the composer's reply line names for a message no longer kept: `an earlier
@@ -931,6 +936,8 @@ pub fn words() -> Words {
         dismiss: DISMISS.to_owned(),
         done: DONE.to_owned(),
         check_the_code: CHECK_THE_CODE.to_owned(),
+        video_making: super::VIDEO_MAKING.to_owned(),
+        video_unreachable: super::VIDEO_UNREACHABLE.to_owned(),
         earlier_reply: EARLIER_REPLY.to_owned(),
         earlier_message: EARLIER_MESSAGE.to_owned(),
         no_directs_hint: NO_DIRECTS_HINT.to_owned(),
