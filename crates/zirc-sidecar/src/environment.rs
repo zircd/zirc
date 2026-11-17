@@ -151,6 +151,11 @@ pub fn ergo(server: &Server) -> Vec<(&'static str, Value)> {
         ),
         // The operator the sidecar suspends accounts as.
         ("ERGO__OPERS__ADMIN__PASSWORD", secret(Secret::OperHash)),
+        // Only that operator sets metadata (its class has the `metadata` capability): people's
+        // names and pictures come from zirc.dev, which checks them (web/src/lib/profiles.ts
+        // nameClash), and apps show them as the person's own, so a client mustn't set its own
+        // to a teammate's name, or Zirc's.
+        ("ERGO__METADATA__OPERATOR_ONLY_MODIFICATION", "true".into()),
         ("ERGO__LANGUAGES__ENABLED", "false".into()),
         // A line on joining, rather than Ergo's "MOTD File is missing": Ergo reads the file
         // its runner writes beside its config.

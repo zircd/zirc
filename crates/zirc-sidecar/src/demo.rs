@@ -658,11 +658,22 @@ impl On {
                 .await
                 .map_err(|_| format!("{} timed out getting in", member.nick))?
                 .map_err(|e| format!("{} couldn't get in: {e}", member.nick))?;
+            // Named by the operator, who alone sets anyone's metadata (`crate::environment`),
+            // once they're on: there's no one to set it on before.
             if let Some(name) = &member.name {
-                let _ = client.send(Line::new(
-                    "METADATA",
-                    ["*", "SET", crate::profiles::NAME, name.as_str()],
-                ));
+                let operator = crate::ergo::Operator {
+                    host: options.irc.ip().to_string(),
+                    port: options.irc.port(),
+                    server_password: options.gate.clone(),
+                    password: options.secret.clone(),
+                };
+                let keys = [(
+                    member.nick.clone(),
+                    vec![(crate::profiles::NAME, Some(name.as_str()))],
+                )];
+                if let Err(failure) = operator.set_metadata(&keys).await {
+                    warn!(member = member.nick, %failure, "couldn't name a cast member");
+                }
             }
             // Every member's lines are read, so none backs up; the host's are heard, and
             // what guests write to each, answered.

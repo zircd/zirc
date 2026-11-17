@@ -99,7 +99,9 @@ impl Kept {
     ///
     /// # Errors
     ///
-    /// When there's no such hint.
+    /// When there's no such hint, or a machine would remove a required one: only a person
+    /// makes one, so only a person takes one away, or an agent could undo what its person's
+    /// team settled.
     pub fn remove(&mut self, id: &str, who: &Who, at: &str) -> Result<Change, Refusal> {
         let at_index = self
             .listing
@@ -107,6 +109,11 @@ impl Kept {
             .iter()
             .position(|kept| kept.id == id)
             .ok_or(Refusal::NotFound)?;
+        if who.machine && self.listing.hints[at_index].hint.required {
+            return Err(Refusal::Invalid(
+                "only a person removes a required hint, on the Playbook page".into(),
+            ));
+        }
         let stored = self.listing.hints.remove(at_index);
         Ok(self.logged(Action::Removed, stored, who, at))
     }
@@ -270,7 +277,13 @@ mod tests {
         assert!(
             refused(kept.add("#api", required.clone(), &agent(), AT)).contains("only a person")
         );
-        assert!(kept.add("#api", required, &person(), AT).is_ok());
+        let made = kept.add("#api", required, &person(), AT).unwrap();
+        // Nor does an agent take a person's required hint away: only a person does.
+        assert!(
+            refused(kept.remove(&made.hint.id, &agent(), AT)).contains("only a person removes")
+        );
+        assert_eq!(kept.listing.for_scope("#api").len(), 1);
+        assert!(kept.remove(&made.hint.id, &person(), AT).is_ok());
     }
 
     #[test]

@@ -128,6 +128,15 @@ impl Lane {
 /// How long a guest has to show their token.
 const HELLO: Duration = Duration::from_secs(10);
 
+/// The most one WebSocket message from a guest may be: a line or two, as IRC's lines are under
+/// 9 KB with their tags (`zirc_irc`), and clients send one a message. Nobody is known yet when
+/// the first arrive, so nothing bigger is ever buffered for them.
+const MAX_MESSAGE: usize = 16 * 1024;
+
+/// What a guest may send before their token: a few `CAP` lines, and not many bytes of them.
+const MAX_EARLY_LINES: usize = 16;
+const MAX_EARLY_BYTES: usize = 32 * 1024;
+
 /// The tag of the team's events in a conversation with a guest (assigned, closed, joined),
 /// which zirc's apps fold into it.
 pub const SUPPORT_TAG: &str = "+zirc/support";
@@ -891,21 +900,41 @@ impl Gateway {
         }
     }
 
+    /// Ergo's operator, as the gateway logs in to act for the server: when it has the password.
+    fn operator(&self) -> Option<crate::ergo::Operator> {
+        let (_, password) = self.accounts.as_ref()?;
+        Some(crate::ergo::Operator {
+            host: self.ergo.ip().to_string(),
+            port: self.ergo.port(),
+            server_password: self.gate.clone(),
+            password: password.clone(),
+        })
+    }
+
+    /// Says on `nick` whether the guest is signed in to zirc.dev (METADATA [`SIGNED_IN`]), as
+    /// the operator: only the operator sets anyone's metadata (`crate::environment`), so no
+    /// client can say what zirc.dev didn't. Done before the guest says anything, so staff who
+    /// look when they first hear from them see it.
+    async fn tell_signed_in(&self, nick: &str, signed_in: bool) {
+        let Some(operator) = self.operator() else {
+            return;
+        };
+        let value = if signed_in { "1" } else { "0" };
+        let keys = [(nick.to_owned(), vec![(SIGNED_IN, Some(value))])];
+        if let Err(failure) = operator.set_metadata(&keys).await {
+            warn!(guest = nick, %failure, "couldn't say whether a guest is signed in");
+        }
+    }
+
     /// Sends `text` to each owner as a private message, in the background. Never logged.
     fn push(self: &Arc<Self>, text: String) {
         let owners = lock(&self.owners).clone();
-        let Some((_, password)) = &self.accounts else {
+        let Some(operator) = self.operator() else {
             return;
         };
         if owners.is_empty() {
             return;
         }
-        let operator = crate::ergo::Operator {
-            host: self.ergo.ip().to_string(),
-            port: self.ergo.port(),
-            server_password: self.gate.clone(),
-            password: password.clone(),
-        };
         let gateway = self.clone();
         tokio::spawn(async move {
             let _one_at_a_time = gateway.pushing.lock().await;
@@ -943,14 +972,8 @@ impl Gateway {
         name: Option<&str>,
         others_here: bool,
     ) {
-        let Some((_, password)) = &self.accounts else {
+        let Some(operator) = self.operator() else {
             return;
-        };
-        let operator = crate::ergo::Operator {
-            host: self.ergo.ip().to_string(),
-            port: self.ergo.port(),
-            server_password: self.gate.clone(),
-            password: password.clone(),
         };
         let (room, parent) = (room.to_owned(), parent.to_owned());
         // On a demo server too, where its owners look in on visitors (the user's decision,
@@ -1052,6 +1075,8 @@ async fn upgrade(
         .and_then(|a| a.trim().parse().ok())
         .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     ws.protocols(["text.ircv3.net", "binary.ircv3.net"])
+        .max_message_size(MAX_MESSAGE)
+        .max_frame_size(MAX_MESSAGE)
         .on_upgrade(move |socket| async move {
             if let Err(why) = session(socket, gateway, address).await {
                 info!(%why, "a guest left");
@@ -1084,29 +1109,61 @@ fn lines(message: Message) -> Vec<String> {
 }
 
 /// What a guest's client says first: their token (`PASS`), and any `CAP` lines before it,
-/// which wait for Ergo.
+/// which wait for Ergo: no more than [`MAX_EARLY_LINES`] of them, in [`MAX_EARLY_BYTES`].
 async fn hello(socket: &mut WebSocket) -> Result<(String, Vec<Line>), String> {
-    let mut early = Vec::new();
+    let mut early = Early::default();
     let token = tokio::time::timeout(HELLO, async {
         while let Some(Ok(message)) = socket.recv().await {
             for text in lines(message) {
-                let Ok(line) = text.parse::<Line>() else {
-                    continue;
-                };
-                match line.command.to_ascii_uppercase().as_str() {
-                    "PASS" => return line.params.first().cloned(),
-                    "CAP" => early.push(line),
-                    _ => {}
+                match early.take(&text) {
+                    Said::Token(token) => return Ok(token),
+                    Said::TooMuch => return Err("too much before the token"),
+                    Said::More => {}
                 }
             }
         }
-        None
+        Err("no token")
     })
     .await
-    .ok()
-    .flatten()
-    .ok_or("no token")?;
-    Ok((token, early))
+    .unwrap_or(Err("no token"))?;
+    Ok((token, early.lines))
+}
+
+/// The `CAP` lines a guest sent before their token, counted.
+#[derive(Default)]
+struct Early {
+    lines: Vec<Line>,
+    bytes: usize,
+}
+
+/// What one line before the token was.
+#[derive(Debug, PartialEq)]
+enum Said {
+    Token(String),
+    More,
+    TooMuch,
+}
+
+impl Early {
+    /// Takes one line a guest sent before their token: the token, if it's `PASS`.
+    fn take(&mut self, text: &str) -> Said {
+        self.bytes += text.len();
+        if self.bytes > MAX_EARLY_BYTES {
+            return Said::TooMuch;
+        }
+        let Ok(line) = text.parse::<Line>() else {
+            return Said::More;
+        };
+        match line.command.to_ascii_uppercase().as_str() {
+            "PASS" => line.params.first().cloned().map_or(Said::More, Said::Token),
+            "CAP" if self.lines.len() >= MAX_EARLY_LINES => Said::TooMuch,
+            "CAP" => {
+                self.lines.push(line);
+                Said::More
+            }
+            _ => Said::More,
+        }
+    }
 }
 
 /// Who `token` says they are, where `public` lets them in at `now`: a terminal's grant and
@@ -1391,14 +1448,13 @@ impl Passing {
                     .await
                     .map_err(|e| e.to_string())?;
                 if let Some(signed_in) = self.guest.signed_in {
-                    let value = if signed_in { "1" } else { "0" };
-                    to_ergo
-                        .write_all(format!("METADATA * SET {SIGNED_IN} :{value}\r\n").as_bytes())
-                        .await
-                        .map_err(|e| e.to_string())?;
+                    // Under the nick Ergo just welcomed them by, which `*` was on their own
+                    // connection, when a client could still set its own.
+                    let nick = line.params.first().map_or(self.me.as_str(), String::as_str);
+                    self.gateway.tell_signed_in(nick, signed_in).await;
                 }
             }
-            // The answer to that, the gateway's own.
+            // Their own value, as Ergo tells a client it's subscribed to: the gateway's.
             "761" if line.params.get(2).is_some_and(|k| k == SIGNED_IN) => return Ok(false),
             // Who's in their room as they come in, then: it's made secret, and the
             // team told they're waiting if none of them is there.
@@ -2140,5 +2196,27 @@ mod tests {
             busy.admit("guest-y000", None, three, now + Duration::from_secs(61))
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn before_their_token_a_guest_sends_a_few_cap_lines_and_no_more() {
+        let mut early = Early::default();
+        assert_eq!(early.take("CAP LS 302"), Said::More);
+        assert_eq!(early.take("NICK guest-1"), Said::More);
+        assert_eq!(early.take("PASS :t0ken"), Said::Token("t0ken".into()));
+        assert_eq!(early.lines.len(), 1);
+
+        let mut many = Early::default();
+        for _ in 0..MAX_EARLY_LINES {
+            assert_eq!(many.take("CAP REQ :message-tags"), Said::More);
+        }
+        assert_eq!(many.take("CAP REQ :message-tags"), Said::TooMuch);
+
+        // Nor many bytes, in lines that aren't CAP's or aren't lines at all.
+        let mut long = Early::default();
+        let junk = "x".repeat(MAX_EARLY_BYTES / 2);
+        assert_eq!(long.take(&junk), Said::More);
+        assert_eq!(long.take(&junk), Said::More);
+        assert_eq!(long.take("x"), Said::TooMuch);
     }
 }
