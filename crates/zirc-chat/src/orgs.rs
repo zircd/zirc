@@ -10,7 +10,7 @@
 //! sign-ins'. With one organisation an app shows no switcher: someone in one organisation
 //! sees no change.
 
-use crate::chat::{Chat, Conversation, Level};
+use crate::chat::{Chat, Conversation, Level, badge_label};
 
 /// One `T` per organisation, in the order they were added, one of them selected unless
 /// there are none.
@@ -229,6 +229,22 @@ pub fn org_initials(name: &str) -> String {
         .filter_map(|word| word.chars().next())
         .flat_map(char::to_uppercase)
         .collect()
+}
+
+/// What an organisation's badge says on a rail, a switcher or a tab, as every app shows it:
+/// what it counts ([`Chat::org_badge`]) capped as every badge is ([`badge_label`]), `3`,
+/// `99+`; none for nothing, nor for one the person is no longer in, whatever it held.
+#[must_use]
+pub fn org_badge_label(state: OrgState, mentions: usize) -> Option<String> {
+    (state != OrgState::AccessEnded && mentions > 0).then(|| badge_label(mentions))
+}
+
+/// Whether an organisation shows a dot in place of its badge, as every app does: something
+/// unread there but nothing its badge counts ([`org_badge_label`]), and never for one the
+/// person is no longer in.
+#[must_use]
+pub fn org_dot(state: OrgState, unread: Unread) -> bool {
+    state != OrgState::AccessEnded && unread.mentions == 0 && unread.unread > 0
 }
 
 /// What the composer says while empty, in the conversation shown as `short`: `Message #api`,
@@ -523,8 +539,7 @@ pub fn tile_a11y(name: &str, unread: Unread, state: OrgState) -> String {
     match unread.mentions {
         0 if unread.unread > 0 => said.push("unread messages".to_owned()),
         0 => {}
-        1 => said.push("1 mention".to_owned()),
-        n => said.push(format!("{n} mentions")),
+        n => said.push(crate::chat::mentions_label(n)),
     }
     if state != OrgState::Connected {
         said.push(state.label().trim_end_matches('…').to_lowercase());
@@ -535,6 +550,25 @@ pub fn tile_a11y(name: &str, unread: Unread, state: OrgState) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_organisations_badge_is_capped_and_gone_once_access_ended() {
+        assert_eq!(org_badge_label(OrgState::Connected, 0), None);
+        assert_eq!(org_badge_label(OrgState::Offline, 3).as_deref(), Some("3"));
+        assert_eq!(
+            org_badge_label(OrgState::Connected, 140).as_deref(),
+            Some("99+")
+        );
+        assert_eq!(org_badge_label(OrgState::AccessEnded, 3), None);
+        let unread = |unread, mentions| Unread { unread, mentions };
+        assert!(org_dot(OrgState::Connected, unread(2, 0)));
+        assert!(
+            !org_dot(OrgState::Connected, unread(2, 1)),
+            "the badge says it"
+        );
+        assert!(!org_dot(OrgState::Connected, unread(0, 0)));
+        assert!(!org_dot(OrgState::AccessEnded, unread(2, 0)));
+    }
 
     #[test]
     fn signing_out_of_everything_names_three_then_how_many_more_then_zirc_dev() {

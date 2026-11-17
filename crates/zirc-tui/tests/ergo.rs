@@ -6,7 +6,7 @@ use std::time::Duration;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use zirc_core::chat::{BROWSE_CHANNELS, Kind, is_group, members_label};
+use zirc_core::chat::{BROWSE_CHANNELS, Kind, is_group, members_label, mentions_label};
 use zirc_irc::{Config, Credentials, connect};
 use zirc_proto::{Event, Message};
 use zirc_test_ergo::{Ergo, require_ergo};
@@ -158,7 +158,7 @@ async fn chats_with_history_events_and_mentions() {
         app.conversations()[api].mentions == 1
     })
     .await;
-    assert!(screen(&session.app).contains(" 1 mention "));
+    assert!(screen(&session.app).contains(&format!(" {} ", mentions_label(1))));
 
     // A private message opens a conversation of its own.
     assert!(typed(&mut session, "/msg alice thanks"));

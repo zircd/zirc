@@ -4044,6 +4044,7 @@ fn heads_the_channel_list_with_the_organisation_and_its_people() {
         chat.org_header(),
         OrgHeader {
             name: "acme".into(),
+            initials: "A".into(),
             members: 3,
             members_label: "3 members".into(),
             stale: false,
@@ -4051,6 +4052,7 @@ fn heads_the_channel_list_with_the_organisation_and_its_people() {
     );
     chat.set_org_name(Some("Acme Inc"));
     assert_eq!(chat.org_header().name, "Acme Inc");
+    assert_eq!(chat.org_header().initials, "AI");
     // Offline, the people stay as last known, flagged stale, until NAMES says them afresh.
     chat.disconnected("lost");
     let header = chat.org_header();
@@ -8329,12 +8331,13 @@ fn the_card_the_note_and_the_header_are_the_wire_records() {
     assert_eq!(
         serde_json::to_value(OrgHeader {
             name: "Acme".into(),
+            initials: "A".into(),
             members: 3,
             members_label: "3 members".into(),
             stale: false,
         })
         .unwrap(),
-        json!({"name": "Acme", "members": 3, "membersLabel": "3 members", "stale": false})
+        json!({"name": "Acme", "initials": "A", "members": 3, "membersLabel": "3 members", "stale": false})
     );
 }
 

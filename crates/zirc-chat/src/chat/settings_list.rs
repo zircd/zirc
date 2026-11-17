@@ -333,9 +333,9 @@ impl SettingsKind {
             // zirc.dev's page for it, which only they may use (the user's choice, 13 Nov
             // 2026: a row here, no longer a button in a header).
             Self::Invite => signed_in && admin,
-            // In a browser, the organisations are the rail's and the page has no version;
-            // and it notifies of nothing, so there's nothing to choose.
-            Self::Organisations | Self::Notifications | Self::About => app != SettingsApp::Web,
+            // In a browser, the organisations are the rail's, and it notifies of nothing, so
+            // there's nothing to choose.
+            Self::Organisations | Self::Notifications => app != SettingsApp::Web,
             // The account's: none before signing in. Web chat links to zirc.dev's page for it.
             Self::Profile => signed_in,
             // The account's and the organisation's, zirc.dev's own pages' in a browser.
@@ -348,7 +348,9 @@ impl SettingsKind {
             // Keys are any device's, for any server; the phones' page comes with their
             // sealed parts.
             Self::Sealed => app != SettingsApp::Phone,
-            Self::Appearance | Self::Privacy => true,
+            // Every app's. A browser's About has no version, only the typefaces' licences,
+            // which go wherever their files do.
+            Self::Appearance | Self::Privacy | Self::About => true,
         }
     }
 }
@@ -410,7 +412,7 @@ mod tests {
         // person blocks.
         assert_eq!(
             kinds(SettingsApp::Web, true),
-            [Profile, Sealed, Appearance, Privacy]
+            [Profile, Sealed, Appearance, Privacy, About]
         );
         // Before signing in, nothing of zirc.dev's but signing in, with Organisations.
         assert_eq!(

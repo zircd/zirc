@@ -14,7 +14,9 @@ pub use zirc_chat::orgs::{
     Card, CardAction, SignOutSheet, display_name, org_card, sign_out_label, sign_out_sheet,
     signed_out,
 };
-use zirc_chat::orgs::{SignOutPlace, org_colour, org_initials, tile_a11y};
+use zirc_chat::orgs::{
+    SignOutPlace, org_badge_label, org_colour, org_dot, org_initials, tile_a11y,
+};
 
 use crate::account::{Account, OrgState, OrgSummary};
 
@@ -113,6 +115,20 @@ impl OrgSummary {
     #[must_use]
     pub fn a11y_label(&self) -> String {
         tile_a11y(&self.name(), self.unread, self.state)
+    }
+
+    /// What its badge says, zirc-chat's ([`org_badge_label`]): `3`, `99+`; none for nothing,
+    /// nor once access ended.
+    #[must_use]
+    pub fn badge(&self) -> Option<String> {
+        org_badge_label(self.state, self.unread.mentions)
+    }
+
+    /// Whether it shows a dot in place of a badge, zirc-chat's ([`org_dot`]): something
+    /// unread, nothing the badge counts.
+    #[must_use]
+    pub fn dot(&self) -> bool {
+        org_dot(self.state, self.unread)
     }
 
     /// Its card, if it shows one ([`card`]).

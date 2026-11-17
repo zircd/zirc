@@ -19,7 +19,7 @@ use crate::rows::{self, Row, TIME_WIDTH, Tone, fit, wrap};
 use zirc_core::chat::{
     APP_TAG, APPS_SECTION, Avatar, COMPOSER_NOTE, GUEST_PILL, GuestHeader, Icon, Kind, OUTSIDE,
     OrgHeader, Presence, Profile, QUOTE_MARK, UNASSIGNED, agent, assigned_label, away_label,
-    is_group, members_label,
+    is_group, members_label, mentions_label,
 };
 use zirc_core::emoji;
 use zirc_theme::{Design, Rgb, Theme, Type};
@@ -1853,11 +1853,12 @@ fn status_right(app: &App) -> Line<'static> {
     if let Some(word) = app.connection.short() {
         spans.push(Span::styled(format!("{word} "), fg(theme.warning)));
     }
-    let mentions: usize = app.conversations().iter().map(|c| c.mentions).sum();
+    // What the organisation's badge counts, as every app's does ([`Chat::badge_total`]):
+    // what mentions us in a channel and every message in a direct one, the muted left out.
+    let mentions = app.chat.badge_total();
     if mentions > 0 {
-        let label = if mentions == 1 { "mention" } else { "mentions" };
         spans.push(Span::styled(
-            format!(" {mentions} {label} "),
+            format!(" {} ", mentions_label(mentions)),
             fg(theme.on_badge)
                 .bg(colour(theme.badge))
                 .add_modifier(Modifier::BOLD),
@@ -1879,8 +1880,7 @@ fn elsewhere(app: &App) -> Option<String> {
         .filter(|(org, unread)| Some(org) != app.org.as_ref() && unread.unread > 0)
         .map(|(org, unread)| match unread.mentions {
             0 => format!("{org} {}", unread.unread),
-            1 => format!("{org} {} (1 mention)", unread.unread),
-            many => format!("{org} {} ({many} mentions)", unread.unread),
+            many => format!("{org} {} ({})", unread.unread, mentions_label(many)),
         })
         .collect();
     (!others.is_empty()).then(|| format!("  · {}, Alt-O", others.join(", ")))
@@ -1964,8 +1964,8 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
     use zirc_core::chat::{
-        AGENT_TAG, BROWSE_CHANNELS, MACHINES, NO_OTHER_CHANNELS, PEOPLE_SECTION, SERVER_TITLE,
-        Shelf,
+        AGENT_TAG, BADGE_MOST, BROWSE_CHANNELS, MACHINES, NO_OTHER_CHANNELS, PEOPLE_SECTION,
+        SERVER_TITLE, Shelf, badge_label,
     };
 
     fn noon() -> DateTime<Utc> {
@@ -2753,7 +2753,23 @@ mod tests {
         let status = row_with(&rows, "irc.zirc.test · ");
         assert!(status.starts_with(" irc.zirc.test · Server"), "{status}");
         assert!(!status.contains("connected"), "{status}");
-        assert!(status.ends_with(" 1 mention  Alt-A"), "{status}");
+        assert!(
+            status.ends_with(&format!(" {}  Alt-A", mentions_label(1))),
+            "{status}"
+        );
+    }
+
+    #[test]
+    fn the_status_lines_mentions_are_capped_as_every_badge_is() {
+        let mut app = app();
+        for at in 0..120 {
+            app.handle(format!(":bob!u@h PRIVMSG #web :me: {at}").parse().unwrap());
+        }
+        let (rows, _) = draw(&app, 100, 16);
+        let status = row_with(&rows, "irc.zirc.test · ");
+        let said = format!(" {}  Alt-A", mentions_label(app.chat.badge_total()));
+        assert!(said.contains(&badge_label(BADGE_MOST + 1)), "{said}");
+        assert!(status.ends_with(&said), "{status}");
     }
 
     #[test]
@@ -4253,7 +4269,10 @@ mod tests {
         ];
         let (rows, _) = draw(&app, 160, 20);
         let status = row_with(&rows, "acme · ");
-        assert!(status.contains("globex 3 (1 mention), Alt-O"), "{status}");
+        assert!(
+            status.contains(&format!("globex 3 ({}), Alt-O", mentions_label(1))),
+            "{status}"
+        );
         assert!(!status.contains("public"), "{status}");
     }
 }

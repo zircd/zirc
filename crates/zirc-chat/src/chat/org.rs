@@ -11,6 +11,8 @@ pub struct OrgHeader {
     /// The organisation's name, `Acme`: as the app signed in to it says
     /// ([`Chat::set_org_name`]), or else as the server calls its network, `acme`.
     pub name: String,
+    /// What its mark shows without a picture: `A`, `ZL` ([`crate::orgs::org_initials`]).
+    pub initials: String,
     /// The people in its channels, us included: never machines, agents, apps or guests.
     pub members: u32,
     /// That, as every app words it: `1 member`, `3 members`.
@@ -98,12 +100,14 @@ impl Chat {
             .map(|nick| fold(&nick))
             .collect();
         people.insert(fold(&self.me));
+        let name = self
+            .org_name
+            .clone()
+            .or_else(|| self.network.clone())
+            .unwrap_or_default();
         OrgHeader {
-            name: self
-                .org_name
-                .clone()
-                .or_else(|| self.network.clone())
-                .unwrap_or_default(),
+            initials: crate::orgs::org_initials(&name),
+            name,
             members: u32::try_from(people.len()).unwrap_or(u32::MAX),
             members_label: members_label(people.len()),
             stale: self.is_stale(),

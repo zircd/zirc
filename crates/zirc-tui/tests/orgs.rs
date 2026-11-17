@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use zirc_core::chat::mentions_label;
 use zirc_core::orgs::Orgs;
 use zirc_irc::connect;
 use zirc_test_ergo::Ergo;
@@ -83,7 +84,10 @@ async fn hears_each_organisation_and_switches_between_them() {
     assert_eq!(shown, "acme");
     let screen = screen(&session.app);
     assert!(screen.contains(" acme · #"), "{screen}");
-    assert!(screen.contains("globex 1 (1 mention), Alt-O"), "{screen}");
+    assert!(
+        screen.contains(&format!("globex 1 ({}), Alt-O", mentions_label(1))),
+        "{screen}"
+    );
 
     // Alt-O's switch shows the next, as it was; one not signed in to is said so.
     switch(&mut orgs, None);

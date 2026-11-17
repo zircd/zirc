@@ -55,6 +55,9 @@ pub mod fonts {
     ];
     /// Inter's licence, which goes wherever its files do.
     pub const UI_LICENCE: &str = include_str!("../fonts/Inter-OFL.txt");
+    /// The typefaces' licences, as every app's About lists them: each one's name and its
+    /// licence's text, Inter's ([`UI_LICENCE`]) then JetBrains Mono's ([`LICENCE`]).
+    pub const LICENCES: [(&str, &str); 2] = [("Inter", UI_LICENCE), ("JetBrains Mono", LICENCE)];
     /// Inter for the web, in `fonts/` beside the stylesheet: file, weight, style and its TTF.
     pub const UI_WEB: [(&str, u16, &str, &[u8]); 5] = [
         ("Inter-Regular.woff2", 400, "normal", UI_STATIC[0]),

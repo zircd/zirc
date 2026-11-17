@@ -22,7 +22,23 @@ pub enum Shape {
 /// How `file` is drawn, by its media type.
 #[must_use]
 pub fn shape(file: &File) -> Shape {
-    match file.mime.split('/').next() {
+    shape_of(&file.mime)
+}
+
+/// How a link to a file at `url` is drawn where only its address is known, as a viewer opens
+/// a link a message holds: by the media type its name suggests
+/// ([`zirc_proto::uploads::guess_mime`]), [`Shape::Other`] for a name that says none.
+#[must_use]
+pub fn link_shape(url: &str) -> Shape {
+    let path = url.split(['?', '#']).next().unwrap_or_default();
+    shape_of(zirc_proto::uploads::guess_mime(
+        path.rsplit('/').next().unwrap_or_default(),
+    ))
+}
+
+/// How a file of the media type `mime` is drawn.
+fn shape_of(mime: &str) -> Shape {
+    match mime.split('/').next() {
         Some("image") => Shape::Image,
         Some("video") => Shape::Video,
         Some("text") => Shape::Text,
@@ -120,6 +136,21 @@ mod tests {
         assert_eq!(shape(&file("text/markdown")), Shape::Text);
         assert_eq!(shape(&file("application/pdf")), Shape::Other);
         assert_eq!(shape(&file("")), Shape::Other);
+    }
+
+    #[test]
+    fn a_links_shape_comes_from_its_name() {
+        assert_eq!(
+            link_shape("https://zirc.dev/m/acme/demo.MP4?w=640"),
+            Shape::Video
+        );
+        assert_eq!(
+            link_shape("https://example.com/clip.webm#t=3"),
+            Shape::Video
+        );
+        assert_eq!(link_shape("https://zirc.dev/m/acme/cat.gif"), Shape::Image);
+        // A hosted file's own link says nothing of what it is.
+        assert_eq!(link_shape("https://zirc.dev/m/acme/abc123"), Shape::Other);
     }
 
     #[test]

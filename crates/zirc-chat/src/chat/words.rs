@@ -75,6 +75,10 @@ pub const CLOSE_SEARCH: &str = "Close search";
 /// The label of how a sign-in's connection stands, under [`ADVANCED`].
 pub const CONNECTION: &str = "Connection";
 
+/// What a screen reader calls a conversation's row's long press, which opens its options:
+/// the same menu its header's [`MORE`] opens (the user's choice, 17 Nov 2026).
+pub const CONVERSATION_OPTIONS: &str = "Conversation options";
+
 /// The sign-in's one button, which opens zirc.dev's sign-in by email: on the phones' first
 /// screen and in the desktop's Account.
 pub const CONTINUE_WITH_EMAIL: &str = "Continue with email";
@@ -297,6 +301,47 @@ pub fn new_label(count: usize) -> String {
     format!("{count} new")
 }
 
+/// How many mentions wait, as a status line or a screen reader says it: `1 mention`, `3
+/// mentions`, capped as every badge is ([`super::badge_label`]): `99+ mentions`.
+#[must_use]
+pub fn mentions_label(count: usize) -> String {
+    let noun = if count == 1 { "mention" } else { "mentions" };
+    format!("{} {noun}", super::badge_label(count))
+}
+
+/// What a screen reader says of the chevron after a channel's name in its header, which
+/// shows its people, threads and topic: `Details of #api` (the user's choice, 17 Nov 2026).
+#[must_use]
+pub fn details_label(title: &str) -> String {
+    format!("Details of {title}")
+}
+
+/// What a screen reader says of what opens a person's or an agent's card, such as the
+/// chevron after their name in a header or their face: `Profile of Sam`.
+#[must_use]
+pub fn profile_label(name: &str) -> String {
+    format!("Profile of {name}")
+}
+
+/// What a screen reader says of the mark that folds a channel's guests' rooms under its row,
+/// or shows them: `Show #api's guests` while folded, `Hide #api's guests` while open (the
+/// user's choice, 17 Nov 2026).
+#[must_use]
+pub fn guests_label(title: &str, open: bool) -> String {
+    let verb = if open { "Hide" } else { "Show" };
+    format!("{verb} {title}'s guests")
+}
+
+/// The app's version as About shows it beside [`VERSION`]: `0.1.2`, and with the build
+/// number where the app has one, `0.1.2 (25)` (the user's choice, 17 Nov 2026).
+#[must_use]
+pub fn version_label(version: &str, build: Option<&str>) -> String {
+    match build.filter(|build| !build.is_empty()) {
+        Some(build) => format!("{version} ({build})"),
+        None => version.to_owned(),
+    }
+}
+
 /// What Jump to says when nothing is called what's typed: `Nothing called “lunch”.`
 #[must_use]
 pub fn nothing_called(query: &str) -> String {
@@ -344,6 +389,16 @@ mod tests {
         assert_eq!(nothing_called(" lunch "), "Nothing called “lunch”.");
         assert_eq!(react_with_label("👍"), "React with 👍");
         assert_eq!(couldnt_label("timed out"), "Couldn't: timed out");
+        assert_eq!(mentions_label(1), "1 mention");
+        assert_eq!(mentions_label(3), "3 mentions");
+        assert_eq!(mentions_label(140), "99+ mentions");
+        assert_eq!(details_label("#api"), "Details of #api");
+        assert_eq!(profile_label("Sam"), "Profile of Sam");
+        assert_eq!(guests_label("#api", false), "Show #api's guests");
+        assert_eq!(guests_label("#api", true), "Hide #api's guests");
+        assert_eq!(version_label("0.1.2", Some("25")), "0.1.2 (25)");
+        assert_eq!(version_label("0.1.2", None), "0.1.2");
+        assert_eq!(version_label("0.1.2", Some("")), "0.1.2");
         assert_eq!(
             activity_empty(),
             "Nothing yet. When someone mentions you, replies to you or reacts to what you said, it shows here."
@@ -461,6 +516,8 @@ pub struct Words {
     pub close_search: String,
     /// The label of how a sign-in's connection stands: `Connection`.
     pub connection: String,
+    /// A conversation's row's long press, for a screen reader: `Conversation options`.
+    pub conversation_options: String,
     /// The sign-in's one button: `Continue with email`.
     pub continue_with_email: String,
     /// A code block's button that copies it: `Copy`.
@@ -652,6 +709,7 @@ pub fn words() -> Words {
         clear: CLEAR.to_owned(),
         close_search: CLOSE_SEARCH.to_owned(),
         connection: CONNECTION.to_owned(),
+        conversation_options: CONVERSATION_OPTIONS.to_owned(),
         continue_with_email: CONTINUE_WITH_EMAIL.to_owned(),
         copy_block: COPY.to_owned(),
         copy_code: COPY_CODE.to_owned(),

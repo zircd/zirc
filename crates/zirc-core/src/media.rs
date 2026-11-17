@@ -196,32 +196,9 @@ impl Download {
     }
 }
 
-/// The media type a file's name suggests, for an [`UploadRequest`]: zirc.dev checks its
-/// bytes, so this only has to be a good guess.
-#[must_use]
-pub fn guess_mime(name: &str) -> &'static str {
-    let extension = name
-        .rsplit_once('.')
-        .map(|(_, extension)| extension.to_ascii_lowercase())
-        .unwrap_or_default();
-    match extension.as_str() {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
-        "webp" => "image/webp",
-        "gif" => "image/gif",
-        "heic" | "heif" => "image/heic",
-        "avif" => "image/avif",
-        "mp4" | "m4v" => "video/mp4",
-        "mov" => "video/quicktime",
-        "webm" => "video/webm",
-        "txt" | "log" => "text/plain",
-        "md" | "markdown" => "text/markdown",
-        "json" => "application/json",
-        "pdf" => "application/pdf",
-        "zip" => "application/zip",
-        _ => "application/octet-stream",
-    }
-}
+/// The media type a file's name suggests, for an [`UploadRequest`]: zirc-proto's, which
+/// zirc-chat reads too for a link's shape.
+pub use zirc_proto::uploads::guess_mime;
 
 #[cfg(test)]
 mod tests {
