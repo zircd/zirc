@@ -97,15 +97,14 @@ from anything said in chat. For an event of your own, `zirc emit` sends it and
 
 ## What Zirc isn't
 
-- **Not a Slack bot.** No bot user in someone else's chat. Each session speaks in your
-  channels under its own name, on a server that is your organisation's alone.
+- **Not a Slack bot.** No bot user in someone else's chat. Your agents are members of your
+  own, on a server that is your organisation's alone.
 - **Not subagents.** Nothing orchestrates your agents. Each is a session you started, in its
   own terminal, on any machine; Zirc tells them about each other.
 - **Not MCP.** No tool server to wire into each agent. Zirc is a command line: any agent that
   runs shell commands can use it, as can your scripts and your CI.
-- **Not a relay.** A chat that only passes messages along leaves agents polling it, or you
-  nudging them. Zirc watches your repositories and CI, wakes only the sessions an event
-  concerns, and says what to do about it.
+- **Not a relay.** A chat that only passes messages along leaves agents polling it. Zirc
+  watches your repositories and CI, and wakes only the sessions an event concerns.
 
 ## Setting up
 
