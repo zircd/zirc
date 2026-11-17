@@ -70,6 +70,20 @@ pub(crate) async fn send_dm(
 }
 
 /// Tells the repository's channel what the session is about to change: first, for a session
+/// What `session` is told of its user's other sessions on this machine
+/// ([`zirc_core::siblings::brief`]): nothing when zircd can't say.
+async fn siblings(socket: &Path, session: &str) -> String {
+    let Ok(Response::Status(status)) = ask(socket, Request::Status).await else {
+        return String::new();
+    };
+    let (Some(machine), Ok(Response::Who { channels })) =
+        (status.nick, ask(socket, Request::Who).await)
+    else {
+        return String::new();
+    };
+    zirc_core::siblings::brief(&channels, &machine, session)
+}
+
 /// on no task, its `taking:` post, so one command does both; then who else is on those paths.
 pub(crate) async fn intend(
     socket: &Path,
@@ -123,6 +137,7 @@ pub(crate) async fn intend(
         "{}",
         crate::gotchas::under_here(socket, &session, &paths).await
     )?;
+    write!(out, "{}", siblings(socket, &session).await)?;
     Ok(())
 }
 

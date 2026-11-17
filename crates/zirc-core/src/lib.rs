@@ -41,6 +41,7 @@ pub mod secrets;
 pub mod send;
 pub mod sessions;
 pub mod settings;
+pub mod siblings;
 pub mod signin;
 pub mod signout;
 pub mod stacked;
