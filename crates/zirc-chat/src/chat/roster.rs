@@ -322,12 +322,16 @@ impl Chat {
         away_line(self.status.away_here.as_deref())
     }
 
-    /// Under an app's own Away switch, when it said we're away but the server still shows us
-    /// here, because another of our apps is connected and not away; none otherwise.
+    /// Under an app's own Away switch and its why: what it does ([`super::AWAY_NOTE`]), or
+    /// when it said we're away but the server still shows us here, because another of our
+    /// apps is connected and not away, [`super::AWAY_ELSEWHERE_NOTE`].
     #[must_use]
-    pub fn away_note(&self) -> Option<&'static str> {
-        (self.status.away_here.is_some() && self.away(&self.me).is_none())
-            .then_some("Shown as here while another of your apps is connected and not away.")
+    pub fn away_note(&self) -> &'static str {
+        if self.status.away_here.is_some() && self.away(&self.me).is_none() {
+            super::AWAY_ELSEWHERE_NOTE
+        } else {
+            super::AWAY_NOTE
+        }
     }
 
     /// The computer's state, from the app that sees it: seconds since the last input

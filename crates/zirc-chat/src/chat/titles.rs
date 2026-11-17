@@ -36,11 +36,33 @@ pub const NOTHING_JOINED: NothingJoined = NothingJoined {
 pub const SERVER_TITLE: &str = "Server";
 
 impl Chat {
-    /// What to show in place of the conversation shown, when that's the server's own and it
-    /// isn't open as the Server channel ([`Chat::show_server`]): as when nothing's joined yet.
+    /// What to show in place of a conversation while none is open (the server's own is
+    /// selected but not open as the Server channel, [`Chat::show_server`]) and no channel is
+    /// joined: [`NOTHING_JOINED`]'s card. With a channel joined, [`Chat::pick_a_conversation`].
     #[must_use]
     pub fn nothing_joined(&self) -> Option<NothingJoined> {
-        (self.selected().kind == Kind::Server && !self.server_shown).then_some(NOTHING_JOINED)
+        (self.none_open() && !self.any_joined()).then_some(NOTHING_JOINED)
+    }
+
+    /// What to show in place of a conversation while none is open but a channel is joined:
+    /// [`super::PICK_A_CONVERSATION`] (the user's choice, 17 Nov 2026). With none joined,
+    /// [`Chat::nothing_joined`].
+    #[must_use]
+    pub fn pick_a_conversation(&self) -> Option<&'static str> {
+        (self.none_open() && self.any_joined()).then_some(super::PICK_A_CONVERSATION)
+    }
+
+    /// Whether no conversation is open: the server's own is selected, but not as the Server
+    /// channel.
+    fn none_open(&self) -> bool {
+        self.selected().kind == Kind::Server && !self.server_shown
+    }
+
+    /// Whether any channel is joined.
+    fn any_joined(&self) -> bool {
+        self.conversations
+            .iter()
+            .any(|c| c.kind == Kind::Channel && c.joined)
     }
 
     /// Whether the conversation called `name` is the server's own: the Server channel.

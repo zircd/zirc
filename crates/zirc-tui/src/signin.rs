@@ -98,7 +98,8 @@ pub async fn sign_in(
     )
     .await;
     said?;
-    let credentials = credentials?;
+    // `Couldn't sign in: <why>`, as every app says it, when the error's chain is printed.
+    let credentials = credentials.context(zirc_core::chat::COULDNT_SIGN_IN)?;
     if let Some(account_id) = &credentials.account_id {
         zirc_core::telemetry::link(home, account_id);
     }
@@ -125,11 +126,7 @@ fn prompt(
     writeln!(out)?;
     writeln!(out, "  {}", started.url)?;
     writeln!(out)?;
-    writeln!(
-        out,
-        "It shows the code {}; check that it's this one.",
-        started.code
-    )?;
+    writeln!(out, "{} {}.", zirc_core::chat::CHECK_THE_CODE, started.code)?;
     if browser {
         login::open_browser(&started.url);
     }

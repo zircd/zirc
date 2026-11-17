@@ -71,6 +71,19 @@ impl Chat {
         first
     }
 
+    /// What Jump to says for `query` when it has nothing to offer: no conversation
+    /// ([`Chat::switcher`]), no channel to join ([`Chat::browse_matching`]) and no Join or
+    /// Create row ([`Chat::join_offer`]), `Nothing called “x”.` ([`super::nothing_called`]).
+    /// None while something shows, or nothing's typed (the user's choice, 17 Nov 2026).
+    #[must_use]
+    pub fn jump_nothing(&self, query: &str) -> Option<String> {
+        let nothing = !query.trim().is_empty()
+            && self.switcher(query).is_empty()
+            && self.browse_matching(query).is_empty()
+            && self.join_offer(query).is_none();
+        nothing.then(|| super::nothing_called(query))
+    }
+
     /// What Jump to offers last for what's typed, `query`, when that names a channel we
     /// aren't in: `Join #name` for one the server lists, `Create #name` for one it doesn't,
     /// as joining makes it (the user's choice, 11 Nov 2026). None when it isn't a channel's

@@ -147,6 +147,14 @@ pub const AWAY: &str = "Away";
 /// The field under [`AWAY`]: why, which people there see after "away:".
 pub const AWAY_WHY: &str = "Why (optional)";
 
+/// Under [`AWAY`] and [`AWAY_WHY`]: what they do, in every app (the user's choice, 17 Nov
+/// 2026).
+pub const AWAY_NOTE: &str = "Others see you as away, and why, until you're back.";
+
+/// [`AWAY_NOTE`] while this app says away but the server shows the person here.
+pub const AWAY_ELSEWHERE_NOTE: &str =
+    "Shown as here while another of your apps is connected and not away.";
+
 /// The switch that mutes the organisation called `org`.
 #[must_use]
 pub fn mute_org(org: &str) -> String {
@@ -336,10 +344,11 @@ impl SettingsKind {
             // In a browser, the organisations are the rail's, and it notifies of nothing, so
             // there's nothing to choose.
             Self::Organisations | Self::Notifications => app != SettingsApp::Web,
-            // The account's: none before signing in. Web chat links to zirc.dev's page for it.
-            Self::Profile => signed_in,
+            // The account's: none before signing in; web chat links to zirc.dev's page for it.
+            // Away and why, in every app's Settings (the user's choice, 17 Nov 2026).
+            Self::Profile | Self::Status => signed_in,
             // The account's and the organisation's, zirc.dev's own pages' in a browser.
-            Self::DeleteAccount | Self::OrgProfile | Self::Status | Self::Mute => {
+            Self::DeleteAccount | Self::OrgProfile | Self::Mute => {
                 signed_in && app != SettingsApp::Web
             }
             // Who may ask a machine's agents is its zircd's, which only a computer has (the
@@ -408,11 +417,11 @@ mod tests {
         // agents anyone may ask.
         assert!(!kinds(SettingsApp::Phone, true).contains(&Server));
         assert!(!kinds(SettingsApp::Phone, true).contains(&Agents));
-        // A browser: the name and picture zirc.dev's page edits, how it looks, and whom the
-        // person blocks.
+        // A browser: the name and picture zirc.dev's page edits, away and why, how it looks,
+        // and whom the person blocks.
         assert_eq!(
             kinds(SettingsApp::Web, true),
-            [Profile, Sealed, Appearance, Privacy, About]
+            [Profile, Status, Sealed, Appearance, Privacy, About]
         );
         // Before signing in, nothing of zirc.dev's but signing in, with Organisations.
         assert_eq!(

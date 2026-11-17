@@ -2516,12 +2516,9 @@ fn a_bare_away_gives_no_reason_and_says_while_another_app_shows_us_here() {
     assert_eq!(sent, [format!("AWAY {}", crate::chat::BARE_AWAY)]);
     assert_eq!(crate::chat::away_reason(crate::chat::BARE_AWAY), "");
     // Asked, not yet away: another of our apps keeps us shown here, which You says.
-    assert_eq!(
-        scene.away_note(),
-        Some("Shown as here while another of your apps is connected and not away.")
-    );
+    assert_eq!(scene.away_note(), crate::chat::AWAY_ELSEWHERE_NOTE);
     scene.hears(&[AWAY_ASKED]);
-    assert_eq!(scene.away_note(), None);
+    assert_eq!(scene.away_note(), crate::chat::AWAY_NOTE);
     let away = scene.away("me").unwrap();
     assert_eq!(crate::chat::away_label(away), "away");
     assert_eq!(crate::chat::away_title(away), "Away");
@@ -3246,6 +3243,25 @@ fn jump_to_offers_to_create_a_channel_nothing_lists_or_join_one_the_server_does(
     assert!(chat.join_offer("").is_none());
     assert!(chat.join_offer("two words").is_none());
     assert!(chat.join_offer("#a,b").is_none());
+}
+
+#[test]
+fn jump_to_says_nothing_is_called_that_only_when_it_offers_nothing() {
+    let mut chat = Scene::in_api();
+    feed(
+        &mut chat,
+        &[":s 322 me #design 9 :", ":s 323 me :End of /LIST"],
+    );
+    // Typed nothing yet, or a conversation of ours, a channel to join or one to make.
+    assert_eq!(chat.jump_nothing(""), None);
+    assert_eq!(chat.jump_nothing("api"), None);
+    assert_eq!(chat.jump_nothing("desi"), None);
+    assert_eq!(chat.jump_nothing("launch"), None);
+    // No channel's name, so no Create row: nothing at all.
+    assert_eq!(
+        chat.jump_nothing(" two words "),
+        Some(crate::chat::nothing_called("two words"))
+    );
 }
 
 #[test]
@@ -8158,9 +8174,17 @@ fn the_server_s_own_conversation_shown_says_to_join_a_channel() {
             "action": "Join a channel",
         })
     );
+    assert_eq!(chat.pick_a_conversation(), None);
     feed(&mut chat, &[":me!u@h JOIN #api"]);
+    // Joined, with none open yet: pick one.
+    assert_eq!(chat.nothing_joined(), None);
+    assert_eq!(
+        chat.pick_a_conversation(),
+        Some(crate::chat::PICK_A_CONVERSATION)
+    );
     let _ = chat.select(chat.position("#api").unwrap());
     assert_eq!(chat.nothing_joined(), None);
+    assert_eq!(chat.pick_a_conversation(), None);
 }
 
 #[test]

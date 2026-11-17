@@ -258,6 +258,45 @@ pub const YOUR_NAME: &str = "Your name";
 /// speaker is [`Preview`](super::Preview)'s own.
 pub const YOU_PAGE: &str = "You";
 
+/// Under [`ASKING_ZIRC_DEV`], once zirc.dev has a sign-in waiting: what to check, before
+/// the code it shows, and [`CANCEL`] under it (the user's choice, 17 Nov 2026: the Mac's).
+pub const CHECK_THE_CODE: &str = "Check that the page in your browser shows";
+
+/// What a sign-in that failed says, before why ([`signin_failed`]).
+pub const COULDNT_SIGN_IN: &str = "Couldn't sign in";
+
+/// What a reply says of the message it answers once that's no longer kept, in place of who
+/// said it and what (the user's choice, 17 Nov 2026: every app, web too).
+pub const EARLIER_REPLY: &str = "a reply to an earlier message";
+
+/// [`EARLIER_REPLY`]'s message, where the composer's reply line names what it answers.
+pub const EARLIER_MESSAGE: &str = "an earlier message";
+
+/// Under [`NO_DIRECTS`]: how to start one (the user's choice, 17 Nov 2026: the iPhone's).
+pub const NO_DIRECTS_HINT: &str = "Start one from someone's card or the people list.";
+
+/// Where a conversation shows while none is open (the user's choice, 17 Nov 2026). With
+/// nothing joined, [`super::NOTHING_JOINED`] instead.
+pub const PICK_A_CONVERSATION: &str = "Pick a conversation";
+
+/// Where a conversation shows on a desktop with no server set yet.
+pub const CHOOSE_A_SERVER: &str = "Choose a server in Settings to start.";
+
+/// What saves what's typed, such as the profile's name.
+pub const SAVE: &str = "Save";
+
+/// What [`SAVE`] says once it's saved, until something changes (the user's choice, 17 Nov
+/// 2026); [`couldnt_save`] when it wasn't.
+pub const SAVED: &str = "Saved";
+
+/// What picks the person's picture while they have none; [`CHANGE_PICTURE`](super::settings_list::CHANGE_PICTURE)
+/// once they have one ([`picture_button`]).
+pub const ADD_PICTURE: &str = "Add a picture";
+
+/// What the system calls the phones' notifications of messages, one channel per
+/// organisation grouped under its name (the user's choice, 17 Nov 2026).
+pub const NOTIFICATION_CHANNEL: &str = "Messages";
+
 /// How many of an event's paths show, one a line, before [`show_more_paths_label`] folds
 /// the rest away until pressed (the user's decision, 11 Nov): a big push stays short.
 pub const SHOWN_PATHS: usize = 8;
@@ -348,6 +387,29 @@ pub fn nothing_called(query: &str) -> String {
     format!("Nothing called “{}”.", query.trim())
 }
 
+/// What a sign-in that failed says: `Couldn't sign in: zirc.dev can't be reached`.
+#[must_use]
+pub fn signin_failed(why: &str) -> String {
+    format!("{COULDNT_SIGN_IN}: {why}")
+}
+
+/// What a save that failed says: `Couldn't save it: timed out`.
+#[must_use]
+pub fn couldnt_save(why: &str) -> String {
+    format!("Couldn't save it: {why}")
+}
+
+/// The button that picks the person's picture: [`ADD_PICTURE`] while they have none,
+/// `Change picture…` once they have one.
+#[must_use]
+pub fn picture_button(has_picture: bool) -> &'static str {
+    if has_picture {
+        settings_list::CHANGE_PICTURE
+    } else {
+        ADD_PICTURE
+    }
+}
+
 /// What a reaction's button says for a screen reader: `React with 👍`.
 #[must_use]
 pub fn react_with_label(emoji: &str) -> String {
@@ -372,6 +434,89 @@ pub mod menu_bar {
     pub const PREVIOUS_CONVERSATION: &str = "Previous Conversation";
     /// The conversation below the open one in the list.
     pub const NEXT_CONVERSATION: &str = "Next Conversation";
+    /// The menu of what's done to conversations ([`conversation`]): moving between them,
+    /// finding one, and what's read.
+    pub const CONVERSATION: &str = "Conversation";
+    /// The unread conversation above the open one.
+    pub const PREVIOUS_UNREAD: &str = "Previous Unread";
+    /// The unread conversation below the open one.
+    pub const NEXT_UNREAD: &str = "Next Unread";
+    /// A direct message to someone not picked yet.
+    pub const NEW_MESSAGE: &str = "New Message";
+    /// The open conversation's details: its people, threads and topic, beside it.
+    pub const DETAILS: &str = "Details";
+    /// Marks the open conversation read.
+    pub const MARK_READ: &str = "Mark Read";
+    /// Marks every conversation read.
+    pub const MARK_ALL_READ: &str = "Mark All Read";
+    /// Search, in the conversation open.
+    pub const SEARCH: &str = "Search…";
+
+    /// Which app's menu bar: each draws the items it can do.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum MenuApp {
+        /// The GPUI desktop app.
+        Desktop,
+        /// The Swift Mac app.
+        Mac,
+    }
+
+    /// What one of [`conversation`]'s items does.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Command {
+        /// [`PREVIOUS_CONVERSATION`].
+        PreviousConversation,
+        /// [`NEXT_CONVERSATION`].
+        NextConversation,
+        /// [`PREVIOUS_UNREAD`].
+        PreviousUnread,
+        /// [`NEXT_UNREAD`].
+        NextUnread,
+        /// [`NEW_MESSAGE`].
+        NewMessage,
+        /// Jump to…, the quick switcher.
+        JumpTo,
+        /// [`DETAILS`].
+        Details,
+        /// [`MARK_READ`].
+        MarkRead,
+        /// [`MARK_ALL_READ`].
+        MarkAllRead,
+        /// [`SEARCH`].
+        Search,
+    }
+
+    /// One item of the menu bar's [`CONVERSATION`] menu.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Item {
+        /// What it does.
+        pub command: Command,
+        /// What it says.
+        pub label: &'static str,
+    }
+
+    /// The [`CONVERSATION`] menu's items for `app`, in order (the user's choice, 17 Nov
+    /// 2026): both desktops draw it from here. The Mac has no New Message yet, as it can't
+    /// start one.
+    #[must_use]
+    pub fn conversation(app: MenuApp) -> Vec<Item> {
+        [
+            (Command::PreviousConversation, PREVIOUS_CONVERSATION),
+            (Command::NextConversation, NEXT_CONVERSATION),
+            (Command::PreviousUnread, PREVIOUS_UNREAD),
+            (Command::NextUnread, NEXT_UNREAD),
+            (Command::NewMessage, NEW_MESSAGE),
+            (Command::JumpTo, super::JUMP_TO_PROMPT),
+            (Command::Details, DETAILS),
+            (Command::MarkRead, MARK_READ),
+            (Command::MarkAllRead, MARK_ALL_READ),
+            (Command::Search, SEARCH),
+        ]
+        .into_iter()
+        .filter(|(command, _)| app == MenuApp::Desktop || *command != Command::NewMessage)
+        .map(|(command, label)| Item { command, label })
+        .collect()
+    }
 }
 
 #[cfg(test)]
@@ -399,10 +544,46 @@ mod tests {
         assert_eq!(version_label("0.1.2", Some("25")), "0.1.2 (25)");
         assert_eq!(version_label("0.1.2", None), "0.1.2");
         assert_eq!(version_label("0.1.2", Some("")), "0.1.2");
+        assert_eq!(signin_failed("timed out"), "Couldn't sign in: timed out");
+        assert_eq!(couldnt_save("timed out"), "Couldn't save it: timed out");
+        assert_eq!(picture_button(false), "Add a picture");
+        assert_eq!(picture_button(true), "Change picture…");
         assert_eq!(
             activity_empty(),
             "Nothing yet. When someone mentions you, replies to you or reacts to what you said, it shows here."
         );
+    }
+
+    #[test]
+    fn the_menu_bar_has_what_each_desktop_can_do() {
+        use menu_bar::{Command, MenuApp, conversation};
+        let labels = |app| {
+            conversation(app)
+                .iter()
+                .map(|item| item.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels(MenuApp::Desktop),
+            [
+                "Previous Conversation",
+                "Next Conversation",
+                "Previous Unread",
+                "Next Unread",
+                "New Message",
+                "Jump to…",
+                "Details",
+                "Mark Read",
+                "Mark All Read",
+                "Search…",
+            ]
+        );
+        assert!(
+            conversation(MenuApp::Mac)
+                .iter()
+                .all(|item| item.command != Command::NewMessage)
+        );
+        assert_eq!(conversation(MenuApp::Mac).len(), 9);
     }
 
     #[test]
@@ -426,6 +607,7 @@ mod tests {
             format!("{}…", settings_list::CHANGE_PICTURE_NAME)
         );
         assert!(MORE_PEOPLE_ONLY.starts_with(MORE));
+        assert!(EARLIER_REPLY.ends_with(EARLIER_MESSAGE));
         assert!(COPY_MESSAGE_LINK.starts_with(COPY_LINK));
         assert_eq!(
             settings_list::SIGN_OUT_EVERYTHING,
@@ -544,6 +726,32 @@ pub struct Words {
     pub dismiss: String,
     /// What shuts a page once it's finished with: `Done`.
     pub done: String,
+    /// Under `asking_zirc_dev` once a sign-in waits, before its code: `Check that the page in
+    /// your browser shows`.
+    pub check_the_code: String,
+    /// What a reply says of a message no longer kept: `a reply to an earlier message`.
+    pub earlier_reply: String,
+    /// What the composer's reply line names for a message no longer kept: `an earlier
+    /// message`.
+    pub earlier_message: String,
+    /// Under `no_directs`: `Start one from someone's card or the people list.`
+    pub no_directs_hint: String,
+    /// Where a conversation shows while none is open: `Pick a conversation`.
+    pub pick_a_conversation: String,
+    /// Where a conversation shows with no server set: `Choose a server in Settings to start.`
+    pub choose_a_server: String,
+    /// What saves what's typed: `Save`.
+    pub save: String,
+    /// What `save` says once saved: `Saved`.
+    pub saved: String,
+    /// What picks a picture while there's none: `Add a picture`.
+    pub add_picture: String,
+    /// What the system calls the phones' notifications of messages: `Messages`.
+    pub notification_channel: String,
+    /// The menu bar's menu of conversations: `Conversation`.
+    pub menu_conversation: String,
+    /// Under the Away switch: `Others see you as away, and why, until you're back.`
+    pub away_note: String,
     /// A file's button that fetches it: `Download`.
     pub download: String,
     /// A message's menu, correcting it: `Edit`.
@@ -722,6 +930,18 @@ pub fn words() -> Words {
         delete_my_account: DELETE_MY_ACCOUNT.to_owned(),
         dismiss: DISMISS.to_owned(),
         done: DONE.to_owned(),
+        check_the_code: CHECK_THE_CODE.to_owned(),
+        earlier_reply: EARLIER_REPLY.to_owned(),
+        earlier_message: EARLIER_MESSAGE.to_owned(),
+        no_directs_hint: NO_DIRECTS_HINT.to_owned(),
+        pick_a_conversation: PICK_A_CONVERSATION.to_owned(),
+        choose_a_server: CHOOSE_A_SERVER.to_owned(),
+        save: SAVE.to_owned(),
+        saved: SAVED.to_owned(),
+        add_picture: ADD_PICTURE.to_owned(),
+        notification_channel: NOTIFICATION_CHANNEL.to_owned(),
+        menu_conversation: menu_bar::CONVERSATION.to_owned(),
+        away_note: settings_list::AWAY_NOTE.to_owned(),
         download: DOWNLOAD.to_owned(),
         edit: super::EDIT_LABEL.to_owned(),
         edit_profile: EDIT_PROFILE.to_owned(),
