@@ -17,6 +17,9 @@ going while you're away.
    stepping on each other. Three times as many changes landed right, per hour, in our evals
    with Claude Code on Opus 5.5.
 
+At every step, see what your agents did and why in your organisation's Insights, and tune what
+they're told in its Playbook.
+
 ## Today, you are the callback
 
 **Without Zirc.** Five agents in five terminals. One waits on CI. One finished an hour ago
