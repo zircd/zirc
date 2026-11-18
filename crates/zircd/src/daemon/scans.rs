@@ -349,17 +349,38 @@ impl Daemon {
         else {
             return;
         };
+        // Each worktree costs some twenty git commands to compare, and a machine may have
+        // two dozen: about ten seconds of git a push (18 Nov 2026). What a worktree changes
+        // of its own is known from its last scan, unless it has changed since: one that
+        // changes none of what the push does can't clash with it, and isn't compared.
         let against: Vec<Against> = self
             .repos
             .iter()
             .filter(|(_, watched)| watched.channel == channel)
-            .map(|(root, watched)| Against {
-                worktree: Worktree {
-                    path: root.clone(),
-                    branch: watched.snapshot.branch.clone(),
-                },
-                clean: watched.snapshot.dirty.is_empty(),
-                default_pushed: watched.default_branch == *branch,
+            .filter_map(|(root, watched)| {
+                let settled = watched.touched.is_none() && !self.scanning.contains(root);
+                let own: Option<BTreeSet<String>> = settled.then(|| {
+                    let snapshot = &watched.snapshot;
+                    snapshot.dirty.union(&snapshot.committed).cloned().collect()
+                });
+                // A push lists none of its paths when it has too many to list, or is a
+                // branch's first.
+                if own.as_ref().is_some_and(|own| {
+                    own.is_empty() || (!paths.is_empty() && !paths.iter().any(|p| own.contains(p)))
+                }) {
+                    return None;
+                }
+                let default_pushed = watched.default_branch == *branch;
+                Some(Against {
+                    worktree: Worktree {
+                        path: root.clone(),
+                        branch: watched.snapshot.branch.clone(),
+                    },
+                    clean: watched.snapshot.dirty.is_empty(),
+                    default_pushed,
+                    own,
+                    tips: self.stack_tips(watched, branch, default_pushed),
+                })
             })
             .collect();
         if against.is_empty() {
@@ -384,6 +405,20 @@ impl Daemon {
                 found,
             }));
         });
+    }
+
+    /// What `watched`'s sessions built on of `branch`, just pushed, as it was then and as
+    /// it was last seen pushed ([`git::shared_base`]); of every branch they're stacked on
+    /// when it's the default branch that was pushed, which a stacked branch may have
+    /// landed on under other commits.
+    fn stack_tips(&self, watched: &Watched, branch: &str, default_pushed: bool) -> Vec<String> {
+        watched
+            .sessions
+            .names()
+            .flat_map(|session| self.awaits.stacks(session))
+            .filter(|stack| default_pushed || stack.branch == branch)
+            .flat_map(|stack| std::iter::once(stack.tip).chain(stack.moved))
+            .collect()
     }
 
     /// Tells the watchers of this machine's worktrees what a push was found to clash with
@@ -445,6 +480,11 @@ struct Against {
     clean: bool,
     /// Whether the push is of its repository's default branch.
     default_pushed: bool,
+    /// The paths it changes of its own, as its last scan found them, unless it has changed
+    /// since: then git is asked.
+    own: Option<BTreeSet<String>>,
+    /// What its sessions built on of the pushed branch ([`Daemon::stack_tips`]).
+    tips: Vec<String>,
 }
 
 /// What a push was found to clash with ([`Daemon::check_push`]).
@@ -495,7 +535,10 @@ async fn clashes(push: &Push, against: Vec<Against>) -> Vec<(Worktree, SameLines
         };
         // Only the worktree's own work: a branch cut before what the worktree has from the
         // default branch changes those lines too, but that's no conflict of this one's.
-        let own = git::own_paths(root).await;
+        let own = match against.own {
+            Some(own) => Some(own),
+            None => git::own_paths(root).await,
+        };
         let mut same_lines = same_lines;
         same_lines.retain(|path, _| own.as_ref().is_none_or(|own| own.contains(path)));
         if !same_lines.is_empty() {
@@ -531,14 +574,32 @@ async fn local_same_lines(push: &Push, against: &Against) -> Option<SameLines> {
     } else {
         &push.paths
     };
-    let ours_base = git::fork(root, &mine).await.unwrap_or_else(|| base.clone());
-    // A push of the default branch is all the pusher's; another branch's is its own from
-    // where it left the default branch, and what it has of that branch beyond this
-    // worktree isn't the pusher's: the default branch's own push said it already.
-    let theirs_base = if against.default_pushed {
-        git::merge_base(root, &ours_base, head).await?
-    } else {
-        git::fork(root, head).await.unwrap_or_else(|| base.clone())
+    let fork = git::fork(root, &mine).await;
+    let shared = match &fork {
+        Some(fork) => git::shared_base(root, fork, &mine, head, &against.tips).await,
+        None => None,
+    };
+    let (ours_base, theirs_base) = match (shared, against.default_pushed) {
+        // A push of the default branch is all the pusher's.
+        (Some(shared), true) => {
+            let theirs = git::merge_base(root, &shared, head).await?;
+            (shared, theirs)
+        }
+        // Stacked, one on the other or both on a third branch: each side's own work is what
+        // it did since what they share, as rebasing onto the push would apply it.
+        (Some(shared), false) => (shared.clone(), shared),
+        (None, true) => {
+            let ours = fork.unwrap_or_else(|| base.clone());
+            let theirs = git::merge_base(root, &ours, head).await?;
+            (ours, theirs)
+        }
+        // Another branch's is its own from where it left the default branch, and what it
+        // has of that branch beyond this worktree isn't the pusher's: the default branch's
+        // own push said it already.
+        (None, false) => (
+            fork.unwrap_or_else(|| base.clone()),
+            git::fork(root, head).await.unwrap_or_else(|| base.clone()),
+        ),
     };
     let ours_tree = git::own_tree(root, &ours_base, paths).await?;
     let ours = Side {
@@ -550,4 +611,196 @@ async fn local_same_lines(push: &Push, against: &Against) -> Option<SameLines> {
         tree: head,
     };
     Some(git::rebase(root, ours, theirs, paths).await?.same_lines)
+}
+
+#[cfg(test)]
+pub(super) mod tests {
+    use super::*;
+
+    /// A repository whose default branch, `main`, has `lines.txt` of ten lines, with
+    /// worktrees beside it.
+    pub(in crate::daemon) struct Repo {
+        dir: tempfile::TempDir,
+    }
+
+    impl Repo {
+        pub(in crate::daemon) fn new() -> Self {
+            let repo = Self {
+                dir: tempfile::tempdir().unwrap(),
+            };
+            let main = repo.path("main");
+            std::fs::create_dir(&main).unwrap();
+            run(&main, &["init", "-q", "-b", "main"]);
+            commit(&main, "lines.txt", &ten(&[]), "start");
+            run(&main, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+            repo
+        }
+
+        pub(in crate::daemon) fn path(&self, name: &str) -> PathBuf {
+            self.dir.path().join(name)
+        }
+
+        /// A worktree `name` on a new branch `name` from `from`.
+        pub(in crate::daemon) fn worktree(&self, name: &str, from: &str) -> PathBuf {
+            let path = self.path(name);
+            let at = path.to_str().unwrap();
+            run(
+                &self.path("main"),
+                &["worktree", "add", "-q", "-b", name, at, from],
+            );
+            path
+        }
+    }
+
+    /// Runs git in `dir`, as a test does, and what it prints.
+    pub(in crate::daemon) fn run(dir: &Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+            .args(["-c", "commit.gpgsign=false"])
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git {args:?}: {output:?}");
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    }
+
+    /// Commits `path` with `text` as `subject`, and its id.
+    pub(in crate::daemon) fn commit(dir: &Path, path: &str, text: &str, subject: &str) -> String {
+        std::fs::write(dir.join(path), text).unwrap();
+        run(dir, &["add", path]);
+        run(dir, &["commit", "-q", "-m", subject]);
+        run(dir, &["rev-parse", "HEAD"])
+    }
+
+    /// Ten lines, `line <n>`, but for those `changed` says.
+    pub(in crate::daemon) fn ten(changed: &[(usize, &str)]) -> String {
+        (1..=10)
+            .map(|n| match changed.iter().find(|(at, _)| *at == n) {
+                Some((_, text)) => format!("{text}\n"),
+                None => format!("line {n}\n"),
+            })
+            .collect()
+    }
+
+    fn push(branch: &str, head: &str) -> Push {
+        Push {
+            branch: branch.into(),
+            head: head.into(),
+            paths: vec!["lines.txt".into()],
+            onto: None,
+            lines: SameLines::new(),
+        }
+    }
+
+    fn against(root: &Path, branch: &str, clean: bool, tips: &[&str]) -> Against {
+        Against {
+            worktree: Worktree {
+                path: root.to_owned(),
+                branch: Some(branch.into()),
+            },
+            clean,
+            default_pushed: false,
+            own: Some(["lines.txt".to_owned()].into()),
+            tips: tips.iter().map(|&tip| tip.to_owned()).collect(),
+        }
+    }
+
+    /// The lines of `lines.txt` a push clashes with, if any.
+    async fn clash(push: &Push, against: Against) -> Option<Vec<[u32; 2]>> {
+        let found = clashes(push, vec![against]).await;
+        found
+            .into_iter()
+            .next()
+            .map(|(_, lines)| lines["lines.txt"].clone())
+    }
+
+    #[tokio::test]
+    async fn a_branch_built_on_anothers_hears_only_of_lines_both_change_since() {
+        let repo = Repo::new();
+        let bob = repo.worktree("bob", "main");
+        commit(&bob, "lines.txt", &ten(&[(2, "bob's")]), "bob's line");
+        // Built on bob's branch, changing bob's own line again: the point of building on it.
+        let mine = repo.worktree("mine", "bob");
+        commit(&mine, "lines.txt", &ten(&[(2, "mine, on bob's")]), "mine");
+
+        // Bob adds another line: nothing of mine is in the way.
+        let more = commit(
+            &bob,
+            "lines.txt",
+            &ten(&[(2, "bob's"), (8, "bob's")]),
+            "more",
+        );
+        assert_eq!(
+            clash(&push("bob", &more), against(&mine, "mine", true, &[])).await,
+            None
+        );
+
+        // Bob changes the line again that I changed since: restacking will conflict.
+        let again = ten(&[(2, "bob's again"), (8, "bob's")]);
+        let again = commit(&bob, "lines.txt", &again, "again");
+        assert_eq!(
+            clash(&push("bob", &again), against(&mine, "mine", true, &[])).await,
+            Some(vec![[2, 2]])
+        );
+    }
+
+    #[tokio::test]
+    async fn a_branch_built_on_hears_nothing_of_its_own_lines_from_what_was_built_on_it() {
+        let repo = Repo::new();
+        let bob = repo.worktree("bob", "main");
+        commit(&bob, "lines.txt", &ten(&[(2, "bob's")]), "bob's line");
+        let mine = repo.worktree("mine", "bob");
+        let built = commit(&mine, "lines.txt", &ten(&[(2, "mine, on bob's")]), "mine");
+        // Bob has moved on since, and is changing line 5.
+        commit(
+            &bob,
+            "lines.txt",
+            &ten(&[(2, "bob's"), (8, "bob's")]),
+            "more",
+        );
+        std::fs::write(
+            bob.join("lines.txt"),
+            ten(&[(2, "bob's"), (5, "bob's"), (8, "bob's")]),
+        )
+        .unwrap();
+
+        assert_eq!(
+            clash(&push("mine", &built), against(&bob, "bob", false, &[])).await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn a_branch_built_on_one_since_rewritten_counts_from_what_it_was_built_on() {
+        let repo = Repo::new();
+        let bob = repo.worktree("bob", "main");
+        let tip = commit(&bob, "lines.txt", &ten(&[(2, "bob's")]), "bob's line");
+        let mine = repo.worktree("mine", "bob");
+        commit(&mine, "lines.txt", &ten(&[(2, "mine, on bob's")]), "mine");
+        // Main moves on, and bob rebases onto it, adding a line: none of bob's commits are
+        // mine any more.
+        let main = repo.path("main");
+        commit(&main, "lines.txt", &ten(&[(10, "main's")]), "main's line");
+        run(&main, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        run(&bob, &["rebase", "-q", "main"]);
+        let rewritten = commit(
+            &bob,
+            "lines.txt",
+            &ten(&[(2, "bob's"), (8, "bob's"), (10, "main's")]),
+            "more",
+        );
+
+        // Not knowing what it was built on, bob's line looks like mine.
+        let rewrite = push("bob", &rewritten);
+        assert!(
+            clash(&rewrite, against(&mine, "mine", true, &[]))
+                .await
+                .is_some()
+        );
+        assert_eq!(
+            clash(&rewrite, against(&mine, "mine", true, &[&tip])).await,
+            None
+        );
+    }
 }

@@ -696,6 +696,40 @@ pub async fn fork(root: &Path, commit: &str) -> Option<String> {
     merge_base(root, commit, &default).await
 }
 
+/// Where the own work of `mine`, which left the default branch at `fork`, starts as against
+/// `theirs`, when the two share work the default branch doesn't have: one is built on the
+/// other, or both on a third branch, as stacked branches are. Counted from the default
+/// branch instead, each side's work has what it shares with the other, and lines a stacked
+/// branch changes of the branch it's built on are taken for a conflict with it: on 18 Nov
+/// 2026 a push of a branch built on feed-mobile-core warned feed-mobile-core's own session
+/// of its own lines. Of `tips`, commits of a branch `mine` was built on as it was then, the
+/// newest `mine` has counts too, once that branch has been rewritten and shares nothing
+/// with `mine` any more. `None` when they share nothing beyond the default branch.
+pub async fn shared_base(
+    root: &Path,
+    fork: &str,
+    mine: &str,
+    theirs: &str,
+    tips: &[String],
+) -> Option<String> {
+    let mut newest = fork.to_owned();
+    if let Some(shared) = merge_base(root, mine, theirs).await
+        && shared != newest
+        && is_ancestor(root, &newest, &shared).await
+    {
+        newest = shared;
+    }
+    for tip in tips {
+        if *tip != newest
+            && is_ancestor(root, &newest, tip).await
+            && is_ancestor(root, tip, mine).await
+        {
+            newest.clone_from(tip);
+        }
+    }
+    (newest != fork).then_some(newest)
+}
+
 /// What the files of a worktree are made from, and how they differ from it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Files {

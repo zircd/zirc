@@ -1495,9 +1495,19 @@ fn lands_under(worktrees: &[&Watched], branch: &str, head: &str, paths: &[String
 /// that the other hasn't, or its files were left behind as its branch moved on, goes.
 async fn predict(overlap: &mut LocalOverlap) {
     let [a, b] = [&overlap.worktrees[0].path, &overlap.worktrees[1].path];
-    let (Some((a_base, a_tree)), Some((b_base, b_tree))) = (
-        own_side(a, &overlap.paths).await,
-        own_side(b, &overlap.paths).await,
+    let (Some((a_from, a_fork)), Some((b_from, b_fork))) = (built_on(a).await, built_on(b).await)
+    else {
+        return;
+    };
+    // Two branches stacked, one on the other or both on a third, share what they're built
+    // on: neither's own, though both have it, and the default branch doesn't.
+    let (a_base, b_base) = match git::shared_base(a, &a_fork, &a_from, &b_from, &[]).await {
+        Some(shared) => (shared.clone(), shared),
+        None => (a_fork, b_fork),
+    };
+    let (Some(a_tree), Some(b_tree)) = (
+        git::own_tree(a, &a_base, &overlap.paths).await,
+        git::own_tree(b, &b_base, &overlap.paths).await,
     ) else {
         return;
     };
@@ -1517,13 +1527,12 @@ async fn predict(overlap: &mut LocalOverlap) {
     overlap.apart = rebased.apart;
 }
 
-/// The worktree at `root`'s own work in `paths`: the commit of the default branch it's made
-/// from, from where its files came from, and a tree of that commit's with its files there.
-async fn own_side(root: &Path, paths: &[String]) -> Option<(String, String)> {
-    let base = git::files(root).await.ok()?.base?;
-    let fork = git::fork(root, &base).await.unwrap_or(base);
-    let tree = git::own_tree(root, &fork, paths).await?;
-    Some((fork, tree))
+/// What the files of the worktree at `root` came from, and the commit of the default branch
+/// that's made from: where its own work starts, unless it's stacked ([`git::shared_base`]).
+async fn built_on(root: &Path) -> Option<(String, String)> {
+    let from = git::files(root).await.ok()?.base?;
+    let fork = git::fork(root, &from).await.unwrap_or_else(|| from.clone());
+    Some((from, fork))
 }
 
 /// The name of the worktree's directory at `root`.
@@ -2443,5 +2452,40 @@ mod tests {
         sessions.add("one".into());
         assert_eq!(sessions.latest(), Some("one"));
         assert_eq!(sessions.names().collect::<Vec<_>>(), ["two", "one"]);
+    }
+
+    #[tokio::test]
+    async fn two_branches_built_on_a_third_share_its_lines_without_overlapping_in_them() {
+        use scans::tests::{Repo, commit, ten};
+        let repo = Repo::new();
+        // Both built on a branch that adds feed.txt, each changing a line of its own there.
+        let feed = repo.worktree("feed", "main");
+        commit(&feed, "feed.txt", &ten(&[]), "feed");
+        let one = repo.worktree("one", "feed");
+        let two = repo.worktree("two", "feed");
+        std::fs::write(one.join("feed.txt"), ten(&[(3, "one's")])).unwrap();
+        std::fs::write(two.join("feed.txt"), ten(&[(8, "two's")])).unwrap();
+        let worktree = |path: &Path, branch: &str| Worktree {
+            path: path.to_owned(),
+            branch: Some(branch.into()),
+        };
+        let mut overlap = LocalOverlap {
+            channel: "#api".into(),
+            worktrees: [worktree(&one, "one"), worktree(&two, "two")],
+            paths: vec!["feed.txt".into()],
+            same_lines: BTreeMap::new(),
+            apart: Vec::new(),
+            why: None,
+        };
+        predict(&mut overlap).await;
+        assert_eq!(overlap.same_lines, BTreeMap::new());
+        assert_eq!(overlap.apart, ["feed.txt"]);
+
+        // The same line, though, is.
+        std::fs::write(two.join("feed.txt"), ten(&[(3, "two's")])).unwrap();
+        overlap.paths = vec!["feed.txt".into()];
+        overlap.apart.clear();
+        predict(&mut overlap).await;
+        assert_eq!(overlap.same_lines["feed.txt"], [[3, 3]]);
     }
 }
