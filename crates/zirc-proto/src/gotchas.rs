@@ -220,6 +220,48 @@ pub struct Usage {
     pub gotchas: std::collections::BTreeMap<String, Used>,
 }
 
+/// One time a hint was shown or a gotcha told, as a team's server keeps it: to whom and when,
+/// never what anyone said.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(rename = "PlaybookUse", optional_fields)]
+pub struct Use {
+    /// When, in RFC 3339.
+    pub at: String,
+    /// The machine's account it was said on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine: Option<String>,
+    /// The agent session it was said to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// The session's name, such as `controller`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The agent tool the session runs in, such as `claude`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
+    /// How: a hint's layer (`personal`, `repo`, `org` or `default`), or how a gotcha was told
+    /// (`intent` or `start`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub how: Option<String>,
+}
+
+/// One hint's or gotcha's uses lately, as a team's server lists them: how many each day, and
+/// a page of them, newest first.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(rename = "PlaybookUses", optional_fields)]
+pub struct Uses {
+    /// How many days back it counts.
+    pub days: u32,
+    /// How many each UTC day, one a day for [`Uses::days`], the oldest first: the last is
+    /// today so far.
+    pub daily: Vec<u64>,
+    /// A page of them, newest first.
+    pub uses: Vec<Use>,
+    /// What `before` takes for the page after this one, when there are older ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub older: Option<String>,
+}
+
 /// The TypeScript declarations of what zirc.dev's Playbook page reads of a team's gotchas.
 #[must_use]
 pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
@@ -229,5 +271,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Listing::decl(config),
         Used::decl(config),
         Usage::decl(config),
+        Use::decl(config),
+        Uses::decl(config),
     ]
 }

@@ -601,6 +601,105 @@ pub fn playbook_usage(
     Ok((hints, gotchas))
 }
 
+/// Which part of the team's playbook [`playbook_uses`] lists: a hint by its id, or a gotcha by
+/// its message id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Item<'a> {
+    /// A hint, by its id.
+    Hint(&'a str),
+    /// A gotcha, by its message id.
+    Gotcha(&'a str),
+}
+
+/// One time a hint was shown or a gotcha told ([`playbook_uses`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Use {
+    /// When, in nanoseconds since the Unix epoch.
+    pub nanotime: i64,
+    /// The machine's account it was said on.
+    pub account: Option<String>,
+    /// The agent session it was said to.
+    pub session: Option<String>,
+    /// The session's name.
+    pub name: Option<String>,
+    /// The agent tool the session runs in.
+    pub tool: Option<String>,
+    /// A hint's layer, or how a gotcha was told.
+    pub how: Option<String>,
+}
+
+/// How often `item` was used each UTC day of the `days` up to `now` (nanoseconds since the
+/// Unix epoch), the oldest first and today so far last, and up to `limit` of its uses in those
+/// days before `before` (or `now`), newest first.
+///
+/// # Errors
+///
+/// When the store can't be read.
+pub fn playbook_uses(
+    connection: &Connection,
+    item: Item<'_>,
+    now: i64,
+    days: u32,
+    before: Option<i64>,
+    limit: usize,
+) -> rusqlite::Result<(Vec<u64>, Vec<Use>)> {
+    use zirc_proto::activity::{GOTCHA_TOLD_KIND, HINT_SHOWN_KIND};
+    const DAY: i64 = 86_400 * 1_000_000_000;
+    let (kind, id, field, how) = match item {
+        Item::Hint(id) => (HINT_SHOWN_KIND, id, "$.hint", "$.layer"),
+        Item::Gotcha(id) => (GOTCHA_TOLD_KIND, id, "$.gotcha", "$.how"),
+    };
+    // The start of the first of the days.
+    let since = (now.div_euclid(DAY) - i64::from(days) + 1) * DAY;
+    let mut daily = vec![0_u64; usize::try_from(days).unwrap_or_default()];
+    let mut statement = connection.prepare_cached(
+        "SELECT (nanotime - ?3) / ?5, COUNT(*) FROM rows \
+         WHERE kind = ?1 AND nanotime >= ?3 AND nanotime <= ?4 AND json_extract(data, ?6) = ?2 \
+         GROUP BY 1",
+    )?;
+    let counted = statement.query_map(params![kind, id, since, now, DAY, field], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    for counted in counted {
+        let (day, count) = counted?;
+        if let Some(slot) = usize::try_from(day).ok().and_then(|day| daily.get_mut(day)) {
+            *slot = u64::try_from(count).unwrap_or(0);
+        }
+    }
+    let mut statement = connection.prepare_cached(
+        "SELECT nanotime, account, session, name, tool, json_extract(data, ?7) FROM rows \
+         WHERE kind = ?1 AND nanotime >= ?3 AND nanotime < ?4 AND json_extract(data, ?6) = ?2 \
+         ORDER BY nanotime DESC, id DESC LIMIT ?5",
+    )?;
+    let before = before.map_or(now.saturating_add(1), |before| {
+        before.min(now.saturating_add(1))
+    });
+    let uses = statement
+        .query_map(
+            params![
+                kind,
+                id,
+                since,
+                before,
+                i64::try_from(limit).unwrap_or(i64::MAX),
+                field,
+                how
+            ],
+            |row| {
+                Ok(Use {
+                    nanotime: row.get(0)?,
+                    account: row.get(1)?,
+                    session: row.get(2)?,
+                    name: row.get(3)?,
+                    tool: row.get(4)?,
+                    how: row.get(5)?,
+                })
+            },
+        )?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok((daily, uses))
+}
+
 /// Takes out every row whose history row Ergo no longer has, and every live record older
 /// than the oldest message Ergo still keeps, and says how many.
 ///
@@ -1085,6 +1184,72 @@ mod tests {
                 last: 40 * SECOND
             })
         );
+    }
+
+    #[test]
+    fn lists_one_items_uses_newest_first_with_how_many_each_day() {
+        use zirc_proto::activity::{GotchaTold, HintShown, Told};
+        const DAY: i64 = 86_400 * SECOND;
+        let dir = tempfile::tempdir().unwrap();
+        let path = history(dir.path());
+        let store = open(&path_for(&path)).unwrap();
+        let shown = |hint: &str, layer: &str| {
+            let mut message = Message::new(
+                "cc-1",
+                HintShown {
+                    hint: hint.into(),
+                    kind: "overlap".into(),
+                    layer: layer.into(),
+                }
+                .event(),
+            );
+            message.name = Some("controller".into());
+            message
+        };
+        let told = Message::new(
+            "cc-2",
+            GotchaTold {
+                gotcha: "msg-1".into(),
+                how: Told::Start,
+            }
+            .event(),
+        );
+        // Noon on day 10: the three days counted are days 8, 9 and 10 so far.
+        let now = 10 * DAY + DAY / 2;
+        for (at, message) in [
+            (8 * DAY - SECOND, shown("aa", "repo")),
+            (8 * DAY, shown("aa", "repo")),
+            (10 * DAY + SECOND, shown("aa", "org")),
+            (10 * DAY + 2 * SECOND, shown("aa", "repo")),
+            (10 * DAY + 3 * SECOND, shown("bb", "repo")),
+            (10 * DAY + 4 * SECOND, told),
+        ] {
+            assert!(record_live(&store, at, Some("ada-mbp".into()), &message).unwrap());
+        }
+        let (daily, uses) = playbook_uses(&store, Item::Hint("aa"), now, 3, None, 2).unwrap();
+        assert_eq!(daily, [1, 0, 2]);
+        assert_eq!(
+            uses.iter()
+                .map(|u| (u.nanotime, u.how.as_deref()))
+                .collect::<Vec<_>>(),
+            [
+                (10 * DAY + 2 * SECOND, Some("repo")),
+                (10 * DAY + SECOND, Some("org"))
+            ]
+        );
+        assert_eq!(uses[0].account.as_deref(), Some("ada-mbp"));
+        assert_eq!(uses[0].session.as_deref(), Some("cc-1"));
+        assert_eq!(uses[0].name.as_deref(), Some("controller"));
+        // The page after the last one shown.
+        let (_, older) =
+            playbook_uses(&store, Item::Hint("aa"), now, 3, Some(10 * DAY + SECOND), 2).unwrap();
+        assert_eq!(
+            older.iter().map(|u| u.nanotime).collect::<Vec<_>>(),
+            [8 * DAY]
+        );
+        let (daily, uses) = playbook_uses(&store, Item::Gotcha("msg-1"), now, 3, None, 2).unwrap();
+        assert_eq!(daily, [0, 0, 1]);
+        assert_eq!(uses[0].how.as_deref(), Some("start"));
     }
 
     #[test]

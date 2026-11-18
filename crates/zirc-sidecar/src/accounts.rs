@@ -948,14 +948,11 @@ async fn playbook_usage(State(ergo): State<Arc<Ergo>>) -> Response {
     let said = |used: std::collections::BTreeMap<String, crate::activity::Used>| {
         used.into_iter()
             .map(|(id, used)| {
-                let last = jiff::Timestamp::from_nanosecond(i128::from(used.last))
-                    .map(|t| t.to_string())
-                    .unwrap_or_default();
                 (
                     id,
                     Used {
                         count: used.count,
-                        last,
+                        last: rfc3339(used.last),
                     },
                 )
             })
@@ -968,6 +965,90 @@ async fn playbook_usage(State(ergo): State<Arc<Ergo>>) -> Response {
             gotchas: said(gotchas),
         })
         .into_response(),
+        Ok(Err(failure)) => ergo_failed(failure),
+        Err(failure) => ergo_failed(failure),
+    }
+}
+
+/// A time in nanoseconds since the Unix epoch, in RFC 3339.
+fn rfc3339(nanotime: i64) -> String {
+    jiff::Timestamp::from_nanosecond(i128::from(nanotime))
+        .map(|t| t.to_string())
+        .unwrap_or_default()
+}
+
+/// How many of an item's uses [`playbook_uses`] gives a page.
+const PLAYBOOK_USES_PAGE: usize = 50;
+
+/// Which item `GET /playbook/uses` lists: `hint=<id>` or `gotcha=<message id>`, and the page
+/// before `before`, which a page's `older` gives.
+#[derive(Deserialize)]
+struct UsesQuery {
+    hint: Option<String>,
+    gotcha: Option<String>,
+    before: Option<String>,
+}
+
+/// One hint's or gotcha's uses in the last [`PLAYBOOK_DAYS`] (`GET /playbook/uses` on the
+/// content API), from the activity store: how many each day, and a page of them, newest first,
+/// as a [`zirc_proto::gotchas::Uses`].
+async fn playbook_uses(State(ergo): State<Arc<Ergo>>, Query(asked): Query<UsesQuery>) -> Response {
+    use zirc_proto::gotchas::{Use, Uses};
+    let bad = |what: &str| error(StatusCode::BAD_REQUEST, "query", what.to_owned());
+    let (hint, gotcha) = match (asked.hint, asked.gotcha) {
+        (Some(hint), None) => (Some(hint), None),
+        (None, Some(gotcha)) => (None, Some(gotcha)),
+        _ => return bad("name one hint or one gotcha"),
+    };
+    let before = match asked.before.as_deref().map(str::parse::<i64>) {
+        None => None,
+        Some(Ok(before)) => Some(before),
+        Some(Err(_)) => return bad("before is what a page's older says"),
+    };
+    let now = i64::try_from(jiff::Timestamp::now().as_nanosecond()).unwrap_or(i64::MAX);
+    let path = crate::activity::path_for(&ergo.history);
+    let read = tokio::task::spawn_blocking(move || {
+        let connection = crate::activity::open(&path)?;
+        let item = match (&hint, &gotcha) {
+            (Some(hint), _) => crate::activity::Item::Hint(hint),
+            (_, gotcha) => crate::activity::Item::Gotcha(gotcha.as_deref().unwrap_or_default()),
+        };
+        // One more than a page, to know whether there are older ones.
+        crate::activity::playbook_uses(
+            &connection,
+            item,
+            now,
+            PLAYBOOK_DAYS,
+            before,
+            PLAYBOOK_USES_PAGE + 1,
+        )
+    })
+    .await;
+    match read {
+        Ok(Ok((daily, mut uses))) => {
+            let more = uses.len() > PLAYBOOK_USES_PAGE;
+            uses.truncate(PLAYBOOK_USES_PAGE);
+            let older = more
+                .then(|| uses.last().map(|last| last.nanotime.to_string()))
+                .flatten();
+            Json(Uses {
+                days: PLAYBOOK_DAYS,
+                daily,
+                uses: uses
+                    .into_iter()
+                    .map(|used| Use {
+                        at: rfc3339(used.nanotime),
+                        machine: used.account,
+                        session: used.session,
+                        name: used.name,
+                        tool: used.tool,
+                        how: used.how,
+                    })
+                    .collect(),
+                older,
+            })
+            .into_response()
+        }
         Ok(Err(failure)) => ergo_failed(failure),
         Err(failure) => ergo_failed(failure),
     }
