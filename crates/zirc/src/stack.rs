@@ -525,7 +525,7 @@ fn current_branch(dir: &Path) -> Option<String> {
 }
 
 /// The repository's default branch, as origin's HEAD says; `master` when it doesn't.
-fn default_branch(dir: &Path) -> String {
+pub(crate) fn default_branch(dir: &Path) -> String {
     git(
         dir,
         &["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"],

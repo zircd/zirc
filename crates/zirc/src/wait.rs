@@ -162,17 +162,15 @@ pub(crate) async fn wait(
         .map_err(|err| not_running(socket, err))?;
     let mut watched = socket_id(socket);
     let since = now().saturating_sub(how.back);
-    if let Some(ended) = place.read_back(&mut condition, since).await? {
+    let asks_ci = ci_awaited && !how.anyway;
+    let pushes = place
+        .pushes(asks_ci, &condition, &repos, &repo.path)
+        .await?;
+    let pushes = pushes.as_ref();
+    if let Some(ended) = place.read_back(&mut condition, pushes, since).await? {
         return ended.say(&condition, out);
     }
-    if ci_awaited && !how.anyway {
-        place.ci_would_say().await?;
-    }
-    eprintln!(
-        "waiting for {}: this ends when CI says it has, or that it failed, or in {} minutes",
-        condition.describe(),
-        how.seconds / 60
-    );
+    announce(&condition, pushes, how.seconds);
     let limit = tokio::time::sleep(Duration::from_secs(how.seconds));
     tokio::pin!(limit);
     let started_by = std::os::unix::process::parent_id();
@@ -192,7 +190,7 @@ pub(crate) async fn wait(
                 if noted_for(&delivery, how.session.as_deref()) {
                     return stop_for(&Heard::Message(delivery), &mut hints, &condition, out);
                 }
-                if let Some(ended) = place.judge(&mut condition, delivery) {
+                if let Some(ended) = place.judge(&mut condition, pushes, delivery) {
                     return ended.say(&condition, out);
                 }
             }
@@ -205,7 +203,7 @@ pub(crate) async fn wait(
             Ok(None) | Err(ipc::Error::Io(_)) => {
                 watching = rewatch(socket, watched, None, ONCE_REWATCH_WAIT).await?;
                 watched = socket_id(socket);
-                if let Some(ended) = place.read_back(&mut condition, since).await? {
+                if let Some(ended) = place.read_back(&mut condition, pushes, since).await? {
                     return ended.say(&condition, out);
                 }
             }
@@ -216,6 +214,19 @@ pub(crate) async fn wait(
             Err(err) => return Err(err.into()),
         }
     }
+}
+
+/// Says, aside, what the wait is for and what ends it.
+fn announce(condition: &Condition, pushes: Option<&Pushes>, seconds: u64) {
+    eprintln!(
+        "waiting for {}: this ends when {}, or in {} minutes",
+        condition.describe(),
+        pushes.map_or_else(
+            || "CI says it has, or that it failed".to_owned(),
+            Pushes::ends
+        ),
+        seconds / 60
+    );
 }
 
 /// Ends a wait for `condition` on `heard`, a message for the waiting session: printed, with
@@ -283,6 +294,51 @@ struct Place<'a> {
     channel: &'a str,
 }
 
+/// What a wait for a session's landing waits for where no CI says landings, as for someone
+/// alone with no CI wired in: a push of the default branch with that session's work in it,
+/// which its machine's zircd says. Git doesn't say which session pushed from a checkout
+/// several share, so it's a push by any session of the checkout that changes a path the
+/// session said it's taking on; any push of theirs when it named none. A session that chose
+/// to wait for its sibling's half-made change, in the checkout they share, was refused its
+/// wait and pushed without it (the agent evals' PO2 probe, 18 Nov 2026).
+struct Pushes {
+    session: String,
+    /// The sessions of its checkout, itself among them.
+    beside: Vec<String>,
+    branch: String,
+    /// The paths it last said it's taking on.
+    paths: std::sync::Mutex<Vec<String>>,
+}
+
+impl Pushes {
+    /// Whether `delivery` is a push of the default branch with the session's work in it.
+    /// What the session says it takes on meanwhile is kept, for the pushes after.
+    fn by(&self, delivery: &Delivery) -> bool {
+        let from = &delivery.message.session;
+        match &delivery.message.event {
+            zirc_proto::Event::Intent { paths, .. } if *from == self.session => {
+                self.paths.lock().expect("its paths").clone_from(paths);
+                false
+            }
+            zirc_proto::Event::Push { branch, paths, .. } => {
+                let taken = self.paths.lock().expect("its paths");
+                *branch == self.branch
+                    && self.beside.contains(from)
+                    && (taken.is_empty() || paths.iter().any(|path| taken.contains(path)))
+            }
+            _ => false,
+        }
+    }
+
+    /// When such a wait ends, in words.
+    fn ends(&self) -> String {
+        format!(
+            "{}'s work is pushed to {}, as no CI says landings here",
+            self.session, self.branch
+        )
+    }
+}
+
 /// How a wait ended, and the line that ended it.
 struct Ended {
     outcome: Outcome,
@@ -305,19 +361,45 @@ impl Place<'_> {
             .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
     }
 
-    /// Refuses a wait on CI's word where no CI has ever said a landing: none will say this
-    /// one, so it's said now, not waited on. An agent with no CI wired to zirc waited its
-    /// whole run on one (the agent evals' PN1 probe, 17 Nov 2026).
-    async fn ci_would_say(&self) -> Result<()> {
-        if !self.ci_speaks().await {
-            bail!(
-                "no CI has said a landing in {} yet, so none would say this one and this would \
-                 wait for good. Don't wait on zirc for it: look where your CI shows it, and \
-                 carry on. (`zirc ci token` makes the token a CI says its landings with.)",
-                self.channel
-            );
+    /// What a wait `asking` for CI's word waits for instead where no CI has ever said a
+    /// landing, as none will say this one: a session's push of the default branch, when it's
+    /// a landing named by a session of this repository's ([`Pushes`]); nothing, with CI. Any
+    /// other is refused, said now and not waited on: an agent with no CI wired to zirc
+    /// waited its whole run on one (the agent evals' PN1 probe, 17 Nov 2026).
+    async fn pushes(
+        &self,
+        asking: bool,
+        condition: &Condition,
+        repos: &[ipc::Repo],
+        root: &Path,
+    ) -> Result<Option<Pushes>> {
+        if !asking || self.ci_speaks().await {
+            return Ok(None);
         }
-        Ok(())
+        if let Condition::Landed { on } = condition
+            && let Some(beside) = repos
+                .iter()
+                .filter(|repo| repo.channel == self.channel)
+                .find(|repo| repo.sessions.iter().any(|it| it.session == *on))
+        {
+            return Ok(Some(Pushes {
+                session: on.clone(),
+                beside: beside
+                    .sessions
+                    .iter()
+                    .map(|it| it.session.clone())
+                    .collect(),
+                branch: crate::stack::default_branch(root),
+                paths: std::sync::Mutex::default(),
+            }));
+        }
+        bail!(
+            "no CI has said a landing in {} yet, so none would say this one and this would \
+             wait for good. Don't wait on zirc for it: look where your CI shows it, and \
+             carry on; or name a session working here, to wait for its push of the default \
+             branch. (`zirc ci token` makes the token a CI says its landings with.)",
+            self.channel
+        );
     }
 
     /// Whether any CI has said a landing or a deploy here, in the newest [`READ_BACK`]
@@ -363,12 +445,21 @@ impl Place<'_> {
         !elsewhere && self.has(&delivery.channel)
     }
 
-    /// How `delivery` ends the wait for `condition`, if it's said here and does.
-    fn judge(&self, condition: &mut Condition, delivery: Delivery) -> Option<Ended> {
+    /// How `delivery` ends the wait for `condition`, or for `pushes` in its place, if it's
+    /// said here and does.
+    fn judge(
+        &self,
+        condition: &mut Condition,
+        pushes: Option<&Pushes>,
+        delivery: Delivery,
+    ) -> Option<Ended> {
         if !self.says_here(&delivery) {
             return None;
         }
-        let outcome = condition.judge(&delivery.message.event)?;
+        let outcome = match pushes {
+            Some(pushes) => pushes.by(&delivery).then_some(Outcome::Met)?,
+            None => condition.judge(&delivery.message.event)?,
+        };
         Some(Ended {
             outcome,
             delivery: Some(delivery),
@@ -403,7 +494,12 @@ impl Place<'_> {
     /// How what was said here since `since` ends the wait for `condition`, if it does:
     /// every channel's messages, oldest first, as [`Condition::read_back`] reads them; for a
     /// state, how it stands now, whenever that was said.
-    async fn read_back(&self, condition: &mut Condition, since: u64) -> Result<Option<Ended>> {
+    async fn read_back(
+        &self,
+        condition: &mut Condition,
+        pushes: Option<&Pushes>,
+        since: u64,
+    ) -> Result<Option<Ended>> {
         if matches!(condition, Condition::Stands { .. }) {
             let stands = self.stands(condition).await?;
             let level = stands.as_ref().map(|(level, _)| *level);
@@ -440,6 +536,22 @@ impl Place<'_> {
         // RFC 3339 in UTC, as the server stamps them, sorts as text.
         said.sort_by(|a, b| a.time.cmp(&b.time));
         said.retain(|delivery| self.says_here(delivery));
+        // The session's work pushed since it last said what it's taking on, in CI's place:
+        // read oldest first, so each push is judged by the paths taken before it.
+        if let Some(pushes) = pushes {
+            let from = said
+                .iter()
+                .rposition(|it| {
+                    it.message.session == pushes.session
+                        && matches!(it.message.event, zirc_proto::Event::Intent { .. })
+                })
+                .unwrap_or(0);
+            let at = said.iter().skip(from).position(|it| pushes.by(it));
+            return Ok(at.map(|at| Ended {
+                outcome: Outcome::Met,
+                delivery: Some(said.swap_remove(from + at)),
+            }));
+        }
         let answer = condition.read_back(said.iter().map(|delivery| &delivery.message.event));
         Ok(answer.map(|(at, outcome)| Ended {
             outcome,

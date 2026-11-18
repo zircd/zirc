@@ -141,6 +141,48 @@ async fn a_watch_registers_intend_takes_the_task_and_its_landing_says_done() {
     watch.abort();
 
     an_unwatched_repository_ends_a_watch_at_once(home).await;
+    a_wait_for_a_siblings_landing_ends_on_its_push_where_no_ci_speaks(home).await;
+}
+
+/// Where no CI says landings, a wait for a session's landing ends on its work being pushed
+/// to the default branch: a push from the checkout it works in that changes a path it said
+/// it's taking on, whichever session there ran it, as Git doesn't say. A session waiting
+/// for its sibling's half-made change in the checkout they share was refused its wait (the
+/// agent evals' PO2 probe, 18 Nov 2026).
+async fn a_wait_for_a_siblings_landing_ends_on_its_push_where_no_ci_speaks(home: &Path) {
+    use zirc_test_ergo::git::git;
+    let remote = tempfile::tempdir().unwrap();
+    let bare = ["init", "--quiet", "--bare", "--initial-branch=main"];
+    git(remote.path(), &bare);
+    let checkout = zirc_test_ergo::git::clone("https://github.com/acme/shop.git");
+    let root = checkout.path();
+    let origin = remote.path().to_str().unwrap();
+    git(root, &["remote", "set-url", "origin", origin]);
+    git(root, &["push", "--quiet", "origin", "main"]);
+    git(root, &["remote", "set-head", "origin", "main"]);
+    for session in ["cc-bulk", "cc-csv"] {
+        until(root, home, &["repo", "add", "--session", session], "#").await;
+    }
+    let taking = ["intend", "--session", "cc-bulk", "pricing.py", "-m", "bulk"];
+    zirc_in(root, home, &taking).await.unwrap();
+
+    let (wait_home, here) = (home.to_owned(), root.to_str().unwrap().to_owned());
+    let waiting = tokio::spawn(async move {
+        let wait = ["wait", "landed", "cc-bulk", "--session", "cc-csv"];
+        run(&wait_home, &[&wait[..], &["--repo", &here]].concat()).await
+    });
+    // A push of other paths isn't it; one with a path cc-bulk took on is.
+    for (path, subject) in [("notes.md", "Notes"), ("pricing.py", "Bulk pricing")] {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        assert!(!waiting.is_finished(), "ended before {subject}");
+        std::fs::write(root.join(path), "changed\n").unwrap();
+        git(root, &["add", path]);
+        git(root, &["commit", "--quiet", "--message", subject]);
+        git(root, &["push", "--quiet", "origin", "main"]);
+    }
+    let waited = tokio::time::timeout(WAIT, waiting).await;
+    let waited = waited.expect("the wait ended").unwrap().unwrap();
+    assert!(waited.contains("pushed main"), "{waited}");
 }
 
 /// In a Git repository this machine doesn't watch, a session's watch ends at once saying so,

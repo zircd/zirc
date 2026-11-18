@@ -89,6 +89,9 @@ you. Work that depends on another branch needn't wait: branch from it, carry on,
 stack --session <your session>` wakes you when it lands, for `zirc stack --rebase`, or when
 it's deleted unlanded: then never land it yourself, but rebase past it. Where CI builds
 pushed branches without landing them, `zirc wait-for --session <your session> <branch>`.
+Where no CI says landings in zirc at all, `zirc wait landed <session>` ends when that
+session's work is pushed to the default branch: how to wait for another session's unfinished
+change in a checkout you share with it.
 For what you can't name yet, add `--until '<jq>'` to your watch, such as `--until
 'select(.message.event.kind == "x-zirc/deploy" and (.message.event.text | test("deployed
 to production")))'`; a push, an intent or a commit goes by `.message.event.type`.
