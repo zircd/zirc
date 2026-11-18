@@ -416,6 +416,17 @@ pub fn react_with_label(emoji: &str) -> String {
     format!("React with {emoji}")
 }
 
+/// What's being shared, under the composer while it uploads: `Sharing notes.txt…`, `Sharing 3
+/// files…`, and nothing while nothing is.
+#[must_use]
+pub fn sharing_label(names: &[String]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => format!("Sharing {one}…"),
+        many => format!("Sharing {} files…", many.len()),
+    }
+}
+
 /// What failed, under what was tried, such as a card's button: `Couldn't: timed out`.
 #[must_use]
 pub fn couldnt_label(why: &str) -> String {
@@ -533,6 +544,15 @@ mod tests {
         assert_eq!(nothing_called(" lunch "), "Nothing called “lunch”.");
         assert_eq!(react_with_label("👍"), "React with 👍");
         assert_eq!(couldnt_label("timed out"), "Couldn't: timed out");
+        assert_eq!(sharing_label(&[]), "");
+        assert_eq!(
+            sharing_label(&["notes.txt".to_owned()]),
+            "Sharing notes.txt…"
+        );
+        assert_eq!(
+            sharing_label(&["a.png".to_owned(), "b.png".to_owned()]),
+            "Sharing 2 files…"
+        );
         assert_eq!(mentions_label(1), "1 mention");
         assert_eq!(mentions_label(3), "3 mentions");
         assert_eq!(mentions_label(140), "99+ mentions");
