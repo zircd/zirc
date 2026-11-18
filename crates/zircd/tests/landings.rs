@@ -1031,6 +1031,92 @@ async fn a_default_branch_that_moves_with_no_ci_is_said_to_the_session_it_change
     assert!(line.contains("(`git rebase origin/main`)"), "{line}");
 }
 
+/// A branch a colleague's session is stacked on, deleted from its owner's machine, is gone
+/// from the owner's repository and not the colleague's: the owner's zircd says so, as someone
+/// said theirs is built on it, and the colleague's tells its session what to do. zircd asks
+/// origin nothing; a branch nobody built on goes unsaid.
+#[tokio::test]
+async fn a_branch_dropped_on_its_owners_machine_is_said_to_a_colleague_stacked_on_it() {
+    let ergo = require_ergo!();
+    let [(alpha, owner), (beta, colleague)] = two_machines(&ergo).await;
+    let remote = tempfile::tempdir().unwrap();
+    git(remote.path(), &["init", "--quiet", "--bare"]);
+    let origin = remote.path().to_str().unwrap();
+    let (theirs, mine) = (owner.path(), colleague.path());
+    for root in [theirs, mine] {
+        git(root, &["remote", "set-url", "origin", origin]);
+    }
+    git(theirs, &["push", "--quiet", "origin", "main"]);
+    for branch in ["money", "notes"] {
+        git(theirs, &["switch", "--quiet", "-c", branch, "main"]);
+        std::fs::write(theirs.join(format!("{branch}.py")), "...\n").unwrap();
+        git(theirs, &["add", "--all"]);
+        git(theirs, &["commit", "--quiet", "--message", branch]);
+        git(theirs, &["push", "--quiet", "origin", branch]);
+    }
+    let _ = alpha;
+
+    // The colleague's session builds on money, and pushes: its machine says what it's on.
+    beta.request(Request::RepoAdd {
+        path: mine.to_owned(),
+        session: Some("cc-top".into()),
+    })
+    .await;
+    let mut top = beta.watch(Some("cc-top")).await;
+    git(mine, &["fetch", "--quiet", "origin"]);
+    git(
+        mine,
+        &["checkout", "--quiet", "-b", "receipt", "origin/money"],
+    );
+    std::fs::write(mine.join("receipt.py"), "...\n").unwrap();
+    git(mine, &["add", "receipt.py"]);
+    git(mine, &["commit", "--quiet", "--message", "Receipt"]);
+    git(mine, &["push", "--quiet", "origin", "receipt"]);
+    let stacks = Request::Stack {
+        session: "cc-top".into(),
+        branch: None,
+        tip: None,
+        drop: false,
+        gone: false,
+    };
+    let mut noted = false;
+    for _ in 0..50 {
+        let Response::Stacks { stacks } = beta.request(stacks.clone()).await else {
+            panic!("its stacks");
+        };
+        noted = stacks.iter().any(|s| s.branch == "money");
+        if noted {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    assert!(noted, "its push never showed its stack on money");
+    // The owner's machine has heard that push by now.
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // The owner drops both: only money, which someone built on, is said.
+    git(theirs, &["push", "--quiet", "origin", "--delete", "notes"]);
+    git(theirs, &["push", "--quiet", "origin", "--delete", "money"]);
+    let mut said = Vec::new();
+    let line = loop {
+        let heard = next(&mut top).await;
+        match &heard.message.event {
+            Event::Custom { kind, data, .. } if kind == zirc_proto::DROPPED_KIND => {
+                said.push(data["branch"].as_str().unwrap_or_default().to_owned());
+            }
+            Event::Text { body } if body.contains("deleted from origin without landing") => {
+                break body.clone();
+            }
+            _ => {}
+        }
+    };
+    assert!(
+        line.starts_with("cc-top: money, which your work is stacked on"),
+        "{line}"
+    );
+    assert!(!said.iter().any(|branch| branch == "notes"), "{said:?}");
+}
+
 /// A push of a branch built on another session's, not landed, wakes that session, so it doesn't
 /// rewrite its own from under the other, nor wait on it: the agent evals' S3 deadlock.
 #[tokio::test]

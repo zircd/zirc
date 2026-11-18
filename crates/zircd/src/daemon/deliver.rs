@@ -502,6 +502,7 @@ impl Daemon {
         {
             self.save_awaits();
         }
+        self.stacks_heard(response);
         // A branch sessions are stacked on moved: their stacks say where to.
         if let Response::Delivery(delivery) = response
             && let Event::Push { branch, head, .. } = &delivery.message.event

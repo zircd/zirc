@@ -13,13 +13,20 @@
 //! gone wakes each session stacked on it, once, with what to do: rebase past it onto the
 //! default branch, keep what it needs of it in its own, and never land it in its place
 //! ([`Daemon::stacks_checked`]). One whose head the default branch holds landed, and isn't
-//! said. One deleted elsewhere, as on the Git host, isn't known here until a fetch prunes it.
+//! said.
+//!
+//! A branch a colleague's session is stacked on goes from this machine's repository, not
+//! theirs, so the machine that sees it go says so to everyone ([`DROPPED_KIND`]), but only
+//! of a branch someone said theirs is built on, as a push of one says: nobody hears of
+//! every branch a person deletes. Each zircd that hears it tells its own stacked sessions.
+//! One deleted on the Git host, with no machine to see it go, isn't known until a fetch
+//! prunes it somewhere.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use zirc_core::ipc::{Delivery, Response};
-use zirc_proto::{Event, Message};
+use zirc_proto::{DROPPED_KIND, Event, Message};
 
 use super::{Daemon, Input, WATCHER_SESSION};
 
@@ -57,14 +64,20 @@ impl Daemon {
     /// landed as far as CI said or the default branch shows, are dropped
     /// ([`Self::stacks_checked`]); Git is asked off the loop.
     pub(super) fn stacks_gone(&mut self, root: &Path, branches: Vec<(String, String)>) {
-        let stacked = self.awaits.stacks_to_check();
-        let gone: Vec<(String, String)> = branches
-            .into_iter()
-            .filter(|(branch, _)| stacked.iter().any(|(_, on)| on == branch))
-            .collect();
         let Some(watched) = self.repos.get(root) else {
             return;
         };
+        // Those a session here is stacked on, and those anyone said theirs is built on.
+        let stacked = self.awaits.stacks_to_check();
+        let gone: Vec<(String, String)> = branches
+            .into_iter()
+            .filter(|(branch, _)| {
+                stacked.iter().any(|(_, on)| on == branch)
+                    || self
+                        .built_on
+                        .contains(&(watched.channel.clone(), branch.clone()))
+            })
+            .collect();
         if gone.is_empty() {
             return;
         }
@@ -211,9 +224,54 @@ impl Daemon {
                 self.tell_dropped(&channel, body);
                 told = true;
             }
+            // Someone said theirs is built on it: said once to everyone, for the sessions
+            // stacked on it elsewhere, whose own repositories still have it.
+            if self.built_on.remove(&(channel.clone(), branch.clone())) {
+                self.say_dropped(&root, &branch);
+            }
         }
         if told {
             self.save_awaits();
+        }
+    }
+
+    /// Says in the repository's agents' room that `branch` is gone from origin unlanded.
+    fn say_dropped(&mut self, root: &Path, branch: &str) {
+        let Some(watched) = self.repos.get(root) else {
+            return;
+        };
+        let agents = watched.agents_channel().to_owned();
+        let event = Event::Custom {
+            kind: DROPPED_KIND.into(),
+            data: serde_json::json!({ "branch": branch }),
+            text: format!("{branch} {DROPPED}: work built on it rebases past it"),
+        };
+        self.publish(&agents, WATCHER_SESSION, event);
+    }
+
+    /// Keeps what `response` says of stacks: a push of a branch built on another, whose
+    /// going is then worth saying ([`Self::say_dropped`]); and another machine saying one is
+    /// gone, which the sessions here stacked on it are told.
+    pub(super) fn stacks_heard(&mut self, response: &Response) {
+        let Response::Delivery(delivery) = response else {
+            return;
+        };
+        let channel = self.home_channel(&delivery.channel);
+        match &delivery.message.event {
+            Event::Push { on: Some(on), .. } => {
+                self.built_on.insert((channel, on.clone()));
+            }
+            Event::Custom { kind, data, .. } if kind == DROPPED_KIND => {
+                let root = self
+                    .repos
+                    .iter()
+                    .find(|(_, watched)| watched.channel == channel)
+                    .map(|(root, _)| root.clone());
+                if let (Some(root), Some(branch)) = (root, data["branch"].as_str()) {
+                    self.stacks_checked(vec![(root, branch.to_owned())]);
+                }
+            }
+            _ => {}
         }
     }
 

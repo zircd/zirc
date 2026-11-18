@@ -1444,6 +1444,11 @@ pub fn short_id(id: &str) -> &str {
 /// The custom event kind leases are agreed through (zirc-core's `leases`).
 pub const LEASE_KIND: &str = "x-zirc/lease";
 
+/// The custom event kind a machine says a branch gone from origin unlanded with, when
+/// another session had said its own was built on it: its data is `{"branch": …}`, and each
+/// zircd with a session stacked on that branch tells it what to do.
+pub const DROPPED_KIND: &str = "x-zirc/dropped";
+
 /// The custom event kind an intent's renewal goes as ([`renewal`]).
 pub const RENEWAL_KIND: &str = "x-zirc/intent-renewed";
 

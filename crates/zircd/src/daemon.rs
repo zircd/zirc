@@ -600,6 +600,9 @@ pub struct Daemon {
     /// What people and sessions last said in words, newest last, for what was said of a
     /// branch once it's dropped ([`Daemon::said_of`]): who, and what.
     said_lately: VecDeque<(String, String)>,
+    /// The branches someone said theirs is built on, by repository's channel: the ones
+    /// whose going from origin this machine says to everyone ([`Daemon::stacks_checked`]).
+    built_on: BTreeSet<(String, String)>,
     /// The tasks sessions here and elsewhere took on and haven't finished, to tell a session
     /// taking on the same work ([`Daemon::same_work_taken`]).
     open_tasks: same_work::OpenTasks,
@@ -813,6 +816,7 @@ impl Daemon {
             ops: None,
             undone_told: BTreeSet::new(),
             said_lately: VecDeque::new(),
+            built_on: BTreeSet::new(),
             open_tasks: same_work::OpenTasks::default(),
             colleagues_said: None,
             repos: BTreeMap::new(),
