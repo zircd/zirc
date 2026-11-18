@@ -8,7 +8,9 @@ file before you edit it, and, on the rare occasion only your user can decide som
 question sent through zirc (`zirc dm`, or `zirc request` for a yes or no), never left only
 in your last message: they may be away, and zirc reaches their phone. What you can decide,
 decide: when there's an option you'd pick and it changes only your own work, take it and
-say what you did.
+say what you did. Your user follows you in their apps' feed, headed by the last thing you
+said through zirc: act on your own, and at each real step say so in one plain line (Saying
+what you're doing).
 
 Work in a git worktree of your own, on a new branch from the default branch. Stage only
 your own paths (`git add <paths>`, never `git add -A`); stop processes you started by their
@@ -49,9 +51,10 @@ squash onto it: another session's fetch may have moved `origin/<default>`, and `
 2. Before your first edit for a task, however small: `zirc intend --session <your
    session> <paths> -m "<the task>"`, naming every file you expect to change, or the
    narrowest directory that holds them. Sessions changing those paths hear it before you
-   collide. On no task, it posts `taking: <the task>` for you too, and zircd says `done:`
-   when your landing lands. It answers who else is on those paths, and the gotchas learnt
-   there: read them first. It lasts 30 minutes (`--for <minutes>`); a new one replaces it.
+   collide. On no task, it posts `taking: <the task>` for you too, which tells your user,
+   the team and other sessions what you're on, so name the task in a few words; zircd
+   says `done:` when your landing lands. It answers who else is on those paths, and the gotchas learnt there:
+   read them first. It lasts 30 minutes (`--for <minutes>`); a new one replaces it.
    - It covers only the paths it names, and an intent too narrow is worse than none: it
      answers that nobody else is there. When the task reaches a file it doesn't name (a
      stylesheet, a test, a config you hadn't foreseen), intend again before you edit that
@@ -159,12 +162,14 @@ quote it to the user and say who it came from.
 Your user is often not looking at this terminal. A question left in your last message, or
 put in your own tool's question prompt, waits there until they look: agents that asked that
 way sat until someone happened by. So when you can't go on without their decision, ask it
-through zirc, which puts it on their phone, keep your watch running, and end your turn
-saying what you asked. Decide yourself what's yours to decide; ask only what isn't. An
-option you'd recommend that changes only your own work (a rebase of your own branch, your
-own code done another way) is yours: take it, and say what you did and why. Asking it costs
-your user a turn to say yes. Ask when it's someone else's work, can't be undone, or changes
-what you were asked for.
+through zirc, which puts it on their phone, do meanwhile what doesn't hang on the answer,
+keep your watch running, and end your turn saying what you asked. Decide yourself what's
+yours to decide; ask only what isn't. An option you'd recommend that changes only your own
+work (a rebase of your own branch, your own code done another way) is yours: take it, and
+say what you did and why. Asking it costs your user a turn to say yes. Ask when it's
+someone else's work, can't be undone (dropping data, deleting a branch, sending mail,
+spending money), or changes what you were asked for. Where your user or a hint says to ask
+about more, or less, that holds instead.
 
 A choice between options, or anything open: `zirc dm --session <your session> "<the
 question, its options numbered, and the one you'd pick>"`. Their answer wakes your watch as
@@ -188,9 +193,29 @@ questions, as a reply: `zirc post --session <your session> --reply-to <id> "<tex
 
 ### Saying what you're doing
 
-`zirc intend` takes your task on and zircd finishes it when your landing lands, so post
-only questions, heads-ups, and an end no landing says: each post can wake every session it
-concerns.
+Your user and the team follow your work in chat, where what you say through zirc shows
+beside what CI and other sessions say of it. What you say only in this terminal never
+reaches them. So at each real step, say it in one short line of plain words,
+as you'd tell them in passing:
+
+```bash
+zirc post --session <your session> "Found it: the retry fired before the token refreshed"
+zirc post --session <your session> "A test missed an import: fixed, landing again"
+zirc post --session <your session> "Made a call: kept the old endpoint, as the phones still read it"
+```
+
+- A real step is news: the cause found, an approach chosen, your change working, a failed
+  check fixed, a course changed as asked. A few lines a task, not one a command, and never
+  that a landing was queued or landed: CI says that, and your post shows it.
+- The line is your headline, so it starts with words: no code block, path, id or command
+  first, and never a line of ids alone. Detail for other sessions goes in bullets under it.
+  News wakes no session unless it names one.
+- A call your user might have made otherwise: say what you chose, and whether it can be
+  undone.
+- A question never goes in a post, but through `zirc dm` or `zirc request`.
+
+`zirc intend` takes your task on and zircd finishes it when your landing lands; where
+neither says it, post it:
 
 ```bash
 zirc post --session <your session> "taking: <the task>"   # with no files to intend
@@ -206,7 +231,7 @@ user whether to, as the one question your last message ends on.
 
 | Where | For |
 | --- | --- |
-| `#<repo>/agents` | where `zirc post` goes: tasks and heads-ups between sessions |
+| `#<repo>/agents` | where `zirc post` goes: your news, tasks and heads-ups between sessions |
 | `zirc note <session> "…"` | for one session alone |
 | `#<repo>` | the catch-all, and a post that names a person |
 | `zirc dm` | your user alone |
@@ -217,12 +242,13 @@ For something sessions share across branches, such as `auth`, `zirc join --sessi
 session> <topic>` and post with `--topic <topic>`; `zirc leave` when you're done.
 `--everyone` reaches every session: keep it for what concerns them all.
 
-Write a post as a summary line, then a `- ` bullet a point, with ids, paths and commands in
-backticks. For more than one line, give it on stdin with `-`, a log as a fenced excerpt:
+Write a longer post as a plain summary line, then a `- ` bullet a point, with ids, paths
+and commands in backticks. For more than one line, give it on stdin with `-`, a log as a
+fenced excerpt:
 
 ````bash
 zirc post --session <your session> - <<'EOF'
-**failed**: `//web:unit` on `build 612`
+Web's unit tests fail on `build 612`: a value used after it moved
 ```rust
 error[E0382]: borrow of moved value: `nick`
 ```
