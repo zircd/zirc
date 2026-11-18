@@ -210,11 +210,6 @@ impl Breaker {
         Verdict::Wake
     }
 
-    /// Whether any limit is open.
-    fn paused(&self) -> bool {
-        self.machine || !self.sessions.is_empty()
-    }
-
     /// Closes every limit, and forgets the wakes counted, so it doesn't open again at once.
     pub(super) fn resume(&mut self) {
         self.wakes.clear();
@@ -483,47 +478,55 @@ impl Daemon {
     }
 
     /// Whether `body`, a direct message from `account`, is the machine's owner saying
-    /// `resume` (or `wakes resume`) while wakes are paused, which then lets them through.
-    /// A notification's Resume button sends it, and so does a reply to the breaker's notice;
-    /// at any other time it's a line for the agents like any other.
-    pub(super) fn resumed_by_owner(&mut self, account: Option<&str>, body: &str) -> bool {
+    /// `resume` (or `wakes resume`), and if so, whether wakes were paused, which it then
+    /// lets through. A notification's Resume button sends it, and so does a reply to the
+    /// breaker's notice, often after the pause has ended on its own as the window drained:
+    /// it's the breaker's word either way, never a line for every session, as it once was
+    /// (18 Nov 2026: "it messaged all sessions, even though they hadn't been held up"). A
+    /// session named first, as `cc-1531f8 resume`, still reaches that session.
+    pub(super) fn resumed_by_owner(&mut self, account: Option<&str>, body: &str) -> Option<bool> {
         let (Some(owner), Some(account)) = (self.owner.as_deref(), account) else {
-            return false;
+            return None;
         };
-        if !account.eq_ignore_ascii_case(owner) || !self.breaker.paused() {
-            return false;
+        if !account.eq_ignore_ascii_case(owner) {
+            return None;
         }
         let text = match zirc_proto::decode(body) {
             Ok(Some(message)) => match message.event {
                 Event::Text { body } => body,
-                _ => return false,
+                _ => return None,
             },
             Ok(None) if !body.starts_with('\x01') => body.to_owned(),
-            _ => return false,
+            _ => return None,
         };
         let text = text.trim().trim_start_matches('/').to_ascii_lowercase();
         if !matches!(text.as_str(), "resume" | "wakes resume") {
-            return false;
+            return None;
         }
+        let paused = self.breaker.state(self.clock.now());
+        let paused = paused.paused_machine || !paused.paused_sessions.is_empty();
         self.wakes_resume();
-        true
+        Some(paused)
     }
 
-    /// [`Daemon::resumed_by_owner`], and if so, says to `from` that it has.
+    /// [`Daemon::resumed_by_owner`], and if so, says to `from` what it did.
     pub(super) fn resume_on_owners_word(
         &mut self,
         account: Option<&str>,
         from: &str,
         body: &str,
     ) -> bool {
-        if !self.resumed_by_owner(account, body) {
+        let Some(paused) = self.resumed_by_owner(account, body) else {
             return false;
-        }
+        };
+        let said = if paused {
+            "wakes resumed: held wakes are let through again"
+        } else {
+            "wakes weren't paused: the pause had ended as its window drained, so no session \
+             was told"
+        };
         if let Some(client) = &self.client {
-            let _ = client.send(Line::new(
-                "NOTICE",
-                [from, "wakes resumed: held wakes are let through again"],
-            ));
+            let _ = client.send(Line::new("NOTICE", [from, said]));
         }
         true
     }
@@ -660,6 +663,45 @@ mod tests {
         let mut reasons = [Some(Why::Mention)];
         daemon.gate_wakes(&post("cc-1: now"), &mut reasons);
         assert_eq!(reasons, [Some(Why::Mention)]);
+    }
+
+    #[tokio::test]
+    async fn the_owners_resume_never_reaches_the_sessions_paused_or_not() {
+        let home = tempfile::tempdir().unwrap();
+        let (mut daemon, _hears) = daemon_watched_by_cc1(home.path());
+        daemon.owner = Some("mattias".into());
+        // Nothing paused, as when the pause ended on its own before the owner answered its
+        // notice: still the breaker's word, not a line for every session.
+        assert_eq!(
+            daemon.resumed_by_owner(Some("mattias"), "resume"),
+            Some(false)
+        );
+        for n in 0..=PER_SESSION {
+            let mut reasons = [Some(Why::Mention)];
+            daemon.gate_wakes(&post(&format!("cc-1: look at {n}")), &mut reasons);
+        }
+        assert_eq!(
+            daemon.resumed_by_owner(Some("Mattias"), " /Resume "),
+            Some(true)
+        );
+        assert!(
+            daemon
+                .breaker
+                .state(daemon.clock.now())
+                .paused_sessions
+                .is_empty()
+        );
+        // Anyone else's, or the owner's to one session or about something else, is not.
+        assert_eq!(daemon.resumed_by_owner(Some("alice"), "resume"), None);
+        assert_eq!(daemon.resumed_by_owner(None, "resume"), None);
+        assert_eq!(
+            daemon.resumed_by_owner(Some("mattias"), "cc-1 resume"),
+            None
+        );
+        assert_eq!(
+            daemon.resumed_by_owner(Some("mattias"), "resume the login work"),
+            None
+        );
     }
 
     /// A workflow's `run` giving its `step` to `to`, as its nick posts it.
