@@ -8,6 +8,7 @@ mod config;
 mod daemon;
 mod git;
 mod irc;
+mod left;
 mod log;
 mod procs;
 mod room;
@@ -135,6 +136,8 @@ pub async fn run_with(
     // Read once, for all that's decided at start.
     let settings = config::read(&config_path)?;
     let orgs = config::organisations(&settings, &config_path)?;
+    // What it kept of organisations it's no longer in, as one it just left, goes.
+    left::forget(&home, &orgs);
     let mut configs = Vec::new();
     for (at, org) in orgs.iter().enumerate() {
         configs.push(config::load_in(&settings, &config_path, org, at == 0)?);
