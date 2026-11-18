@@ -51,6 +51,10 @@ pub struct Options {
     /// The secrets it was started with, by name: a command that names one in its `secrets`
     /// gets it in its environment, and nothing else does.
     pub secrets: BTreeMap<String, String>,
+    /// Whether a host says whose machine an account is on a server that isn't zirc.dev's
+    /// (`<org>.irc.zirc.dev`, where it always does): only where its operator alone sets hosts
+    /// and makes accounts ([`agents::standing`]).
+    pub trust_hosts: bool,
 }
 
 /// How far a caller may go.
@@ -81,10 +85,18 @@ struct Host {
     secrets: BTreeMap<String, String>,
     /// One lock for each command whose calls don't overlap.
     locks: BTreeMap<String, Arc<Mutex<()>>>,
+    /// Whether the server is one of zirc.dev's, where only zirc.dev makes accounts and sets
+    /// hosts, so a host says whose machine an account is ([`agents::standing`]).
+    named_by_zirc_dev: bool,
 }
 
 impl Host {
-    fn new(config: Config, owner: String, secrets: BTreeMap<String, String>) -> Self {
+    fn new(
+        config: Config,
+        owner: String,
+        secrets: BTreeMap<String, String>,
+        named_by_zirc_dev: bool,
+    ) -> Self {
         let locks = config
             .commands
             .iter()
@@ -96,14 +108,15 @@ impl Host {
             owner,
             secrets,
             locks,
+            named_by_zirc_dev,
         }
     }
 
     /// Who a query's sender is here: the owner or an account the config allows; one of the
     /// owner's machines, where their agents run; or nobody. Whose an account is, is zirc's
-    /// one rule ([`agents::standing`]), on a server whose accounts zirc.dev makes.
+    /// one rule ([`agents::standing`]), hosts counting only on a server of zirc.dev's.
     fn standing(&self, sender: Sender<'_>) -> Standing {
-        let theirs = agents::standing(sender, Some(&self.owner), true);
+        let theirs = agents::standing(sender, Some(&self.owner), self.named_by_zirc_dev);
         let allowed = sender.account().is_some_and(|account| {
             self.config
                 .allow
@@ -123,7 +136,7 @@ impl Host {
     /// An agent asks with a query, which is answered as information; a plain reply to one
     /// would read as its user's own words.
     fn person(&self, sender: Sender<'_>) -> Standing {
-        match agents::standing(sender, Some(&self.owner), true) {
+        match agents::standing(sender, Some(&self.owner), self.named_by_zirc_dev) {
             agents::Standing::Owner => Standing::Owner,
             _ => Standing::Nobody,
         }
@@ -181,7 +194,10 @@ pub async fn run(options: Options, config: Config) -> Result<()> {
             .with_context(|| format!("couldn't join {channel}"))?;
     }
     info!(nick = client.nick(), %owner, "serving {} commands", config.commands.len());
-    let host = Arc::new(Host::new(config, owner, options.secrets));
+    // An IRC server's host name, as zirc.dev names its servers (`<org>.irc.zirc.dev`).
+    let named_by_zirc_dev =
+        options.trust_hosts || agents::is_zirc_dev(&format!("https://{}", options.server));
+    let host = Arc::new(Host::new(config, owner, options.secrets, named_by_zirc_dev));
     // A long query comes as a multiline batch, joined here into the one message it is.
     let mut batches = Batches::default();
     while let Some(line) = incoming.recv().await {
@@ -568,7 +584,25 @@ mod tests {
             },
             "mattias".to_owned(),
             BTreeMap::new(),
+            true,
         )
+    }
+
+    #[test]
+    fn a_host_says_nothing_on_a_server_not_zirc_dev_s() {
+        let mut host = host(&[], &[]);
+        host.named_by_zirc_dev = false;
+        assert_eq!(
+            host.standing(sender(Some("m3-mac"), Some("mattias"))),
+            Standing::Nobody
+        );
+        let client = Sender::new(Some("mattias-irc"), Some(Hosted::Client("mattias")));
+        assert_eq!(host.person(client), Standing::Nobody);
+        assert_eq!(
+            host.standing(sender(Some("mattias"), None)),
+            Standing::Owner
+        );
+        assert!(agents::is_zirc_dev("https://acme.irc.zirc.dev"));
     }
 
     #[test]

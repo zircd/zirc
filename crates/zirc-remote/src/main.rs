@@ -41,6 +41,11 @@ struct Args {
     /// agent's host, for a landing's): apps draw this host under it.
     #[arg(long)]
     on: Option<String>,
+    /// Count an account's host as saying whose machine it is on a server that isn't
+    /// zirc.dev's: only where its operator alone sets hosts and makes accounts. On zirc.dev's
+    /// servers it always does.
+    #[arg(long)]
+    trust_hosts: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -99,6 +104,7 @@ async fn main() -> Result<()> {
             on: args.on,
             passphrase,
             secrets,
+            trust_hosts: args.trust_hosts,
         },
         config,
     )

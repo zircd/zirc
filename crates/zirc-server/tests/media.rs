@@ -261,6 +261,30 @@ async fn nobody_else_shares_and_pictures_stay_on_zirc_dev() {
     assert_eq!(answer.send().await.unwrap().status(), 400);
 }
 
+/// What asking to share a file as `person` answers.
+async fn asked(server: &common::Running, person: &Person) -> reqwest::StatusCode {
+    let request = json!({"purpose": "share", "name": "a.txt", "mime": "text/plain", "size": 2});
+    let asking = at(server, reqwest::Method::POST, "/api/media", person).json(&request);
+    asking.send().await.unwrap().status()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn wrong_passwords_run_out_and_the_right_one_waits_too() {
+    let Some(server) = with_people().await else {
+        return;
+    };
+    let wrong = Person {
+        name: "alice",
+        password: "not-her-passphrase",
+    };
+    for _ in 0..10 {
+        assert_eq!(asked(&server, &wrong).await, 401);
+    }
+    assert_eq!(asked(&server, &wrong).await, 429);
+    assert_eq!(asked(&server, &ALICE).await, 429);
+    assert!(asked(&server, &BOB).await.is_success());
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn bytes_go_only_to_their_upload_s_address_and_no_more_than_it_said() {
     let Some(server) = with_people().await else {

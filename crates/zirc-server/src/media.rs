@@ -44,6 +44,13 @@ use zirc_media_worker::{Job, Make};
 /// once, and Ergo's check is a bcrypt.
 const CHECKED_FOR: Duration = Duration::from_secs(300);
 
+/// How many wrong passwords an account takes in [`MISSED_FOR`] before the files' service stops
+/// asking Ergo for it: anyone can try, and each try is a bcrypt.
+const MISSES: u32 = 10;
+
+/// How long wrong passwords count against an account.
+const MISSED_FOR: Duration = Duration::from_secs(600);
+
 /// How much of a file is read to tell what it is.
 const START_BYTES: usize = 64 * 1024;
 
@@ -92,6 +99,8 @@ pub struct Media {
     /// that is kept: whose an account is and their role are asked each time, so a new admin
     /// is one at once.
     checked: Mutex<HashMap<[u8; 32], Instant>>,
+    /// Wrong passwords lately, by account (lower case): how many, since when ([`MISSES`]).
+    missed: Mutex<HashMap<String, (u32, Instant)>>,
 }
 
 impl Media {
@@ -118,6 +127,7 @@ impl Media {
             http: zirc_sidecar::http(),
             random: SystemRandom::new(),
             checked: Mutex::default(),
+            missed: Mutex::default(),
         }
     }
 }
@@ -275,6 +285,27 @@ impl Media {
         }
     }
 
+    /// How many wrong passwords `account` has had in [`MISSED_FOR`].
+    fn misses(&self, account: &str) -> u32 {
+        self.missed
+            .lock()
+            .ok()
+            .and_then(|missed| missed.get(account).copied())
+            .filter(|(_, since)| since.elapsed() < MISSED_FOR)
+            .map_or(0, |(count, _)| count)
+    }
+
+    /// Counts a wrong password for `account`, forgetting what's older than [`MISSED_FOR`].
+    fn missed(&self, account: String) {
+        if let Ok(mut missed) = self.missed.lock() {
+            missed.retain(|_, (_, since)| since.elapsed() < MISSED_FOR);
+            missed
+                .entry(account)
+                .and_modify(|(count, _)| *count += 1)
+                .or_insert((1, Instant::now()));
+        }
+    }
+
     /// Who `headers` sign in as, with an account's name and password over HTTP Basic.
     async fn who(&self, headers: &HeaderMap) -> Result<Who, Denied> {
         let unknown = || denied(401, "Sign in with your account's name and password.");
@@ -288,6 +319,13 @@ impl Media {
             .ok()
             .and_then(|checked| checked.get(&key).copied())
             .is_some_and(|at| at.elapsed() < CHECKED_FOR);
+        let named = account.to_lowercase();
+        if !fresh && self.misses(&named) >= MISSES {
+            return Err(denied(
+                429,
+                "Too many wrong passwords for that account: try again in a few minutes.",
+            ));
+        }
         if !fresh {
             let checked: CheckAuth = self
                 .http
@@ -302,6 +340,7 @@ impl Media {
                 .await
                 .map_err(|_| denied(503, "The server couldn't check that."))?;
             if !checked.success {
+                self.missed(named);
                 return Err(unknown());
             }
             if let Ok(mut checked) = self.checked.lock() {

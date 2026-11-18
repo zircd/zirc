@@ -178,6 +178,8 @@ async fn host_with(ergo: &Ergo, config: &str) -> JoinHandle<anyhow::Result<()>> 
         on: None,
         passphrase: "pass".to_owned(),
         secrets: [("hunter".to_owned(), "hunter2".to_owned())].into(),
+        // The test's own Ergo, whose hosts only the test sets, as zirc.dev's are.
+        trust_hosts: true,
     };
     tokio::spawn(run(options, Config::parse(config).expect("a config")))
 }
