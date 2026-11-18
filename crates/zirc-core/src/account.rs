@@ -619,7 +619,8 @@ impl Removal {
 pub struct SignedOut {
     /// Each organisation's removal.
     pub removed: Vec<Removal>,
-    /// The phone-wide push keys go, as does the device key.
+    /// The phone-wide push keys go, as does the device key ([`Account::remove_organisation`]
+    /// deletes it with the last organisation).
     pub delete_push_keys: bool,
     /// The device key goes.
     pub delete_device_key: bool,
@@ -883,8 +884,9 @@ impl<T: AsRef<Chat> + AsMut<Chat>> Account<T> {
             .collect()
     }
 
-    /// Signs out of `org` alone: its passphrase is forgotten, its levels, blocks, badge and
-    /// push nick deleted, its session (and so its connection) dropped; the others carry on.
+    /// Signs out of `org` alone: its passphrase is forgotten, its levels, blocks, badge, push
+    /// nick and sealing keys deleted, its session (and so its connection) dropped; the others
+    /// carry on. The last one's going takes the device's key pair too.
     /// What is left to do over the network is in the answer. `None` when not signed in to it.
     ///
     /// # Errors
@@ -896,6 +898,8 @@ impl<T: AsRef<Chat> + AsMut<Chat>> Account<T> {
         };
         session.signin.forget(self.store.secrets.as_ref())?;
         self.store.forget(org)?;
+        let last = self.orgs.len() == 1;
+        crate::sealed::forget_at_sign_out(self.store.secrets.as_ref(), org, last)?;
         let Some(session) = self.orgs.remove(org) else {
             return Ok(None);
         };

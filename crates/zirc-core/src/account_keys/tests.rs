@@ -139,10 +139,18 @@ async fn refresh_merges_new_memberships_and_ends_removed_ones_leaving_the_others
         on(),
         vec![signin("alice", "acme.irc.zirc.dev", &web), own],
     );
+    let sealed = |org: &str| crate::sealed::Keys::name(org);
+    env.secrets.set(&sealed("acme"), "kept").unwrap();
+    env.secrets
+        .set(&sealed("chat.example.org"), "kept")
+        .unwrap();
     let refreshed = account
         .refresh_organisations(&env.key, &web, |s| session(s.clone()))
         .await
         .unwrap();
+    // Acme's sealing keys go as its access does; the others' stay.
+    assert_eq!(env.secrets.get(&sealed("acme")), None);
+    assert!(env.secrets.get(&sealed("chat.example.org")).is_some());
     assert!(refreshed.asked);
     assert_eq!(refreshed.added, ["zirc"]);
     assert_eq!(refreshed.ended, ["acme"]);

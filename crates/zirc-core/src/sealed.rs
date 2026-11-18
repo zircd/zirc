@@ -95,6 +95,26 @@ pub fn device_key(secrets: &dyn Secrets) -> Option<DeviceKey> {
     Some(made)
 }
 
+/// Forgets `org`'s keys from `secrets` as the device signs out of it, and with the `last`
+/// organisation the device's own key pair too: every app signs out through this, so what a
+/// device holds for sealed messages goes with its sign-ins (the user's choice, 18 Nov 2026).
+/// A handle renamed keeps them: that's no sign-out.
+///
+/// # Errors
+///
+/// When the store refuses.
+pub fn forget_at_sign_out(
+    secrets: &dyn Secrets,
+    org: &str,
+    last: bool,
+) -> Result<(), crate::secrets::Error> {
+    secrets.delete(&Keys::name(org))?;
+    if last {
+        secrets.delete(DEVICE_SECRET)?;
+    }
+    Ok(())
+}
+
 /// Where zircd and the `zirc` CLI keep the organisations' keys: `secrets.toml` in zirc's
 /// directory `home`, readable by its user only, as they keep their sign-in in its
 /// `config.toml`. The desktop app's store ([`crate::secrets::system`]) reads it too.

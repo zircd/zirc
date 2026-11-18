@@ -228,6 +228,14 @@ fn signing_out_of_one_leaves_the_others_and_keeps_zirc_dev() {
     }
     assert_eq!(account.org_for_endpoint("ep1"), Some("acme"));
     assert_eq!(account.org_for_endpoint("nope"), None);
+    let key = |org: &str| crate::sealed::Keys::name(org);
+    for name in [
+        key("acme"),
+        key("zirc"),
+        crate::sealed::DEVICE_SECRET.to_owned(),
+    ] {
+        home.secrets.set(&name, "kept").unwrap();
+    }
     let removal = account.remove_organisation("acme").unwrap().unwrap();
     assert_eq!(removal.signin.handle, "alice");
     assert!(removal.push.registered && removal.unregister_device_key);
@@ -239,6 +247,10 @@ fn signing_out_of_one_leaves_the_others_and_keeps_zirc_dev() {
     assert_eq!(home.secrets.get("zirc-push-nick:acme"), None);
     assert!(home.secrets.get("ali@zirc.irc.zirc.dev").is_some());
     assert_eq!(home.secrets.get("zirc-badge:zirc").as_deref(), Some("2"));
+    // Acme's sealing keys went with it; Zirc's, and the device's own, stay.
+    assert_eq!(home.secrets.get(&key("acme")), None);
+    assert!(home.secrets.get(&key("zirc")).is_some());
+    assert!(home.secrets.get(crate::sealed::DEVICE_SECRET).is_some());
     // Zirc is shown now.
     assert_eq!(account.selected().unwrap().0, "zirc");
     assert_eq!(account.remove_organisation("acme").unwrap(), None);
@@ -247,6 +259,9 @@ fn signing_out_of_one_leaves_the_others_and_keeps_zirc_dev() {
     assert!(!last.unregister_device_key);
     assert!(last.last && last.ends_zirc_dev());
     assert!(account.is_empty());
+    // The last one takes the device's key pair with it.
+    assert_eq!(home.secrets.get(&key("zirc")), None);
+    assert_eq!(home.secrets.get(crate::sealed::DEVICE_SECRET), None);
 }
 
 #[test]

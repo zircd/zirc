@@ -606,6 +606,15 @@ impl<T: AsRef<Chat> + AsMut<Chat>> Account<T> {
         for org in gone {
             if let Some(session) = self.get_mut(&org) {
                 session.end_access();
+                // Its sealing keys go from the device as its access does; another
+                // organisation's stay.
+                if let Err(err) = self
+                    .store()
+                    .secrets()
+                    .delete(&crate::sealed::Keys::name(&org))
+                {
+                    tracing::warn!("couldn't forget {org}'s sealing keys: {err}");
+                }
                 refreshed.ended.push(org);
             }
         }
@@ -875,9 +884,12 @@ impl From<AddError> for Error {
 }
 
 impl<T: AsRef<Chat> + AsMut<Chat>> OrgSession<T> {
-    /// Its access ended: the server no longer takes the sign-in.
+    /// Its access ended: the server no longer takes the sign-in, and its chat holds none of
+    /// its sealing keys.
     pub fn end_access(&mut self) {
         self.set_state_now(OrgState::AccessEnded);
+        let org = self.signin().org();
+        self.chat_mut().set_keys(&org, Vec::new());
     }
 }
 

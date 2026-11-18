@@ -175,7 +175,8 @@ pub async fn sign_out(
     for (what, err) in told.tell(key, secrets, None).await.failed {
         writeln!(out, "zirc.dev didn't hear this device leaves {what}: {err}")?;
     }
-    if staying.is_empty() {
+    let last = staying.is_empty();
+    if last {
         std::fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
     } else {
         let mut kept = SignIns::default();
@@ -191,6 +192,9 @@ pub async fn sign_out(
             "{}",
             zirc_core::account_text::signed_out(&signin.org())
         )?;
+        // Its sealing keys go with it, and the device's own key pair with the last. A store
+        // that refuses says so for the passphrase, below.
+        let _ = zirc_core::sealed::forget_at_sign_out(secrets, &signin.org(), last);
         if let Err(err) = signin.forget(secrets) {
             let why = std::error::Error::source(&err)
                 .map_or_else(|| err.to_string(), ToString::to_string);
@@ -250,11 +254,19 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(!text.contains("the passphrase"), "{text}");
         assert_eq!(load(&path).unwrap(), Some(signin.clone()));
+        let sealed = zirc_core::sealed::Keys::name(&signin.org());
+        secrets.set(&sealed, "kept").unwrap();
+        secrets
+            .set(zirc_core::sealed::DEVICE_SECRET, "kept")
+            .unwrap();
 
         sign_out(dir.path(), &secrets, &key(&dir), None, &mut Vec::new())
             .await
             .unwrap();
         assert_eq!(load(&path).unwrap(), None);
+        // The sealing keys and the device's key pair went with the sign-in.
+        assert_eq!(secrets.get(&sealed), None);
+        assert_eq!(secrets.get(zirc_core::sealed::DEVICE_SECRET), None);
         let mut out = Vec::new();
         sign_out(dir.path(), &secrets, &key(&dir), None, &mut out)
             .await
