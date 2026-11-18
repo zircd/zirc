@@ -132,15 +132,9 @@ impl Daemon {
         self.requests.made += 1;
         let id = format!("{nick}/{}", self.requests.made);
         let request = Request {
-            id: id.clone(),
-            question,
-            yes,
-            no,
             recommend,
             irreversible,
-            session: session.to_owned(),
-            by,
-            state: State::Open,
+            ..Request::open(id.clone(), session, by, question, yes, no)
         };
         self.publish(CHANNEL, session, request.event());
         // Taken as recommended at once, on a machine set to, when a yes can be undone: the
@@ -253,6 +247,10 @@ impl Daemon {
             return None;
         }
         let answer = request::answer_of(&reaction.emoji)?;
+        // A shrug says nothing to a request that can't be undone, which a person decides.
+        if answer == Answer::Yours && !request.offers_yours() {
+            return None;
+        }
         // Taken as recommended: the owner agreeing changes nothing but the card, and a
         // reaction taken back says nothing new. Anything else is their answer, as below.
         if let State::Answered {

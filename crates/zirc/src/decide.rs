@@ -209,23 +209,25 @@ fn taken_line(answer: Answer, yes: &str, no: &str) -> String {
 }
 
 /// An answer to a request as a line: `#decisions mattias answered yes (👍) to mbp/3: Add
-/// a CI node?`, or asks to know more about it.
+/// a CI node?`, asks to know more about it, or left it to the session (🤷).
 pub(crate) fn answered_line(answered: &ipc::Answered) -> String {
     let request = &answered.request;
     let said = match answered.answer {
         Answer::More => "asks to know more",
         Answer::Yes => "answered yes",
         Answer::No => "answered no",
+        Answer::Yours => "left it to you",
     };
     let about = if answered.answer == Answer::More {
         "about"
     } else {
         "to"
     };
-    let next = if answered.answer == Answer::More {
-        " (tell them more with zirc dm)"
-    } else {
-        ""
+    let next = match answered.answer {
+        Answer::More => " (tell them more with zirc dm)",
+        // The person's word to go ahead as the session judges best, and to say what it did.
+        Answer::Yours => " (your call: do what you judge best, and say what you chose)",
+        Answer::Yes | Answer::No => "",
     };
     format!(
         "{} {} {said} ({}) {about} {}: {}{next}",

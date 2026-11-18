@@ -137,6 +137,11 @@
           "type": "string",
           "const": "more",
           "description": "❓ 🤔 👀: tell me more."
+        },
+        {
+          "type": "string",
+          "const": "yours",
+          "description": "🤷: the session's call, to go ahead on its own judgement. Never an answer to a request\nthat can't be undone, which a person decides."
         }
       ],
       "description": "An answer."

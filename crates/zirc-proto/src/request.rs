@@ -72,6 +72,9 @@ pub enum Answer {
     No,
     /// ❓ 🤔 👀: tell me more.
     More,
+    /// 🤷: the session's call, to go ahead on its own judgement. Never an answer to a request
+    /// that can't be undone, which a person decides.
+    Yours,
 }
 
 /// Where a request stands.
@@ -111,7 +114,7 @@ pub enum State {
 }
 
 /// The answer an emoji gives, if it gives one: 👍 ✅ 🙌 yes, 👎 ❌ no, ❓ 🤔 👀 tell me more,
-/// whatever skin tone or presentation it's sent with.
+/// 🤷 your call, whatever skin tone, gender or presentation it's sent with.
 #[must_use]
 pub fn answer_of(emoji: &str) -> Option<Answer> {
     // Skin tones (U+1F3FB to U+1F3FF) and the emoji presentation selector say how it looks,
@@ -124,23 +127,62 @@ pub fn answer_of(emoji: &str) -> Option<Answer> {
         "👍" | "✅" | "🙌" => Some(Answer::Yes),
         "👎" | "❌" => Some(Answer::No),
         "❓" | "🤔" | "👀" => Some(Answer::More),
+        // A shrug, or a man's or woman's (🤷 then a joiner and ♂ or ♀).
+        shrug if shrug.starts_with('🤷') => Some(Answer::Yours),
         _ => None,
     }
 }
 
 impl Answer {
-    /// How it's said: `yes`, `no` or `tell me more`.
+    /// How it's said: `yes`, `no`, `tell me more` or `your call`.
     #[must_use]
     pub fn said(self) -> &'static str {
         match self {
             Self::Yes => "yes",
             Self::No => "no",
             Self::More => "tell me more",
+            Self::Yours => "your call",
+        }
+    }
+
+    /// The reaction an app answers with: 👍, 👎, ❓ or 🤷.
+    #[must_use]
+    pub fn reaction(self) -> &'static str {
+        match self {
+            Self::Yes => "👍",
+            Self::No => "👎",
+            Self::More => "❓",
+            Self::Yours => "🤷",
         }
     }
 }
 
 impl Request {
+    /// `session` asking `by` `question`, open, as `id` (`<machine>/<n>`): a yes does `yes`
+    /// and a no does `no`. It recommends nothing and a yes can be undone, until
+    /// [`Self::recommend`] and [`Self::irreversible`] are set.
+    #[must_use]
+    pub fn open(
+        id: impl Into<String>,
+        session: impl Into<String>,
+        by: impl Into<String>,
+        question: impl Into<String>,
+        yes: impl Into<String>,
+        no: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            question: question.into(),
+            yes: yes.into(),
+            no: no.into(),
+            recommend: None,
+            irreversible: false,
+            session: session.into(),
+            by: by.into(),
+            state: State::Open,
+        }
+    }
+
     /// The event that carries it, with the card apps draw for it. The review sandbox's seed
     /// (web/src/lib/sandbox-script.ts `ask`) copies this, [`Self::text`] and [`Self::card`]
     /// for an open request: change it there too.
@@ -169,13 +211,33 @@ impl Request {
         }
     }
 
+    /// Whether the person may leave it to the session ([`Answer::Yours`]): never for a request
+    /// that can't be undone, which a person decides.
+    #[must_use]
+    pub fn offers_yours(&self) -> bool {
+        !self.irreversible
+    }
+
+    /// ` · 🤷 your call` where [`Self::offers_yours`], after the other answers.
+    fn yours_offered(&self) -> &'static str {
+        if self.offers_yours() {
+            " · 🤷 your call"
+        } else {
+            ""
+        }
+    }
+
     /// What it says, for people and plain IRC clients.
     #[must_use]
     pub fn text(&self) -> String {
         match &self.state {
             State::Open => format!(
-                "{}: {} 👍 yes: {} · 👎 no: {} · ❓ tell me more",
-                self.by, self.question, self.yes, self.no
+                "{}: {} 👍 yes: {} · 👎 no: {} · ❓ tell me more{}",
+                self.by,
+                self.question,
+                self.yes,
+                self.no,
+                self.yours_offered()
             ),
             State::Held { until, .. } => format!(
                 "{} said yes: {} It's done at {until} unless they 👎 first",
@@ -218,8 +280,9 @@ impl Request {
             State::Open => (
                 CardState::Pending,
                 format!(
-                    "{}: react 👍 yes · 👎 no · ❓ tell me more{}",
+                    "{}: react 👍 yes · 👎 no · ❓ tell me more{}{}",
                     self.by,
+                    self.yours_offered(),
                     if self.irreversible {
                         " (a yes can't be undone, so it waits a minute, which a 👎 stops)"
                     } else {
@@ -249,13 +312,26 @@ impl Request {
                 ),
             ),
             State::Answered {
+                answer: Answer::Yours,
+                at,
+                ..
+            } => (
+                CardState::Passed,
+                format!(
+                    "{} left it to {} at {}",
+                    self.by,
+                    self.session,
+                    clock(at, false)
+                ),
+            ),
+            State::Answered {
                 answer,
                 at,
                 recommended,
                 ..
             } => (
                 match answer {
-                    Answer::Yes => CardState::Passed,
+                    Answer::Yes | Answer::Yours => CardState::Passed,
                     Answer::No => CardState::Failed,
                     Answer::More => CardState::Warning,
                 },
@@ -311,15 +387,15 @@ mod tests {
 
     fn request() -> Request {
         Request {
-            id: "mattias-mbp/1".into(),
-            question: "Add a second CI node?".into(),
-            yes: "Builds run in half the time; £40 a month more".into(),
-            no: "Builds stay as they are".into(),
             recommend: Some(Answer::Yes),
-            irreversible: false,
-            session: "cc-1".into(),
-            by: "mattias".into(),
-            state: State::Open,
+            ..Request::open(
+                "mattias-mbp/1",
+                "cc-1",
+                "mattias",
+                "Add a second CI node?",
+                "Builds run in half the time; £40 a month more",
+                "Builds stay as they are",
+            )
         }
     }
 

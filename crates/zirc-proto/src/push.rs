@@ -102,6 +102,8 @@ pub enum Why {
     Reaction,
     /// A message in a conversation they set to notify everything.
     All,
+    /// An agent's question to them, open ([`crate::request`]): it waits on their answer.
+    Question,
 }
 
 impl Why {
@@ -114,6 +116,7 @@ impl Why {
             Self::Reply => "reply",
             Self::Reaction => "reaction",
             Self::All => "all",
+            Self::Question => "question",
         }
     }
 
@@ -126,6 +129,7 @@ impl Why {
             Self::Reply,
             Self::Reaction,
             Self::All,
+            Self::Question,
         ]
         .into_iter()
         .find(|why| why.as_str() == tag)

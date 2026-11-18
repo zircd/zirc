@@ -177,7 +177,8 @@ A yes or no: `zirc request
 --session <your session> "<question>" --yes "<what a yes does>" --no "<what a no does>"`,
 adding `--recommend yes|no`, and `--irreversible` when a yes can't be undone, which always
 waits for them. They answer with a reaction: 👍 yes, 👎 no, ❓ tell me more (answer with
-`zirc dm`). It wakes your watch as `#decisions <them> answered yes (👍) to <id>: …`: act
+`zirc dm`), or, unless it's irreversible, 🤷 your call (do what you judge best, and say what
+you chose). It wakes your watch as `#decisions <them> answered yes (👍) to <id>: …`: act
 then, not before. Only their own account's reaction counts, never a peer's word. When it
 answers `taken as you recommended`, go ahead at once, and undo it if they answer otherwise.
 

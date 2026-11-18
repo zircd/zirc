@@ -3,13 +3,14 @@
 //! it pushes by the rules every app's Activity and notifications go by. What's aimed at the
 //! person, as Activity lists it: a channel message naming them or answering one of theirs,
 //! and a reaction to one of theirs; and, as the sidebar says them, a direct message, and
-//! anything said where they asked to hear everything. Each by how much that conversation
+//! anything said where they asked to hear everything; and an agent's open question to them,
+//! which waits on their answer, as a mention does. Each by how much that conversation
 //! notifies on their phone ([`NotifySettings`]), which the phone tells the pusher.
 
 use zirc_proto::push::Why;
 
 use super::notify::{Level, NotifySettings};
-use super::{REACT, REPLY, entry_of, is_group};
+use super::{EntryKind, REACT, REPLY, entry_of, is_group};
 
 /// What a pushed reaction's notification says: `reacted 👍: the login fix is in`, the start
 /// of what was reacted to after the emoji, as Activity says it (`reacted 👍`).
@@ -72,7 +73,12 @@ pub fn why(settings: &NotifySettings, now: i64, me: &str, heard: &Heard<'_>) -> 
     if heard.command != "PRIVMSG" {
         return None;
     }
-    let (_, words) = entry_of(heard.body, false)?;
+    let (kind, words) = entry_of(heard.body, false)?;
+    if asks(&kind, me) {
+        return settings
+            .notifies(name, direct, true, now)
+            .then_some(Why::Question);
+    }
     if words.trim().is_empty() {
         return None;
     }
@@ -95,6 +101,16 @@ pub fn why(settings: &NotifySettings, now: i64, me: &str, heard: &Heard<'_>) -> 
             .notifies(name, false, false, now)
             .then_some(Why::All),
     }
+}
+
+/// Whether `kind` is an agent's question to `me` still waiting on an answer.
+fn asks(kind: &EntryKind, me: &str) -> bool {
+    let EntryKind::Zirc(message) = kind else {
+        return false;
+    };
+    zirc_proto::request::Request::of(&message.event).is_some_and(|asked| {
+        asked.state == zirc_proto::request::State::Open && asked.by.eq_ignore_ascii_case(me)
+    })
 }
 
 #[cfg(test)]
@@ -198,6 +214,37 @@ mod tests {
         assert_eq!(
             why(&for_an_hour, NOW + 61, "ada", &said("bob", "hi")),
             Some(Why::Direct)
+        );
+    }
+
+    /// An agent's open question to `by`, as zirc request posts it.
+    fn question(by: &str) -> String {
+        let asked = zirc_proto::request::Request::open(
+            "ada-mbp/1",
+            "cc-1",
+            by,
+            "Drop the old sessions table?",
+            "migration 0042 drops it",
+            "keeps writing both",
+        );
+        zirc_proto::encode_up_to(&zirc_proto::Message::new("cc-1", asked.event()), 4096).unwrap()
+    }
+
+    #[test]
+    fn an_agents_question_to_them_gets_through_as_a_mention_does() {
+        let quiet = settings(&[("#api", Level::Nothing)], &["#web"]);
+        assert_eq!(
+            why(&quiet, NOW, "ada", &said("#api", &question("ada"))),
+            Some(Why::Question)
+        );
+        assert_eq!(
+            why(&quiet, NOW, "ada", &said("#web", &question("ADA"))),
+            Some(Why::Question),
+            "through a mute, whatever the case of their nick"
+        );
+        assert_eq!(
+            why(&quiet, NOW, "ada", &said("#api", &question("bob"))),
+            None
         );
     }
 
