@@ -107,6 +107,26 @@ pub struct Server<'a> {
     pub debug: bool,
 }
 
+/// Ergo's overrides that let the browser client log in with a token the web app signed with
+/// one of `keys` (public keys, PEM) for an account that's already there (SASL IRCV3BEARER):
+/// none without keys. Every server's, and a team a developer runs (zirc-app's `team`).
+#[must_use]
+pub fn token_auth(keys: &[String]) -> Vec<(&'static str, String)> {
+    if keys.is_empty() {
+        return Vec::new();
+    }
+    let tokens: serde_json::Value = keys
+        .iter()
+        .map(|key| json!({"algorithm": "eddsa", "key": key, "account-claims": ["account"]}))
+        .collect();
+    vec![
+        ("ERGO__ACCOUNTS__JWT_AUTH__ENABLED", "true".to_owned()),
+        // Never an account made by a token: guests come in through the gateway, without one.
+        ("ERGO__ACCOUNTS__JWT_AUTH__AUTOCREATE", "false".to_owned()),
+        ("ERGO__ACCOUNTS__JWT_AUTH__TOKENS", tokens.to_string()),
+    ]
+}
+
 /// Ergo's overrides for `server`, in order.
 #[must_use]
 pub fn ergo(server: &Server) -> Vec<(&'static str, Value)> {
@@ -181,22 +201,11 @@ pub fn ergo(server: &Server) -> Vec<(&'static str, Value)> {
     // The browser client logs in with a token the web app signs for an account that's
     // already there (SASL IRCV3BEARER); Ergo checks it with the organisation's public keys
     // alone, any of them, so a new one can come in before the old one goes.
-    if !server.token_keys.is_empty() {
-        let tokens: serde_json::Value = server
-            .token_keys
-            .iter()
-            .map(|key| json!({"algorithm": "eddsa", "key": key, "account-claims": ["account"]}))
-            .collect();
-        env.extend([
-            ("ERGO__ACCOUNTS__JWT_AUTH__ENABLED", "true".into()),
-            // Never an account made by a token: guests come in through the gateway, without one.
-            ("ERGO__ACCOUNTS__JWT_AUTH__AUTOCREATE", "false".into()),
-            (
-                "ERGO__ACCOUNTS__JWT_AUTH__TOKENS",
-                tokens.to_string().into(),
-            ),
-        ]);
-    }
+    env.extend(
+        token_auth(&server.token_keys)
+            .into_iter()
+            .map(|(key, value)| (key, value.into())),
+    );
     // Devices sign in with keys of their own, which the sidecar checks (crate::signin): Ergo
     // hands each SASL login to it over a socket on the disk they share, a device's token as
     // OAUTHBEARER. Ergo checks passphrases itself when the sidecar says no or doesn't answer.

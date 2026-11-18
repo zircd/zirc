@@ -73,7 +73,11 @@ pub struct Ergo {
     child: Child,
     port: u16,
     ws_port: u16,
-    dir: TempDir,
+    /// Where it keeps its config, database and history.
+    dir: PathBuf,
+    /// The temporary directory `dir` is, removed with the server; none for a directory given
+    /// to [`Ergo::start_in`], which stays.
+    _temporary: Option<TempDir>,
     /// How to run it again: the binary and its environment.
     binary: PathBuf,
     env: Vec<(String, String)>,
@@ -106,46 +110,103 @@ impl Ergo {
     #[must_use]
     pub fn start_with(overrides: &[(&str, &str)]) -> Option<Self> {
         let (binary, config) = locate()?;
-        // Written anew rather than copied, which would carry over Bazel's read-only
-        // permissions.
-        let default_yaml = fs::read_to_string(&config).expect("reading Ergo's default.yaml");
         // A free port can be taken by another test's server before this one listens on it,
         // as tests in other processes do: then this one gives up, and starts on another.
         for _ in 0..ATTEMPTS {
             let dir = tempfile::tempdir().expect("temporary directory");
-            let ircd_yaml = dir.path().join("ircd.yaml");
-            fs::write(
-                &ircd_yaml,
-                zirc_sidecar::config::without_listeners(&default_yaml),
-            )
-            .expect("writing ircd.yaml");
             let [port, ws_port] = free_ports();
-            let listeners = format!(
-                r#"{{"127.0.0.1:{port}": {{}}, "127.0.0.1:{ws_port}": {{"websocket": true}}}}"#
-            );
+            let path = dir.path().to_owned();
+            if let Some(server) = Self::launch(
+                &binary,
+                &config,
+                path,
+                Some(dir),
+                [port, ws_port],
+                overrides,
+            ) {
+                return Some(server);
+            }
+        }
+        panic!("Ergo found no free port in {ATTEMPTS} tries");
+    }
 
-            // As fast as zirc's servers let a connection send, not as Ergo's default does (5
-            // lines, then 2 a second, with 16 history reads free): past those, a second
-            // `zirc catchup` on one connection took 7.4 s, and zirc_cli_test's wait ran out
-            // on it in about half the published tree's runs.
-            let rate = zirc_proto::desired::RateLimit::USUAL;
-            let (burst, per_second) = (rate.burst.to_string(), rate.per_second.to_string());
-            // Later ones win: the overrides.
-            let env: Vec<(String, String)> = [
-                ("ERGO__FAKELAG__BURST_LIMIT", burst.as_str()),
-                ("ERGO__FAKELAG__MESSAGES_PER_WINDOW", per_second.as_str()),
-                ("ERGO__LANGUAGES__ENABLED", "false"),
-                ("ERGO__OPERS__ADMIN__PASSWORD", OPER_PASSWORD_HASH),
-                ("ERGO__NETWORK__NAME", "zirc-test"),
-                ("ERGO__SERVER__NAME", "irc.zirc.test"),
-                ("ERGO__SERVER__LISTENERS", &listeners),
-            ]
-            .into_iter()
-            .chain(overrides.iter().copied())
-            .map(|(key, value)| (key.to_owned(), value.to_owned()))
-            .collect();
+    /// Starts a server kept in `dir`, which stays when it stops, on `port` for IRC and
+    /// `ws_port` for IRC over WebSocket, with extra environment overrides: for a server a
+    /// developer runs, such as a team seeded with history (zirc-app's `team`). Its database
+    /// is made if `dir` has none. `None` outside Bazel, like [`Ergo::start`].
+    ///
+    /// # Panics
+    ///
+    /// When the server doesn't start, as when another has one of the ports.
+    #[must_use]
+    pub fn start_in(
+        dir: &Path,
+        port: u16,
+        ws_port: u16,
+        overrides: &[(&str, &str)],
+    ) -> Option<Self> {
+        let (binary, config) = locate()?;
+        fs::create_dir_all(dir).expect("making the server's directory");
+        let server = Self::launch(
+            &binary,
+            &config,
+            dir.to_owned(),
+            None,
+            [port, ws_port],
+            overrides,
+        );
+        assert!(
+            server.is_some(),
+            "Ergo couldn't listen on {port} or {ws_port}: is another server running?"
+        );
+        server
+    }
 
-            let initdb = command(&binary, dir.path(), &env, &["initdb", "--quiet"])
+    /// Runs `binary` with the release's `config` in `dir` on `ports`, once its database is
+    /// made, or `None` when another took one of the ports first.
+    fn launch(
+        binary: &Path,
+        config: &Path,
+        dir: PathBuf,
+        temporary: Option<TempDir>,
+        [port, ws_port]: [u16; 2],
+        overrides: &[(&str, &str)],
+    ) -> Option<Self> {
+        // Written anew rather than copied, which would carry over Bazel's read-only
+        // permissions.
+        let default_yaml = fs::read_to_string(config).expect("reading Ergo's default.yaml");
+        fs::write(
+            dir.join("ircd.yaml"),
+            zirc_sidecar::config::without_listeners(&default_yaml),
+        )
+        .expect("writing ircd.yaml");
+        let listeners = format!(
+            r#"{{"127.0.0.1:{port}": {{}}, "127.0.0.1:{ws_port}": {{"websocket": true}}}}"#
+        );
+
+        // As fast as zirc's servers let a connection send, not as Ergo's default does (5
+        // lines, then 2 a second, with 16 history reads free): past those, a second
+        // `zirc catchup` on one connection took 7.4 s, and zirc_cli_test's wait ran out
+        // on it in about half the published tree's runs.
+        let rate = zirc_proto::desired::RateLimit::USUAL;
+        let (burst, per_second) = (rate.burst.to_string(), rate.per_second.to_string());
+        // Later ones win: the overrides.
+        let env: Vec<(String, String)> = [
+            ("ERGO__FAKELAG__BURST_LIMIT", burst.as_str()),
+            ("ERGO__FAKELAG__MESSAGES_PER_WINDOW", per_second.as_str()),
+            ("ERGO__LANGUAGES__ENABLED", "false"),
+            ("ERGO__OPERS__ADMIN__PASSWORD", OPER_PASSWORD_HASH),
+            ("ERGO__NETWORK__NAME", "zirc-test"),
+            ("ERGO__SERVER__NAME", "irc.zirc.test"),
+            ("ERGO__SERVER__LISTENERS", &listeners),
+        ]
+        .into_iter()
+        .chain(overrides.iter().copied())
+        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        .collect();
+
+        if !dir.join("ircd.db").exists() {
+            let initdb = command(binary, &dir, &env, &["initdb", "--quiet"])
                 .output()
                 .expect("running ergo initdb");
             assert!(
@@ -154,20 +215,18 @@ impl Ergo {
                 String::from_utf8_lossy(&initdb.stdout),
                 String::from_utf8_lossy(&initdb.stderr)
             );
-            let child = run(&binary, dir.path(), &env);
-            let mut server = Self {
-                child,
-                port,
-                ws_port,
-                dir,
-                binary: binary.clone(),
-                env,
-            };
-            if server.listens(0) {
-                return Some(server);
-            }
         }
-        panic!("Ergo found no free port in {ATTEMPTS} tries");
+        let child = run(binary, &dir, &env);
+        let mut server = Self {
+            child,
+            port,
+            ws_port,
+            dir,
+            _temporary: temporary,
+            binary: binary.to_owned(),
+            env,
+        };
+        server.listens(0).then_some(server)
     }
 
     /// Stops the server and starts it again on the same port with the same database, as a
@@ -192,7 +251,7 @@ impl Ergo {
         let _ = self.child.kill();
         let _ = self.child.wait();
         let before = self.log().matches(&Self::listening(self.port)).count();
-        self.child = run(&self.binary, self.dir.path(), &self.env);
+        self.child = run(&self.binary, &self.dir, &self.env);
         assert!(self.listens(before), "Ergo didn't listen on its port again");
     }
 
@@ -212,13 +271,13 @@ impl Ergo {
     /// Its history database, as Ergo keeps it beside its config.
     #[must_use]
     pub fn history(&self) -> std::path::PathBuf {
-        self.dir.path().join("ergo_history.db")
+        self.dir.join("ergo_history.db")
     }
 
     /// The server's output so far, for failure messages.
     #[must_use]
     pub fn log(&self) -> String {
-        fs::read_to_string(self.dir.path().join("ergo.log")).unwrap_or_default()
+        fs::read_to_string(self.dir.join("ergo.log")).unwrap_or_default()
     }
 
     /// The bcrypt hash Ergo's config wants for `password`, as `ergo genpasswd` makes it.

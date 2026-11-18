@@ -29,7 +29,8 @@ Messages are plain words, as people type them; `` `code` `` and a `code` block
 (`{ "language", "text" }`) are what the core would read as code. A `failed` message is CI's
 card, its `buttons` the actions it offers. A `request` is an agent's question to its owner as
 zircd posts it in #decisions, its `text` the question, `yes` and `no` what each does, and
-`answered` when its owner said yes. `mentions` are what names `me` across channels.
+`answered` when its owner said yes, and `irreversible` when a yes can't be undone. `mentions`
+are what names `me` across channels.
 
 An agent's event (`intent`, `overlap`) is as zirc-chat's `Parts` has it: its `verb`, what it
 was in `details` (an intent's task, empty for an overlap), and the files in `paths`, apart:

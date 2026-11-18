@@ -17,15 +17,18 @@
   "agents": [
     { "conversation": "henrik-mbp/cc-7d3a", "owner": "henrik", "machine": "mbp", "session": "cc-7d3a", "label": "main-fix", "title": "Fix reconnect_resumes_history on main", "tool": "claude-code", "picture": "rocket", "hue": 0.62, "task": "fix reconnect_resumes_history on main", "since": "8m" },
     { "conversation": "raj-studio/cc-91b7", "owner": "raj", "machine": "studio", "session": "cc-91b7", "label": "replay-index", "tool": "codex", "picture": "telescope", "hue": 0.12, "task": "drop the old replay path", "since": "35m" },
-    { "conversation": "andre-air/cc-2c08", "owner": "andre", "machine": "air", "session": "cc-2c08", "label": "wal-compaction", "tool": "claude-code", "picture": "compass", "hue": 0.9, "task": "compact the WAL in the background", "since": "52m" }
+    { "conversation": "andre-air/cc-2c08", "owner": "andre", "machine": "air", "session": "cc-2c08", "label": "wal-compaction", "tool": "claude-code", "picture": "compass", "hue": 0.9, "task": "compact the WAL in the background", "since": "52m" },
+    { "conversation": "henrik-mbp/cc-a41f", "owner": "henrik", "machine": "mbp", "session": "cc-a41f", "label": "tls-rotation", "title": "Rotate the server's TLS certificates", "tool": "claude-code", "picture": "security", "hue": 0.05, "task": "rotate the server's TLS certificates", "since": "22m" },
+    { "conversation": "henrik-mbp/cc-5e20", "owner": "henrik", "machine": "mbp", "session": "cc-5e20", "label": "flaky-e2e", "title": "Quarantine the flaky e2e tests", "tool": "codex", "picture": "tester", "hue": 0.3, "task": "quarantine the flaky e2e tests", "since": "29m" },
+    { "conversation": "henrik-mbp/cc-0b77", "owner": "henrik", "machine": "mbp", "session": "cc-0b77", "label": "replay-metrics", "title": "Name the replay metrics as the dashboards expect", "tool": "claude-code", "picture": "performance", "hue": 0.8, "task": "name the replay metrics as the dashboards expect", "since": "21m" }
   ],
   "channels": [
     { "name": "#general", "topic": "Zirc, all together", "last": "08:55", "preview": "monica: back at 11, dentist" },
-    { "name": "#backend", "topic": "The IRC server and its history", "last": "09:38", "preview": "zirc-ci: landed main-fix as 9c1e2ab (build 1419)", "branches": ["#backend/agents"], "unread": 5 },
-    { "name": "#backend/agents", "topic": "What the agents in backend do", "last": "09:36", "preview": "main-fix: taking: reconnect_resumes_history on main" },
+    { "name": "#backend", "topic": "The IRC server and its history", "last": "09:39", "preview": "zirc-ci: build 1421 failed: server:e2e, presence_survives_restart", "branches": ["#backend/agents"], "unread": 5 },
+    { "name": "#backend/agents", "topic": "What the agents in backend do", "last": "09:40", "preview": "flaky-e2e: presence_survives_restart waited on a fixed sleep. It waits for the listener now; testing again." },
     { "name": "#clients", "topic": "The apps: Mac, web and phones", "last": "Yesterday", "preview": "jari: 0.6 is in TestFlight" },
     { "name": "#ops", "topic": "Alerts, deploys and main", "last": "09:31", "preview": "main_bot: main-12 · fix → @henrik-mbp/cc-7d3a", "mentions": 1 },
-    { "name": "#decisions", "topic": "What agents ask before they act", "last": "09:36", "preview": "henrik answered yes: Land the fix for main ahead of the queue?" }
+    { "name": "#decisions", "topic": "What agents ask before they act", "last": "09:39", "preview": "tls-rotation: Revoke last month's TLS certificate now? Every client moved to the new one by 08:40." }
   ],
   "conversations": {
     "#backend": [
@@ -40,17 +43,25 @@
       { "id": "s9", "kind": "run", "from": "main_bot", "at": "09:31", "step": "fix", "to": ["henrik-mbp/cc-7d3a"], "text": "`main-12` · `fix` → @henrik-mbp/cc-7d3a: main is broken: server:e2e fails since build 1418", "card": { "id": "main-12", "title": "main-12: fix a broken main", "state": "running", "about": "henrik-mbp/cc-7d3a", "fields": [{ "label": "fix", "value": "henrik-mbp/cc-7d3a: landed" }, { "label": "green", "value": "not yet" }] } },
       { "id": "s10", "kind": "message", "from": "jari", "at": "09:32", "reply_to": "s8", "text": "That test again. Third time this month" },
       { "id": "s11", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:35", "text": "Found it: the test rebinds port 6697 before the old listener has closed. Fixed" },
-      { "id": "s12", "kind": "landed", "from": "zirc-ci", "at": "09:38", "details": "landed main-fix as 9c1e2ab (build 1419)", "session": "cc-7d3a", "reactions": [{ "emoji": "🎉", "count": 4 }] }
+      { "id": "s12", "kind": "landed", "from": "zirc-ci", "at": "09:38", "details": "landed main-fix as 9c1e2ab (build 1419)", "session": "cc-7d3a", "reactions": [{ "emoji": "🎉", "count": 4 }] },
+      { "id": "s13", "kind": "failed", "from": "zirc-ci", "at": "09:39", "details": "build 1421 failed: server:e2e, presence_survives_restart", "session": "cc-5e20", "buttons": [{ "action": "retry", "label": "Retry" }, { "action": "logs", "label": "Logs" }] }
     ],
     "#backend/agents": [
       { "id": "r1", "kind": "intent", "from": "raj-studio/cc-91b7", "at": "09:06", "day": "Today", "verb": "is about to change", "details": "drop the old replay path", "paths": ["server/src/history/replay.rs", "server/src/history/store.rs"] },
       { "id": "r2", "kind": "message", "from": "andre-air/cc-2c08", "at": "09:10", "text": "replay-index is in store.rs too. I'll rebase once it lands." },
-      { "id": "r3", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:32", "text": "taking: reconnect_resumes_history on main" }
+      { "id": "r2a", "kind": "message", "from": "henrik-mbp/cc-5e20", "at": "09:12", "text": "taking: quarantine the flaky e2e tests" },
+      { "id": "r2b", "kind": "message", "from": "henrik-mbp/cc-a41f", "at": "09:19", "text": "taking: rotate the server's TLS certificates" },
+      { "id": "r2c", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:20", "text": "taking: name the replay metrics as the dashboards expect" },
+      { "id": "r3", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:32", "text": "taking: reconnect_resumes_history on main" },
+      { "id": "r4", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:33", "text": "Kept the old metric names as aliases for one release rather than renaming them outright, so the dashboards don't go blank." },
+      { "id": "r5", "kind": "message", "from": "henrik-mbp/cc-a41f", "at": "09:37", "text": "Every client has used the new certificate since 08:40. The old one is only still valid." },
+      { "id": "r6", "kind": "message", "from": "henrik-mbp/cc-5e20", "at": "09:40", "text": "presence_survives_restart waited on a fixed sleep. It waits for the listener now; testing again." }
     ],
     "#decisions": [
       { "id": "3", "kind": "request", "from": "raj-studio/cc-91b7", "at": "09:14", "day": "Today", "text": "Build the new history index on production now?", "yes": "It builds online in about 4 minutes; replay stays on the old path meanwhile", "no": "It waits for tonight's window", "answered": "09:15" },
       { "id": "5", "kind": "request", "from": "andre-air/cc-2c08", "at": "09:20", "text": "Compact the WAL on irc-2 while it's serving?", "yes": "Frees 38 GB; writes pause for under a second", "no": "I drain irc-2 first, which takes 20 minutes", "answered": "09:22" },
-      { "id": "7", "kind": "request", "from": "henrik-mbp/cc-7d3a", "at": "09:36", "text": "Land the fix for main ahead of the queue?", "yes": "main is green in about 6 minutes; Andre reviews it after", "no": "It waits behind 3 landings, and main stays red", "answered": "09:36", "reactions": [{ "emoji": "👍", "count": 1 }] }
+      { "id": "7", "kind": "request", "from": "henrik-mbp/cc-7d3a", "at": "09:36", "text": "Land the fix for main ahead of the queue?", "yes": "main is green in about 6 minutes; Andre reviews it after", "no": "It waits behind 3 landings, and main stays red", "answered": "09:36", "reactions": [{ "emoji": "👍", "count": 1 }] },
+      { "id": "8", "kind": "request", "from": "henrik-mbp/cc-a41f", "at": "09:39", "text": "Revoke last month's TLS certificate now? Every client moved to the new one by 08:40.", "yes": "It's revoked; anything still holding it has to reconnect", "no": "It stays valid until it expires on 30 Nov", "irreversible": true }
     ],
     "henrik-mbp/cc-7d3a": [
       { "id": "a1", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:35", "day": "Today", "text": "The fix is in `server/tests/e2e/reconnect.rs`:", "code": { "language": "rust", "text": "let listener = TcpListener::bind((\"127.0.0.1\", 0)).await?;\nlet port = listener.local_addr()?.port();" } },
