@@ -108,7 +108,8 @@ impl Actor {
         to.iter().any(|name| {
             (!self.account.is_empty() && *name == self.account)
                 || self.session.as_ref().is_some_and(|session| {
-                    name == session
+                    // A session's id alone, never a `machine/session` of someone else's.
+                    (name == session && !session.contains('/'))
                         || *name == format!("{}/{session}", self.account)
                         || (self.account.is_empty() && name.ends_with(&format!("/{session}")))
                 })
@@ -435,6 +436,17 @@ impl Run {
     }
 
     /// The step it's on: the first neither done nor skipped; for a part, its one step.
+    /// Whether `by` may call it off: a person may, or whoever has the step it's on (it went
+    /// to them, or they took it on); another machine may not.
+    fn cancellable_by(&self, by: &Actor) -> bool {
+        by.person
+            || self.current().is_some_and(|i| match &self.steps[i] {
+                Status::Working(work) => work.has(by),
+                Status::Held { to, .. } => by.is_in(to),
+                _ => false,
+            })
+    }
+
     fn current(&self) -> Option<usize> {
         let open = |s: &Status| !matches!(s, Status::Done(_) | Status::Skipped);
         match &self.part {
@@ -901,7 +913,13 @@ impl Engine {
             },
             "cancel" => {
                 let id = rest.trim();
-                if self.runs.get(id).is_some_and(|r| r.finished.is_none()) {
+                let run = self.runs.get(id).filter(|r| r.finished.is_none());
+                if run.is_some_and(|run| !run.cancellable_by(by)) {
+                    said.push(Said::Reply(format!(
+                        "{}: only a person, or whoever has its step, may cancel {id}",
+                        by.name()
+                    )));
+                } else if run.is_some() {
                     self.finish(
                         id,
                         Outcome::Cancelled,
@@ -1147,7 +1165,15 @@ impl Engine {
         let Some(run) = self.runs.get(&action.run).filter(|r| r.finished.is_none()) else {
             return refuse(said, format!("there's no run {:?} going", action.run));
         };
+        // A person may call a run off, or whoever holds its step now; another machine may not.
         if action.act == Act::Cancel {
+            if !run.cancellable_by(by) {
+                let why = format!(
+                    "only a person, or whoever has its step, may cancel {}",
+                    action.run
+                );
+                return refuse(said, why);
+            }
             let why = Some(format!("cancelled by {}", by.name()));
             return self.finish(&action.run, Outcome::Cancelled, why, said);
         }

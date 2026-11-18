@@ -219,16 +219,30 @@ pub struct Fact {
 }
 
 impl Fact {
-    /// What a zirc `message` from `account` says.
+    /// What a zirc `message` from `account` says. A kind only CI says ([`only_cis`]) from
+    /// anyone else is kept as words: what counts landings, deploys and checks, and what zirc
+    /// suggests from them, is CI's word alone, as zircd shows it.
+    ///
+    /// [`only_cis`]: zirc_proto::ci::only_cis
     #[must_use]
     pub fn of_message(account: Option<String>, message: &Message) -> Self {
+        let kind = kind_of(&message.event);
+        if zirc_proto::ci::only_cis(&kind) && !zirc_proto::ci::speaks_for_ci(account.as_deref()) {
+            return Self {
+                agent: account.as_deref().is_some_and(crate::usage::is_agent),
+                session: Some(message.session.clone()).filter(|s| !s.is_empty()),
+                account,
+                kind: "text".into(),
+                ..Self::default()
+            };
+        }
         Self {
             agent: account.as_deref().is_some_and(crate::usage::is_agent),
             account,
             session: Some(message.session.clone()).filter(|s| !s.is_empty()),
             name: message.name.clone(),
             tool: message.tool.clone(),
-            kind: kind_of(&message.event),
+            kind,
             level: message
                 .level()
                 .and_then(|level| serde_json::to_value(level).ok())
@@ -830,7 +844,19 @@ pub fn rows(
             })
         },
     )?;
-    rows.collect()
+    rows.map(|row| row.map(ci_word_only)).collect()
+}
+
+/// `row` as its readers may take it: a kind only CI says, kept from another account before
+/// the store kept such rows as words ([`Fact::of_message`]), is words too.
+fn ci_word_only(mut row: Row) -> Row {
+    if zirc_proto::ci::only_cis(&row.kind) && !zirc_proto::ci::speaks_for_ci(row.account.as_deref())
+    {
+        row.kind = "text".into();
+        row.level = None;
+        row.data = None;
+    }
+    row
 }
 
 /// What [`keep_recorded`] does each time: catches up, and every [`TIDY`] prunes.
@@ -1297,5 +1323,65 @@ mod tests {
             .execute("DELETE FROM history", [])
             .unwrap();
         assert_eq!(prune(&mut store, &path).unwrap(), 1);
+    }
+
+    #[test]
+    fn keeps_a_landing_anyone_but_ci_says_as_words() {
+        let data =
+            serde_json::json!({"build": "7", "branch": "x", "state": "failed", "session": "cc-a"});
+        let message = Message::new(
+            "cc-a",
+            Event::Custom {
+                kind: zirc_proto::ci::LANDING_KIND.into(),
+                text: "landed".into(),
+                data,
+            },
+        );
+        let forged = Fact::of_message(Some("ada-mbp".into()), &message);
+        assert_eq!((forged.kind.as_str(), forged.data), ("text", None));
+        let ci = Fact::of_message(Some(zirc_proto::ci::NICK.into()), &message);
+        assert_eq!(ci.kind, zirc_proto::ci::LANDING_KIND);
+        assert!(ci.data.is_some());
+    }
+
+    #[test]
+    fn serves_a_landing_kept_from_anyone_but_ci_before_as_words() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = open(&dir.path().join("activity.db")).unwrap();
+        let landing = |account: &str| Fact {
+            account: Some(account.into()),
+            kind: zirc_proto::ci::LANDING_KIND.into(),
+            data: Some(json!({"build": "7", "state": "failed"})),
+            ..Fact::default()
+        };
+        insert(
+            &store,
+            None,
+            None,
+            1,
+            Some("#api/landings"),
+            false,
+            &landing("ada-mbp"),
+        )
+        .unwrap();
+        insert(
+            &store,
+            None,
+            None,
+            2,
+            Some("#api/landings"),
+            false,
+            &landing("zirc-ci"),
+        )
+        .unwrap();
+        let got = rows(&store, 0, 0, 100, false).unwrap();
+        let kinds: Vec<_> = got
+            .iter()
+            .map(|r| (r.kind.as_str(), r.data.is_some()))
+            .collect();
+        assert_eq!(
+            kinds,
+            [("text", false), (zirc_proto::ci::LANDING_KIND, true)]
+        );
     }
 }

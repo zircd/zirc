@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use zirc_proto::state::Level;
 
@@ -35,10 +35,10 @@ who = "mattias"
 says = "Ship {fix.cause}?"
 "##;
 
-/// People are themselves; `m3-mac` is a machine; guests and zirc's own may not act.
+/// People are themselves; `m3-mac` and `evil-mac` are machines; guests and zirc's own may not act.
 fn who(account: &str, session: Option<&str>) -> Option<Actor> {
     match account {
-        "m3-mac" => Some(Actor {
+        "m3-mac" | "evil-mac" => Some(Actor {
             account: account.to_owned(),
             session: session.map(str::to_owned),
             person: false,
@@ -191,8 +191,84 @@ fn a_deploy_is_checked_then_runs_as_its_nick() {
 }
 
 #[test]
+fn a_machine_speaks_only_for_the_sessions_it_alone_says_are_live_on_it() {
+    let mut hosted = Hosted::default();
+    hosted.know(
+        BTreeSet::new(),
+        [
+            ("m3-mac".to_owned(), "mattias".to_owned()),
+            ("evil-mac".to_owned(), "mallory".to_owned()),
+        ]
+        .into(),
+    );
+    hosted.heard(&live_on("m3-mac", &["cc-8b60f7"]));
+    hosted.heard(&live_on("evil-mac", &["cc-evil"]));
+    let outs = hosted.take(&deploy("mattias", MASTER), true, &who, 0);
+    installed(&mut hosted, outs);
+    hosted.take(
+        &zirc("#ops", "zirc-ci", "ci", broken("cc-8b60f7")),
+        true,
+        &who,
+        1,
+    );
+    let done = StepAction {
+        run: "master-1".into(),
+        step: "fix".into(),
+        act: Act::Done {
+            outputs: [("cause".to_owned(), "not-mine".to_owned())].into(),
+        },
+    };
+    // Another machine naming the owner's session, or one that isn't live on it, is nobody's.
+    for session in ["cc-8b60f7", "m3-mac/cc-8b60f7", "cc-gone"] {
+        let forged = hosted.take(
+            &zirc("#ops", "evil-mac", session, done.event()),
+            true,
+            &who,
+            2,
+        );
+        assert!(
+            said(&forged)[0].2.contains("is for cc-8b60f7"),
+            "{forged:?}"
+        );
+    }
+    // A session two machines say is theirs is neither's.
+    hosted.heard(&live_on("evil-mac", &["cc-8b60f7"]));
+    let owner = hosted.take(
+        &zirc("#ops", "m3-mac", "cc-8b60f7", done.event()),
+        true,
+        &who,
+        4,
+    );
+    assert!(said(&owner)[0].2.contains("is for"), "{owner:?}");
+    hosted.heard(&live_on("evil-mac", &[]));
+    let owner = hosted.take(
+        &zirc("#ops", "m3-mac", "cc-8b60f7", done.event()),
+        true,
+        &who,
+        5,
+    );
+    assert!(said(&owner)[0].2.contains("finished `fix`"), "{owner:?}");
+}
+
+#[test]
+fn a_session_named_for_an_account_or_a_machine_speaks_for_nobody() {
+    let holders: BTreeMap<String, Option<String>> = [
+        ("cc-1".to_owned(), Some("evil-mac".to_owned())),
+        ("mattias".to_owned(), Some("evil-mac".to_owned())),
+        ("m3-mac/cc-1".to_owned(), Some("evil-mac".to_owned())),
+    ]
+    .into();
+    let accounts: BTreeSet<String> = ["mattias".to_owned(), "m3-mac".to_owned()].into();
+    assert!(holds(&holders, &accounts, "evil-mac", "cc-1"));
+    assert!(!holds(&holders, &accounts, "m3-mac", "cc-1"));
+    assert!(!holds(&holders, &accounts, "evil-mac", "mattias"));
+    assert!(!holds(&holders, &accounts, "evil-mac", "m3-mac/cc-1"));
+}
+
+#[test]
 fn workers_claim_and_finish_steps_and_approvers_react() {
     let mut hosted = Hosted::default();
+    hosted.heard(&live_on("m3-mac", &["cc-8b60f7"]));
     let outs = hosted.take(&deploy("mattias", MASTER), true, &who, 0);
     installed(&mut hosted, outs);
     let started = hosted.take(
@@ -622,6 +698,7 @@ says = "both looked"
 #[test]
 fn a_step_for_each_is_answered_by_its_parts_name_and_kept_until_its_run_ends() {
     let mut hosted = Hosted::default();
+    hosted.heard(&live_on("m3-mac", &["cc-1", "cc-2"]));
     deploys(&mut hosted, "mattias", BOTH);
     let run = row("#ops", "mattias", PRIVMSG, "master_bot: run");
     let outs = hosted.take(&run, true, &who, 0);
@@ -728,6 +805,7 @@ fn a_restart_reads_it_all_back_and_says_nothing_old_again() {
     history.extend(kept(&started));
 
     let mut again = Hosted::default();
+    again.heard(&live_on("m3-mac", &["cc-8b60f7"]));
     let mut outs = Vec::new();
     for row in &history {
         outs.extend(again.take(row, false, &who, 100));
@@ -781,6 +859,7 @@ fn addressing_takes_the_usual_forms() {
 #[test]
 fn what_the_owner_does_and_what_ci_says_moves_their_task() {
     let mut hosted = Hosted::default();
+    hosted.heard(&live_on("m3-mac", &["cc-8b60f7"]));
     let outs = hosted.take(&deploy("mattias", MASTER), true, &who, 0);
     installed(&mut hosted, outs);
     hosted.take(
@@ -904,13 +983,27 @@ nudge = "10m"
 /// What machine `nick` says of its live sessions and their roles, in the organisation's
 /// channel, as the host's connection hears it.
 fn live_list(nick: &str, roles: &[(&str, &str)]) -> zirc_irc::Line {
-    let list = zirc_proto::session::Live {
-        sessions: roles.iter().map(|(s, _)| (*s).to_owned()).collect(),
-        roles: roles
-            .iter()
-            .map(|(s, r)| ((*s).to_owned(), vec![(*r).to_owned()]))
-            .collect(),
-    };
+    let sessions = roles.iter().map(|(s, _)| (*s).to_owned()).collect();
+    let roles = roles
+        .iter()
+        .map(|(s, r)| ((*s).to_owned(), vec![(*r).to_owned()]))
+        .collect();
+    said_live(nick, &zirc_proto::session::Live { sessions, roles })
+}
+
+/// Machine `nick` saying `sessions` are live on it, in no role.
+fn live_on(nick: &str, sessions: &[&str]) -> zirc_irc::Line {
+    let sessions = sessions.iter().map(|s| (*s).to_owned()).collect();
+    said_live(
+        nick,
+        &zirc_proto::session::Live {
+            sessions,
+            roles: BTreeMap::new(),
+        },
+    )
+}
+
+fn said_live(nick: &str, list: &zirc_proto::session::Live) -> zirc_irc::Line {
     let mut line = zirc_irc::Line::new("TAGMSG", [zirc_proto::ORG_CHANNEL]);
     line.source = Some(format!("{nick}!u@h"));
     line.tags = vec![(

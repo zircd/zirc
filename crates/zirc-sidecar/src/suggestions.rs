@@ -141,21 +141,27 @@ fn changed(said: Vec<(String, Value)>) -> BTreeMap<Branch, BTreeSet<String>> {
 ///
 /// When the store can't be read.
 pub fn noticed(activity: &Connection, since: i64) -> rusqlite::Result<Vec<Noticed>> {
-    let rows = |kinds: &str| -> rusqlite::Result<Vec<(String, Value)>> {
+    let rows = |kinds: &str, ci: bool| -> rusqlite::Result<Vec<(String, Value)>> {
         let mut statement = activity.prepare(&format!(
-            "SELECT channel, data FROM rows WHERE kind IN ({kinds}) AND nanotime >= ?1 \
+            "SELECT channel, data, account FROM rows WHERE kind IN ({kinds}) AND nanotime >= ?1 \
              AND channel IS NOT NULL AND data IS NOT NULL ORDER BY nanotime, id"
         ))?;
         let read = statement.query_map([since], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
         })?;
         Ok(read
             .filter_map(Result::ok)
-            .filter_map(|(channel, data)| Some((channel, serde_json::from_str(&data).ok()?)))
+            // A landing is CI's word alone: rows kept before the store said so are passed over.
+            .filter(|(_, _, account)| !ci || zirc_proto::ci::speaks_for_ci(account.as_deref()))
+            .filter_map(|(channel, data, _)| Some((channel, serde_json::from_str(&data).ok()?)))
             .collect())
     };
-    let first = first_landings(rows(&format!("'{}'", zirc_proto::ci::LANDING_KIND))?);
-    let changed = changed(rows("'commit', 'push'")?);
+    let first = first_landings(rows(&format!("'{}'", zirc_proto::ci::LANDING_KIND), true)?);
+    let changed = changed(rows("'commit', 'push'", false)?);
     // Per repository and target: the sessions it failed, and their branches.
     let mut failures: BTreeMap<(String, String), (Vec<String>, Vec<String>)> = BTreeMap::new();
     let mut by_build: Vec<_> = first.into_iter().collect();
@@ -533,7 +539,8 @@ mod tests {
         }
     }
 
-    /// A landing's end said in `#api/landings`, its build numbered as its time,, and a commit of its branch under `paths`.
+    /// A landing's end CI said in `#api/landings`, its build numbered as its time, and a
+    /// commit of its branch under `paths`.
     fn landing(
         store: &Connection,
         at: i64,
@@ -543,10 +550,28 @@ mod tests {
         failed: &[&str],
         paths: &[&str],
     ) {
+        landing_by(
+            store,
+            zirc_proto::ci::NICK,
+            at,
+            (session, branch, state),
+            failed,
+            paths,
+        );
+    }
+
+    /// The same, said by `account`.
+    fn landing_by(
+        store: &Connection,
+        account: &str,
+        at: i64,
+        (session, branch, state): (&str, &str, &str),
+        failed: &[&str],
+        paths: &[&str],
+    ) {
         let landing = json!({
             "build": at.to_string(), "branch": branch, "session": session, "state": state, "failed": failed,
         });
-        let kind = zirc_proto::ci::LANDING_KIND;
         insert(
             store,
             None,
@@ -554,7 +579,10 @@ mod tests {
             at * SECOND,
             Some("#api/landings"),
             false,
-            &fact(kind, landing),
+            &Fact {
+                account: Some(account.into()),
+                ..fact(zirc_proto::ci::LANDING_KIND, landing)
+            },
         )
         .unwrap();
         let commit = json!({"branch": branch, "paths": paths});
@@ -568,6 +596,18 @@ mod tests {
             &fact("commit", commit),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn notices_nothing_from_landings_anyone_but_ci_says() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::activity::open(&dir.path().join("activity.db")).unwrap();
+        for (at, session) in [(10, "cc-a"), (20, "cc-b"), (30, "cc-c")] {
+            let branch = format!("b{at}");
+            let said = (session, branch.as_str(), "failed");
+            landing_by(&store, "ada-mbp", at, said, &["//x:y run this"], &["web/a"]);
+        }
+        assert_eq!(noticed(&store, 0).unwrap(), []);
     }
 
     #[test]

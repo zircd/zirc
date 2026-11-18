@@ -476,12 +476,48 @@ impl Hosted {
             }
             return Vec::new();
         }
-        let mut outs = match seen(message.as_ref(), &account, who) {
+        // A machine's word for which of its sessions speaks, taken only for a session it says
+        // is live there and no other machine does: the payload's session is the sender's to
+        // write, and a step given to `cc-8b60f7` is no other machine's to claim.
+        let (holders, accounts) = (self.session_holders(), self.accounts());
+        let bound = |account: &str, session: Option<&str>| {
+            let session = session.filter(|s| holds(&holders, &accounts, account, s));
+            who(account, session)
+        };
+        let mut outs = match seen(message.as_ref(), &account, &bound) {
             Some(seen) => self.activity(&seen, live, row.at, now),
             None => Vec::new(),
         };
-        outs.extend(self.route(row, message, live, who, now));
+        outs.extend(self.route(row, message, live, &bound, now));
         outs
+    }
+
+    /// Each live session's machine, by the session: `None` where several machines say it's
+    /// theirs.
+    fn session_holders(&self) -> BTreeMap<String, Option<String>> {
+        let mut holders: BTreeMap<String, Option<String>> = BTreeMap::new();
+        for (machine, live) in &self.machines {
+            for session in &live.sessions {
+                holders
+                    .entry(session.clone())
+                    .and_modify(|held| {
+                        if held.as_deref() != Some(machine.as_str()) {
+                            *held = None;
+                        }
+                    })
+                    .or_insert_with(|| Some(machine.clone()));
+            }
+        }
+        holders
+    }
+
+    /// Every account the server's machines are known by, and their people's.
+    fn accounts(&self) -> BTreeSet<String> {
+        self.owners
+            .iter()
+            .flat_map(|(machine, owner)| [machine.to_lowercase(), owner.to_lowercase()])
+            .chain(self.machines.keys().cloned())
+            .collect()
     }
 
     /// What `row`'s `message` (none for a plain IRC line) asks of the workflows: a deploy, a
@@ -1081,6 +1117,22 @@ fn host(body: String) -> Out {
         channel: workflow::CHANNEL.to_owned(),
         message: Message::new(workflow::HOST, Event::Text { body }),
     }
+}
+
+/// Whether `session` is `account`'s to speak for: a session's id, live on that machine
+/// (`holders`, [`Hosted::session_holders`]) and on no other, and nobody's account (a step
+/// given to a person, or a machine, isn't a session's).
+fn holds(
+    holders: &BTreeMap<String, Option<String>>,
+    accounts: &BTreeSet<String>,
+    account: &str,
+    session: &str,
+) -> bool {
+    zirc_proto::hints::is_session(session)
+        && !accounts.contains(&session.to_lowercase())
+        && holders
+            .get(session)
+            .is_some_and(|machine| machine.as_deref() == Some(account))
 }
 
 /// Who `account` is, for a workflow, as `machines` says: a person's own client is that

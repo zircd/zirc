@@ -174,6 +174,9 @@ pub struct SealedPart {
 /// number.
 #[derive(Debug, Default)]
 pub(super) struct Sealing {
+    /// The organisation whose server this is, as the app said with its keys: only its keys
+    /// are held, handed out and taken, so another organisation's never cross to this one.
+    org: Option<String>,
     keys: Vec<Key>,
     revealed: HashSet<(String, usize)>,
     /// This device's key pair for being handed the key, which the app keeps; none in an app
@@ -202,10 +205,13 @@ pub fn seals(text: &str) -> bool {
 }
 
 impl Chat {
-    /// The organisation's keys this device holds, the newest first, which seals: as the app
-    /// keeps them, in the system's secret store.
-    pub fn set_keys(&mut self, keys: Vec<Key>) {
-        self.sealing.keys = keys;
+    /// The keys this device holds of `org`, the organisation whose server this is, the newest
+    /// first, which seal: as the app keeps them, in the system's secret store. Any of another
+    /// organisation's is passed over, and only `org`'s are taken from a teammate's device. A
+    /// chat never told its organisation, as a guest's isn't, holds, hands out and takes none.
+    pub fn set_keys(&mut self, org: &str, keys: Vec<Key>) {
+        self.sealing.keys = keys.into_iter().filter(|key| key.org() == org).collect();
+        self.sealing.org = Some(org.to_owned());
     }
 
     /// This device's key pair for being handed the organisation's key, which the app keeps
@@ -227,7 +233,12 @@ impl Chat {
     /// `id`, as this device lacks it; none when it has it, has asked already, has no device
     /// key or isn't in the channel.
     pub(super) fn ask_for_key(&mut self, id: Option<&str>) -> Vec<Line> {
-        let Some(device) = &self.sealing.device else {
+        let Some(device) = self
+            .sealing
+            .device
+            .as_ref()
+            .filter(|_| self.sealing.org.is_some())
+        else {
             return Vec::new();
         };
         let joined = self
@@ -347,7 +358,10 @@ impl Chat {
         else {
             return;
         };
-        let Some(key) = open_grant(device, value) else {
+        // Another organisation's key, labelled as it likes, is never this one's to seal with.
+        let Some(key) =
+            open_grant(device, value).filter(|key| Some(key.org()) == self.sealing.org.as_deref())
+        else {
             return;
         };
         let asked_for = self.sealing.asked.contains("") || self.sealing.asked.contains(&key.id());

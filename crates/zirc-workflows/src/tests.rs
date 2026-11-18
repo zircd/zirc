@@ -452,6 +452,50 @@ fn a_step_can_still_be_finished_by_hand_with_any_of_its_outputs() {
 }
 
 #[test]
+fn another_machine_naming_someones_machine_and_session_has_nothing_of_theirs() {
+    let mut e = engine(MASTER);
+    e.handle(broken("m3-mac/cc-8b60f7"), 0);
+    let other = Actor::session("evil-mac", "m3-mac/cc-8b60f7");
+    let said = e.handle(
+        act(other, "master-1", "fix", done(&[("cause", "not-mine")])),
+        1,
+    );
+    assert_eq!(
+        texts(&said),
+        ["reply: evil-mac/m3-mac/cc-8b60f7: `fix` of master-1 is for m3-mac/cc-8b60f7"]
+    );
+    let fixed = e.handle(act(owner(), "master-1", "fix", done(&[])), 2);
+    assert!(texts(&fixed)[0].contains("finished `fix`"), "{fixed:?}");
+}
+
+#[test]
+fn only_a_person_or_whoever_has_its_step_cancels_a_run() {
+    let mut e = running();
+    let other = Actor::session("other", "cc-123456");
+    let refused = e.handle(act(other.clone(), "master-1", "fix", Act::Cancel), 1);
+    assert_eq!(
+        texts(&refused),
+        ["reply: other/cc-123456: only a person, or whoever has its step, may cancel master-1"]
+    );
+    let by_mention = e.handle(
+        Input::Mention {
+            by: other,
+            text: "cancel master-1".into(),
+        },
+        2,
+    );
+    assert!(
+        texts(&by_mention)[0].contains("only a person"),
+        "{by_mention:?}"
+    );
+    let cancelled = e.handle(act(owner(), "master-1", "fix", Act::Cancel), 3);
+    assert_eq!(
+        texts(&cancelled),
+        ["`master-1` was cancelled: cancelled by m3-mac/cc-8b60f7"]
+    );
+}
+
+#[test]
 fn only_those_it_went_to_may_claim_it() {
     let mut e = running();
     let stranger = e.handle(

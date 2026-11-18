@@ -159,8 +159,8 @@ impl Cli {
                     });
                     // Sealed parts open with the organisation's keys this machine holds.
                     app.chat.random = zirc_core::sealed::fill;
-                    app.chat
-                        .set_keys(zirc_core::sealed::Keys::new(secrets.as_ref()).of(&org));
+                    let keys = zirc_core::sealed::Keys::new(secrets.as_ref()).of(&org);
+                    app.chat.set_keys(&org, keys);
                     // And it's handed the key by a teammate's device when it has none.
                     if let Some(device) = zirc_core::sealed::device_key(secrets.as_ref()) {
                         // Not connected yet: nothing to ask.

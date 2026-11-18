@@ -24,11 +24,18 @@ fn counting(bytes: &mut [u8]) -> bool {
     true
 }
 
-/// `nick` in #api, holding `keys`, on a server that echoes.
+/// `nick` in #api on acme's server, holding `keys`, on a server that echoes.
 fn chat(nick: &str, keys: Vec<Key>) -> Chat {
+    chat_on(nick, Some("acme"), keys)
+}
+
+/// `nick` on `org`'s server (none told, as a guest's page tells none), holding `keys`.
+fn chat_on(nick: &str, org: Option<&str>, keys: Vec<Key>) -> Chat {
     let mut chat = Chat::new(nick, "irc.zirc.test", Vec::new(), Options::default());
     chat.random = counting;
-    chat.set_keys(keys);
+    if let Some(org) = org {
+        chat.set_keys(org, keys);
+    }
     chat.connected(Link {
         nick: nick.into(),
         chathistory: true,
@@ -376,6 +383,14 @@ fn takes_a_key_only_from_a_members_device_and_only_the_one_it_asked_for() {
         Some("bob"),
     ));
     assert!(carol.take_received_keys().is_empty());
+    // The one she asked for, by its id, but labelled another organisation's: passed over, or
+    // a member here could make it the key she seals that organisation's messages with.
+    carol.receive(granted(
+        &Key::new("globex", [7; KEY_LEN]),
+        "bob!u@h",
+        Some("bob"),
+    ));
+    assert!(carol.take_received_keys().is_empty());
     // The one she asked for, from a member: taken.
     carol.receive(granted(&key(), "bob!u@h", Some("bob")));
     assert_eq!(carol.take_received_keys(), [key()]);
@@ -394,4 +409,47 @@ fn asks_for_the_key_a_part_was_sealed_with() {
     assert_eq!(ask.k, Some(key().id()));
     // Once a connection.
     assert!(tagged(bob.receive(heard(&mut alice, "again ||sk_2||")), ASK_TAG).is_none());
+}
+
+#[test]
+fn holds_hands_out_and_takes_only_its_own_organisations_keys() {
+    use zirc_proto::sealed::{ASK_TAG, GRANT_TAG};
+    // On globex's server, holding acme's key among globex's: it seals with globex's alone.
+    let globex = Key::new("globex", [2; KEY_LEN]);
+    let mut there = chat_on("alice", Some("globex"), vec![key(), globex.clone()]);
+    in_general(&mut there);
+    let mut asker = chat_on("bob", Some("globex"), Vec::new());
+    asker.set_device(DeviceKey::from_bytes([3; 32]).unwrap());
+    let ask = tagged(in_general(&mut asker), ASK_TAG).expect("an ask");
+    let answer =
+        tagged(there.receive(from(ask, "bob!u@h", Some("bob"))), GRANT_TAG).expect("an answer");
+    asker.receive(from(answer, "alice!u@h", Some("alice")));
+    assert_eq!(asker.take_received_keys(), [globex]);
+}
+
+#[test]
+fn a_chat_never_told_its_organisation_hands_out_and_takes_no_key() {
+    use zirc_proto::sealed::{ASK_TAG, GRANT_TAG};
+    // A guest's page: told no organisation, it asks for nothing and answers nobody, whatever
+    // keys the browser holds.
+    let mut guest = chat_on("guest-1a2b", None, vec![key()]);
+    let device = DeviceKey::from_bytes([4; 32]).unwrap();
+    assert!(tagged(guest.set_device(device.clone()), ASK_TAG).is_none());
+    assert!(tagged(in_general(&mut guest), ASK_TAG).is_none());
+    let mut staff = chat("dana", Vec::new());
+    staff.set_device(DeviceKey::from_bytes([3; 32]).unwrap());
+    let ask = tagged(in_general(&mut staff), ASK_TAG).expect("an ask");
+    assert!(
+        tagged(
+            guest.receive(from(ask, "dana!u@h", Some("dana"))),
+            GRANT_TAG
+        )
+        .is_none()
+    );
+    // Nor does it take a key pressed on it.
+    let value = crate::sealed::grant(&key(), &device.public(), [5; 32], [6; 12]).unwrap();
+    let mut pressed = Line::new("TAGMSG", ["guest-1a2b"]);
+    pressed.tags = vec![(GRANT_TAG.into(), Some(value))];
+    guest.receive(from(pressed, "dana!u@h", Some("dana")));
+    assert!(guest.take_received_keys().is_empty());
 }

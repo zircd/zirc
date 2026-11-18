@@ -3024,7 +3024,7 @@ mod tests {
         .unwrap();
         let mut app = app();
         let _ = app.select(1);
-        app.chat.set_keys(vec![key]);
+        app.chat.set_keys("acme", vec![key]);
         app.handle(
             format!(
                 "@msgid=m8;time=2026-10-30T11:04:00.000Z;+zirc.dev/sealed={sealed} \
