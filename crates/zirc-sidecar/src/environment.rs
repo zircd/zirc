@@ -235,6 +235,11 @@ pub fn ergo(server: &Server) -> Vec<(&'static str, Value)> {
 
 /// Ergo's `logging`, as default.yaml has it, at `level`, without what people say (that stays
 /// in the server's history, for who may read it) or the types that name channels.
+///
+/// Every line goes to stdout, and warnings and errors to stderr as well: Kubernetes's logging
+/// marks a line by its stream alone, stderr's ERROR and stdout's INFO, and with the whole log
+/// on stderr a tenant's every line was an error (`//ops:logs tenant:<org> --errors`). A
+/// warning or an error is on both streams, as Ergo's levels are only ever a least.
 fn logging(level: &str) -> String {
     let left_out = ["userinput", "useroutput"]
         .iter()
@@ -242,7 +247,12 @@ fn logging(level: &str) -> String {
         .map(|kind| format!(" -{kind}"))
         .collect::<Vec<_>>()
         .concat();
-    json!([{"method": "stderr", "type": format!("*{left_out}"), "level": level}]).to_string()
+    let types = format!("*{left_out}");
+    json!([
+        {"method": "stdout", "type": types, "level": level},
+        {"method": "stderr", "type": types, "level": "warn"},
+    ])
+    .to_string()
 }
 
 #[cfg(test)]
@@ -295,5 +305,33 @@ mod tests {
             panic!("no log");
         };
         assert!(log.contains("-userinput -useroutput -channels"));
+    }
+
+    #[test]
+    fn only_warnings_and_errors_are_on_stderr() {
+        let log = |debug: bool| -> serde_json::Value {
+            let env = ergo(&Server { debug, ..server() });
+            let Some(Value::Plain(log)) = value(&env, "ERGO__LOGGING") else {
+                panic!("no log");
+            };
+            serde_json::from_str(log).unwrap()
+        };
+        for (debug, level) in [(false, "info"), (true, "debug")] {
+            let loggers = log(debug);
+            let streams: Vec<_> = loggers
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|logger| (logger["method"].as_str(), logger["level"].as_str()))
+                .collect();
+            assert_eq!(
+                streams,
+                [
+                    (Some("stdout"), Some(level)),
+                    (Some("stderr"), Some("warn"))
+                ]
+            );
+            assert_eq!(loggers[0]["type"], loggers[1]["type"], "the same left out");
+        }
     }
 }
