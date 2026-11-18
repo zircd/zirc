@@ -167,9 +167,6 @@ async fn logged_in_then(
     }
 
     let credentials = confirmed_in_browser(home, &args, out).await?;
-    if let Some(account_id) = &credentials.account_id {
-        zirc_core::telemetry::link(home, account_id);
-    }
     // A web app that signs in to several organisations, or --org, adds to the machine's
     // setup; otherwise a login for another server than the machine's is refused, as before.
     if let (Some(earlier), false) = (&earlier, args.force)
@@ -189,7 +186,7 @@ async fn logged_in_then(
     let logged_in = logged_in(&credentials, &args.web)?;
     let settings = login_settings(&logged_in, earlier.as_ref(), args.force);
     settings.save(&path)?;
-    link_organisations(home, &credentials, &args.web);
+    zirc_core::telemetry::link_login(home, &credentials, &args.web);
     writeln!(out)?;
     for org in &logged_in {
         let how = org
@@ -276,19 +273,6 @@ async fn confirmed_in_browser(
 
 /// The organisations a login's `credentials` from `web` sign this machine in to, the first
 /// first. Each account's name is its nick, unless the web app has one for this machine.
-/// Remembers each organisation's opaque id a login at `web` gave, which analytics groups its
-/// events by.
-pub(crate) fn link_organisations(home: &Path, credentials: &Credentials, web: &str) {
-    for org in zirc_core::login::each_org(credentials, web).unwrap_or_default() {
-        if let Some(id) = &org.credentials.organisation_id {
-            let name = org
-                .name
-                .unwrap_or_else(|| zirc_core::settings::org_name(&org.credentials.server));
-            zirc_core::telemetry::link_organisation(home, &name, id);
-        }
-    }
-}
-
 pub(crate) fn logged_in(credentials: &Credentials, web: &str) -> Result<Vec<Organisation>> {
     let nick = |nick: &Option<String>, account: &Option<Account>| {
         nick.clone()

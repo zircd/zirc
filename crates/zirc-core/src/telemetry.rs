@@ -375,6 +375,24 @@ pub fn link_organisation(home: &Path, org: &str, organisation_id: &str) {
         std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(dir.join(org), organisation_id));
 }
 
+/// Links this install, with zirc's directory `home`, to what a sign-in at `web` brought in
+/// `credentials`: the account ([`link`]) and each organisation's opaque id
+/// ([`link_organisation`]). Every client that signs in calls it, so its events are the
+/// account's. Whether analytics is on or not.
+pub fn link_login(home: &Path, credentials: &zirc_proto::login::Credentials, web: &str) {
+    if let Some(account_id) = &credentials.account_id {
+        link(home, account_id);
+    }
+    for org in crate::login::each_org(credentials, web).unwrap_or_default() {
+        if let Some(id) = &org.credentials.organisation_id {
+            let name = org
+                .name
+                .unwrap_or_else(|| crate::settings::org_name(&org.credentials.server));
+            link_organisation(home, &name, id);
+        }
+    }
+}
+
 /// The opaque id [`link_organisation`] remembered for `org`, in the analytics files at `dir`.
 fn organisation(dir: &Path, org: &str) -> Option<String> {
     if !crate::settings::valid_org_name(org) {

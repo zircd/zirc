@@ -100,9 +100,7 @@ pub async fn sign_in(
     said?;
     // `Couldn't sign in: <why>`, as every app says it, when the error's chain is printed.
     let credentials = credentials.context(zirc_core::chat::COULDNT_SIGN_IN)?;
-    if let Some(account_id) = &credentials.account_id {
-        zirc_core::telemetry::link(home, account_id);
-    }
+    zirc_core::telemetry::link_login(home, &credentials, web);
     let signin = SignIn::from_credentials(&credentials, web, secrets)?;
     save(&signin, &path(home))?;
     let how = if signin.account {

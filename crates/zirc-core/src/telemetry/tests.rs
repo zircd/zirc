@@ -415,3 +415,29 @@ fn an_organisations_events_are_its_group() {
     }
     assert!(!home.path().join("telemetry/acme").exists());
 }
+
+#[test]
+fn a_sign_in_links_the_account_and_each_organisation() {
+    let home = tempfile::tempdir().unwrap();
+    let credentials: zirc_proto::login::Credentials = serde_json::from_value(serde_json::json!({
+        "server": {"host": "acme.irc.zirc.dev"},
+        "account_id": "acct_7f3a",
+        "organisation_id": "org-acme",
+        "orgs": [
+            {"name": "acme", "server": {"host": "acme.irc.zirc.dev"}, "organisation_id": "org-acme"},
+            {"name": "globex", "server": {"host": "globex.irc.zirc.dev"}, "organisation_id": "org-globex"},
+            {"name": "initech", "server": {"host": "initech.irc.zirc.dev"}},
+        ],
+    }))
+    .unwrap();
+    link_login(home.path(), &credentials, "https://zirc.dev");
+    let dir = dir(home.path());
+    assert_eq!(read(&dir.join("account")).as_deref(), Some("acct_7f3a"));
+    assert_eq!(organisation(&dir, "acme").as_deref(), Some("org-acme"));
+    assert_eq!(organisation(&dir, "globex").as_deref(), Some("org-globex"));
+    assert_eq!(
+        organisation(&dir, "initech"),
+        None,
+        "no id, nothing to group by"
+    );
+}
