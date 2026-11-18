@@ -130,6 +130,15 @@ pub fn diff(before: &Snapshot, after: &Snapshot) -> Vec<Change> {
     changes
 }
 
+/// The commit `rev` names in the repository at `root`, if it names one.
+pub async fn commit_of(root: &Path, rev: &str) -> Option<String> {
+    let name = format!("{rev}^{{commit}}");
+    git(root, &["rev-parse", "--verify", "--quiet", &name])
+        .await
+        .ok()
+        .filter(|commit| !commit.is_empty())
+}
+
 /// The root of the working tree containing `path`.
 ///
 /// # Errors

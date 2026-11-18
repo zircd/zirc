@@ -263,8 +263,19 @@ impl Daemon {
         } else {
             watched.sessions.names().map(str::to_owned).collect()
         };
+        // The remote's default branch as the repository has it now: moved by a fetch,
+        // unless it's this worktree's own push, said as one.
+        let remote = format!("origin/{}", watched.default_branch);
+        let (was, is) = (
+            watched.snapshot.remotes.get(&remote).cloned(),
+            after.remotes.get(&remote).cloned(),
+        );
+        let fetched = is.filter(|is| was.as_ref() != Some(is) && after.head.as_ref() != Some(is));
         watched.snapshot = *after;
         self.rebuilt(&rebuilt);
+        if let Some(head) = fetched {
+            self.default_seen(root, was, head);
+        }
         let Some(watched) = self.repos.get_mut(root) else {
             return;
         };

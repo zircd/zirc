@@ -932,10 +932,11 @@ async fn a_session_that_pushed_on_a_base_and_never_said_so_is_told_its_dropped()
     );
 }
 
-/// With no CI saying anything, a default branch that moves on origin under a session's files
-/// is said by zircd itself, which asks origin each minute: what moved, which of the
-/// session's files it changed, and the rebase. A merge made on the Git host, or anyone's CI
-/// not wired to zirc, said nothing before.
+/// With no CI saying anything, a default branch that moved on origin under a session's files
+/// is said by zircd itself once the repository has it, as after anyone's fetch there: what
+/// moved, which of the session's files it changed, and the rebase. zircd asks origin nothing
+/// and fetches nothing itself. A merge made on the Git host, or anyone's CI not wired to
+/// zirc, said nothing before.
 #[tokio::test]
 async fn a_default_branch_that_moves_with_no_ci_is_said_to_the_session_it_changes() {
     let ergo = require_ergo!();
@@ -976,10 +977,6 @@ async fn a_default_branch_that_moves_with_no_ci_is_said_to_the_session_it_change
             seconds: 3600,
         })
         .await;
-    // Origin as it stands is where zircd starts from.
-    clock.advance(std::time::Duration::from_mins(1));
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
     // Someone else's change to the same file reaches main, and no CI says so.
     let other = tempfile::tempdir().unwrap();
     git(other.path(), &["clone", "--quiet", origin, "."]);
@@ -998,11 +995,13 @@ async fn a_default_branch_that_moves_with_no_ci_is_said_to_the_session_it_change
     );
     git(other.path(), &["push", "--quiet", "origin", "main"]);
 
+    // The repository here learns of it when someone fetches, and zircd reads it there.
+    git(root, &["fetch", "--quiet", "origin"]);
     let mut looks = 0;
     let line = loop {
         looks += 1;
         assert!(looks <= 20, "never told main moved");
-        clock.advance(std::time::Duration::from_mins(1));
+        clock.advance(std::time::Duration::from_secs(5));
         let Ok(heard) =
             tokio::time::timeout(std::time::Duration::from_secs(3), next(&mut top)).await
         else {
@@ -1026,24 +1025,7 @@ async fn a_default_branch_that_moves_with_no_ci_is_said_to_the_session_it_change
         line.contains("changing files you're changing: money.py"),
         "{line}"
     );
-    assert!(
-        line.contains("git fetch origin main && git rebase origin/main"),
-        "{line}"
-    );
-    // Fetched into a ref of zircd's own: the session's view of origin is as it was.
-    let theirs = std::process::Command::new("git")
-        .args([
-            "rev-parse",
-            "refs/remotes/origin/main",
-            "refs/zirc/origin/main",
-        ])
-        .current_dir(root)
-        .output()
-        .unwrap();
-    let refs = String::from_utf8(theirs.stdout).unwrap();
-    let refs: Vec<&str> = refs.lines().collect();
-    assert_eq!(refs.len(), 2, "{refs:?}");
-    assert_ne!(refs[0], refs[1], "zircd moved the person's own ref");
+    assert!(line.contains("(`git rebase origin/main`)"), "{line}");
 }
 
 /// A push of a branch built on another session's, not landed, wakes that session, so it doesn't

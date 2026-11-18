@@ -12,15 +12,15 @@
 //!
 //! All of that comes from CI saying its landings in the channel. Where no CI says anything,
 //! as for someone alone who hasn't wired theirs in, or a merge made on the Git host, zircd
-//! looks itself: every [`EVERY`] it asks origin for the default branch's head
-//! ([`Daemon::check_default`]), and a head that moved with nobody having said so, seen
-//! twice so CI's own word comes first, is fetched into a ref of zircd's own, never the
-//! person's, and read for what it changed. A session changing those files is told now, with
-//! the rebase; the rest get the note above.
+//! says what it sees in the repository itself and asks origin nothing: each scan of a
+//! worktree reads the remote's default branch as the repository last fetched it, and a head
+//! that moved with nobody having said so ([`Daemon::default_seen`]) is read for what it
+//! changed. A session changing those files is told now, with the rebase; the rest get the
+//! note above. A commit or a push made on this machine is said as one already, and a move
+//! on origin nobody here has fetched isn't known, or said, until someone fetches.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use zirc_core::ipc::{Delivery, Response, Why};
 use zirc_core::sessions::LANDING_KIND;
@@ -29,18 +29,6 @@ use zirc_proto::{Event, Message};
 
 use super::{Daemon, Input, WATCHER_SESSION, in_repo};
 use crate::git;
-
-/// How often origin is asked for each repository's default branch's head. Where CI says
-/// its landings, a move is said once it's seen twice, a minute on at most; where none ever
-/// has, at once, as nothing else will say it: said a minute or two late, a session had found
-/// the move from its own refused landing first (the agent evals' PN1 probe, 17 Nov 2026).
-const EVERY: Duration = Duration::from_secs(30);
-
-/// How long one ask of origin, or one fetch from it, may take.
-const ASK_FOR: Duration = Duration::from_secs(30);
-
-/// Where zircd keeps the default branch as it fetched it: no ref of the person's.
-const KEPT: &str = "refs/zirc/origin";
 
 /// How many landings are counted for a session at most.
 const COUNTED: usize = 500;
@@ -53,22 +41,15 @@ pub(super) struct Moved {
     /// The states a session has a note of as broken, or heard so: session, repository's
     /// channel and state's name.
     broken: BTreeSet<(String, String, String)>,
-    /// Each repository's default branch's head on origin as last known, by channel: as CI
-    /// or a push said it, or as origin answered.
+    /// Each repository's default branch's head as last said or seen, by channel: as CI or
+    /// a push said it, or as a scan found it in the repository.
     heads: BTreeMap<String, String>,
-    /// A head origin answered that nobody has said yet, by channel: said by zircd itself
-    /// if origin answers it again.
-    unsaid: BTreeMap<String, String>,
-    /// When origin was last asked.
-    asked: Option<std::time::Instant>,
-    /// The channels of the repositories whose CI has said a landing: there, CI's word on a
-    /// move is waited for before zircd says it.
-    ci_says: BTreeSet<String>,
 }
 
-/// What a default branch that moved brought, as zircd read it once fetched.
+/// What a default branch that moved brought, as zircd read it in the repository.
 #[derive(Debug)]
 pub struct Brought {
+    /// The worktree whose scan saw it.
     root: PathBuf,
     channel: String,
     head: String,
@@ -169,50 +150,9 @@ fn moved_under_line(session: &str, branch: &str, brought: &Brought, theirs: &[&s
     format!(
         "{session}: {branch} moved on origin to {}{commits}{newest}, changing files you're \
          changing: {files}{and_more}. Rebase onto it before you build on or test those (`git \
-         fetch origin {branch} && git rebase origin/{branch}`), and keep both its changes and \
-         yours where they meet",
+         rebase origin/{branch}`), and keep both its changes and yours where they meet",
         short(&brought.head)
     )
-}
-
-/// `branch`'s head on origin, as the repository at `root` has origin: `None` when it can't
-/// be asked or has none.
-async fn head_on_origin(root: &Path, branch: &str) -> Option<String> {
-    let head = format!("refs/heads/{branch}");
-    let ask = tokio::process::Command::new("git")
-        .args(["ls-remote", "--heads", "origin", &head])
-        .current_dir(root)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .kill_on_drop(true)
-        .output();
-    let out = tokio::time::timeout(ASK_FOR, ask).await.ok()?.ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let said = String::from_utf8_lossy(&out.stdout);
-    let commit = said.split_whitespace().next()?;
-    (commit.len() >= 7).then(|| commit.to_owned())
-}
-
-/// Fetches `branch` from origin into zircd's own ref of it ([`KEPT`]), leaving the person's
-/// branches and their remote's refs as they are: whether it did.
-async fn fetched(root: &Path, branch: &str) -> bool {
-    let spec = format!("+refs/heads/{branch}:{KEPT}/{branch}");
-    let fetch = tokio::process::Command::new("git")
-        // With no refmap, Git would move the person's own `origin/<branch>` as well.
-        .args([
-            "fetch",
-            "--quiet",
-            "--no-tags",
-            "--refmap=",
-            "origin",
-            &spec,
-        ])
-        .current_dir(root)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .kill_on_drop(true)
-        .output();
-    matches!(tokio::time::timeout(ASK_FOR, fetch).await, Ok(Ok(out)) if out.status.success())
 }
 
 /// Whether `response` is a note that the default branch moved.
@@ -269,7 +209,7 @@ impl Daemon {
     }
 
     /// Keeps the default branch's head `response` says, CI's landing or a push of it, so
-    /// zircd doesn't say the same move again from what origin answers.
+    /// zircd doesn't say the same move again once a scan sees it.
     fn heard_head(&mut self, response: &Response) {
         let said = match response {
             Response::Delivery(delivery) => match &delivery.message.event {
@@ -286,95 +226,51 @@ impl Daemon {
         let Some((channel, head)) = said else {
             return;
         };
-        let by_ci = Landed::of(response).is_some();
         if let Some(repo) = self.repos.values().find(|w| in_repo(&channel, &w.channel)) {
-            let channel = repo.channel.clone();
-            self.moved.unsaid.remove(&channel);
-            if by_ci {
-                self.moved.ci_says.insert(channel.clone());
-            }
-            self.moved.heads.insert(channel, head);
+            self.moved.heads.insert(repo.channel.clone(), head);
         }
     }
 
-    /// Asks origin, off the loop, for the head of each watched repository's default branch,
-    /// once [`EVERY`]: one ask a repository, whatever its worktrees, and only where a session
-    /// works.
-    pub(super) fn check_default(&mut self) {
-        let now = self.clock.now();
+    /// A scan of the worktree at `root` found the remote's default branch at `head`, where
+    /// it was at `known`, as after a fetch there. Unless that head was said already, by CI,
+    /// a push or another worktree's scan, what it brought is read off the loop and said
+    /// ([`Self::default_moved`]). No commit to move from, as at a first fetch, is no move;
+    /// and with the local branch at that head it's this machine's own push, or a pull, said
+    /// as the push or the commits it is, whichever worktree's scan comes first.
+    pub(super) fn default_seen(&mut self, root: &Path, known: Option<String>, head: String) {
+        let Some(watched) = self.repos.get(root) else {
+            return;
+        };
+        let (channel, branch) = (watched.channel.clone(), watched.default_branch.clone());
         if self
             .moved
-            .asked
-            .is_some_and(|at| now.duration_since(at) < EVERY)
+            .heads
+            .insert(channel.clone(), head.clone())
+            .as_ref()
+            == Some(&head)
         {
             return;
         }
-        self.moved.asked = Some(now);
-        // Only where a session with a watch works: nobody else would hear it.
-        let mut asks: BTreeMap<String, (PathBuf, String)> = BTreeMap::new();
-        for (root, watched) in &self.repos {
-            if !asks.contains_key(&watched.channel) && !self.working_in(&watched.channel).is_empty()
-            {
-                asks.insert(
-                    watched.channel.clone(),
-                    (root.clone(), watched.default_branch.clone()),
-                );
-            }
-        }
-        if asks.is_empty() {
+        let Some(known) = known else {
             return;
-        }
-        let inputs = self.inputs.clone();
+        };
+        let (inputs, root) = (self.inputs.clone(), root.to_owned());
         tokio::spawn(async move {
-            let mut heads = Vec::new();
-            for (channel, (root, branch)) in asks {
-                if let Some(head) = head_on_origin(&root, &branch).await {
-                    heads.push((channel, root, branch, head));
-                }
+            let local = format!("refs/heads/{branch}");
+            if git::commit_of(&root, &local).await.as_deref() == Some(head.as_str()) {
+                return;
             }
-            let _ = inputs.send(Input::DefaultHeads(heads));
-        });
-    }
-
-    /// What origin answered: a head that's new and unsaid is kept to see again, and one seen
-    /// again is fetched and read, off the loop.
-    pub(super) fn default_heads(&mut self, heads: Vec<(String, PathBuf, String, String)>) {
-        for (channel, root, branch, head) in heads {
-            let Some(known) = self.moved.heads.get(&channel).cloned() else {
-                // The first answer is where things stand, not a move.
-                self.moved.heads.insert(channel, head);
-                continue;
-            };
-            if known == head {
-                self.moved.unsaid.remove(&channel);
-                continue;
-            }
-            // Where CI says its landings, its word comes first: seen again, it's unsaid.
-            if self.moved.ci_says.contains(&channel)
-                && self.moved.unsaid.get(&channel) != Some(&head)
-            {
-                self.moved.unsaid.insert(channel, head);
-                continue;
-            }
-            self.moved.unsaid.remove(&channel);
-            self.moved.heads.insert(channel.clone(), head.clone());
             tracing::info!("{branch} moved to {head} on origin, and nobody said so");
-            let inputs = self.inputs.clone();
-            tokio::spawn(async move {
-                if !fetched(&root, &branch).await {
-                    return;
-                }
-                let subjects = git::pushed_subjects(&root, Some(&known), &head).await;
-                let paths = git::pushed_paths(&root, Some(&known), &head).await;
-                let _ = inputs.send(Input::DefaultMoved(Brought {
-                    root,
-                    channel,
-                    head,
-                    subjects,
-                    paths,
-                }));
-            });
-        }
+            let subjects = git::pushed_subjects(&root, Some(&known), &head).await;
+            let paths = git::pushed_paths(&root, Some(&known), &head).await;
+            let _ = inputs.send(Input::DefaultMoved(Brought {
+                root,
+                channel,
+                head,
+                subjects,
+                paths,
+            }));
+        });
     }
 
     /// Says a default branch's move nobody else said: now to each session changing files it
