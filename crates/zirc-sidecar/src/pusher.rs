@@ -85,6 +85,23 @@ pub struct Pusher {
     pub delay: Duration,
 }
 
+/// Whether `endpoint` is one the web app's relay made for a phone, `<subscriber>api/push/<id>`,
+/// `subscriber` being the web app's address as the pusher says it (`https://zirc.dev/`). The
+/// pusher posts to nothing else: an endpoint is what a member's app says, and anywhere else
+/// it would have the tenant's pod post to whatever a member named, inside the cluster too.
+pub(crate) fn relayed(endpoint: &str, subscriber: &str) -> bool {
+    subscriber.ends_with('/')
+        && endpoint
+            .strip_prefix(subscriber)
+            .and_then(|rest| rest.strip_prefix("api/push/"))
+            .is_some_and(|id| {
+                !id.is_empty()
+                    && id
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            })
+}
+
 /// One phone, and how much each of its conversations notifies.
 pub struct Phone {
     /// Its registration.
@@ -377,6 +394,10 @@ impl Running {
                 auth,
                 settings,
             } => {
+                if !relayed(&endpoint, &self.pusher.subscriber) {
+                    warn!("the pusher refused a phone whose endpoint isn't zirc.dev's relay");
+                    return None;
+                }
                 let subscription = Subscription {
                     account: account.to_owned(),
                     endpoint: endpoint.clone(),
@@ -607,6 +628,11 @@ impl Running {
     /// Encrypts `line` for `subscription`'s phone and sends it; `urgent` for what notifies.
     /// A phone its push service says is gone is forgotten.
     async fn send(&self, subscription: &Subscription, line: &str, urgent: bool) {
+        // Kept before the pusher checked them: never posted to.
+        if !relayed(&subscription.endpoint, &self.pusher.subscriber) {
+            self.forget(&subscription.endpoint).await;
+            return;
+        }
         let body = match webpush::encrypt(&subscription.p256dh, &subscription.auth, line.as_bytes())
         {
             Ok(body) => body,

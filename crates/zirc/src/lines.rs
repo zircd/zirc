@@ -164,14 +164,8 @@ pub(crate) fn direct_line(direct: &Direct) -> String {
     channel_in(&line, direct.org.as_deref())
 }
 
-/// `text` as one line: what others send can hold newlines, and a line of theirs that began
-/// a line of its own could pass for one zirc wrote, such as `dm from <owner>: …`, which
-/// agents take as their user's.
-pub(crate) fn one_line(text: &str) -> String {
-    text.chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect()
-}
+/// `text` as one line ([`zirc_core::one_line`]).
+pub(crate) use zirc_core::one_line::one_line;
 
 /// An intent's line ends with how it meets the session's work, where zircd says: `#api
 /// alpha/cc-1: about to change web: … — different files: they change …; you change …`.

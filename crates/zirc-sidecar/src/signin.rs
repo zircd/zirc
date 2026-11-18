@@ -39,6 +39,13 @@ pub const LABEL_CHARS: usize = 64;
 /// How long the login log keeps an attempt, in seconds.
 pub const KEPT: i64 = 90 * 24 * 60 * 60;
 
+/// The most a log holds on the disk Ergo's history shares, in bytes: past it, its older half
+/// goes. Anyone may try to sign in, so the login log otherwise grows with every try.
+pub const MOST_BYTES: u64 = 16 * 1024 * 1024;
+
+/// The longest account name an attempt keeps, in characters: a token names any it likes.
+pub const ACCOUNT_CHARS: usize = 64;
+
 /// Where Ergo reaches the sidecar, beside its history on the disk they share.
 #[must_use]
 pub fn socket_beside(history: &Path) -> PathBuf {
@@ -225,6 +232,8 @@ impl Dated for Attempt {
 #[derive(Debug)]
 pub struct Log<T: Dated = Attempt> {
     path: PathBuf,
+    /// [`MOST_BYTES`], less in a test.
+    most: u64,
     kept: std::marker::PhantomData<T>,
 }
 
@@ -242,6 +251,7 @@ impl<T: Dated> Log<T> {
     pub fn at(path: PathBuf, now: i64) -> Self {
         let log = Self {
             path,
+            most: MOST_BYTES,
             kept: std::marker::PhantomData,
         };
         log.trim(now);
@@ -257,11 +267,29 @@ impl<T: Dated> Log<T> {
                     .create(true)
                     .append(true)
                     .open(&self.path)?;
-                writeln!(file, "{line}")
+                writeln!(file, "{line}")?;
+                file.metadata()
             });
-        if let Err(error) = written {
-            warn!(%error, path = %self.path.display(), "couldn't write a log");
+        match written {
+            Ok(written) if written.len() > self.most => self.halve(),
+            Ok(_) => {}
+            Err(error) => warn!(%error, path = %self.path.display(), "couldn't write a log"),
         }
+    }
+
+    /// Drops the older half of what's kept, by bytes: a log never outgrows [`MOST_BYTES`].
+    fn halve(&self) {
+        let Ok(text) = std::fs::read_to_string(&self.path) else {
+            return;
+        };
+        // From the first line that starts past the middle: a byte after a newline, so never
+        // inside a character.
+        let middle = text.len() / 2;
+        let newer = text.as_bytes()[middle..]
+            .iter()
+            .position(|&byte| byte == b'\n')
+            .map_or("", |end| &text[middle + end + 1..]);
+        self.replace(newer);
     }
 
     /// The entries kept, oldest first.
@@ -286,11 +314,16 @@ impl<T: Dated> Log<T> {
         if kept.len() == text.lines().count() {
             return;
         }
-        let partial = self.path.with_extension("jsonl.partial");
         let mut body = kept.join("\n");
         if !body.is_empty() {
             body.push('\n');
         }
+        self.replace(&body);
+    }
+
+    /// Puts `body` in the log's place, whole or not at all.
+    fn replace(&self, body: &str) {
+        let partial = self.path.with_extension("jsonl.partial");
         if let Err(error) =
             std::fs::write(&partial, body).and_then(|()| std::fs::rename(&partial, &self.path))
         {
@@ -405,6 +438,10 @@ impl Signin {
             attempt.method = "unknown".into();
             refused()
         };
+        // Named by whoever tried: kept no longer than an account's name can be.
+        attempt.account = attempt
+            .account
+            .map(|account| account.chars().take(ACCOUNT_CHARS).collect());
         self.log.add(&attempt);
         output
     }
@@ -727,6 +764,34 @@ mod tests {
         assert!(!keys.remove("ada", &devices[0].key()));
         keys.forget("ada");
         assert!(Keys::beside(&history).of("ada").is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_named_account_is_kept_short_and_the_log_small() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut signin = signin(&dir);
+        signin.log.most = 4096;
+        let input = Input {
+            account_name: Some("é".repeat(10_000)),
+            passphrase: Some("x".into()),
+            ..Input::default()
+        };
+        for _ in 0..200 {
+            signin.answer(&input, NOW).await;
+        }
+        let kept = signin.log.read();
+        assert!(
+            kept.iter()
+                .all(|a| a.account.as_ref().unwrap().chars().count() == ACCOUNT_CHARS)
+        );
+        let bytes = std::fs::metadata(dir.path().join("zirc-logins.jsonl"))
+            .unwrap()
+            .len();
+        assert!(
+            bytes <= 4096 && !kept.is_empty(),
+            "{bytes} bytes, {} kept",
+            kept.len()
+        );
     }
 
     #[test]

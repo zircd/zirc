@@ -220,6 +220,27 @@ async fn hears_the_history_written() {
     );
 }
 
+#[test]
+fn posts_only_to_the_relay() {
+    let zirc = "https://zirc.dev/";
+    assert!(relayed("https://zirc.dev/api/push/ab12-cd_E", zirc));
+    for elsewhere in [
+        "https://zirc.dev.evil.example/api/push/ab",
+        "https://evil.example/api/push/ab",
+        "http://10.0.0.1/api/push/ab",
+        "https://zirc.dev/api/push/",
+        "https://zirc.dev/api/push/../../admin",
+        "https://zirc.dev/api/push/ab?x=1",
+        "https://zirc.dev/api/other/ab",
+    ] {
+        assert!(!relayed(elsewhere, zirc), "{elsewhere}");
+    }
+    assert!(!relayed(
+        "https://zirc.devx/api/push/ab",
+        "https://zirc.dev"
+    ));
+}
+
 /// A stand-in push endpoint: answers every POST 201, and hands on each one's headers and body.
 async fn endpoint() -> (
     String,
@@ -288,7 +309,8 @@ async fn pushes_through_a_real_ergo_unless_read_elsewhere_first() {
         token: token.into(),
         history: ergo.history(),
         api: crate::ergo::Api::new("http://127.0.0.1:1", "unused"),
-        subscriber: "https://zirc.test/".into(),
+        // The stand-in's own address, as the relay's: the pusher posts nowhere else.
+        subscriber: url.strip_suffix("api/push/ada").unwrap().into(),
         delay: Duration::from_secs(1),
     };
     tokio::spawn(pusher.run(|_| async { true }));

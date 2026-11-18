@@ -29,6 +29,7 @@ pub mod login;
 pub mod machine;
 pub mod media;
 pub mod notes;
+pub mod one_line;
 pub mod owners;
 pub mod paths;
 pub mod playbook;
