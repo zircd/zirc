@@ -9,11 +9,14 @@
 //! signed with a key of its own (`<data>/media/links.key`) for one method, one object and
 //! what it's served as, until a time.
 //!
-//! Keys are `files/<id>` for a file and `cache/<id>/…` for what's made from it.
+//! Keys are `files/<id>` for a file and `cache/<id>/…` for what's made from it. A file is put
+//! once ([`once`]): what the server checked when its upload was done is what it keeps, though
+//! the link it was put with lasts a few minutes more.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Router;
@@ -31,6 +34,10 @@ use serde::Deserialize;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tower::ServiceExt as _;
+
+/// How many puts to disk have started: each writes to a part file of its own, so none writes
+/// into another's bytes once they're kept.
+static PUTS: AtomicU64 = AtomicU64::new(0);
 
 /// The path disk links are served at.
 pub const LINKS: &str = "/s";
@@ -105,6 +112,13 @@ fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
+}
+
+/// Whether the object at `key` is put once, and never replaced: a file's own bytes, which
+/// are checked once when its upload is done. What's made from it may be made again.
+#[must_use]
+pub fn once(key: &str) -> bool {
+    key.starts_with("files/")
 }
 
 /// Whether `key` is one the store keeps: `files/<id>` or `cache/<id>/<name>`, of plain
@@ -220,18 +234,26 @@ impl Store {
         }
     }
 
-    /// A link to `PUT` at most `most` bytes to `key`, for `seconds`.
+    /// A link to `PUT` at most `most` bytes to `key`, for `seconds`, with the headers to send:
+    /// for a file, only while nothing is there ([`once`]). A bucket's link signs `If-None-Match`,
+    /// so the bucket refuses a second put; the server's own refuses it itself.
     #[must_use]
     pub fn put_link(&self, key: &str, mime: &str, most: u64, seconds: u32, to: For) -> Put {
-        let headers = BTreeMap::from([("Content-Type".to_owned(), mime.to_owned())]);
+        let mut headers = BTreeMap::from([("Content-Type".to_owned(), mime.to_owned())]);
+        if once(key) {
+            headers.insert("If-None-Match".to_owned(), "*".to_owned());
+        }
         let url = match &self.backing {
             Backing::Bucket {
                 bucket,
                 credentials,
-            } => bucket
-                .put_object(Some(credentials), key)
-                .sign(Duration::from_secs(seconds.into()))
-                .to_string(),
+            } => {
+                let mut action = bucket.put_object(Some(credentials), key);
+                if once(key) {
+                    action.headers_mut().insert("if-none-match", "*");
+                }
+                action.sign(Duration::from_secs(seconds.into())).to_string()
+            }
             Backing::Disk(_) => {
                 let expires = now() + u64::from(seconds);
                 let signature = self.sign(&["PUT", key, &most.to_string(), &expires.to_string()]);
@@ -507,12 +529,15 @@ async fn take(
     let Some(path) = store.path(&key) else {
         return refused(StatusCode::NOT_FOUND);
     };
+    if once(&key) && tokio::fs::try_exists(&path).await.unwrap_or(true) {
+        return refused(StatusCode::PRECONDITION_FAILED);
+    }
     if let Some(dir) = path.parent()
         && tokio::fs::create_dir_all(dir).await.is_err()
     {
         return refused(StatusCode::SERVICE_UNAVAILABLE);
     }
-    let part = path.with_extension("part");
+    let part = path.with_extension(format!("part-{}", PUTS.fetch_add(1, Ordering::Relaxed)));
     let Ok(mut out) = tokio::fs::File::create(&part).await else {
         return refused(StatusCode::SERVICE_UNAVAILABLE);
     };
@@ -533,10 +558,25 @@ async fn take(
             return refused(StatusCode::SERVICE_UNAVAILABLE);
         }
     }
-    if out.flush().await.is_err() || tokio::fs::rename(&part, &path).await.is_err() {
+    if out.flush().await.is_err() {
+        let _ = tokio::fs::remove_file(&part).await;
         return refused(StatusCode::SERVICE_UNAVAILABLE);
     }
-    StatusCode::OK.into_response()
+    drop(out);
+    // A file is linked in only where nothing is, which two puts at once can't both do.
+    let kept = if once(&key) {
+        tokio::fs::hard_link(&part, &path).await
+    } else {
+        tokio::fs::rename(&part, &path).await
+    };
+    let _ = tokio::fs::remove_file(&part).await;
+    match kept {
+        Ok(()) => StatusCode::OK.into_response(),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            refused(StatusCode::PRECONDITION_FAILED)
+        }
+        Err(_) => refused(StatusCode::SERVICE_UNAVAILABLE),
+    }
 }
 
 #[cfg(test)]
@@ -651,6 +691,15 @@ mod tests {
         let put = store.put_link("files/abc", "image/png", 10, 60, For::People);
         assert!(put.url.contains("X-Amz-Signature="));
         assert_eq!(put.headers["Content-Type"], "image/png");
+        // A file is put once: the bucket is told so in what the link signs.
+        assert_eq!(put.headers["If-None-Match"], "*");
+        assert!(
+            put.url.contains("X-Amz-SignedHeaders=host%3Bif-none-match"),
+            "{}",
+            put.url
+        );
+        let made = store.put_link("cache/abc/poster", "image/jpeg", 10, 60, For::Beside);
+        assert!(!made.headers.contains_key("If-None-Match"));
     }
 
     fn serde_urlencoded_like(query: &str) -> Signed {

@@ -553,6 +553,14 @@ pub fn allowed<S: std::hash::BuildHasher>(
     }
 }
 
+/// Takes off a guest's line what only staff say: a `+zirc/support` event (who has a guest's
+/// conversation, its email, whether it's closed), which staff's apps would otherwise show as
+/// the team's. Whatever the case of its letters, as people read a tag's name, not compare it.
+pub fn without_staff_tags(line: &mut Line) {
+    line.tags
+        .retain(|(key, _)| !key.eq_ignore_ascii_case(SUPPORT_TAG));
+}
+
 /// The guests on now, by name and by address.
 #[derive(Default)]
 struct Guests {
@@ -1014,13 +1022,7 @@ async fn upgrade(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    // The visitor's own address: the first in X-Forwarded-For, as the edge's Envoy writes it.
-    let address = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .and_then(|a| a.trim().parse().ok())
-        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+    let address = visitor_address(&headers);
     ws.protocols(["text.ircv3.net", "binary.ircv3.net"])
         .max_message_size(MAX_MESSAGE)
         .max_frame_size(MAX_MESSAGE)
@@ -1029,6 +1031,20 @@ async fn upgrade(
                 info!(%why, "a guest left");
             }
         })
+}
+
+/// The visitor's own address, which their limits are kept by: the last in X-Forwarded-For,
+/// which the edge's Envoy appends as the address it was reached from, whatever the visitor put
+/// before it (as zirc.dev's `clientAddress` reads it). Unspecified without one.
+fn visitor_address(headers: &HeaderMap) -> IpAddr {
+    headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .next_back()
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.rsplit(',').next())
+        .and_then(|a| a.trim().parse().ok())
+        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED))
 }
 
 /// A line from the gateway itself, to the guest.
@@ -1289,9 +1305,10 @@ impl Passing {
     ) -> Result<(), String> {
         let channel = &self.channel;
         for text in lines(message) {
-            let Ok(line) = text.parse::<Line>() else {
+            let Ok(mut line) = text.parse::<Line>() else {
                 continue;
             };
+            without_staff_tags(&mut line);
             let command = line.command.to_ascii_uppercase();
             // Who they are is the token's: their own NICK and USER aren't passed on.
             if matches!(command.as_str(), "NICK" | "USER" | "PASS") {
@@ -2109,5 +2126,46 @@ mod tests {
         assert_eq!(long.take(&junk), Said::More);
         assert_eq!(long.take(&junk), Said::More);
         assert_eq!(long.take("x"), Said::TooMuch);
+    }
+
+    #[test]
+    fn a_guest_cannot_say_what_only_staff_say() {
+        // A visitor forging the email staff see, or who the conversation is assigned to.
+        for sent in [
+            "@+zirc/support=email:mallory@example.com TAGMSG #support",
+            "@+typing=active;+Zirc/Support=assigned:bob TAGMSG #support",
+            "@+zirc/support=closed;+draft/react=x TAGMSG #support",
+        ] {
+            let mut line: Line = sent.parse().unwrap();
+            without_staff_tags(&mut line);
+            assert!(
+                line.tags
+                    .iter()
+                    .all(|(k, _)| !k.eq_ignore_ascii_case(SUPPORT_TAG)),
+                "{sent}"
+            );
+        }
+        let mut typing: Line = "@+typing=active TAGMSG #support".parse().unwrap();
+        without_staff_tags(&mut typing);
+        assert_eq!(typing.tag("+typing"), Some("active"));
+    }
+
+    #[test]
+    fn a_visitor_is_known_by_the_address_the_edge_saw() {
+        let with = |values: &[&str]| {
+            let mut headers = HeaderMap::new();
+            for v in values {
+                headers.append("x-forwarded-for", v.parse().unwrap());
+            }
+            visitor_address(&headers)
+        };
+        let ip = |a: &str| a.parse::<IpAddr>().unwrap();
+        let none = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+        // What the visitor wrote comes first; the edge appends what it saw.
+        assert_eq!(with(&["1.2.3.4, 203.0.113.7"]), ip("203.0.113.7"));
+        assert_eq!(with(&["1.2.3.4", "203.0.113.7"]), ip("203.0.113.7"));
+        assert_eq!(with(&["2001:db8::1"]), ip("2001:db8::1"));
+        assert_eq!(with(&[]), none);
+        assert_eq!(with(&["203.0.113.7, junk"]), none);
     }
 }

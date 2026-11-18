@@ -65,6 +65,31 @@ async fn upload(
     mime: &str,
     bytes: &[u8],
 ) -> File {
+    uploaded(server, person, name, mime, bytes).await.0
+}
+
+/// `bytes` put with the link `started` gave, with the headers it said, as an app does.
+async fn put(
+    server: &common::Running,
+    started: &UploadStarted,
+    bytes: &[u8],
+) -> reqwest::StatusCode {
+    let mut put =
+        reqwest::Client::new().put(started.url.replace("https://irc.acme.test", &server.https));
+    for (name, value) in &started.headers {
+        put = put.header(name, value);
+    }
+    put.body(bytes.to_vec()).send().await.unwrap().status()
+}
+
+/// As [`upload`], and the upload it started.
+async fn uploaded(
+    server: &common::Running,
+    person: &Person,
+    name: &str,
+    mime: &str,
+    bytes: &[u8],
+) -> (File, UploadStarted) {
     let request = json!({"purpose": "share", "name": name, "mime": mime, "size": bytes.len()});
     let started = at(server, reqwest::Method::POST, "/api/media", person)
         .json(&request)
@@ -73,12 +98,7 @@ async fn upload(
         .unwrap();
     assert_eq!(started.status(), 200, "{}", started.text().await.unwrap());
     let started: UploadStarted = started.json().await.unwrap();
-    let mut put =
-        reqwest::Client::new().put(started.url.replace("https://irc.acme.test", &server.https));
-    for (name, value) in &started.headers {
-        put = put.header(name, value);
-    }
-    assert_eq!(put.body(bytes.to_vec()).send().await.unwrap().status(), 200);
+    assert_eq!(put(server, &started, bytes).await, 200);
     let done = at(
         server,
         reqwest::Method::POST,
@@ -89,7 +109,7 @@ async fn upload(
     .await
     .unwrap();
     assert_eq!(done.status(), 200, "{}", done.text().await.unwrap());
-    done.json().await.unwrap()
+    (done.json().await.unwrap(), started)
 }
 
 /// The bytes `/m/<id>` sends `person` to, at the link it answers; or its answer, when it
@@ -152,6 +172,19 @@ async fn an_image_is_what_its_bytes_say_and_anyone_signed_in_gets_it() {
     let got = fetch(&server, &image.url, &BOB).await;
     assert_eq!(got.status(), 200);
     assert_eq!(got.headers()["content-type"], "image/gif");
+    assert_eq!(got.bytes().await.unwrap().as_ref(), GIF);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_file_checked_once_done_cannot_be_put_again() {
+    let Some(server) = with_people().await else {
+        return;
+    };
+    let (image, started) = uploaded(&server, &ALICE, "cat.png", "image/png", GIF).await;
+    // The link still has minutes to run: it puts nothing over what was checked.
+    let other = b"<svg onload=alert(1)>      ";
+    assert_eq!(put(&server, &started, &other[..GIF.len()]).await, 412);
+    let got = fetch(&server, &image.url, &BOB).await;
     assert_eq!(got.bytes().await.unwrap().as_ref(), GIF);
 }
 

@@ -29,7 +29,8 @@ side by side, as a hosted server's pod does:
   zirc.dev's (`zirc_proto::media`), at `/api/media` on the HTTPS side, with the same rules
   (`zirc_proto::uploads`, `files`, `images`), the organisation's files settings from
   zirc.dev's Files page (`src/media.rs`). Apps sign in with their account's name and password,
-  which Ergo checks, upload to a link that lasts minutes, and download from `/m/<id>`, which
+  which Ergo checks, upload to a link that lasts minutes and puts a file once (a bucket must
+  take S3's `If-None-Match: *`, as S3, R2 and MinIO do), and download from `/m/<id>`, which
   sends them to another: S3's own, or the server's at `/s/…`, signed with a key in
   `/data/media/links.key`. People's pictures stay on zirc.dev.
 - Images are resized by [imgproxy](https://imgproxy.net), in the media container beside the
