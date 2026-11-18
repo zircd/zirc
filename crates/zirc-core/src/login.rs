@@ -245,21 +245,23 @@ impl Client {
         let interval = Duration::from_secs(started.interval.max(1).into());
         let deadline = tokio::time::Instant::now() + Duration::from_secs(started.expires_in.into());
         loop {
-            // A poll due when the login expires would be too late: at `>`, whether one more
-            // was made hung on two readings of the clock being apart.
-            let last_chance = tokio::time::Instant::now() + interval >= deadline;
+            // The last poll is at the deadline itself, not an interval before it: a login let in
+            // in its last seconds is still collected, as the web app answers a decided login
+            // even once it has lapsed. This clock's deadline is after the web app's, as it
+            // starts once the web app has answered.
+            let last = tokio::time::Instant::now() >= deadline;
             match self.status(&started.id).await {
                 Ok(LoginStatus::Done(credentials)) => return Ok(credentials),
                 Ok(LoginStatus::Denied) => return Err(Error::Denied),
                 Ok(LoginStatus::Expired) => return Err(Error::Expired),
-                Err(err) if last_chance || !passing(&err) => return Err(err),
+                Err(err) if last || !passing(&err) => return Err(err),
                 // Still waiting, or the web app away for a moment: poll again.
                 Ok(LoginStatus::Pending) | Err(_) => {}
             }
-            if last_chance {
+            if last {
                 return Err(Error::Expired);
             }
-            tokio::time::sleep(interval).await;
+            tokio::time::sleep_until((tokio::time::Instant::now() + interval).min(deadline)).await;
         }
     }
 
@@ -804,14 +806,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_last_poll_before_expiry_ends_the_wait() {
-        // Still pending, and no time for another poll: expired.
-        let (web, _served) = zirc_test_ergo::web::serve(vec![(200, PENDING.into())]);
+    async fn the_last_poll_is_at_the_deadline_and_ends_the_wait() {
+        // Let in in its last second: collected by the poll at the deadline.
+        let done = r#"{"status":"done","server":{"host":"acme.irc.zirc.dev"},"nick":"mattias"}"#;
+        let (web, served) =
+            zirc_test_ergo::web::serve(vec![(200, PENDING.into()), (200, done.into())]);
+        let client = Client::new(&web).unwrap();
+        let credentials = client.wait(&started(1)).await.unwrap();
+        assert_eq!(credentials.nick.as_deref(), Some("mattias"));
+        assert_eq!(served.join().unwrap().len(), 2);
+        // Still pending at the deadline: expired.
+        let (web, _served) =
+            zirc_test_ergo::web::serve(vec![(200, PENDING.into()), (200, PENDING.into())]);
         let client = Client::new(&web).unwrap();
         let err = client.wait(&started(1)).await.unwrap_err();
         assert!(matches!(err, Error::Expired), "{err:?}");
         // Away on the last poll: what it answered, rather than another try.
-        let (web, _served) = zirc_test_ergo::web::serve(vec![(503, "starting".into())]);
+        let (web, _served) =
+            zirc_test_ergo::web::serve(vec![(503, "starting".into()), (503, "starting".into())]);
         let client = Client::new(&web).unwrap();
         let err = client.wait(&started(1)).await.unwrap_err();
         assert!(passing(&err), "{err:?}");
