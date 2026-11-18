@@ -135,7 +135,9 @@ async fn started(
     let mut options = options(data.path(), ergo.to_owned(), ergo_config.to_owned());
     change(&mut options);
     let task = tokio::spawn(zirc_server::run::run(options.clone()));
-    for _ in 0..200 {
+    // A minute: each test starts a server of its own, Ergo with it, all at once, and on a
+    // loaded CI agent six of them hadn't answered in 20 s, still running (build 4144).
+    for _ in 0..600 {
         if task.is_finished() {
             let ended = task.await.expect("the server's task");
             return Err(format!("{ended:?}"));
