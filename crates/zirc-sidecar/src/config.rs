@@ -72,19 +72,45 @@ pub fn set(yaml: &str, path: &[&str], value: &str) -> Option<String> {
 /// When the block isn't where Ergo's `default.yaml` keeps it.
 #[must_use]
 pub fn without_listeners(yaml: &str) -> String {
+    let (start, end) = listeners(yaml).expect("no `listeners:` in Ergo's config");
+    let lines: Vec<&str> = yaml.lines().collect();
+    [&lines[..start], &lines[end..]].concat().join("\n") + "\n"
+}
+
+/// Where `yaml`'s `server.listeners` block is, as a range of lines: from its key until the
+/// next key at the same depth.
+fn listeners(yaml: &str) -> Option<(usize, usize)> {
     const START: &str = "    listeners:";
-    let mut lines = yaml.lines();
-    let mut kept: Vec<&str> = lines.by_ref().take_while(|line| *line != START).collect();
-    assert!(
-        kept.len() < yaml.lines().count(),
-        "no `{START}` in Ergo's config"
-    );
-    // The block runs until the next key at the same depth.
+    let lines: Vec<&str> = yaml.lines().collect();
+    let start = lines.iter().position(|line| *line == START)?;
     let is_inside = |line: &&str| {
         line.trim().is_empty() || line.trim_start().starts_with('#') || line.starts_with("     ")
     };
-    kept.extend(lines.skip_while(is_inside));
-    kept.join("\n") + "\n"
+    let end = start
+        + 1
+        + lines[start + 1..]
+            .iter()
+            .take_while(|line| is_inside(line))
+            .count();
+    Some((start, end))
+}
+
+/// `config` listening as `running` does: the listeners are the server's own, not a setting
+/// (a self-hosted server gives its own in Ergo's environment and its file has none, and one
+/// behind a proxy that ends TLS has no certificate for the release's 6697), so `running`'s
+/// block, or none, takes the place of `config`'s.
+fn listening_as(running: &str, config: &str) -> String {
+    let Some((start, end)) = listeners(config) else {
+        return config.to_owned();
+    };
+    let lines: Vec<&str> = config.lines().collect();
+    let theirs: Vec<&str> = listeners(running)
+        .map(|(from, to)| running.lines().skip(from).take(to - from).collect())
+        .unwrap_or_default();
+    [&lines[..start], &theirs[..], &lines[end..]]
+        .concat()
+        .join("\n")
+        + "\n"
 }
 
 /// Ergo's `history.restrictions.expire-time` for history that never expires: at zero its
@@ -235,7 +261,8 @@ pub enum ApplyError {
 }
 
 /// Puts `config` and `motd` in force on the Ergo beside the sidecar, whose config file and
-/// MOTD are in `dir`: writes them there and has Ergo read them again. A setting Ergo can't
+/// MOTD are in `dir`: writes them there, listening as it does already ([`listening_as`]), and
+/// has Ergo read them again. A setting Ergo can't
 /// change while it runs stays as it started, in the file too (else it couldn't read it
 /// again), and comes back among those that wait for a restart; the pod starts from the
 /// `ConfigMap`, which has it.
@@ -251,8 +278,9 @@ pub async fn apply(
     motd: &str,
 ) -> Result<Vec<String>, ApplyError> {
     let path = dir.join(CONFIG);
-    let running: Value = serde_yaml::from_str(&std::fs::read_to_string(&path)?)?;
-    let mut config = config.to_owned();
+    let running_text = std::fs::read_to_string(&path)?;
+    let running: Value = serde_yaml::from_str(&running_text)?;
+    let mut config = listening_as(&running_text, config);
     let mut pending = Vec::new();
     for (keys, field) in ON_RESTART {
         let get = |value: &Value| keys.iter().try_fold(value, |at, key| at.get(*key)).cloned();
@@ -297,6 +325,23 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_config_put_in_force_listens_as_the_server_does_already() {
+        let given = "server:\n    name: x\n    listeners:\n        \":6667\":\n        \":6697\":\n            tls:\n                cert: fullchain.pem\n    max-sendq: 96k\nnext:\n";
+        // A self-hosted server's file has none: its listeners are in Ergo's environment, and
+        // one behind a proxy that ends TLS has no certificate for 6697.
+        let own = "server:\n    name: x\n    max-sendq: 96k\nnext:\n";
+        assert_eq!(listening_as(own, given), own);
+        // A tenant's, or any with listeners of its own in the file, keeps them.
+        let running = "server:\n    name: x\n    listeners:\n        \":6667\":\n            proxy: true\n    max-sendq: 64k\n";
+        assert_eq!(
+            listening_as(running, given),
+            "server:\n    name: x\n    listeners:\n        \":6667\":\n            proxy: true\n    max-sendq: 96k\nnext:\n"
+        );
+        // A config with no block of its own is left as it is.
+        assert_eq!(listening_as(running, own), own);
+    }
 
     #[test]
     fn set_finds_a_key_by_its_section_and_adds_one_that_isn_t_there() {
