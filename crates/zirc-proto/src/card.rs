@@ -54,6 +54,21 @@ pub struct Card {
     /// One line under it all, such as who pressed what and how it went, or an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// A picture under its title, such as a preview deploy's screenshot: a file zirc.dev
+    /// hosts, uploaded as a shared one is. Apps draw it only from zirc.dev, as they draw a
+    /// shared file, never loading another address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<Image>,
+}
+
+/// A card's picture ([`Card::image`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "CardImage")]
+pub struct Image {
+    /// The file, as zirc.dev hosts it: an image.
+    pub file: crate::File,
+    /// What it shows, for a screen reader and where it isn't drawn: at most 120 characters.
+    pub alt: String,
 }
 
 /// A card's colour and icon.
@@ -225,11 +240,112 @@ impl Card {
                 within("an action's confirm", confirm, 120)?;
             }
         }
+        if let Some(image) = &self.image {
+            within("the image's alt", &image.alt, 120)?;
+            if image.alt.trim().is_empty() {
+                return Err("the image has no alt".to_owned());
+            }
+            web("the image's url", &image.file.url)?;
+            if !image.file.mime.starts_with("image/") {
+                return Err("the image isn't an image".to_owned());
+            }
+        }
         let bytes = serde_json::to_string(self).map_or(usize::MAX, |json| json.len());
         if bytes > MAX_BYTES {
             return Err(format!("it's {bytes} bytes as JSON, more than {MAX_BYTES}"));
         }
         Ok(())
+    }
+
+    /// A card called `title` with the id `id`, and nothing else yet: the builder every card
+    /// starts from, CI's, a workflow's, an integration's adapter's and `zirc card`'s alike,
+    /// so all of them are checked by [`Card::validate`] alone ([`Card::checked`]).
+    #[must_use]
+    pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            title: title.into(),
+            state: State::default(),
+            about: None,
+            fields: Vec::new(),
+            links: Vec::new(),
+            actions: Vec::new(),
+            steps: Vec::new(),
+            note: None,
+            image: None,
+        }
+    }
+
+    /// It in `state`.
+    #[must_use]
+    pub fn with_state(mut self, state: State) -> Self {
+        self.state = state;
+        self
+    }
+
+    /// It about `about`, an agent session or a nick.
+    #[must_use]
+    pub fn with_about(mut self, about: impl Into<String>) -> Self {
+        self.about = Some(about.into());
+        self
+    }
+
+    /// It with one more field.
+    #[must_use]
+    pub fn with_field(mut self, label: impl Into<String>, value: impl Into<String>) -> Self {
+        self.fields.push(Field {
+            label: label.into(),
+            value: value.into(),
+        });
+        self
+    }
+
+    /// It with one more link.
+    #[must_use]
+    pub fn with_link(mut self, label: impl Into<String>, url: impl Into<String>) -> Self {
+        self.links.push(Link {
+            label: label.into(),
+            url: url.into(),
+        });
+        self
+    }
+
+    /// It with one more button.
+    #[must_use]
+    pub fn with_action(mut self, action: Action) -> Self {
+        self.actions.push(action);
+        self
+    }
+
+    /// It with one more step.
+    #[must_use]
+    pub fn with_step(mut self, step: Step) -> Self {
+        self.steps.push(step);
+        self
+    }
+
+    /// It with `note` under it all.
+    #[must_use]
+    pub fn with_note(mut self, note: impl Into<String>) -> Self {
+        self.note = Some(note.into());
+        self
+    }
+
+    /// It with a picture under its title.
+    #[must_use]
+    pub fn with_image(mut self, image: Image) -> Self {
+        self.image = Some(image);
+        self
+    }
+
+    /// It, when apps can draw it ([`Card::validate`]).
+    ///
+    /// # Errors
+    ///
+    /// The first rule it breaks, as [`Card::validate`] says it.
+    pub fn checked(self) -> Result<Self, String> {
+        self.validate()?;
+        Ok(self)
     }
 
     /// The card a custom event's `data` carries, if it carries one that apps can draw.
@@ -270,6 +386,155 @@ impl Card {
             serde_json::to_value(self).expect("a card serializes"),
         );
         serde_json::Value::Object(data)
+    }
+}
+
+impl std::str::FromStr for State {
+    type Err = String;
+
+    /// A state by its name, as JSON says it: `info`, `pending`, `running`, `passed`,
+    /// `failed`, `cancelled` or `warning`.
+    fn from_str(name: &str) -> Result<Self, String> {
+        serde_json::from_value(serde_json::Value::String(name.to_owned())).map_err(|_| {
+            format!(
+                "{name:?} isn't a state: info, pending, running, passed, failed, cancelled or \
+                 warning"
+            )
+        })
+    }
+}
+
+impl std::str::FromStr for Who {
+    type Err = String;
+
+    /// Who by name, as JSON says it: `members`, `anyone`, `about`, `admins` or `owners`.
+    fn from_str(name: &str) -> Result<Self, String> {
+        serde_json::from_value(serde_json::Value::String(name.to_owned()))
+            .map_err(|_| format!("{name:?} isn't who: members, anyone, about, admins or owners"))
+    }
+}
+
+/// `spec`'s `<head>` and its `;key=value` options, as a command line or an adapter's config
+/// writes a card's parts: `Build and test=running;done=81;of=214`.
+fn options(spec: &str) -> (&str, Vec<(&str, &str)>) {
+    let mut parts = spec.split(';');
+    let head = parts.next().unwrap_or_default();
+    let options = parts
+        .filter_map(|part| part.split_once('='))
+        .map(|(key, value)| (key.trim(), value.trim()))
+        .collect();
+    (head, options)
+}
+
+/// `head` split at its first `=`: what's before it, and what's after it if there's one.
+fn named_value(head: &str) -> (&str, Option<&str>) {
+    match head.split_once('=') {
+        Some((name, value)) => (name.trim(), Some(value.trim())),
+        None => (head.trim(), None),
+    }
+}
+
+impl Field {
+    /// A field written `<label>=<value>`.
+    ///
+    /// # Errors
+    ///
+    /// When there's no `=`.
+    pub fn parse(spec: &str) -> Result<Self, String> {
+        let (label, value) = spec
+            .split_once('=')
+            .ok_or_else(|| format!("{spec:?} isn't <label>=<value>"))?;
+        Ok(Self {
+            label: label.trim().to_owned(),
+            value: value.trim().to_owned(),
+        })
+    }
+}
+
+impl Link {
+    /// A link written `<label>=<url>`.
+    ///
+    /// # Errors
+    ///
+    /// When there's no `=`.
+    pub fn parse(spec: &str) -> Result<Self, String> {
+        let field = Field::parse(spec).map_err(|_| format!("{spec:?} isn't <label>=<url>"))?;
+        Ok(Self {
+            label: field.label,
+            url: field.value,
+        })
+    }
+}
+
+impl Step {
+    /// A step called `name`, its state not said.
+    #[must_use]
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            state: State::default(),
+            detail: None,
+            done: None,
+            of: None,
+            secs: None,
+        }
+    }
+
+    /// A step written `<name>[=<state>][;detail=…][;done=…][;of=…][;secs=…]`: `Build and
+    /// test=running;done=81;of=214`.
+    ///
+    /// # Errors
+    ///
+    /// An unknown state or option, or a count that isn't a number.
+    pub fn parse(spec: &str) -> Result<Self, String> {
+        let (head, options) = options(spec);
+        let (name, state) = named_value(head);
+        let mut step = Self::new(name);
+        if let Some(state) = state {
+            step.state = state.parse()?;
+        }
+        let number = |key: &str, value: &str| {
+            value
+                .parse::<u32>()
+                .map_err(|_| format!("a step's {key} is a number, not {value:?}"))
+        };
+        for (key, value) in options {
+            match key {
+                "detail" => step.detail = Some(value.to_owned()),
+                "done" => step.done = Some(number(key, value)?),
+                "of" => step.of = Some(number(key, value)?),
+                "secs" => step.secs = Some(number(key, value)?),
+                _ => return Err(format!("a step has no {key:?}: detail, done, of or secs")),
+            }
+        }
+        Ok(step)
+    }
+}
+
+impl Action {
+    /// An action written `<id>=<label>[;who=…][;confirm=…]`: `retry=Retry;who=about`.
+    ///
+    /// # Errors
+    ///
+    /// No label, or an unknown who or option.
+    pub fn parse(spec: &str) -> Result<Self, String> {
+        let (head, options) = options(spec);
+        let (id, label) = named_value(head);
+        let label = label.ok_or_else(|| format!("{spec:?} isn't <id>=<label>"))?;
+        let mut action = Self {
+            id: id.to_owned(),
+            label: label.to_owned(),
+            who: Who::default(),
+            confirm: None,
+        };
+        for (key, value) in options {
+            match key {
+                "who" => action.who = value.parse()?,
+                "confirm" => action.confirm = Some(value.to_owned()),
+                _ => return Err(format!("an action has no {key:?}: who or confirm")),
+            }
+        }
+        Ok(action)
     }
 }
 
@@ -619,6 +884,93 @@ mod tests {
     }
 
     #[test]
+    fn builds_a_card_from_its_parts_as_a_command_line_writes_them() {
+        let card = Card::new("deploy/42", "web · deploy 42")
+            .with_state("running".parse().unwrap())
+            .with_about("cc-5e20")
+            .with_field("env", "prod")
+            .with_link("Logs", "https://example.com/42")
+            .with_action(
+                Action::parse("rollback=Roll back;who=about;confirm=Roll back 42?").unwrap(),
+            )
+            .with_step(Step::parse("Canary=running;done=3;of=5;secs=40").unwrap())
+            .with_note("rolling out")
+            .checked()
+            .unwrap();
+        assert_eq!(card.fields, [Field::parse("env=prod").unwrap()]);
+        assert_eq!(
+            card.links,
+            [Link::parse("Logs=https://example.com/42").unwrap()]
+        );
+        let action = &card.actions[0];
+        assert_eq!(
+            (action.who, action.confirm.as_deref()),
+            (Who::About, Some("Roll back 42?"))
+        );
+        let step = &card.steps[0];
+        assert_eq!(
+            (step.state, step.done, step.of, step.secs),
+            (State::Running, Some(3), Some(5), Some(40))
+        );
+    }
+
+    #[test]
+    fn says_what_is_wrong_with_a_part() {
+        assert!(
+            "busy"
+                .parse::<State>()
+                .unwrap_err()
+                .contains("isn't a state")
+        );
+        assert!(
+            Step::parse("Build;done=lots")
+                .unwrap_err()
+                .contains("a number")
+        );
+        assert!(
+            Step::parse("Build;colour=red")
+                .unwrap_err()
+                .contains("no \"colour\"")
+        );
+        assert!(Action::parse("retry").unwrap_err().contains("<id>=<label>"));
+        assert!(Field::parse("no value").is_err());
+        // A card that breaks a rule isn't one.
+        assert!(Card::new("", "untitled").checked().is_err());
+    }
+
+    #[test]
+    fn an_image_is_a_hosted_image_with_words_for_it() {
+        let file = |mime: &str| crate::File {
+            url: "https://zirc.dev/m/acme/abc".into(),
+            name: "preview.png".into(),
+            mime: mime.into(),
+            size: 2048,
+            width: Some(1280),
+            height: Some(800),
+            duration_ms: None,
+        };
+        let card = |mime: &str, alt: &str| {
+            Card::new("preview/7", "Preview of the blog").with_image(Image {
+                file: file(mime),
+                alt: alt.into(),
+            })
+        };
+        assert!(card("image/png", "The blog's front page").checked().is_ok());
+        assert!(
+            card("image/png", " ")
+                .checked()
+                .unwrap_err()
+                .contains("no alt")
+        );
+        assert!(
+            card("text/plain", "words")
+                .checked()
+                .unwrap_err()
+                .contains("isn't an image")
+        );
+    }
+
+    #[test]
     fn the_largest_card_still_fits_one_message() {
         let long = |n: usize| "x".repeat(n);
         let card = |value: usize| Card {
@@ -648,6 +1000,7 @@ mod tests {
                 .into(),
             steps: Vec::new(),
             note: Some(long(120)),
+            image: None,
         };
         // Every count and length at its limit is too much in all: the size is what binds.
         assert!(card(120).validate().unwrap_err().contains("bytes as JSON"));

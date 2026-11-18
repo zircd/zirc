@@ -143,6 +143,13 @@ const EXAMPLES: &[(&str, &[&str])] = &[
         "decide",
         &["zirc decide --session cc-1 --about deploys --quote \"ship on Fridays too\""],
     ),
+    (
+        "card",
+        &[
+            "zirc card deploy/42 \"web · deploy 42\" --state running --about cc-1 --step \"Canary=running;done=3;of=5\"",
+            "zirc card deploy/42 \"web · deploy 42\" --state passed --link \"Logs=https://example.com/42\" --dry-run",
+        ],
+    ),
     ("who", &["zirc who", "zirc who src/login"]),
     (
         "intend",
@@ -253,7 +260,9 @@ const GROUPS: &[(&str, &[&str])] = &[
     ("Start", &["login", "repo", "watch", "status", "tui"]),
     (
         "Say",
-        &["post", "dm", "note", "ask", "reply", "request", "decide"],
+        &[
+            "post", "dm", "note", "ask", "reply", "request", "decide", "card",
+        ],
     ),
     (
         "Coordinate",
@@ -616,6 +625,14 @@ enum Command {
     /// bytes in all. See `zirc reference`.
     #[command(hide = true)]
     Emit(post::EmitArgs),
+    /// Post a card every app draws, such as a deploy's or an integration's.
+    ///
+    /// Built from its parts, as docs/cards.md says. A later card with the same id from the same nick replaces it, whole. Each part is a
+    /// flag, checked as apps draw it: --field env=prod, --link Logs=https://…, --action
+    /// rollback=Roll back;who=about, --step Canary=running;done=3;of=5. --dry-run prints the
+    /// card as JSON, the same your own code would send, and posts nothing.
+    #[command(after_long_help = examples("card", ""))]
+    Card(post::CardArgs),
     /// Say what you're about to change.
     ///
     /// Say what you're about to change, before you start changing it.
@@ -1000,6 +1017,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Reply(args) => queries::reply(&socket, args, out).await,
         Command::Agents(command) => queries::agents(&socket, command, out).await,
         Command::Emit(args) => post::emit(&socket, args, out).await,
+        Command::Card(args) => post::card(&socket, args, out).await,
         Command::Join(args) => {
             name_session(&socket, args.session.as_deref(), name).await?;
             topic(&socket, args, true, out).await

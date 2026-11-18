@@ -490,6 +490,55 @@ pub(crate) struct EmitArgs {
     pub(crate) to: Destination,
 }
 
+// `zirc card`'s arguments: their doc comments are its --help.
+#[derive(Debug, Args)]
+pub(crate) struct CardArgs {
+    /// Its id: 1-64 of letters, digits and ._:/-. A later card with the same id from the
+    /// same nick replaces it.
+    pub(crate) id: String,
+    /// Its title, one line of at most 80 characters.
+    pub(crate) title: String,
+    /// Its colour and icon: info, pending, running, passed, failed, cancelled or warning.
+    #[arg(long)]
+    pub(crate) state: Option<String>,
+    /// The agent session or nick it's about.
+    #[arg(long)]
+    pub(crate) about: Option<String>,
+    /// A field, LABEL=VALUE, its value in zirc's Markdown. At most 8.
+    #[arg(long = "field", value_name = "LABEL=VALUE")]
+    pub(crate) fields: Vec<String>,
+    /// A link, LABEL=URL. At most 4.
+    #[arg(long = "link", value_name = "LABEL=URL")]
+    pub(crate) links: Vec<String>,
+    /// A button, ID=LABEL[;who=members|anyone|about|admins|owners][;confirm=QUESTION],
+    /// which reaches your integration through zirc.dev. At most 3.
+    #[arg(long = "action", value_name = "ID=LABEL")]
+    pub(crate) actions: Vec<String>,
+    /// A step, NAME[=STATE][;detail=…][;done=N][;of=N][;secs=N], in order. At most 10.
+    #[arg(long = "step", value_name = "NAME=STATE")]
+    pub(crate) steps: Vec<String>,
+    /// One line under it all, such as who pressed what and how it went.
+    #[arg(long)]
+    pub(crate) note: Option<String>,
+    /// Its kind of event, x-<team>/<name>.
+    #[arg(long, default_value = "x-team/card")]
+    pub(crate) kind: String,
+    /// What plain IRC clients show for it. Defaults to its title and state.
+    #[arg(long)]
+    pub(crate) text: Option<String>,
+    /// Print the card as JSON, checked, and post nothing.
+    #[arg(long)]
+    pub(crate) dry_run: bool,
+    /// For an integration: the short name apps show for it, such as deploy.
+    #[arg(long, value_name = "NAME")]
+    pub(crate) app: Option<String>,
+    /// Who's sending it. Defaults to $ZIRC_SESSION, then $USER.
+    #[arg(long, env = "ZIRC_SESSION")]
+    pub(crate) session: Option<String>,
+    #[command(flatten)]
+    pub(crate) to: Destination,
+}
+
 // `zirc clashes`'s arguments: their doc comments are its --help.
 #[derive(Debug, Args)]
 pub(crate) struct ClashesArgs {
@@ -643,15 +692,100 @@ pub(crate) async fn emit(socket: &Path, args: EmitArgs, out: &mut impl Write) ->
     if let Some(card) = card {
         data = card_named(&card)?.into_data(data);
     }
-    let (repo, to) = to.target();
+    send_event(
+        socket,
+        Sent {
+            kind,
+            data,
+            text: words(&text)?,
+            session,
+            to,
+            app,
+        },
+        out,
+    )
+    .await
+}
+
+/// `zirc card`: the card its flags build, through zirc-proto's builder, posted as `zirc
+/// emit --card` posts one.
+pub(crate) async fn card(socket: &Path, args: CardArgs, out: &mut impl Write) -> Result<()> {
+    use zirc_proto::card::{Action, Card, Field, Link, Step};
+    let bad = |why: String| anyhow::anyhow!("the card can't be drawn: {why}");
+    let mut card = Card::new(args.id, args.title);
+    if let Some(state) = &args.state {
+        card = card.with_state(state.parse().map_err(bad)?);
+    }
+    if let Some(about) = args.about {
+        card = card.with_about(about);
+    }
+    for field in &args.fields {
+        card.fields.push(Field::parse(field).map_err(bad)?);
+    }
+    for link in &args.links {
+        card.links.push(Link::parse(link).map_err(bad)?);
+    }
+    for action in &args.actions {
+        card = card.with_action(Action::parse(action).map_err(bad)?);
+    }
+    for step in &args.steps {
+        card = card.with_step(Step::parse(step).map_err(bad)?);
+    }
+    if let Some(note) = args.note {
+        card = card.with_note(note);
+    }
+    let card = card.checked().map_err(bad)?;
+    if args.dry_run {
+        writeln!(out, "{}", serde_json::to_string_pretty(&card)?)?;
+        return Ok(());
+    }
+    let text = args
+        .text
+        .unwrap_or_else(|| format!("{}: {}", card.title, state_word(card.state)));
+    send_event(
+        socket,
+        Sent {
+            kind: args.kind,
+            data: card.as_data(),
+            text,
+            session: args.session,
+            to: args.to,
+            app: args.app,
+        },
+        out,
+    )
+    .await
+}
+
+/// `state` as its card's JSON says it: `running`.
+fn state_word(state: zirc_proto::card::State) -> String {
+    serde_json::to_value(state)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+/// A team's event to send: what `zirc emit` and `zirc card` both post.
+struct Sent {
+    kind: String,
+    data: serde_json::Value,
+    text: String,
+    session: Option<String>,
+    to: Destination,
+    app: Option<String>,
+}
+
+/// Sends `sent` through zircd, and says where it went.
+async fn send_event(socket: &Path, sent: Sent, out: &mut impl Write) -> Result<()> {
+    let (repo, to) = sent.to.target();
     let request = Request::Emit {
         repo: here(repo)?,
-        session: session_or_user(session),
-        kind,
-        data,
-        text: words(&text)?,
+        session: session_or_user(sent.session),
+        kind: sent.kind,
+        data: sent.data,
+        text: sent.text,
         to,
-        app: app_named(app)?,
+        app: app_named(sent.app)?,
     };
     print_channel(ask(socket, request).await?, "sent to", out)
 }
@@ -836,6 +970,42 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(!err.starts_with("not posted:"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn card_builds_a_card_from_its_flags_and_shows_it() {
+        let home = tempfile::tempdir().unwrap();
+        let shown = async |args: &[&str]| {
+            let cli =
+                Cli::try_parse_from([&["zirc", "card"], args, &["--dry-run"]].concat()).unwrap();
+            let cli = Cli {
+                home: Some(home.path().to_owned()),
+                ..cli
+            };
+            let mut out = Vec::new();
+            run(cli, &mut out)
+                .await
+                .map(|()| String::from_utf8(out).unwrap())
+        };
+        let json = shown(&[
+            "deploy/42",
+            "web · deploy 42",
+            "--state",
+            "running",
+            "--field",
+            "env=prod",
+            "--step",
+            "Canary=running;done=3;of=5",
+        ])
+        .await
+        .unwrap();
+        let card: zirc_proto::card::Card = serde_json::from_str(&json).unwrap();
+        assert_eq!((card.fields.len(), card.steps[0].done), (1, Some(3)));
+        // A part apps couldn't draw is refused, saying why, and nothing is posted.
+        let err = shown(&["deploy/42", "web", "--state", "busy"])
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("isn't a state"), "{err}");
     }
 
     #[test]

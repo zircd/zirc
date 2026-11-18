@@ -57,6 +57,7 @@ const ACTS: &[(&str, Acts)] = &[
     ("ask", Acts::One),
     ("reply", Acts::One),
     ("emit", Acts::One),
+    ("card", Acts::One),
     ("task", Acts::One),
     ("wakes", Acts::One),
     ("wakes resume", Acts::One),

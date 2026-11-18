@@ -293,17 +293,8 @@ mod tests {
                 step: "fix".into(),
                 by: "m3-mac/cc-1".into(),
             },
-            card: Card {
-                id: "master-1".into(),
-                title: "master-1: fixing master".into(),
-                state: crate::card::State::Running,
-                about: None,
-                fields: Vec::new(),
-                links: Vec::new(),
-                actions: Vec::new(),
-                steps: Vec::new(),
-                note: None,
-            },
+            card: Card::new("master-1", "master-1: fixing master")
+                .with_state(crate::card::State::Running),
         };
         let custom = event.event("m3-mac/cc-1 claimed `fix`".into());
         assert!(crate::check_kind(KIND).is_none());

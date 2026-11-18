@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::Event;
-use crate::card::{Action, Card, Field, State as CardState};
+use crate::card::{Card, Field, State as CardState};
 
 /// The custom event kind a request is sent as.
 pub const KIND: &str = "x-zirc/request";
@@ -353,15 +353,11 @@ impl Request {
             ),
         };
         Card {
-            id: self.id.clone(),
-            title: clip(&self.question, 80),
             state,
             about: Some(clip(&self.session, 64)),
             fields,
-            links: Vec::new(),
-            actions: Vec::<Action>::new(),
-            steps: Vec::new(),
             note: Some(clip(&note, 120)),
+            ..Card::new(self.id.clone(), clip(&self.question, 80))
         }
     }
 }

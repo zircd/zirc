@@ -2001,19 +2001,15 @@ impl Engine {
             _ => None,
         };
         fit(Card {
-            id: clip(id, 64),
-            title: clip(&title, 80),
             state,
             about: about.map(|a| clip(&a, 64)),
             fields,
-            links: Vec::new(),
-            actions: Vec::new(),
-            steps: Vec::new(),
             note: run
                 .finished
                 .as_ref()
                 .and_then(Ending::said)
                 .map(|why| clip(&why, 120)),
+            ..Card::new(clip(id, 64), clip(&title, 80))
         })
     }
 }

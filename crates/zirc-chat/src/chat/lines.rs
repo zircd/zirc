@@ -916,6 +916,17 @@ impl<'a> Layout<'a> {
             (true, false) => SystemBody::Card,
             (false, false) => SystemBody::Blocks,
         };
+        // A card's picture, under its title, as a shared image is drawn: its alt as its name.
+        line.file = landing
+            .card
+            .as_ref()
+            .and_then(|card| card.image.as_ref())
+            .and_then(|image| {
+                self.line_file(&image.file).map(|drawn| LineFile {
+                    name: image.alt.clone(),
+                    ..drawn
+                })
+            });
         line.system = Some(SystemLine {
             outcome,
             body,
@@ -961,31 +972,41 @@ impl<'a> Layout<'a> {
         from: &str,
         continues: bool,
     ) -> Line {
-        let size_text = file::size_text(file.size);
+        let Some(drawn) = self.line_file(file) else {
+            let key = self.keys.of(entry);
+            let mut line = self.blank(key, Some(entry), entry.time, LineKind::Note);
+            line.text = format!(
+                "{from} shared {} ({}) from elsewhere, not shown",
+                file.name,
+                file::size_text(file.size)
+            );
+            return line;
+        };
+        let mut line = self.said(entry, LineKind::File, &file.name, continues);
+        line.link = None;
+        line.file = Some(drawn);
+        line
+    }
+
+    /// `file` as apps draw it, when the web app hosts it: never another address, as for a
+    /// shared file and a card's image alike.
+    fn line_file(&self, file: &zirc_proto::File) -> Option<LineFile> {
         let hosted = self
             .chat
             .files_web()
             .is_some_and(|web| file::is_hosted(file, web));
         if !hosted {
-            let key = self.keys.of(entry);
-            let mut line = self.blank(key, Some(entry), entry.time, LineKind::Note);
-            line.text = format!(
-                "{from} shared {} ({size_text}) from elsewhere, not shown",
-                file.name
-            );
-            return line;
+            return None;
         }
         let shape = FileShape::from(file::shape(file));
         let drawn = matches!(shape, FileShape::Image | FileShape::Video);
         let fitted =
             file::fit(file.width, file.height, MEDIA_WIDTH, MEDIA_HEIGHT).filter(|_| drawn);
-        let mut line = self.said(entry, LineKind::File, &file.name, continues);
-        line.link = None;
-        line.file = Some(LineFile {
+        Some(LineFile {
             name: file.name.clone(),
             mime: file.mime.clone(),
             size: file.size,
-            size_text,
+            size_text: file::size_text(file.size),
             shape,
             animated: file::animated(file),
             url: Some(file.url.clone()),
@@ -993,8 +1014,7 @@ impl<'a> Layout<'a> {
             height: fitted.map(|(_, height)| height),
             srcset: drawn.then(|| srcset(file)),
             poster: (shape == FileShape::Video).then(|| file::image_url(file, MEDIA_WIDTH * 2)),
-        });
-        line
+        })
     }
 
     /// Whether `nick` is around, as the dot on their face says: here in the conversation,
@@ -1979,15 +1999,9 @@ mod tests {
 
     fn card(actions: Vec<Action>) -> Card {
         Card {
-            id: "deploy/42".into(),
-            title: "web · deploy 42".into(),
             state: State::Pending,
-            about: None,
-            fields: Vec::new(),
-            links: Vec::new(),
             actions,
-            steps: Vec::new(),
-            note: None,
+            ..Card::new("deploy/42", "web · deploy 42")
         }
     }
 

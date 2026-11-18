@@ -2695,6 +2695,24 @@
       ],
       "description": "A step of what a card is about, such as a build's \"Build and test\"."
     },
+    "Image": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "$ref": "#/$defs/File",
+          "description": "The file, as zirc.dev hosts it: an image."
+        },
+        "alt": {
+          "type": "string",
+          "description": "What it shows, for a screen reader and where it isn't drawn: at most 120 characters."
+        }
+      },
+      "required": [
+        "file",
+        "alt"
+      ],
+      "description": "A card's picture ([`Card::image`])."
+    },
     "CiFailed": {
       "type": "object",
       "properties": {
@@ -4742,6 +4760,17 @@
             "null"
           ],
           "description": "One line under it all, such as who pressed what and how it went, or an error."
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Image"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A picture under its title, such as a preview deploy's screenshot: a file zirc.dev\nhosts, uploaded as a shared one is. Apps draw it only from zirc.dev, as they draw a\nshared file, never loading another address."
         }
       },
       "required": [

@@ -358,8 +358,6 @@ pub fn landing_card(data: &serde_json::Value, text: &str) -> Option<Card> {
         .join(" ");
     let note = note.trim_end_matches([' ', ':']);
     let mut card = Card {
-        id: id.to_owned(),
-        title: crate::clip(&title, 80),
         state,
         about: session.map(str::to_owned),
         fields,
@@ -367,6 +365,7 @@ pub fn landing_card(data: &serde_json::Value, text: &str) -> Option<Card> {
         actions,
         steps: data.steps,
         note: (!note.is_empty()).then(|| crate::clip(note, 120)),
+        ..Card::new(id, crate::clip(&title, 80))
     };
     // Steps CI said wrongly, or too many to fit, leave the card without them, not without
     // a card.

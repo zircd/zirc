@@ -784,20 +784,14 @@ fn whoever_had_it_may_still_finish_it_after_it_escalates() {
 fn a_card_stays_small_enough_to_draw() {
     // Eight fields of 120 three-byte characters are well past what a card may be.
     let card = Card {
-        id: "master-1".into(),
-        title: "master-1: fix a broken master".into(),
         state: CardState::Running,
-        about: None,
         fields: (0..8)
             .map(|i| Field {
                 label: format!("step-{i}"),
                 value: "€".repeat(120),
             })
             .collect(),
-        links: Vec::new(),
-        actions: Vec::new(),
-        steps: Vec::new(),
-        note: None,
+        ..Card::new("master-1", "master-1: fix a broken master")
     };
     assert!(card.validate().is_err());
     let fitted = fit(card);
