@@ -26,7 +26,32 @@ const ON_RESTART: &[(&[&str], &str)] = &[(&["server", "max-line-len"], "settings
 /// string). Keys are indented four spaces a level, as Ergo's file has them; a key that isn't
 /// there (or is only in a comment) goes first in its section. `None` when a section on the
 /// way isn't there.
+#[must_use]
 pub fn set(yaml: &str, path: &[&str], value: &str) -> Option<String> {
+    put(yaml, path, value, false)
+}
+
+/// As [`set`], and what was nested under the key goes too: its block value, such as the
+/// release's example under `accounts.jwt-auth.tokens`, comments in it included.
+#[must_use]
+pub fn replace(yaml: &str, path: &[&str], value: &str) -> Option<String> {
+    put(yaml, path, value, true)
+}
+
+/// `yaml` with Ergo's `accounts.jwt-auth` for the browser client's tokens' `keys`
+/// ([`crate::environment::token_auth_settings`]), the release's example token gone: in the
+/// file, which Ergo reads again ([`apply`]) as keys come and go, where its environment would
+/// restart it. As it was without keys. `None` when `yaml` has no `accounts.jwt-auth`.
+#[must_use]
+pub fn with_token_auth(yaml: &str, keys: &[String]) -> Option<String> {
+    crate::environment::token_auth_settings(keys)
+        .iter()
+        .try_fold(yaml.to_owned(), |yaml, (path, value)| {
+            replace(&yaml, path, value)
+        })
+}
+
+fn put(yaml: &str, path: &[&str], value: &str, nested_too: bool) -> Option<String> {
     let mut lines: Vec<String> = yaml.lines().map(str::to_owned).collect();
     let key_at = |line: &str, depth: usize, key: &str| {
         let indent = depth * 4;
@@ -56,7 +81,18 @@ pub fn set(yaml: &str, path: &[&str], value: &str) -> Option<String> {
     let depth = parents.len();
     let line = format!("{}{last}: {value}", " ".repeat(depth * 4));
     match (from..to).find(|&i| key_at(&lines[i], depth, last)) {
-        Some(at) => lines[at] = line,
+        Some(at) => {
+            lines[at] = line;
+            if nested_too {
+                let nested = lines[at + 1..]
+                    .iter()
+                    .take_while(|l| {
+                        !l.trim().is_empty() && l.len() - l.trim_start().len() > depth * 4
+                    })
+                    .count();
+                lines.drain(at + 1..at + 1 + nested);
+            }
+        }
         None => lines.insert(from, line),
     }
     Some(lines.join("\n") + "\n")

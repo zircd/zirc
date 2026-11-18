@@ -96,8 +96,6 @@ pub struct Server<'a> {
     pub require_sasl: bool,
     /// The web pages that may open a WebSocket here.
     pub web_origins: Vec<String>,
-    /// The public keys of the tokens the browser client logs in with (SASL IRCV3BEARER).
-    pub token_keys: Vec<String>,
     /// The socket the sidecar checks devices' own keys on ([`crate::signin`]), where they're on.
     pub auth_socket: Option<&'a str>,
     /// Where Ergo's HTTP API listens: on loopback, [`API_LISTENER`] unless a runner with
@@ -107,11 +105,12 @@ pub struct Server<'a> {
     pub debug: bool,
 }
 
-/// Ergo's overrides that let the browser client log in with a token the web app signed with
-/// one of `keys` (public keys, PEM) for an account that's already there (SASL IRCV3BEARER):
-/// none without keys. Every server's, and a team a developer runs (zirc-app's `team`).
+/// Ergo's `accounts.jwt-auth` that lets the browser client log in with a token the web app
+/// signed with one of `keys` (public keys, PEM) for an account that's already there (SASL
+/// IRCV3BEARER), any of them, so a new one can come in before the old one goes: by its key in
+/// Ergo's config file, and its value (JSON, which is YAML). None without keys.
 #[must_use]
-pub fn token_auth(keys: &[String]) -> Vec<(&'static str, String)> {
+pub fn token_auth_settings(keys: &[String]) -> Vec<([&'static str; 3], String)> {
     if keys.is_empty() {
         return Vec::new();
     }
@@ -120,11 +119,25 @@ pub fn token_auth(keys: &[String]) -> Vec<(&'static str, String)> {
         .map(|key| json!({"algorithm": "eddsa", "key": key, "account-claims": ["account"]}))
         .collect();
     vec![
-        ("ERGO__ACCOUNTS__JWT_AUTH__ENABLED", "true".to_owned()),
+        (["accounts", "jwt-auth", "enabled"], "true".to_owned()),
         // Never an account made by a token: guests come in through the gateway, without one.
-        ("ERGO__ACCOUNTS__JWT_AUTH__AUTOCREATE", "false".to_owned()),
-        ("ERGO__ACCOUNTS__JWT_AUTH__TOKENS", tokens.to_string()),
+        (["accounts", "jwt-auth", "autocreate"], "false".to_owned()),
+        (["accounts", "jwt-auth", "tokens"], tokens.to_string()),
     ]
+}
+
+/// [`token_auth_settings`] as Ergo's overrides, for a team a developer runs (zirc-app's
+/// `team`), whose Ergo starts from the release's own file. Every server's are in its file
+/// (`crate::config::with_token_auth`).
+#[must_use]
+pub fn token_auth(keys: &[String]) -> Vec<(String, String)> {
+    token_auth_settings(keys)
+        .into_iter()
+        .map(|(path, value)| {
+            let name = path.join("__").to_uppercase().replace('-', "_");
+            (format!("ERGO__{name}"), value)
+        })
+        .collect()
 }
 
 /// Ergo's overrides for `server`, in order.
@@ -198,14 +211,8 @@ pub fn ergo(server: &Server) -> Vec<(&'static str, Value)> {
     // Ergo's own push notifications are off: the sidecar's pusher decides what reaches
     // people's phones, by zirc's rules (crate::pusher), and Ergo refuses WEBPUSH REGISTER.
     env.push(("ERGO__WEBPUSH__ENABLED", "false".into()));
-    // The browser client logs in with a token the web app signs for an account that's
-    // already there (SASL IRCV3BEARER); Ergo checks it with the organisation's public keys
-    // alone, any of them, so a new one can come in before the old one goes.
-    env.extend(
-        token_auth(&server.token_keys)
-            .into_iter()
-            .map(|(key, value)| (key, value.into())),
-    );
+    // The browser client's tokens' keys are in Ergo's config file, which it reads again as
+    // they change (crate::config::with_token_auth), not here, which it reads only on starting.
     // Devices sign in with keys of their own, which the sidecar checks (crate::signin): Ergo
     // hands each SASL login to it over a socket on the disk they share, a device's token as
     // OAUTHBEARER. Ergo checks passphrases itself when the sidecar says no or doesn't answer.
@@ -267,7 +274,6 @@ mod tests {
             proxy_allowed_from: vec!["localhost".into()],
             require_sasl: true,
             web_origins: vec![],
-            token_keys: vec![],
             auth_socket: None,
             api_listener: API_LISTENER,
             debug: false,

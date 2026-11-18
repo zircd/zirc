@@ -234,7 +234,6 @@ impl Options {
             proxy_allowed_from,
             require_sasl: true,
             web_origins: vec![self.web.clone()],
-            token_keys: vec![],
             // Each of a person's apps signs in to their account with a key of its own.
             auth_socket: Some(&socket),
             api_listener: &api,
