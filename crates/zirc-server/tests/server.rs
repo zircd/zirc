@@ -84,17 +84,22 @@ async fn a_taken_api_port_stops_the_server_saying_why() {
     let Some((ergo, config)) = common::ergo() else {
         return;
     };
-    let data = tempfile::tempdir().unwrap();
-    let options = common::options(data.path(), ergo, config);
-    let _taken = std::net::TcpListener::bind(options.inside.api_listen).unwrap();
+    // On fresh ports again when another test took one of the others first, as `started` does:
+    // the sidecar's, so the server stopped for it before Ergo's API was looked for (build 4168).
+    let mut ended = String::new();
+    for _ in 0..3 {
+        let data = tempfile::tempdir().unwrap();
+        let options = common::options(data.path(), ergo.clone(), config.clone());
+        let _taken = std::net::TcpListener::bind(options.inside.api_listen).unwrap();
+        ended = tokio::time::timeout(Duration::from_secs(60), zirc_server::run::run(options))
+            .await
+            .expect("the server stopped")
+            .unwrap_err()
+            .to_string();
+        if ended.contains("Ergo's API never answered") || !ended.contains("AddrInUse") {
+            break;
+        }
+    }
 
-    let ended = tokio::time::timeout(Duration::from_secs(60), zirc_server::run::run(options))
-        .await
-        .expect("the server stopped")
-        .unwrap_err();
-
-    assert!(
-        ended.to_string().contains("Ergo's API never answered"),
-        "{ended}"
-    );
+    assert!(ended.contains("Ergo's API never answered"), "{ended}");
 }
