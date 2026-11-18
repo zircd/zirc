@@ -241,6 +241,21 @@ fn posts_only_to_the_relay() {
     ));
 }
 
+/// Waits until the pusher has looked at the history once and kept where it ends: what's said
+/// before then is the past, never pushed. Its first look runs beside the IRC connection the
+/// test waits for, so under CI's load a message could be said first and skipped (build 4051).
+async fn started_reading(history: PathBuf) {
+    tokio::task::spawn_blocking(move || {
+        let store = store::path_for(&history);
+        zirc_test_ergo::wait("the pusher's first look at the history").until_timed(|| {
+            store::open(&store)
+                .is_ok_and(|kept| store::last(&kept).is_ok_and(|last| last.is_some()))
+        })
+    })
+    .await
+    .unwrap();
+}
+
 /// A stand-in push endpoint: answers every POST 201, and hands on each one's headers and body.
 async fn endpoint() -> (
     String,
@@ -316,6 +331,7 @@ async fn pushes_through_a_real_ergo_unless_read_elsewhere_first() {
     tokio::spawn(pusher.run(|_| async { true }));
 
     let (phone, auth) = registered(&ada, &mut ada_hears, &url).await;
+    started_reading(ergo.history()).await;
 
     bob.privmsg("ada", "lunch?").unwrap();
     let (head, body) = tokio::time::timeout(Duration::from_secs(20), posts.recv())
