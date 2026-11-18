@@ -3942,13 +3942,17 @@
             "drop": {
               "type": "boolean",
               "description": "Forget the stack on `branch` instead."
+            },
+            "gone": {
+              "type": "boolean",
+              "description": "Whether origin, asked as the stack was said, no longer has `branch`."
             }
           },
           "required": [
             "op",
             "session"
           ],
-          "description": "Note that `session`'s branch is stacked on `branch`, another session's not yet\nlanded, whose head was `tip` as the session built on it: CI's line saying it landed\nwakes the session ([`Why::BranchLanded`]), as does a push that moves it\n([`Why::Landing`]), and the stack is kept, with `tip`, for the rebase onto the default\nbranch that follows. With `drop`, forget the stack on `branch`; with no `branch`, only\nsay the session's stacks. Answered with [`Response::Stacks`].",
+          "description": "Note that `session`'s branch is stacked on `branch`, another session's not yet\nlanded, whose head was `tip` as the session built on it: CI's line saying it landed\nwakes the session ([`Why::BranchLanded`]), as does a push that moves it\n([`Why::Landing`]), and the stack is kept, with `tip`, for the rebase onto the default\nbranch that follows. With `drop`, forget the stack on `branch`; with no `branch`, only\nsay the session's stacks. With `gone`, origin answered just now that it has no such\nbranch any more. Answered with [`Response::Stacks`].",
           "title": "StackRequest"
         },
         {

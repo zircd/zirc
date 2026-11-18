@@ -271,8 +271,20 @@ impl Daemon {
             after.remotes.get(&remote).cloned(),
         );
         let fetched = is.filter(|is| was.as_ref() != Some(is) && after.head.as_ref() != Some(is));
+        // The remote's branches the repository had and has no more: deleted from here, or
+        // pruned by a fetch.
+        let gone: Vec<(String, String)> = watched
+            .snapshot
+            .remotes
+            .iter()
+            .filter(|(name, _)| !after.remotes.contains_key(*name))
+            .filter_map(|(name, tip)| Some((name.strip_prefix("origin/")?.to_owned(), tip.clone())))
+            .collect();
         watched.snapshot = *after;
         self.rebuilt(&rebuilt);
+        if !gone.is_empty() {
+            self.stacks_gone(root, gone);
+        }
         if let Some(head) = fetched {
             self.default_seen(root, was, head);
         }

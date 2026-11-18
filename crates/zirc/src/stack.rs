@@ -120,11 +120,23 @@ struct Zircd<'a> {
 impl Zircd<'_> {
     /// Notes, forgets or (with neither) says the session's stacks; each way, all of them now.
     async fn ask(&self, branch: Option<&str>, tip: Option<&str>, drop: bool) -> Result<Vec<Stack>> {
+        self.say(branch, tip, drop, false).await
+    }
+
+    /// [`Self::ask`], saying with `gone` that origin has no such branch any more.
+    async fn say(
+        &self,
+        branch: Option<&str>,
+        tip: Option<&str>,
+        drop: bool,
+        gone: bool,
+    ) -> Result<Vec<Stack>> {
         let request = Request::Stack {
             session: self.session.to_owned(),
             branch: branch.map(str::to_owned),
             tip: tip.map(str::to_owned),
             drop,
+            gone,
         };
         let Response::Stacks { stacks } = ask_in(self.socket, self.org, request).await? else {
             return Err(crate::client::unexpected());
@@ -141,13 +153,13 @@ async fn stack_on(zircd: &Zircd<'_>, branch: &str, drop: bool, out: &mut impl Wr
         return Ok(());
     }
     let (tip, gone) = tip_of(branch)?;
-    zircd.ask(Some(branch), Some(&tip), false).await?;
+    zircd.say(Some(branch), Some(&tip), false, gone).await?;
     if gone {
         writeln!(
             out,
             "{branch} is gone from origin: stacked on it at {}, as your clone last saw it. If \
-             it landed, `zirc stack` says so now; if it was dropped, your watch wakes within \
-             a minute or two with what to do. Don't land yours with its commits in it.",
+             it landed, `zirc stack` says so now; if it was dropped, your watch wakes now \
+             with what to do. Don't land yours with its commits in it.",
             short(&tip)
         )?;
         return Ok(());

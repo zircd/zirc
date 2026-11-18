@@ -4,22 +4,24 @@
 //! prunes it. So the session waited on it for good, and one, unwoken, landed the dropped
 //! branch itself to free its own (the agent evals' S5, 16 Nov 2026).
 //!
-//! Every [`EVERY`], zircd asks origin, from a repository of each such session's, whether the
-//! branches stacked on that CI hasn't said landed are still there ([`Daemon::check_stacks`]),
-//! off its loop. A branch gone wakes each session stacked on it, once, with what to do: rebase
-//! past it onto the default branch, keep what it needs of it in its own, and never land it in
-//! its place ([`Daemon::stacks_checked`]). One pushed again is there after all.
+//! zircd asks origin nothing: it sees the branch go from the repository's own refs. A session
+//! stacks on its own person's branches far more than anyone else's, and those are deleted
+//! from this machine (`git push origin --delete`), which takes the repository's ref of it
+//! away then and there; a fetch that prunes does the same for anyone's. Each scan of a
+//! worktree says which of the remote's branches it no longer has ([`Daemon::stacks_gone`]),
+//! and `zirc stack`, which fetches the branch it's told, says when origin has none. A branch
+//! gone wakes each session stacked on it, once, with what to do: rebase past it onto the
+//! default branch, keep what it needs of it in its own, and never land it in its place
+//! ([`Daemon::stacks_checked`]). One whose head the default branch holds landed, and isn't
+//! said. One deleted elsewhere, as on the Git host, isn't known here until a fetch prunes it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use zirc_core::ipc::{Delivery, Response};
 use zirc_proto::{Event, Message};
 
 use super::{Daemon, Input, WATCHER_SESSION};
-
-/// How often origin is asked about the branches sessions are stacked on.
-const EVERY: Duration = Duration::from_mins(1);
 
 /// How many of the last things said are kept for what was said of a dropped branch, and how
 /// much of one its notice quotes.
@@ -46,48 +48,45 @@ pub(super) fn about_a_drop(response: &Response, session: &str) -> bool {
         && zirc_proto::addressed(body).is_some_and(|(to, _)| to.eq_ignore_ascii_case(session))
 }
 
-/// How long one ask of origin may take.
+/// How long one read of the repository may take.
 const ASK_FOR: Duration = Duration::from_secs(20);
 
 impl Daemon {
-    /// Asks origin, off the loop, whether the branches sessions here are stacked on, not
-    /// landed, are still there, once [`EVERY`].
-    pub(super) fn check_stacks(&mut self) {
-        let now = self.clock.now();
-        if self
-            .stacks_checked
-            .is_some_and(|at| now.duration_since(at) < EVERY)
-        {
+    /// The remote's `branches`, each with its head as it was, are gone from the repository
+    /// at `root`: deleted from here, or pruned by a fetch. Those a session is stacked on, not
+    /// landed as far as CI said or the default branch shows, are dropped
+    /// ([`Self::stacks_checked`]); Git is asked off the loop.
+    pub(super) fn stacks_gone(&mut self, root: &Path, branches: Vec<(String, String)>) {
+        let stacked = self.awaits.stacks_to_check();
+        let gone: Vec<(String, String)> = branches
+            .into_iter()
+            .filter(|(branch, _)| stacked.iter().any(|(_, on)| on == branch))
+            .collect();
+        let Some(watched) = self.repos.get(root) else {
+            return;
+        };
+        if gone.is_empty() {
             return;
         }
-        self.stacks_checked = Some(now);
-        let mut asks: Vec<(PathBuf, String)> = Vec::new();
-        for (session, branch) in self.awaits.stacks_to_check() {
-            let Some(root) = self
-                .repos
-                .iter()
-                .find(|(_, watched)| watched.is_of(&session))
-                .map(|(root, _)| root.clone())
-            else {
-                continue;
-            };
-            if !asks.iter().any(|(r, b)| *r == root && *b == branch) {
-                asks.push((root, branch));
-            }
-        }
-        if asks.is_empty() {
-            return;
-        }
-        let inputs = self.inputs.clone();
+        let default = format!("refs/remotes/origin/{}", watched.default_branch);
+        let (inputs, root) = (self.inputs.clone(), root.to_owned());
         tokio::spawn(async move {
-            let mut gone = Vec::new();
-            for (root, branch) in asks {
-                if absent(&root, &branch).await {
-                    gone.push((root, branch));
+            let mut dropped = Vec::new();
+            for (branch, tip) in gone {
+                if !crate::git::is_ancestor(&root, &tip, &default).await {
+                    dropped.push((root.clone(), branch));
                 }
             }
-            let _ = inputs.send(Input::StacksChecked(gone));
+            let _ = inputs.send(Input::StacksChecked(dropped));
         });
+    }
+
+    /// A repository `session` works in, to read Git from.
+    pub(super) fn root_of(&self, session: &str) -> Option<PathBuf> {
+        self.repos
+            .iter()
+            .find(|(_, watched)| watched.is_of(session))
+            .map(|(root, _)| root.clone())
     }
 
     /// Keeps `session`'s push of a branch built on another's, not landed, as its stack on
@@ -95,7 +94,7 @@ impl Daemon {
     /// to land, or never, and one whose base was deleted by then was refused (`couldn't
     /// fetch`), kept no stack, and waited for good on a landing that wouldn't come (the
     /// agent evals' PL2 probe, 17 Nov 2026). The base's head is read off the loop.
-    pub(super) fn note_stack(&mut self, root: &std::path::Path, session: &str, event: &Event) {
+    pub(super) fn note_stack(&mut self, root: &Path, session: &str, event: &Event) {
         let Event::Push { on: Some(on), .. } = event else {
             return;
         };
@@ -129,7 +128,7 @@ impl Daemon {
 
     /// The one session working in the repository `root` is a checkout or worktree of, across
     /// its worktrees: none when there are several, or no one.
-    fn lone_session_of(&self, root: &std::path::Path) -> Option<String> {
+    fn lone_session_of(&self, root: &Path) -> Option<String> {
         let common = &self.repos.get(root)?.common;
         let mut sessions = self
             .repos
@@ -194,7 +193,14 @@ impl Daemon {
             };
             let channel = watched.channel.clone();
             let default = watched.default_branch.clone();
-            let sessions: Vec<String> = watched.sessions.names().map(str::to_owned).collect();
+            // Every session of the repository's on this machine, whichever clone or worktree
+            // of it saw the branch go.
+            let sessions: Vec<String> = self
+                .repos
+                .values()
+                .filter(|other| other.channel == channel)
+                .flat_map(|other| other.sessions.names().map(str::to_owned))
+                .collect();
             for session in sessions {
                 let Some(tip) = self.awaits.dropped(&session, &branch) else {
                     continue;
@@ -289,22 +295,6 @@ fn dropped_line(
          added, write that part into yours, so yours does what your task asks without it, \
          then land{said}"
     )
-}
-
-/// Whether origin, as the repository at `root` has it, answers that it has no `branch`: never
-/// when it can't be asked.
-async fn absent(root: &std::path::Path, branch: &str) -> bool {
-    let head = format!("refs/heads/{branch}");
-    let ask = tokio::process::Command::new("git")
-        .args(["ls-remote", "--heads", "origin", &head])
-        .current_dir(root)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .kill_on_drop(true)
-        .output();
-    match tokio::time::timeout(ASK_FOR, ask).await {
-        Ok(Ok(out)) => out.status.success() && out.stdout.is_empty(),
-        _ => false,
-    }
 }
 
 #[cfg(test)]

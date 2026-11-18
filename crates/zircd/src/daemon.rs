@@ -110,8 +110,8 @@ pub enum Input {
     Fitted(fit::Found),
     /// The request waiting on the server with this token has waited long enough.
     Expired(u64),
-    /// The branches sessions are stacked on that origin no longer has, each with the
-    /// repository it was asked from ([`Daemon::check_stacks`]).
+    /// The branches sessions are stacked on that are gone from origin unlanded, each with
+    /// the repository that saw it go ([`Daemon::stacks_gone`]).
     StacksChecked(Vec<(PathBuf, String)>),
     /// A default branch that moved with nobody saying so, read for what it brought
     /// ([`Daemon::default_seen`]).
@@ -537,7 +537,6 @@ pub async fn run(mut daemon: Daemon, mut received: mpsc::UnboundedReceiver<Input
             _ = worktrees.tick() => {
                 start = Instant::now();
                 daemon.find_worktrees().await;
-                daemon.check_stacks();
             }
             _ = leases.tick() => {
                 start = Instant::now();
@@ -595,9 +594,6 @@ pub struct Daemon {
     invite_owner: BTreeSet<String>,
     /// `#ops`'s newest messages, kept to answer reads of states at once.
     ops: Option<ops_kept::Kept>,
-    /// When origin was last asked about the branches sessions are stacked on
-    /// ([`Daemon::check_stacks`]).
-    stacks_checked: Option<std::time::Instant>,
     /// The landings each session has been told its branch takes out, by session, commit and
     /// path ([`Daemon::check_undone`]).
     undone_told: BTreeSet<(String, String, String)>,
@@ -815,7 +811,6 @@ impl Daemon {
             joined: BTreeSet::new(),
             invite_owner: BTreeSet::new(),
             ops: None,
-            stacks_checked: None,
             undone_told: BTreeSet::new(),
             said_lately: VecDeque::new(),
             open_tasks: same_work::OpenTasks::default(),

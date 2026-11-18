@@ -301,7 +301,8 @@ impl Daemon {
                 branch,
                 tip,
                 drop,
-            } => self.stack(&session, branch.as_deref(), tip.as_deref(), drop),
+                gone,
+            } => self.stack(&session, branch.as_deref(), tip.as_deref(), (drop, gone)),
             Request::Stop => {
                 tracing::info!("stopping, as asked");
                 self.stopping = true;
@@ -666,7 +667,7 @@ impl Daemon {
         session: &str,
         branch: Option<&str>,
         tip: Option<&str>,
-        drop: bool,
+        (drop, gone): (bool, bool),
     ) -> Response {
         match (branch, tip) {
             (Some(branch), _) if drop => {
@@ -678,6 +679,10 @@ impl Daemon {
                 self.awaits.stack(session, branch, tip);
                 self.save_awaits();
                 self.read_base(session, branch, tip);
+                // Origin said so as the stack was said: no ref of it is left to see go.
+                if gone && let Some(root) = self.root_of(session) {
+                    self.stacks_gone(&root, vec![(branch.to_owned(), tip.to_owned())]);
+                }
             }
             _ => {}
         }

@@ -527,7 +527,8 @@ pub enum Request {
     /// wakes the session ([`Why::BranchLanded`]), as does a push that moves it
     /// ([`Why::Landing`]), and the stack is kept, with `tip`, for the rebase onto the default
     /// branch that follows. With `drop`, forget the stack on `branch`; with no `branch`, only
-    /// say the session's stacks. Answered with [`Response::Stacks`].
+    /// say the session's stacks. With `gone`, origin answered just now that it has no such
+    /// branch any more. Answered with [`Response::Stacks`].
     Stack {
         /// The session whose branch is stacked.
         session: String,
@@ -540,6 +541,9 @@ pub enum Request {
         /// Forget the stack on `branch` instead.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         drop: bool,
+        /// Whether origin, asked as the stack was said, no longer has `branch`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        gone: bool,
     },
     /// Stop zircd, after answering.
     Stop,

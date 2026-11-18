@@ -699,13 +699,14 @@ async fn a_session_stacked_on_a_branch_dropped_unlanded_is_told_what_to_do() {
         branch: branch.map(str::to_owned),
         tip: tip.map(str::to_owned),
         drop: false,
+        gone: false,
     };
     machine
         .request(stack(Some("money"), Some(tip.trim())))
         .await;
 
-    // Dropped: deleted from origin, never landed. A minute on, by zircd's clock, it looks.
-    git(remote.path(), &["branch", "-D", "money"]);
+    // Dropped: deleted from origin, from this repository, never landed. zircd sees its ref go.
+    git(root, &["push", "--quiet", "origin", "--delete", "money"]);
     let mut looks = 0;
     let line = loop {
         looks += 1;
@@ -789,8 +790,9 @@ async fn a_session_that_says_its_stack_once_its_base_is_gone_is_told_too() {
         branch: branch.map(str::to_owned),
         tip: tip.map(str::to_owned),
         drop: false,
+        gone: true,
     };
-    // Dropped before the session says its stack.
+    // Dropped before the session says its stack: `zirc stack`, which asks origin for it, says so.
     git(remote.path(), &["branch", "-D", "money"]);
     machine
         .request(stack(Some("money"), Some(tip.trim())))
@@ -878,6 +880,7 @@ async fn a_session_that_pushed_on_a_base_and_never_said_so_is_told_its_dropped()
         branch: branch.map(str::to_owned),
         tip: tip.map(str::to_owned),
         drop: false,
+        gone: false,
     };
     // Built on money and pushed, with no word of a stack.
     git(root, &["switch", "--quiet", "-c", "receipt"]);
@@ -900,7 +903,7 @@ async fn a_session_that_pushed_on_a_base_and_never_said_so_is_told_its_dropped()
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
     assert!(noted, "its push never showed its stack on money");
-    git(remote.path(), &["branch", "-D", "money"]);
+    git(root, &["push", "--quiet", "origin", "--delete", "money"]);
     let mut looks = 0;
     let line = loop {
         looks += 1;
