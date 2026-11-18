@@ -680,10 +680,10 @@ mod tests {
         let first = printed(&how);
         assert!(
             first.ends_with(
-                "\n  \u{21b3} hint (default): Fix it on `fix-login` and land again, saying so in \
-                 one plain line with zirc post, such as \"A test missed an import: fixed, \
-                 landing again\". If your change doesn't touch what failed, run zirc state \
-                 before you say so: someone may be on it.\n"
+                "\n  \u{21b3} hint (default): Fix it on `fix-login`, land again, and post it as \
+                 news, as the zirc guide says (Saying what you're doing). If your change \
+                 doesn't touch what failed, run zirc state before you say so: someone may be \
+                 on it.\n"
             ),
             "{first}"
         );

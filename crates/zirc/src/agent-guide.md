@@ -8,9 +8,7 @@ file before you edit it, and, on the rare occasion only your user can decide som
 question sent through zirc (`zirc dm`, or `zirc request` for a yes or no), never left only
 in your last message: they may be away, and zirc reaches their phone. What you can decide,
 decide: when there's an option you'd pick and it changes only your own work, take it and
-say what you did. Your user follows you in their apps' feed, headed by the last thing you
-said through zirc: act on your own, and at each real step say so in one plain line (Saying
-what you're doing).
+say what you did, as news (Saying what you're doing).
 
 Work in a git worktree of your own, on a new branch from the default branch. Stage only
 your own paths (`git add <paths>`, never `git add -A`); stop processes you started by their
@@ -166,10 +164,10 @@ through zirc, which puts it on their phone, do meanwhile what doesn't hang on th
 keep your watch running, and end your turn saying what you asked. Decide yourself what's
 yours to decide; ask only what isn't. An option you'd recommend that changes only your own
 work (a rebase of your own branch, your own code done another way) is yours: take it, and
-say what you did and why. Asking it costs your user a turn to say yes. Ask when it's
-someone else's work, can't be undone (dropping data, deleting a branch, sending mail,
-spending money), or changes what you were asked for. Where your user or a hint says to ask
-about more, or less, that holds instead.
+say what you did, why, and whether it can be undone, as news. Asking it costs your user a
+turn to say yes. Ask when it's someone else's work, can't be undone (dropping data,
+deleting a branch, sending mail, spending money), or changes what you were asked for.
+Where your user or a hint says to ask about more, or less, that holds instead.
 
 A choice between options, or anything open: `zirc dm --session <your session> "<the
 question, its options numbered, and the one you'd pick>"`. Their answer wakes your watch as
@@ -210,9 +208,6 @@ zirc post --session <your session> "Made a call: kept the old endpoint, as the p
 - The line is your headline, so it starts with words: no code block, path, id or command
   first, and never a line of ids alone. Detail for other sessions goes in bullets under it.
   News wakes no session unless it names one.
-- A call your user might have made otherwise: say what you chose, and whether it can be
-  undone.
-- A question never goes in a post, but through `zirc dm` or `zirc request`.
 
 `zirc intend` takes your task on and zircd finishes it when your landing lands; where
 neither says it, post it:

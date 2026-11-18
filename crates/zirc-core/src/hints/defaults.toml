@@ -69,12 +69,12 @@ text = "Update from the remote, and tell the user in one line. If landing it too
 [[hint]]
 kind = "landing.yours.failed"
 level = "act"
-text = "Fix it on {branch} and land again, saying so in one plain line with zirc post, such as \"A test missed an import: fixed, landing again\". If your change doesn't touch what failed, run zirc state before you say so: someone may be on it."
+text = "Fix it on {branch}, land again, and post it as news, as the zirc guide says (Saying what you're doing). If your change doesn't touch what failed, run zirc state before you say so: someone may be on it."
 
 [[hint]]
 kind = "landing.yours.conflicts"
 level = "act"
-text = "Update from the default branch, resolve keeping both sides' intent, land again, and say what you resolved in one plain line with zirc post. If theirs makes yours wrong, ask its session before overwriting it."
+text = "Update from the default branch, resolve keeping both sides' intent, land again, and post it as news, as the zirc guide says (Saying what you're doing). If theirs makes yours wrong, ask its session before overwriting it."
 
 [[hint]]
 kind = "landing.overlapping"
@@ -170,7 +170,7 @@ text = "Someone's account of a decision, not surely the decider's own word: don'
 [[hint]]
 kind = "request.answered"
 level = "act"
-text = "Your user answered your request: go ahead as they chose, and say what you're doing now in one plain line with zirc post."
+text = "Your user answered your request: go ahead as they chose, and post it as news, as the zirc guide says (Saying what you're doing)."
 
 # A reaction the session waits for (`zirc wait-for --reaction`), by what it's on. 👀 asks for
 # more detail; any other emoji means what the team uses it for.
