@@ -167,7 +167,8 @@ work (a rebase of your own branch, your own code done another way) is yours: tak
 say what you did, why, and whether it can be undone, as news. Asking it costs your user a
 turn to say yes. Ask when it's someone else's work, can't be undone (dropping data,
 deleting a branch, sending mail, spending money), or changes what you were asked for.
-Where your user or a hint says to ask about more, or less, that holds instead.
+Where your user, or the `start` hint under your first `zirc intend`, says to ask about more
+or less, that holds instead.
 
 A choice between options, or anything open: `zirc dm --session <your session> "<the
 question, its options numbered, and the one you'd pick>"`. Their answer wakes your watch as

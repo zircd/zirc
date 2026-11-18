@@ -5,6 +5,13 @@
 # line lacks it, as a failed landing's line names its build but not its branch. A repository's .zirc/hints.toml, the organisation and the
 # person's ~/.zirc/config.toml say otherwise for their own (zirc hints lists the effective ones).
 
+# What a person or team wants agents to ask them about ("Ask me about") goes in their own
+# start hint; zirc's is quiet, as the agent guide's Asking your user says the default.
+[[hint]]
+kind = "start"
+level = "quiet"
+text = "Ask your user as the zirc guide says (Asking your user)."
+
 [[hint]]
 kind = "overlap"
 level = "tell"

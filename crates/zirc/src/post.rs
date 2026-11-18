@@ -87,6 +87,7 @@ async fn siblings(socket: &Path, session: &str) -> String {
 /// on no task, its `taking:` post, so one command does both; then who else is on those paths.
 pub(crate) async fn intend(
     socket: &Path,
+    home: &Path,
     paths: Vec<PathBuf>,
     summary: String,
     seconds: u64,
@@ -132,6 +133,9 @@ pub(crate) async fn intend(
             writeln!(out, "{}", zirc_core::clashes::NOBODY)?;
         }
     }
+    if takes {
+        write!(out, "{}", start_hint(socket, home, &session).await)?;
+    }
     write!(
         out,
         "{}",
@@ -139,6 +143,26 @@ pub(crate) async fn intend(
     )?;
     write!(out, "{}", siblings(socket, &session).await)?;
     Ok(())
+}
+
+/// The `start` hint for `session`'s work as its line, the first time it's shown as it is
+/// ([`zirc_core::hints::Watch::at_start`]): what its user or team want of all its work, such
+/// as what to ask them about. Nothing when there's none, or zircd can't say what's watched.
+async fn start_hint(socket: &Path, home: &Path, session: &str) -> String {
+    let Ok(Response::Repos { repos }) = ask(socket, Request::RepoList).await else {
+        return String::new();
+    };
+    let Some(shown) = crate::hints::watch_hints(home, Some(session), &repos).at_start() else {
+        return String::new();
+    };
+    let line = crate::hints::hint_line(&shown);
+    let record = zirc_proto::activity::HintShown {
+        hint: shown.id,
+        kind: shown.kind,
+        layer: shown.layer.name().to_owned(),
+    };
+    crate::playbook::used(socket, session, &record).await;
+    format!("{line}\n")
 }
 
 /// Posts `taking: <summary>` for `session` when it's on no task, as `zirc post` would, so

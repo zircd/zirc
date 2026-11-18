@@ -14,6 +14,9 @@ use ts_rs::TS;
 
 /// The kinds of events a hint can be for.
 pub mod kind {
+    /// A session's first `zirc intend` of its work, shown once: what holds for all of it,
+    /// such as what its user wants to be asked about ("Ask me about").
+    pub const START: &str = "start";
     /// Someone else is changing files you're changing.
     pub const OVERLAP: &str = "overlap";
     /// Two worktrees here change the same lines.
@@ -91,7 +94,8 @@ pub mod kind {
     pub const REACTION_OTHER: &str = "reaction.other";
 
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 36] = [
+    pub const ALL: [&str; 37] = [
+        START,
         OVERLAP,
         OVERLAP_SAME_LINES,
         CONFLICT_AHEAD,

@@ -1010,7 +1010,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
             message,
             seconds,
             session,
-        } => intend(&socket, paths, message, seconds, session, out).await,
+        } => intend(&socket, &home, paths, message, seconds, session, out).await,
         Command::Clashes(args) => post::clashes(&socket, args, out).await,
         Command::Lease(args) => {
             let out = &mut paint::Lines::new(out, paint::lease, args.lists() && paint::wanted());

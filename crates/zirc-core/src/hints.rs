@@ -688,7 +688,28 @@ impl Watch {
         {
             seen.kind = kind::GUEST_ROOM;
         }
-        let shown = resolve(&self.layers(&seen.channel), &seen)?;
+        self.show(&seen)
+    }
+
+    /// The `start` hint for the session's work, the first time it's asked for as it is now
+    /// (`zirc intend` asks): what holds for all of it, from its repository's layers.
+    pub fn at_start(&mut self) -> Option<Shown> {
+        let seen = Seen {
+            kind: kind::START,
+            channel: self
+                .repos
+                .first()
+                .map(|(channel, _)| channel.clone())
+                .unwrap_or_default(),
+            ..Seen::default()
+        };
+        self.show(&seen)
+    }
+
+    /// The hint for `seen`, unless it's quiet or the session saw it as it is now; kept as
+    /// seen.
+    fn show(&mut self, seen: &Seen) -> Option<Shown> {
+        let shown = resolve(&self.layers(&seen.channel), seen)?;
         if shown.level == Level::Quiet || self.shown.get(&shown.kind) == Some(&shown.text) {
             return None;
         }
@@ -933,6 +954,30 @@ mod tests {
             super::seen(&direct(false), Some("cc-1")).unwrap().kind,
             kind::DM
         );
+    }
+
+    /// "Ask me about": zirc's own start hint is quiet, as the agent guide says how to ask;
+    /// a person's or a team's own is shown once a session, again only when it changes.
+    #[test]
+    fn a_start_hint_is_shown_once_a_session_and_only_when_someone_set_one() {
+        let home = tempfile::tempdir().unwrap();
+        let (mut quiet, _) = Watch::load(home.path(), Some("cc-1"), &[]);
+        assert_eq!(quiet.at_start(), None);
+        let set = |text: &str| {
+            std::fs::write(
+                crate::paths::config(home.path()),
+                format!("[[hint]]\nkind = \"start\"\nlevel = \"act\"\ntext = \"{text}\"\n"),
+            )
+            .unwrap();
+            Watch::load(home.path(), Some("cc-1"), &[]).0.at_start()
+        };
+        let shown = set("Ask me about anything people see.").unwrap();
+        assert_eq!(
+            (shown.layer, shown.text.as_str()),
+            (Layer::Personal, "Ask me about anything people see.")
+        );
+        assert_eq!(set("Ask me about anything people see."), None);
+        assert!(set("Ask me before each landing.").is_some());
     }
 
     #[test]
