@@ -109,7 +109,7 @@ working-set updates included, and `--json` has every line with why it concerns y
 zirc watch --session cc-1531f8
 ```
 
-Each wake costs an agent a turn, so zircd caps them: past 6 wakes of one session, or 20 of
+Each wake costs an agent a turn, so zircd caps them: past 10 wakes of one session, or 30 of
 the machine's, in 10 minutes (`[wakes]` `per_session` and `machine` in `config.toml` change
 them), it holds the rest for the session's next wake and says so in `#ops` and by direct
 message to the owner, whose phone's notification has a Resume button, or who answers

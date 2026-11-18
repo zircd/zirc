@@ -1,5 +1,5 @@
-//! The wake breaker through real wakes: a session woken six times in ten minutes is
-//! woken no more, what would have woken it waits as notes, its owner hears it once by direct message, and wakes
+//! The wake breaker through real wakes: a session woken six times in ten minutes, its
+//! machine's `[wakes]` limit here, is woken no more, what would have woken it waits as notes, its owner hears it once by direct message, and wakes
 //! resume when the window drains or when asked. The machine's clock is moved, not waited.
 
 use std::time::Duration;
@@ -31,7 +31,9 @@ impl Storm {
             clock: clock.clone(),
             ..zircd::Hooks::default()
         };
-        let alpha = Machine::hooked_with(&ergo, "alpha", "owner = \"ada\"\n", hooks).await;
+        // Six, not the default, keeps each test's storm short, and tests the setting too.
+        let settings = "owner = \"ada\"\n[wakes]\nper_session = 6\n";
+        let alpha = Machine::hooked_with(&ergo, "alpha", settings, hooks).await;
         let alpha_clone = clone();
         alpha.add_repo(None, alpha_clone.path()).await.unwrap();
         alpha

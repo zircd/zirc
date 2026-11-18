@@ -178,10 +178,10 @@ pub struct LeaseRoom {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WakeLimits {
-    /// The most wakes of one session in the ten-minute window: 6 unless set.
+    /// The most wakes of one session in the ten-minute window: 10 unless set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub per_session: Option<usize>,
-    /// The most wakes of all this machine's sessions in the window: 20 unless set.
+    /// The most wakes of all this machine's sessions in the window: 30 unless set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub machine: Option<usize>,
 }

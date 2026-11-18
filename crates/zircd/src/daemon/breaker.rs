@@ -16,7 +16,8 @@
 //! phone already had.
 //!
 //! The user asked for "a conservative low number so if something goes wrong it can't run
-//! wild and I'll get notified" (6 Nov 2026).
+//! wild and I'll get notified" (6 Nov 2026), and raised it from 6 and 20 to 10 and 30 when
+//! busy sessions kept tripping it, several times a day (18 Nov 2026).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::time::{Duration, Instant};
@@ -32,11 +33,11 @@ use super::{Daemon, WATCHER_SESSION};
 pub(super) const WINDOW: Duration = Duration::from_mins(10);
 
 /// The most wakes of one session in a [`WINDOW`].
-pub(crate) const PER_SESSION: usize = 6;
+pub(crate) const PER_SESSION: usize = 10;
 
 /// The most messages that wake this machine's sessions in a [`WINDOW`], however many each
 /// wakes.
-pub(crate) const MACHINE: usize = 20;
+pub(crate) const MACHINE: usize = 30;
 
 /// How the breaker's notices start, which wake nobody, whoever they name.
 const NOTICE: &str = "wakes paused:";
@@ -595,7 +596,9 @@ mod tests {
         // The breaker's own notice wakes nobody, whoever it names.
         let notice = daemon.breaker.pending[0].clone();
         assert!(
-            notice.starts_with("wakes paused: 6 wakes of cc-1 in 10 min\n"),
+            notice.starts_with(&format!(
+                "wakes paused: {PER_SESSION} wakes of cc-1 in 10 min\n"
+            )),
             "{notice:?}"
         );
         let mut reasons = [Some(Why::Mention)];
@@ -763,7 +766,7 @@ mod tests {
     fn a_storm_trips_it_once_and_it_resumes_when_the_window_drains() {
         let mut breaker = Breaker::default();
         let start = Instant::now();
-        // Forty sessions woken once each: the machine's limit.
+        // A session woken once for each message the machine's limit allows.
         for n in 0..MACHINE {
             let at = start + Duration::from_secs(u64::try_from(n).unwrap());
             assert_eq!(
@@ -777,10 +780,12 @@ mod tests {
         };
         assert_eq!(
             notice,
-            "wakes paused: 20 messages woke this machine's sessions in 10 min\n\
-             - top sources: intent from cc-x ×20\n\
-             - held: they wait as notes for each session's next wake\n\
-             - needed: reply `resume` to let them through now, or run `zirc wakes resume`"
+            format!(
+                "wakes paused: {MACHINE} messages woke this machine's sessions in 10 min\n\
+                 - top sources: intent from cc-x ×{MACHINE}\n\
+                 - held: they wait as notes for each session's next wake\n\
+                 - needed: reply `resume` to let them through now, or run `zirc wakes resume`"
+            )
         );
         // Open, it holds every other wake without saying so again.
         assert_eq!(wake(&mut breaker, "cc-1", "mention", at), Verdict::Hold);
@@ -999,7 +1004,7 @@ mod tests {
             let session = format!("cc-{n}");
             assert_eq!(breaker.allow(&session, "mention", at, post), Verdict::Wake);
         }
-        // Nineteen more messages are still within the machine's limit, and the next isn't.
+        // The rest of the machine's limit in messages still wake, and the next doesn't.
         for n in 1..MACHINE {
             let session = format!("cc-x{n}");
             assert_eq!(wake(&mut breaker, &session, "intent", at), Verdict::Wake);
