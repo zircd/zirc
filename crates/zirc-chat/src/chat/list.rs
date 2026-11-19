@@ -99,7 +99,7 @@ impl SidebarSection {
             // Starred is in both: what's starred shows in its own section's. The Server
             // channel is at the top of both.
             Shelf::Server | Shelf::Starred => true,
-            Shelf::Channels | Shelf::Feeds => self == Self::Channels,
+            Shelf::Channels => self == Self::Channels,
             Shelf::Direct => self == Self::Direct,
         }
     }
@@ -1152,12 +1152,9 @@ pub enum Shelf {
     Server,
     /// What the person starred, in the order they starred it.
     Starred,
-    /// The rooms people talk in, each with its threads, alphabetically.
+    /// Every channel, each with its threads, alphabetically: the feeds systems post to
+    /// ([`Chat::is_feed`]) among them, whose rows never show bold.
     Channels,
-    /// What systems post: each repository's own channel with its standing rooms under it,
-    /// `#ops` and `#decisions` ([`Chat::is_feed`]). Folded until opened; a person may post
-    /// there too, but its rows never show bold (the user's choices, 15 Nov 2026).
-    Feeds,
     /// Direct messages: people, groups, agent sessions and machines' threads, newest first.
     Direct,
 }
@@ -1172,7 +1169,6 @@ impl Shelf {
             Self::Server => super::SERVER_TITLE,
             Self::Starred => "Starred",
             Self::Channels => "Channels",
-            Self::Feeds => "Feeds",
             Self::Direct => "Direct messages",
         }
     }
@@ -1218,7 +1214,7 @@ impl Chat {
     }
 
     /// Folds away exactly the parts `folded`, and opens the rest: an app's kept choice, in
-    /// full, as Feeds is folded until it's opened.
+    /// full.
     pub fn set_folded_parts(&mut self, folded: &[Shelf]) {
         self.collapsed = folded.iter().copied().collect();
     }
@@ -1226,8 +1222,8 @@ impl Chat {
     /// Whether the channel called `name` is a feed, where systems post, rather than a room
     /// people made: a standing room under a repository's channel (`#api/agents`,
     /// [`zirc_proto::STANDING_ROOMS`]), the organisation's `#ops` or `#decisions`, or a
-    /// repository's own channel, one with a standing room under it that we know of. Said
-    /// once, for every app's sidebar.
+    /// repository's own channel, one with a standing room under it that we know of. Its
+    /// traffic never shows bold, in every app's sidebar.
     #[must_use]
     pub fn is_feed(&self, name: &str) -> bool {
         let standing = |room: &str| {

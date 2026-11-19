@@ -6296,6 +6296,39 @@ fn tells_people_agents_and_integrations_apart() {
 }
 
 #[test]
+fn lists_the_feeds_among_the_channels_never_bold() {
+    let mut chat = Scene::in_api();
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #ops",
+            ":me!u@h JOIN #decisions",
+            ":me!u@h JOIN #web",
+            ":me!u@h JOIN #web/landings",
+            "@time=2026-10-30T11:00:00.000Z :zirc-ci!u@h PRIVMSG #ops :build 5 failed",
+        ],
+    );
+    let rows = chat.sidebar_list(&ListOptions::default());
+    let channels: Vec<(&str, bool)> = rows
+        .iter()
+        .filter(|row| row.shelf == Shelf::Channels && row.kind == ListKind::Conversation)
+        .map(|row| (row.name.as_str(), row.unread))
+        .collect();
+    // Joined, every one is listed under Channels, nothing folded away, and what systems
+    // post there, #ops' build and #web's standing room, never shows bold.
+    assert_eq!(
+        channels,
+        [
+            ("#api", false),
+            ("#decisions", false),
+            ("#ops", false),
+            ("#web", false),
+        ]
+    );
+    assert!(chat.collapsed().is_empty());
+}
+
+#[test]
 fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
     let mut chat = Scene::in_api();
     feed(
@@ -6365,8 +6398,8 @@ fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
             .all(|row| row.unread && row.badge == 1)
     );
     chat.set_collapsed(Shelf::Direct, true);
-    // Feeds is folded until it's opened.
-    assert_eq!(chat.collapsed(), [Shelf::Feeds, Shelf::Direct]);
+    // Nothing else is folded until it's folded.
+    assert_eq!(chat.collapsed(), [Shelf::Direct]);
     let rows = chat.sidebar_list(&ListOptions::default());
     let heading = rows
         .iter()
