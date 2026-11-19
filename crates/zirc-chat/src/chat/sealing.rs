@@ -87,6 +87,10 @@ pub fn copy_sealed_label(number: u32, parts: usize) -> String {
     }
 }
 
+/// How long a sealed part copied stays on the clipboard, in seconds, in every app: then it's
+/// taken off, if it's still what's there.
+pub const SEALED_COPY_LASTS_SECS: u32 = 60;
+
 /// What a part says on a device without the key it was sealed with.
 pub const SEALED_NO_KEY: &str = "sealed, and this device has no key for it";
 
