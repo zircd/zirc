@@ -119,9 +119,9 @@ pub use code_ref::{
     editor_options, file_page, raw_file,
 };
 pub use conversation::{
-    Attendance, CLIENT_TAG, Conversation, Entry, EntryKind, Kind, Member, PREFIXES, QUOTE_CHARS,
-    Quote, Reaction, SESSION_MARK, agent, default_threshold, fold, for_agent, is_channel, target,
-    to_agent,
+    Attendance, CLIENT_TAG, COMMITS_AND_PUSHES_SHOW_AT, Conversation, Entry, EntryKind, Kind,
+    Member, PREFIXES, QUOTE_CHARS, Quote, Reaction, SESSION_MARK, agent, default_threshold, fold,
+    for_agent, is_channel, target, to_agent,
 };
 pub use copied::{CopiedMessage, copied};
 pub use correcting::{EDIT_LABEL, EDITED, EDITING, STOP_EDITING, TOO_LATE_TO_EDIT, editable};

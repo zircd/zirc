@@ -361,6 +361,10 @@ pub struct Conversation {
     pub threshold: Level,
 }
 
+/// The least a channel shows its commits and pushes at ([`Conversation::shows`]): Show:
+/// Everything, as the user chose (19 Nov 2026). What a view or a test asks for to see them.
+pub const COMMITS_AND_PUSHES_SHOW_AT: Level = Level::Debug;
+
 /// The threshold a conversation called `name` has until the person picks one: warn in
 /// `#ops`, where only what needs someone belongs; info everywhere else.
 #[must_use]
@@ -399,7 +403,7 @@ impl Conversation {
     #[must_use]
     pub fn shows(&self, entry: &Entry) -> bool {
         let level = if self.kind == Kind::Channel && entry.is_commit_or_push() {
-            Level::Debug
+            COMMITS_AND_PUSHES_SHOW_AT
         } else {
             entry.level()
         };
@@ -1013,7 +1017,7 @@ mod tests {
         });
         let mut agents = Conversation::new("#web/agents", Kind::Channel);
         assert!(!agents.shows(&push) && agents.shows(&taking));
-        agents.threshold = Level::Debug;
+        agents.threshold = COMMITS_AND_PUSHES_SHOW_AT;
         assert!(agents.shows(&push));
         // Its own conversation shows an agent's work whole.
         assert!(Conversation::new("ada-mbp/cc-1", Kind::Query).shows(&push));

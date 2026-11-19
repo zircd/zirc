@@ -1307,8 +1307,7 @@ fn shows_shared_files_as_files() {
 #[test]
 fn shows_a_channel_as_every_app_does() {
     let mut chat = Scene::in_api();
-    // A commit or a push shows in a channel only under Everything.
-    chat.set_threshold("#api", zirc_proto::Level::Debug);
+    chat.set_threshold("#api", crate::chat::COMMITS_AND_PUSHES_SHOW_AT);
     let at = |time: &str, line: &str| format!("@time=2026-10-30T{time}.000Z {line}");
     let commit = Message::new(
         "cc-1",
@@ -5542,8 +5541,7 @@ fn highlights_matches_ignoring_case() {
 /// `#api` with talk, machines' commits, a join and CI's posts between.
 fn talk_among_system_rows() -> Chat {
     let mut chat = Scene::in_api();
-    // A commit or a push shows in a channel only under Everything.
-    chat.set_threshold("#api", zirc_proto::Level::Debug);
+    chat.set_threshold("#api", crate::chat::COMMITS_AND_PUSHES_SHOW_AT);
     let at = |time: &str, line: &str| format!("@time=2026-10-30T{time}.000Z {line}");
     let commit = |sha: &str| {
         Message::new(
@@ -5772,8 +5770,7 @@ fn ranks_the_quick_switchers_matches_as_every_app_does() {
 #[test]
 fn comings_and_goings_never_end_a_run_but_events_do() {
     let mut chat = Scene::in_api();
-    // A commit or a push shows in a channel only under Everything.
-    chat.set_threshold("#api", zirc_proto::Level::Debug);
+    chat.set_threshold("#api", crate::chat::COMMITS_AND_PUSHES_SHOW_AT);
     let at = |time: &str, line: &str| format!("@time=2026-11-03T{time}.000Z {line}");
     let landed = |build: &str| {
         ci_post(
@@ -5924,8 +5921,7 @@ fn an_agent_s_later_lines_go_by_the_name_it_gave() {
 #[test]
 fn a_commit_and_its_push_are_one_row() {
     let mut chat = Scene::in_api();
-    // A commit or a push shows in a channel only under Everything.
-    chat.set_threshold("#api", zirc_proto::Level::Debug);
+    chat.set_threshold("#api", crate::chat::COMMITS_AND_PUSHES_SHOW_AT);
     let at = |time: &str, line: &str| format!("@time=2026-11-03T{time}.000Z {line}");
     let commit = |session: &str, sha: &str| {
         Message::new(
@@ -7022,8 +7018,7 @@ fn a_commits_branch_and_commit_link_into_its_repository() {
         },
     );
     let mut chat = chat();
-    // A commit or a push shows in a channel only under Everything.
-    chat.set_threshold("#api", zirc_proto::Level::Debug);
+    chat.set_threshold("#api", crate::chat::COMMITS_AND_PUSHES_SHOW_AT);
     feed(
         &mut chat,
         &[":me!u@h JOIN #api", &zirc("carol-mbp", &commit)],

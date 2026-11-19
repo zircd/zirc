@@ -1659,8 +1659,7 @@ mod tests {
     #[test]
     fn an_event_comes_in_parts() {
         let mut chat = chat();
-        // A commit or a push shows in a channel only under Everything.
-        chat.set_threshold("#api", zirc_proto::Level::Debug);
+        chat.set_threshold("#api", crate::chat::COMMITS_AND_PUSHES_SHOW_AT);
         let repo = "https://github.com/acme/api";
         let sha = "abc1234def5678abc1234def5678abc1234def56";
         let commit = named(
@@ -1862,8 +1861,7 @@ mod tests {
     #[test]
     fn a_push_of_several_commits_lists_them_apart() {
         let mut chat = chat();
-        // A commit or a push shows in a channel only under Everything.
-        chat.set_threshold("#api", zirc_proto::Level::Debug);
+        chat.set_threshold("#api", crate::chat::COMMITS_AND_PUSHES_SHOW_AT);
         let push = named(
             "cc-1",
             "checkout",

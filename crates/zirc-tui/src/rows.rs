@@ -1543,8 +1543,7 @@ mod tests {
     #[test]
     fn shows_zirc_events_as_one_line_and_wraps_long_text() {
         let mut api = Conversation::new("#api", Kind::Channel);
-        // A commit or a push shows in a channel only under Everything.
-        api.threshold = zirc_proto::Level::Debug;
+        api.threshold = zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT;
         let commit = zirc_proto::Message::new(
             "cc-12",
             zirc_proto::Event::Commit {

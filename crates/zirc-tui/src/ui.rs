@@ -2360,8 +2360,8 @@ mod tests {
         app.chat.clock = noon;
         app.zone = Zone::Fixed(FixedOffset::east_opt(0).unwrap());
         app.links = crate::hyperlink::Links::Labelled;
-        // A commit or a push shows in a channel only under Everything.
-        app.chat.set_threshold("#api", zirc_proto::Level::Debug);
+        app.chat
+            .set_threshold("#api", zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT);
         app.handle(":me!u@h JOIN #api".parse().unwrap());
         let _ = app.select(app.chat.position("#api").unwrap());
         let push = zirc_proto::Message::new(
@@ -2448,8 +2448,8 @@ mod tests {
     #[test]
     fn shows_each_of_an_agents_doings_never_folded() {
         let mut app = app();
-        // A commit or a push shows in a channel only under Everything.
-        app.chat.set_threshold("#api", zirc_proto::Level::Debug);
+        app.chat
+            .set_threshold("#api", zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT);
         app.compact = false;
         let _ = app.select(1);
         // A second commit after the one already in #api: both show, nothing folds.
@@ -3241,8 +3241,8 @@ mod tests {
     #[test]
     fn shows_scrollback_members_and_topic() {
         let mut app = app();
-        // A commit or a push shows in a channel only under Everything.
-        app.chat.set_threshold("#api", zirc_proto::Level::Debug);
+        app.chat
+            .set_threshold("#api", zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT);
         let _ = app.select(1);
         let (rows, terminal) = draw(&app, 100, 16);
         assert!(
@@ -4081,8 +4081,8 @@ mod tests {
     #[test]
     fn heads_runs_with_who_and_when_unless_compact() {
         let mut app = app();
-        // A commit or a push shows in a channel only under Everything.
-        app.chat.set_threshold("#api", zirc_proto::Level::Debug);
+        app.chat
+            .set_threshold("#api", zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT);
         app.compact = false;
         let _ = app.select(app.chat.position("#api").unwrap());
         let screen = Rect::new(0, 0, 100, 16);
@@ -4231,8 +4231,8 @@ mod tests {
     fn draws_in_zircs_colours_dark_or_light() {
         for theme in [Theme::dark(), Theme::light()] {
             let mut app = app();
-            // A commit or a push shows in a channel only under Everything.
-            app.chat.set_threshold("#api", zirc_proto::Level::Debug);
+            app.chat
+                .set_threshold("#api", zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT);
             app.theme = theme;
             let _ = app.select(1);
             let (rows, terminal) = draw(&app, 100, 16);
