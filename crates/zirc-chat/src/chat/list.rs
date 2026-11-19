@@ -246,15 +246,17 @@ pub struct Thread {
 }
 
 impl Chat {
-    /// When something was last said in the conversation called `name`: by anyone, us
-    /// included, as the server's `CHATHISTORY TARGETS` said or a message since shows.
+    /// When something was last said in the conversation called `name`, by anyone, us
+    /// included: the time its row shows ([`super::Conversation::last_said`]), or, before
+    /// any of its history is here, what the server's `CHATHISTORY TARGETS` said. Never the
+    /// later of the two: `TARGETS` counts what no row shows, such as a card's live update, and
+    /// a row sorted by it showed `5h` above one showing `3m` (Android, 19 Nov 2026). Anything
+    /// newer it knows of comes in the history it has us ask for.
     #[must_use]
     pub fn last_said(&self, name: &str) -> Option<DateTime<Utc>> {
-        let heard = self
-            .conversation(name)
-            .and_then(super::Conversation::last_said);
-        let listed = self.active.get(&fold(name)).copied();
-        heard.max(listed)
+        self.conversation(name)
+            .and_then(super::Conversation::last_said)
+            .or_else(|| self.active.get(&fold(name)).copied())
     }
 
     /// Where the conversations of `section` are in [`Chat::conversations`], in the order
@@ -1082,11 +1084,12 @@ impl Chat {
             let session = self.session_row(nick, session_id, machine_name);
             row.title = session.label;
             row.avatars = vec![session.avatar];
-            row.latest = row.latest.max(session.latest);
+            // Its row sorts by its own conversation's time, which it shows; when the session
+            // last claimed its task ([`Agent::latest`]) says it's active, not that it spoke.
             row.mine = owner.eq_ignore_ascii_case(&self.me);
             row.owner = Some(self.owner_name(&owner));
             // Active is anything it said, anywhere we are, or anything said with it.
-            let active = row.latest.max(heard(nick, session_id));
+            let active = row.latest.max(session.latest).max(heard(nick, session_id));
             row.folded = self.session_live(nick, session_id) != Some(true)
                 && self.quiet(&row.name, row.unread, active);
             // Ended, it says so where its time was, and folds soon after.

@@ -29,7 +29,7 @@ impl Chat {
     #[must_use]
     pub fn preview(&self, name: &str) -> Option<Preview> {
         let entries = &self.conversation(name)?.entries;
-        let at = entries.iter().rposition(said)?;
+        let at = entries.iter().rposition(Entry::is_shown_in_list)?;
         let entry = &entries[at];
         let who = if fold(&entry.from) == fold(&self.me) {
             "You".to_owned()
@@ -79,22 +79,6 @@ impl Chat {
             .filter_map(|name| self.preview(name))
             .max_by_key(|preview| preview.at)
     }
-}
-
-/// Whether `entry` is something someone said: a message, action, notice or zirc post. Never
-/// a card's live update, which only redraws its card: a running landing's steps come every
-/// few seconds, and the preview would change with each, between landings when several run.
-fn said(entry: &Entry) -> bool {
-    !entry.from.is_empty()
-        && !entry.is_session_card()
-        && entry.live_card().is_none()
-        && matches!(
-            entry.kind,
-            EntryKind::Message(_)
-                | EntryKind::Action(_)
-                | EntryKind::Notice(_)
-                | EntryKind::Zirc(_)
-        )
 }
 
 /// The files `entries` end with, from the last one's sender, as a preview counts them:

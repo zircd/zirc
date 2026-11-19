@@ -183,6 +183,25 @@ impl Entry {
         ) && !self.is_session_card()
     }
 
+    /// Whether a list row shows it: what [`super::Chat::preview`] previews and, as the one
+    /// rule, what orders every list by recency ([`Conversation::last_said`]), so a row never
+    /// sorts by a time it doesn't show. Something someone said, a message, action, notice or
+    /// zirc post, but never a card's live update, which only redraws its card: a running
+    /// landing's steps come every few seconds.
+    #[must_use]
+    pub fn is_shown_in_list(&self) -> bool {
+        !self.from.is_empty()
+            && !self.is_session_card()
+            && self.live_card().is_none()
+            && matches!(
+                self.kind,
+                EntryKind::Message(_)
+                    | EntryKind::Action(_)
+                    | EntryKind::Notice(_)
+                    | EntryKind::Zirc(_)
+            )
+    }
+
     /// Whether it counts towards what's unread when `me` hasn't read it: someone else
     /// saying something.
     #[must_use]
@@ -511,13 +530,14 @@ impl Conversation {
         members
     }
 
-    /// When the newest thing said in it was said, by anyone: what the list sorts by.
+    /// When the newest thing a list row shows of it was said ([`Entry::is_shown_in_list`]):
+    /// what the lists sort by, and the time its row shows.
     #[must_use]
     pub fn last_said(&self) -> Option<DateTime<Utc>> {
         self.entries
             .iter()
             .rev()
-            .find(|entry| entry.is_said())
+            .find(|entry| entry.is_shown_in_list())
             .map(|entry| entry.time)
     }
 
