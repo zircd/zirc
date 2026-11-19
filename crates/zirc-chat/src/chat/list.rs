@@ -8,7 +8,7 @@
 //! And for an agent session on one of our machines, what a list row shows of it: its short
 //! name and what it said it's taking on.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -553,15 +553,21 @@ impl Chat {
         let entries = self
             .conversation(name)
             .map_or(&[][..], |conversation| &conversation.entries[..]);
+        // What each nick posted, newest first, in one pass rather than one a person.
+        let mut posts: HashMap<String, Vec<&zirc_proto::Message>> = HashMap::new();
+        for entry in entries.iter().rev() {
+            if let EntryKind::Zirc(message) = &entry.kind {
+                posts.entry(fold(&entry.from)).or_default().push(message);
+            }
+        }
         let mut rows: Vec<AppRow> = self
             .people(name)
             .into_iter()
             .filter_map(|person| {
-                let posted = entries.iter().rev().find_map(|entry| match &entry.kind {
-                    EntryKind::Zirc(message) if fold(&entry.from) == fold(&person.nick) => {
-                        super::app_label(&person.nick, Some(message))
-                    }
-                    _ => None,
+                let posted = posts.get(&fold(&person.nick)).and_then(|posts| {
+                    posts
+                        .iter()
+                        .find_map(|message| super::app_label(&person.nick, Some(message)))
                 });
                 let label = posted.or(person.app)?;
                 Some(AppRow {
