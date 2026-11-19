@@ -136,7 +136,8 @@ fn a_full_conversation_drops_its_oldest_in_batches_not_one_by_one() {
 }
 
 /// What zirc-web's view asks of the core each time the page redraws: for every line that
-/// comes in and every key typed, as the typing notice redraws (`crates/zirc-web/src/view.rs`).
+/// comes in and every key typed, as the typing notice redraws (`crates/zirc-web/src/view.rs`). A copy, as Rust can't
+/// time the app's own here: `view` names this, so what it adds is added here.
 fn web(chat: &Chat, zone: FixedOffset) -> usize {
     use super::busy::OPEN;
     let wall = |at: DateTime<Utc>| at.with_timezone(&zone).naive_local();
@@ -176,7 +177,8 @@ fn web(chat: &Chat, zone: FixedOffset) -> usize {
 
 /// What Android's refresh asks of the mobile core, the most any phone asks: every
 /// conversation's row, the sidebar three times, both halves and each, and the open
-/// conversation's lines, people and Activity (`AppModel.refresh`, `view::channels`).
+/// conversation's lines, people and Activity (`AppModel.refresh`, `view::channels`). A copy, as above: `AppModel.refresh`
+/// and Swift's `Snapshot.read` name this.
 fn phone(chat: &Chat, zone: FixedOffset) -> usize {
     use super::busy::OPEN;
     let wall = |at: DateTime<Utc>| at.with_timezone(&zone).naive_local();
@@ -224,7 +226,7 @@ fn phone(chat: &Chat, zone: FixedOffset) -> usize {
 }
 
 /// What the desktop asks when the session changes (`changed`) and draws (`render`): the
-/// open conversation's lines, the sidebar's half shown, the header and its people.
+/// open conversation's lines, the sidebar's half shown, the header and its people. A copy, as above: `changed` and `render` name this.
 fn desktop(chat: &Chat, zone: FixedOffset) -> usize {
     use super::busy::OPEN;
     let wall = |at: DateTime<Utc>| at.with_timezone(&zone).naive_local();
@@ -243,7 +245,8 @@ fn desktop(chat: &Chat, zone: FixedOffset) -> usize {
 }
 
 /// What the TUI asks each time it draws: the open conversation's items, the sidebar's half
-/// shown and both halves, to go to the next by key (`App::sidebar`, `App::listed`).
+/// shown and both halves, to go to the next by key (`App::sidebar`, `App::listed`). A copy, as above: `ui::render`
+/// names this.
 fn tui(chat: &Chat, zone: FixedOffset) -> usize {
     use super::busy::OPEN;
     let conversation = chat.conversation(OPEN).expect("the open channel");

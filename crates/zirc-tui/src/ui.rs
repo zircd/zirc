@@ -175,6 +175,9 @@ pub fn target_at(app: &App, area: Rect, column: u16, row: u16) -> Option<Target>
 }
 
 /// Draws the app on the whole frame.
+///
+/// What a draw asks of the core is timed, as `tui()`, by zirc-chat's speed budget
+/// (`chat/tests/perf.rs`): a call added here or in [`App::sidebar`] is added there too.
 pub fn render(frame: &mut Frame<'_>, app: &App) {
     let theme = app.theme;
     // On the terminal's own background, whatever it is: the theme matches its colours to
