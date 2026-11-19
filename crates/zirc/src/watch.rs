@@ -678,12 +678,15 @@ mod tests {
             String::from_utf8(out).unwrap()
         };
         let first = printed(&how);
+        // zirc's default for a failed landing of yours, its branch filled in.
+        let hint = zirc_core::hints::defaults()
+            .into_iter()
+            .find(|hint| hint.kind == "landing.yours.failed")
+            .unwrap()
+            .text
+            .replace("{branch}", "`fix-login`");
         assert!(
-            first.ends_with(
-                "\n  \u{21b3} hint (default): Fix it on `fix-login`, land again, and say so in \
-                 one line with zirc post. If your change doesn't touch what failed, run zirc \
-                 state before you say so: someone may be on it.\n"
-            ),
+            first.ends_with(&format!("\n  \u{21b3} hint (default): {hint}\n")),
             "{first}"
         );
         // Once per kind, even across --once watches.
