@@ -4,6 +4,7 @@ use super::*;
 
 mod agent_activity;
 mod busy;
+mod drafts;
 mod finder;
 mod guest_rooms;
 mod list_order;

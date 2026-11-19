@@ -35,6 +35,7 @@ mod copied;
 mod correcting;
 mod describe;
 mod details;
+mod drafts;
 mod face;
 pub mod file;
 mod finder;

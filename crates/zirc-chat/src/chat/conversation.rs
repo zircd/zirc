@@ -338,6 +338,8 @@ pub struct Conversation {
     pub unread: usize,
     /// Of those, the ones that mention us.
     pub mentions: usize,
+    /// What's written in its composer and not yet sent ([`Chat::draft`]).
+    pub draft: String,
     /// Up to when the person has read it, in any of their apps, as the server keeps it
     /// (`draft/read-marker`). `None` until the server says.
     pub read: Option<DateTime<Utc>>,
@@ -487,6 +489,7 @@ impl Conversation {
             topic: None,
             unread: 0,
             mentions: 0,
+            draft: String::new(),
             read: None,
             joined: kind != Kind::Channel,
             standing: Attendance::Fresh,
