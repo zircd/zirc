@@ -311,23 +311,25 @@ impl Budget {
 
     /// `f`, `what` it asks, grows no faster than the organisation.
     fn keeps<T>(&mut self, what: &str, mut f: impl FnMut(&mut Chat) -> T) {
-        let mut time = |chat: &mut Chat| {
-            let start = Instant::now();
-            std::hint::black_box(f(chat));
-            start.elapsed().as_secs_f64() * 1000.0
-        };
-        let (mut quarter, mut busy) = (f64::MAX, f64::MAX);
-        for _ in 0..7 {
-            quarter = quarter.min(time(&mut self.quarter));
-            busy = busy.min(time(&mut self.busy));
+        // Measured again when over: a spike of load on a busy machine (a load average of
+        // 60 once made a call measure 15 times) seldom comes twice, work that grows too
+        // fast always does.
+        let mut growth = f64::MAX;
+        for _ in 0..2 {
+            let (mut quarter, mut busy) = (f64::MAX, f64::MAX);
+            for _ in 0..7 {
+                quarter = quarter.min(took(&mut f, &mut self.quarter));
+                busy = busy.min(took(&mut f, &mut self.busy));
+            }
+            growth = busy / quarter.max(f64::MIN_POSITIVE);
+            println!("PERF {what}: {busy:.3} ms, a quarter of it {quarter:.3} ms, {growth:.1}×");
+            if growth <= GROWTH || busy < TOO_QUICK {
+                return;
+            }
         }
-        let growth = busy / quarter.max(f64::MIN_POSITIVE);
-        println!("PERF {what}: {busy:.3} ms, a quarter of it {quarter:.3} ms, {growth:.1}×");
-        if growth > GROWTH && busy >= TOO_QUICK {
-            self.over.push(format!(
-                "{what}: {busy:.1} ms, {growth:.1} times a quarter of the organisation's {quarter:.1}"
-            ));
-        }
+        self.over.push(format!(
+            "{what}: {growth:.1} times as long as in a quarter of the organisation, twice"
+        ));
     }
 
     fn kept(self) {
@@ -337,6 +339,13 @@ impl Budget {
             self.over
         );
     }
+}
+
+/// How long `f` takes on `chat`, in milliseconds.
+fn took<T>(f: &mut impl FnMut(&mut Chat) -> T, chat: &mut Chat) -> f64 {
+    let start = Instant::now();
+    std::hint::black_box(f(chat));
+    start.elapsed().as_secs_f64() * 1000.0
 }
 
 #[test]
