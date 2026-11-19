@@ -189,12 +189,6 @@ impl Chat {
             Some(read) => at > read,
             None => !history && conversation.unread > 0,
         };
-        let mut keys = Keys::default();
-        let keyed: Vec<(String, &Entry)> = conversation
-            .entries
-            .iter()
-            .map(|entry| (keys.of(entry), entry))
-            .collect();
         let ours: HashSet<&str> = conversation
             .entries
             .iter()
@@ -204,29 +198,31 @@ impl Chat {
         // What's said in a conversation with one nick is a direct message, which the
         // sidebar says: only a reaction there is Activity.
         let channel = conversation.kind == Kind::Channel;
-        for (key, entry) in keyed.iter().filter(|_| channel) {
-            if entry.from.is_empty() || mine(entry) {
-                continue;
-            }
-            let Some(said) = words(entry) else {
-                continue;
-            };
+        // Each entry's key as its line has it, made only for those that are Activity.
+        let mut keys = Keys::default();
+        for entry in conversation.entries.iter().filter(|_| channel) {
             // A reply that names us too is a reply.
-            let kind = if entry
+            let kind = if entry.from.is_empty() || mine(entry) {
+                None
+            } else if entry
                 .reply_to
                 .as_deref()
                 .is_some_and(|id| ours.contains(id))
             {
-                ActivityKind::Reply
+                Some(ActivityKind::Reply)
             } else if entry.mention {
-                ActivityKind::Mention
+                Some(ActivityKind::Mention)
             } else {
+                None
+            };
+            let Some((kind, said)) = kind.and_then(|kind| Some((kind, words(entry)?))) else {
+                keys.skip(entry);
                 continue;
             };
             hits.push(Hit {
                 kind,
-                key: key.clone(),
-                who: (*entry).clone(),
+                key: keys.of(entry),
+                who: entry.clone(),
                 said,
                 emoji: None,
                 at: entry.time.timestamp_millis(),
@@ -237,9 +233,10 @@ impl Chat {
             if given.nick.eq_ignore_ascii_case(&self.me) {
                 continue;
             }
-            let Some((key, entry)) = keyed
+            let Some(entry) = conversation
+                .entries
                 .iter()
-                .find(|(_, entry)| mine(entry) && entry.id.as_deref() == Some(given.id.as_str()))
+                .find(|entry| mine(entry) && entry.id.as_deref() == Some(given.id.as_str()))
             else {
                 continue;
             };
@@ -263,7 +260,8 @@ impl Chat {
             };
             hits.push(Hit {
                 kind: ActivityKind::Reaction,
-                key: key.clone(),
+                // Found by its id, which is its key.
+                key: given.id.clone(),
                 who: them,
                 said,
                 emoji: Some(&given.emoji),

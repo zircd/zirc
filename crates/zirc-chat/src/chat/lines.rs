@@ -1097,14 +1097,27 @@ impl Keys {
             .unwrap_or_else(|| self.next(entry.time.timestamp_millis()))
     }
 
+    /// Moves past `entry` as [`Keys::of`] does, without making its key: for what passes
+    /// over every entry to key only a few, as Activity does.
+    pub(super) fn skip(&mut self, entry: &Entry) {
+        if entry.id.is_none() {
+            self.step(entry.time.timestamp_millis());
+        }
+    }
+
     fn next(&mut self, time_ms: i64) -> String {
+        format!("{time_ms}:{}", self.step(time_ms))
+    }
+
+    /// How many before this one had the time `time_ms`, after the one before it.
+    fn step(&mut self, time_ms: i64) -> u32 {
         if self.last == Some(time_ms) {
             self.same += 1;
         } else {
             self.last = Some(time_ms);
             self.same = 0;
         }
-        format!("{time_ms}:{}", self.same)
+        self.same
     }
 }
 
