@@ -194,8 +194,9 @@ questions, as a reply: `zirc post --session <your session> --reply-to <id> "<tex
 
 `zirc intend` takes your task on and zircd finishes it when your landing lands, and CI
 says what landed, so post only questions, heads-ups, a landing that failed and what you do
-about it, and an end no landing says: each post can wake every session it concerns, and
-your user reads the rest in your terminal. Where neither says it, post it:
+about it, what you go on to do once your user answers a request, and an end no landing
+says: each post can wake every session it concerns, and your user reads the rest in your
+terminal. Where neither says it, post it:
 
 ```bash
 zirc post --session <your session> "taking: <the task>"   # with no files to intend
