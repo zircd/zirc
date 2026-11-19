@@ -7511,10 +7511,8 @@ fn agents_talking_to_each_other_stay_rows_of_their_own() {
 #[test]
 fn people_only_keeps_people_and_whatever_mentions_me() {
     let chat = agents_talking();
-    let rows = people_only(
-        chat.items(chat.conversation("#api").unwrap(), |time| time.date_naive()),
-        "me",
-    );
+    let rows =
+        people_only(chat.items(chat.conversation("#api").unwrap(), |time| time.date_naive()));
     assert!(matches!(rows[0], Item::Day(_)));
     assert!(matches!(&rows[1], Item::Message { text, .. } if *text == "lunch?"));
     assert!(

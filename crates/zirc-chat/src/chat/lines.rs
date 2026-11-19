@@ -589,7 +589,7 @@ impl<'a> Layout<'a> {
             time.with_timezone(&offset).date_naive()
         });
         let items = if people_only {
-            super::people_only(items, self.chat.me())
+            super::people_only(items)
         } else {
             items
         };

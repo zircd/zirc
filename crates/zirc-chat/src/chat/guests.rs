@@ -638,6 +638,8 @@ impl Chat {
         let level = from.map_or(Level::default(), |channel| self.level(&channel));
         match level {
             Level::All => true,
+            // The words, not the entry's mention: in a guest's own conversation, a private
+            // one, every line counts as one.
             Level::Mentions => match &entry.kind {
                 EntryKind::Message(text) | EntryKind::Action(text) | EntryKind::Notice(text) => {
                     crate::names::names_person(text, &self.me)

@@ -823,6 +823,24 @@ impl Event {
             | Self::File(_) => Some(Level::Info),
         }
     }
+
+    /// Whether it says back what someone decided, for the record: a decision, a request
+    /// answered or taken as recommended, a gotcha kept or a suggestion muted, a hint added or
+    /// removed. It names whoever decided, never to ask them anything, so it's no mention of
+    /// them: phones pushed four "mattias kept the gotcha" and four "recommendation taken" to
+    /// the person who had just decided, 16-19 Nov 2026.
+    #[must_use]
+    pub fn says_a_choice(&self) -> bool {
+        decision::Decision::of(self).is_some()
+            || hints::Changed::of(self).is_some()
+            || request::Request::of(self).is_some_and(|asked| asked.state != request::State::Open)
+            || suggestions::Suggestion::of(self).is_some_and(|said| {
+                matches!(
+                    said.state,
+                    suggestions::State::Kept | suggestions::State::Muted
+                )
+            })
+    }
 }
 
 /// Whether `text`, an intent's summary or a post, says its work is finished: it starts

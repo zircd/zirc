@@ -90,7 +90,7 @@ pub fn why(settings: &NotifySettings, now: i64, me: &str, heard: &Heard<'_>) -> 
     // Aimed at them: as a mention, through a mute and a level of Nothing.
     let why = if heard.to_theirs {
         Some(Why::Reply)
-    } else if crate::names::names_person(&words, me) {
+    } else if names_me(&kind, &words, me) {
         Some(Why::Mention)
     } else {
         None
@@ -101,6 +101,14 @@ pub fn why(settings: &NotifySettings, now: i64, me: &str, heard: &Heard<'_>) -> 
             .notifies(name, false, false, now)
             .then_some(Why::All),
     }
+}
+
+/// Whether a line of `kind`, saying `words`, names `me` as said to them, as Activity and the
+/// phones count a mention: [`crate::names::names_person`], unless it only says back what
+/// someone decided ([`zirc_proto::Event::says_a_choice`]), which names them for the record.
+pub(super) fn names_me(kind: &EntryKind, words: &str, me: &str) -> bool {
+    let record = matches!(kind, EntryKind::Zirc(message) if message.event.says_a_choice());
+    !record && crate::names::names_person(words, me)
 }
 
 /// Whether `kind` is an agent's question to `me` still waiting on an answer.
@@ -244,6 +252,39 @@ mod tests {
         );
         assert_eq!(
             why(&quiet, NOW, "ada", &said("#api", &question("bob"))),
+            None
+        );
+    }
+
+    #[test]
+    fn what_they_decided_said_back_isnt_pushed_again() {
+        let asked = zirc_proto::request::Request::open(
+            "ada-mbp/1",
+            "cc-1",
+            "ada",
+            "Run the Mac smoke test?",
+            "it runs once",
+            "it doesn't",
+        );
+        let taken = zirc_proto::request::Request {
+            state: zirc_proto::request::State::Answered {
+                answer: zirc_proto::request::Answer::Yes,
+                emoji: String::new(),
+                at: "2026-11-18T18:57:15Z".into(),
+                recommended: true,
+            },
+            ..asked
+        };
+        let body = zirc_proto::encode_up_to(&zirc_proto::Message::new("cc-1", taken.event()), 4096)
+            .unwrap();
+        assert!(body.contains("ada can still"), "it names them: {body}");
+        assert_eq!(
+            why(
+                &NotifySettings::default(),
+                NOW,
+                "ada",
+                &said("#decisions", &body)
+            ),
             None
         );
     }

@@ -740,11 +740,7 @@ fn shown<'a>(
     people: bool,
 ) -> Vec<Item<'a>> {
     let all = chat.items(conversation, |time| zone.date(time));
-    if people {
-        people_only(all, chat.me())
-    } else {
-        all
-    }
+    if people { people_only(all) } else { all }
 }
 
 /// What `item` came from, unless it's several things or none.

@@ -1971,30 +1971,26 @@ fn point<'a>(items: &mut Vec<Item<'a>>, mut pointers: Vec<(usize, usize, usize, 
 }
 
 /// `items` with only what people said, as a view's "People only" filter shows them:
-/// people's messages, and anything else that mentions `me`. Agents' posts and updates,
-/// apps' posts and landings, and comings and goings go; a day stays only before
-/// something that does.
+/// people's messages, and anything else that names us, as each entry's mention says (the
+/// rule Activity and the phones go by). Agents' posts and updates, apps' posts and
+/// landings, and comings and goings go; a day stays only before something that does.
 #[must_use]
-pub fn people_only<'a>(items: Vec<Item<'a>>, me: &str) -> Vec<Item<'a>> {
-    let mentions_me = |text: &str| crate::names::names_person(text, me);
+pub fn people_only(items: Vec<Item<'_>>) -> Vec<Item<'_>> {
     let by_person = |entry: &Entry| {
         !matches!(
             sender_kind(&entry.from, entry.owner.as_deref()),
             SenderKind::Agent | SenderKind::Integration
         )
     };
-    let mut kept: Vec<Item<'a>> = Vec::with_capacity(items.len());
+    let mut kept: Vec<Item<'_>> = Vec::with_capacity(items.len());
     for item in items {
         let keep = match &item {
             Item::Day(_) | Item::Note { .. } => true,
-            Item::Message { entry, text, .. }
-            | Item::Notice { entry, text, .. }
-            | Item::Action { entry, text, .. } => by_person(entry) || mentions_me(text),
+            Item::Message { entry, .. }
+            | Item::Notice { entry, .. }
+            | Item::Action { entry, .. } => by_person(entry) || entry.mention,
             Item::File { entry, .. } => by_person(entry),
-            Item::Event { entry, .. } => match &entry.kind {
-                EntryKind::Zirc(message) => mentions_me(&message.event.human_text()),
-                _ => false,
-            },
+            Item::Event { entry, .. } => entry.mention,
             Item::Membership(_) | Item::Landing(_) | Item::Pointer(_) => false,
         };
         if !keep {

@@ -262,7 +262,7 @@ impl Chat {
             owner: super::owner_by_host(line).map(str::to_owned),
             mention: !me
                 && kind != Kind::Server
-                && (kind == Kind::Query || crate::names::names_person(&words, &self.me)),
+                && (kind == Kind::Query || super::push::names_me(&entry, &words, &self.me)),
             sent_from: line
                 .tag(CLIENT_TAG)
                 .filter(|app| !app.is_empty())
