@@ -285,15 +285,30 @@ impl Chat {
     /// Where the conversations of `section` that [`Chat::list`] lists are, in no order.
     fn listed_in(&self, section: SidebarSection) -> Vec<usize> {
         (0..self.conversations.len())
-            .filter(|&at| {
-                let conversation = &self.conversations[at];
-                conversation.kind != super::Kind::Server
-                    && conversation.standing != super::Attendance::Left
-                    && !(conversation.kind == super::Kind::Query
-                        && self.is_blocked(&conversation.name))
-                    && SidebarSection::of(&conversation.name) == section
-            })
+            .filter(|&at| self.is_listed(at, section))
             .collect()
+    }
+
+    /// Whether [`Chat::list`] lists the conversation at `at` in `section`.
+    fn is_listed(&self, at: usize, section: SidebarSection) -> bool {
+        let conversation = &self.conversations[at];
+        conversation.kind != super::Kind::Server
+            && conversation.standing != super::Attendance::Left
+            && !(conversation.kind == super::Kind::Query && self.is_blocked(&conversation.name))
+            && SidebarSection::of(&conversation.name) == section
+    }
+
+    /// Where the conversation called `channel` and the rooms under its repository's
+    /// channel are, in no order ([`Chat::rooms`]): what one channel's group is made of.
+    pub(super) fn under(&self, channel: &str) -> impl Iterator<Item = usize> {
+        let repository = room_parts(channel).map_or(channel, |(repository, _)| repository);
+        self.position(channel).into_iter().chain(
+            self.rooms
+                .get(&fold(repository))
+                .into_iter()
+                .flatten()
+                .copied(),
+        )
     }
 
     /// Stars the conversation called `name`, after those starred already, or unstars it.
@@ -818,7 +833,10 @@ impl Chat {
     /// each with its preview, to find one made a list of channels with their headers cost
     /// the square of how many there are.
     fn channel_group(&self, channel: &str) -> Option<ChannelGroup> {
-        let listed = self.listed_in(SidebarSection::Channels);
+        let listed = self
+            .under(channel)
+            .filter(|&at| self.is_listed(at, SidebarSection::Channels))
+            .collect();
         self.groups(listed, Some(channel)).into_iter().next()
     }
 
@@ -826,7 +844,7 @@ impl Chat {
     fn groups(&self, listed: Vec<usize>, only: Option<&str>) -> Vec<ChannelGroup> {
         let wanted = |parent: &str| only.is_none_or(|only| only.eq_ignore_ascii_case(parent));
         let mut groups: Vec<ChannelGroup> = Vec::new();
-        let known = self.known_guest_rooms();
+        let known = self.known_guest_rooms(only);
         let group_of = |groups: &mut Vec<ChannelGroup>, parent: &str| {
             groups
                 .iter()

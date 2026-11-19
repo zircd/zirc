@@ -218,8 +218,9 @@ impl Chat {
     }
 
     /// Every guest's room we know of, with its channel: those zirc.dev lists to an owner or
-    /// admin, and any we joined. Each once, in the rooms' order.
-    pub(super) fn known_guest_rooms(&self) -> Vec<(String, GuestRoom)> {
+    /// admin, and any we joined. Each once, in the rooms' order. With `only`, those under
+    /// that channel alone, without looking through every conversation.
+    pub(super) fn known_guest_rooms(&self, only: Option<&str>) -> Vec<(String, GuestRoom)> {
         let selected = &self.selected().name;
         let mut known: Vec<(String, GuestRoom)> = Vec::new();
         let mut add = |chat: &Self, room: String, guest: &str, connected: bool| {
@@ -232,6 +233,9 @@ impl Chat {
             let Some((parent, _)) = zirc_proto::guest_room_of(&room) else {
                 return;
             };
+            if only.is_some_and(|only| !only.eq_ignore_ascii_case(parent)) {
+                return;
+            }
             let conversation = chat.conversation(&room);
             let joined = conversation.is_some_and(|c| c.joined);
             let unread = chat.is_unread(&room);
@@ -272,7 +276,11 @@ impl Chat {
             }
         }
         if self.is_staff() {
-            for conversation in &self.conversations {
+            let ats: Vec<usize> = match only {
+                Some(channel) => self.under(channel).collect(),
+                None => (0..self.conversations.len()).collect(),
+            };
+            for conversation in ats.into_iter().map(|at| &self.conversations[at]) {
                 if let Some((_, guest)) = zirc_proto::guest_room_of(&conversation.name)
                     && conversation.joined
                 {

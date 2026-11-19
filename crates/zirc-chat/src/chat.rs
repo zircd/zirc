@@ -485,6 +485,10 @@ pub struct Chat {
     /// Where each of `conversations` is, by folded name: [`Chat::position`] in one lookup,
     /// as the sidebar asks it hundreds of times a frame. Rebuilt wherever one is added or removed.
     index: HashMap<String, usize>,
+    /// Where the rooms under each channel are in `conversations`, by the channel's folded
+    /// name: `#web/agents` under `#web`, so one channel's rooms are found without looking
+    /// through every conversation. Rebuilt with `index`.
+    rooms: HashMap<String, Vec<usize>>,
     selected: usize,
     /// Whether the server's own conversation is shown as the Server channel
     /// ([`Chat::show_server`]), not as the stand-in for nothing shown that it is otherwise.
@@ -672,6 +676,7 @@ impl Chat {
             link: None,
             conversations: vec![Conversation::new(server, Kind::Server)],
             index: HashMap::from([(fold(server), 0)]),
+            rooms: HashMap::new(),
             selected: 0,
             server_shown: false,
             raw_until: None,
@@ -786,6 +791,12 @@ impl Chat {
             .enumerate()
             .map(|(at, c)| (fold(&c.name), at))
             .collect();
+        self.rooms.clear();
+        for (at, conversation) in self.conversations.iter().enumerate() {
+            if let Some((channel, _)) = room_parts(&conversation.name) {
+                self.rooms.entry(fold(channel)).or_default().push(at);
+            }
+        }
     }
 
     fn push(&mut self, at: usize, entry: Entry) {
