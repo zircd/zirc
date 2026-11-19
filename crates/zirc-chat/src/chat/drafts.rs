@@ -20,4 +20,22 @@ impl Chat {
             text.clone_into(&mut shown.draft);
         }
     }
+
+    /// [`Chat::draft`] of the conversation `name`, for an app whose composer belongs to one
+    /// by name, as the phones' do: empty for one there isn't.
+    #[must_use]
+    pub fn draft_in(&self, name: &str) -> &str {
+        self.position(name)
+            .map_or("", |at| &self.conversations[at].draft)
+    }
+
+    /// [`Chat::set_draft`] in the conversation `name`; nothing for one there isn't.
+    pub fn set_draft_in(&mut self, name: &str, text: &str) {
+        if let Some(at) = self.position(name) {
+            let conversation = &mut self.conversations[at];
+            if conversation.draft != text {
+                text.clone_into(&mut conversation.draft);
+            }
+        }
+    }
 }
