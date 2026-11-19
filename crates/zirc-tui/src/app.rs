@@ -984,7 +984,18 @@ impl App {
             self.chat.show_server();
             return Vec::new();
         }
-        self.chat.select(at)
+        // What's written stays with the conversation it was written in, and the one shown
+        // next starts from its own (zirc-chat's drafts); a correction is let go.
+        if self.editing.is_some() {
+            self.stop_editing();
+        } else {
+            self.chat.set_draft(self.input.text());
+        }
+        let lines = self.chat.select(at);
+        let draft = self.chat.draft().to_owned();
+        let end = draft.len();
+        self.input.replace(draft, end);
+        lines
     }
 
     /// Whose profile is shown, if anyone's.
@@ -2815,6 +2826,32 @@ mod tests {
             app.key(KeyEvent::from(KeyCode::Char(c)));
         }
         assert_eq!(app.input.text(), "typing on");
+    }
+
+    #[test]
+    fn a_draft_stays_with_its_conversation_and_never_follows_into_another() {
+        let mut app = app();
+        app.connected(link(true));
+        feed(&mut app, &[":me!u@h JOIN #api", ":me!u@h JOIN #web"]);
+        let api = app
+            .conversations()
+            .iter()
+            .position(|c| c.name == "#api")
+            .unwrap();
+        let web = app
+            .conversations()
+            .iter()
+            .position(|c| c.name == "#web")
+            .unwrap();
+        let _ = app.select(api);
+        app.input.insert_str("half a thought");
+        let _ = app.select(web);
+        assert_eq!(app.input.text(), "");
+        app.input.insert_str("over here");
+        let _ = app.select(api);
+        assert_eq!(app.input.text(), "half a thought");
+        let _ = app.select(web);
+        assert_eq!(app.input.text(), "over here");
     }
 
     #[test]
