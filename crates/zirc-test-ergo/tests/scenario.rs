@@ -180,8 +180,8 @@ fn reads_history(control: &str, port: u16, password: &str) -> App {
     assert_eq!(said[0]["text"], WORDS.history);
     assert_eq!(said[0]["from"], WORDS.teammate);
     assert_eq!(said[1]["from"], WORDS.machine);
-    let pushed = said[1]["text"].as_str().unwrap_or_default();
-    assert!(pushed.contains(WORDS.pushed), "{said:?}");
+    let intended = said[1]["text"].as_str().unwrap_or_default();
+    assert!(intended.contains(WORDS.intended), "{said:?}");
     // Played once: asked again, what it said then.
     assert_eq!(
         asked(control, "POST", "/step/history", &Value::Null),
@@ -196,8 +196,8 @@ fn reads_history(control: &str, port: u16, password: &str) -> App {
     app.hears("the teammate's message in the history", |line| {
         says(line, WORDS.history)
     });
-    app.hears("the machine's push in the history", |line| {
-        says(line, WORDS.pushed)
+    app.hears("the machine's intent in the history", |line| {
+        says(line, WORDS.intended)
     });
     app
 }

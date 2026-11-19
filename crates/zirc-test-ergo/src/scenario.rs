@@ -68,8 +68,10 @@ pub struct Words {
     pub machine: &'static str,
     /// What the teammate said before the person came.
     pub history: &'static str,
-    /// The subject of the commit the teammate's machine pushed before the person came.
-    pub pushed: &'static str,
+    /// What the teammate's machine said it was about to change before the person came: its
+    /// routine work, which every app shows as one brief line. An intent, not a push: a commit
+    /// or a push shows in a channel only under Show: Everything (19 Nov 2026).
+    pub intended: &'static str,
     /// What the teammate answers the person.
     pub reply: &'static str,
     /// What the teammate says once the server is back.
@@ -83,7 +85,7 @@ pub const WORDS: Words = Words {
     teammate: "bob",
     machine: "bob-laptop",
     history: "morning! the login page is up for review",
-    pushed: "web: sign in with a code",
+    intended: "sign in with a code",
     reply: "welcome aboard, good to have you here",
     back: "and the server is back, as if nothing happened",
 };
@@ -568,7 +570,8 @@ impl Scenario {
     /// oldest first. A step is played once: asked for again, it answers what it said then.
     ///
     /// - `history`: the teammate and their machine arrive, and in [`Words::channel`] the
-    ///   teammate says [`Words::history`] and the machine pushes [`Words::pushed`].
+    ///   teammate says [`Words::history`] and the machine says it's about to change
+    ///   [`Words::intended`].
     /// - `reply`: the teammate says [`Words::reply`].
     /// - `back`: the teammate says [`Words::back`].
     ///
@@ -601,14 +604,11 @@ impl Scenario {
             teammate.send(&topic)?;
         }
         let morning = self.teammate_says(WORDS.history)?;
-        let push = json!({
-            "type": "push", "branch": "master", "head": "a1b2c3d4e5f60718", "forced": false,
-            "subjects": [WORDS.pushed],
-        });
-        let lines = self.stager.staged(WORDS.channel, SESSION, &push)?;
+        let intent = json!({ "type": "intent", "summary": WORDS.intended, "paths": [] });
+        let lines = self.stager.staged(WORDS.channel, SESSION, &intent)?;
         let machine = self.machine.as_mut().ok_or("the machine isn't here")?;
-        let pushed = machine.says(WORDS.channel, &lines)?;
-        Ok(vec![morning, pushed])
+        let intended = machine.says(WORDS.channel, &lines)?;
+        Ok(vec![morning, intended])
     }
 
     fn teammate_says(&mut self, text: &str) -> Result<Said, String> {

@@ -16,7 +16,7 @@
 
 # e2e_serve <serve> <work directory>: starts `serve` with its control port on a free port,
 # and sets E2E_CONTROL to its address and the path's words (E2E_CHANNEL, E2E_TEAMMATE,
-# E2E_HISTORY, E2E_PUSHED, E2E_REPLY, E2E_BACK and the rest of scenario.rs's Words). The
+# E2E_HISTORY, E2E_INTENDED, E2E_REPLY, E2E_BACK and the rest of scenario.rs's Words). The
 # server's lifetime is this shell's: `serve` stops, and its Ergo with it, when its input
 # closes, which is when this shell ends, however it ends. Nothing to kill, nothing left behind.
 e2e_serve() {
