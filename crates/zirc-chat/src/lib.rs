@@ -12,6 +12,7 @@ pub mod command;
 pub mod compose;
 pub mod connection;
 pub mod emoji;
+pub mod keys;
 pub mod link_ask;
 pub mod names;
 pub mod orgs;
