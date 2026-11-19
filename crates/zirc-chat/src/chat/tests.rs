@@ -4742,6 +4742,9 @@ fn a_guest_sees_their_own_room_as_the_public_channel_beside_it() {
     );
     // Another guest's room keeps its name: it's not ours.
     assert_eq!(chat.short_title("#web/guest-9z9z"), "#web/guest-9z9z");
+    // Its header counts the guest too, as both are talking in it.
+    feed(&mut chat, &[":priya!u@h JOIN #web/guest-1a2b priya :Priya"]);
+    assert_eq!(chat.member_count("#web/guest-1a2b"), 2);
 }
 
 /// A chat on staff, in #lobby with a guest who wrote to us, signed in as Anna.

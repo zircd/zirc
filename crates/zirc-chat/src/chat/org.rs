@@ -72,7 +72,8 @@ impl Chat {
     }
 
     /// How many people are in the conversation called `name`, as its header counts them:
-    /// never machines, agents, apps or guests, as [`Chat::org_header`] counts.
+    /// never machines, agents, apps or guests, as [`Chat::org_header`] counts, but always us,
+    /// a guest among them, who sees us talking.
     #[must_use]
     pub fn member_count(&self, name: &str) -> usize {
         self.members_of(name).len()
@@ -82,8 +83,10 @@ impl Chat {
     fn members_of(&self, name: &str) -> Vec<String> {
         self.people(name)
             .into_iter()
-            .filter(|person| person.machine.is_none() && person.app.is_none() && !person.guest)
-            .filter(|person| self.sender_kind(&person.nick) == SenderKind::Person)
+            .filter(|person| person.machine.is_none() && person.app.is_none())
+            .filter(|person| {
+                person.me || (!person.guest && self.sender_kind(&person.nick) == SenderKind::Person)
+            })
             .map(|person| person.nick)
             .collect()
     }
