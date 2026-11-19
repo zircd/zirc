@@ -10,7 +10,7 @@
 //! sign-ins'. With one organisation an app shows no switcher: someone in one organisation
 //! sees no change.
 
-use crate::chat::{Chat, Conversation, Level, badge_label};
+use crate::chat::{Chat, Conversation, Level, badge_label, initials};
 
 /// One `T` per organisation, in the order they were added, one of them selected unless
 /// there are none.
@@ -221,14 +221,11 @@ pub fn org_colour(org: &str) -> u8 {
 }
 
 /// What an organisation's tile shows without a picture: the first letter of its name, or of
-/// its first two words, `Acme` → `A`, `Zirc Labs` → `ZL`.
+/// its first two words, `Acme` → `A`, `Zirc Labs` → `ZL`, as an avatar's [`initials`] are,
+/// so a name known only by its slug, `acme-labs` → `AL`, isn't another `A`.
 #[must_use]
 pub fn org_initials(name: &str) -> String {
-    name.split_whitespace()
-        .take(2)
-        .filter_map(|word| word.chars().next())
-        .flat_map(char::to_uppercase)
-        .collect()
+    initials(name)
 }
 
 /// What an organisation's badge says on a rail, a switcher or a tab, as every app shows it:
@@ -756,6 +753,8 @@ mod tests {
         assert_eq!(org_initials("Acme"), "A");
         assert_eq!(org_initials("zirc labs"), "ZL");
         assert_eq!(org_initials("  Big  Fat Co "), "BF");
+        // Known by its slug alone, as before zirc.dev names it: never the same as Acme's.
+        assert_eq!(org_initials("acme-labs"), "AL");
         assert_eq!(org_initials(""), "");
         // The same name, any case, the same colour, always one of the set.
         assert_eq!(org_colour("acme"), org_colour("Acme"));
