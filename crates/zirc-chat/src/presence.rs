@@ -647,6 +647,21 @@ impl Presence {
             .cloned()
     }
 
+    /// What the session `session` on `nick` has said it's taking on, in each channel it
+    /// said so in, and when, as [`Presence::claims`] has it without the session's name,
+    /// tool or picture: asked for every agent the lists show, each refresh, so one pass
+    /// over every claim rather than a look-up of each channel.
+    pub fn claims_of(&self, nick: &str, session: &str) -> impl Iterator<Item = (&str, &str, u64)> {
+        self.claims.iter().flat_map(move |(channel, claims)| {
+            claims
+                .values()
+                .filter(move |claim| {
+                    claim.session == session && claim.nick.eq_ignore_ascii_case(nick)
+                })
+                .map(move |claim| (channel.as_str(), claim.task.as_str(), claim.since))
+        })
+    }
+
     /// What sessions in `channel` have said they're taking on, oldest first.
     #[must_use]
     pub fn claims(&self, channel: &str) -> Vec<Claim> {

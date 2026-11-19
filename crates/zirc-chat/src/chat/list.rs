@@ -443,15 +443,16 @@ impl Chat {
     /// What the session `session` on the machine `nick` last said it's taking on, and when,
     /// until it said it's done or dropped it.
     pub(super) fn claim(&self, nick: &str, session: &str) -> Option<(String, DateTime<Utc>)> {
-        let claim = self
-            .conversations
-            .iter()
-            .filter(|c| c.kind == super::Kind::Channel)
-            .flat_map(|c| self.presence.claims(&c.name))
-            .filter(|claim| claim.nick.eq_ignore_ascii_case(nick) && claim.session == session)
-            .max_by_key(|claim| claim.since)?;
-        let since = DateTime::from_timestamp(i64::try_from(claim.since).ok()?, 0)?;
-        Some((claim.task, since))
+        let (_, task, since) = self
+            .presence
+            .claims_of(nick, session)
+            .filter(|(channel, _, _)| {
+                self.conversation(channel)
+                    .is_some_and(|c| c.kind == super::Kind::Channel)
+            })
+            .max_by_key(|&(_, _, since)| since)?;
+        let since = DateTime::from_timestamp(i64::try_from(since).ok()?, 0)?;
+        Some((task.to_owned(), since))
     }
 
     /// The session `session` on the machine `nick`, whose own name is `machine_name`, as a
