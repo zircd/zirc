@@ -2324,10 +2324,18 @@ mod tests {
             ),
             "@time=2026-10-30T11:22:00.000Z :alice!u@h PRIVMSG #api :ask cc-598aa1 about it"
                 .to_owned(),
+            // Its later lines needn't name it again.
+            format!(
+                "@time=2026-10-30T11:23:00.000Z :mattias-mbp!u@machine/mattias PRIVMSG #api :{}",
+                post("cc-598aa1", None, "pushed")
+            ),
         ] {
             app.handle(line.parse().unwrap());
         }
         let (rows, terminal) = draw(&app, 120, 24);
+        // A session heads all it says by the name it goes by, never its id.
+        let id = rows.iter().find(|row| row.contains("cc-598aa1"));
+        assert_eq!(id, None, "{}", rows.join("\n"));
         // A post to a session says so first, by the session's name.
         row_with(&rows, "→ zirc-chat thanks, landed");
         // In what people say, a session goes by its name, drawn as a mention.

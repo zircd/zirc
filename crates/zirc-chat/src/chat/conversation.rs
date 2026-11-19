@@ -578,6 +578,8 @@ impl Conversation {
                 _ => None,
             },
             owner_name,
+            // [`super::Chat::quote`] names it as its row's head does.
+            &str::to_owned,
         );
         let first = said.lines().next().unwrap_or_default();
         let text = if first.chars().count() > QUOTE_CHARS {

@@ -190,8 +190,13 @@ pub fn entry_text(entry: &Entry) -> String {
             let mut line = format!(
                 "[{}] {}: {}",
                 described.kind.label(),
-                super::sender_text(from, entry.owner.as_deref(), Some(message), &|owner| owner
-                    .to_owned()),
+                super::sender_text(
+                    from,
+                    entry.owner.as_deref(),
+                    Some(message),
+                    &str::to_owned,
+                    &str::to_owned
+                ),
                 described.headline
             );
             if !described.paths.is_empty() {

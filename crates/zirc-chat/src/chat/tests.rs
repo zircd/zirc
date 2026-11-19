@@ -817,7 +817,10 @@ fn both_rows(chat: &Chat) -> Vec<Parts> {
                     entry.owner.as_deref(),
                     message,
                     entry.time,
-                    &|o| o.to_owned(),
+                    view::Names {
+                        owner: &str::to_owned,
+                        session: &str::to_owned,
+                    },
                 )
             }),
             _ => None,
@@ -2896,9 +2899,9 @@ fn names_agents_first_on_every_kind_of_row() {
             _ => None,
         })
         .unwrap();
-    // Said before the session had a name: the row has its id, and the speaker, who knows
-    // every name the session has given since, its name.
-    assert_eq!(intent.0.actor, "cc-1");
+    // Said before the session had a name: the row has the name it's given since, as its
+    // speaker does, never its id.
+    assert_eq!(intent.0.actor, "analytics");
     // Its owner is named as the speaker names them, by their name.
     assert_eq!(intent.0.actor_detail.as_deref(), Some("Alice's agent"));
     assert!(!intent.1.contains("alice-mbp"), "{}", intent.1);
@@ -5883,6 +5886,35 @@ fn names_sessions_and_says_who_a_post_is_for() {
 }
 
 #[test]
+fn an_agent_s_later_lines_go_by_the_name_it_gave() {
+    let mut chat = Scene::in_api();
+    let mut named = Message::new(
+        "cc-598aa1",
+        Event::Text {
+            body: "hello".into(),
+        },
+    );
+    named.name = Some("zirc-chat".into());
+    feed(&mut chat, &[&zirc("mattias-matt", &named)]);
+    // Later lines needn't say it again.
+    let unnamed = Message::new(
+        "cc-598aa1",
+        Event::Text {
+            body: "pushed".into(),
+        },
+    );
+    feed(&mut chat, &[&zirc("mattias-matt", &unnamed)]);
+    let shown = chat.items(chat.conversation("#api").unwrap(), |time| time.date_naive());
+    let Some(Item::Event { parts, text, .. }) = shown.last() else {
+        panic!("not an event: {:?}", shown.last())
+    };
+    assert_eq!(
+        (parts.actor.as_str(), text.as_str()),
+        ("zirc-chat", "zirc-chat: pushed")
+    );
+}
+
+#[test]
 fn a_commit_and_its_push_are_one_row() {
     let mut chat = Scene::in_api();
     let at = |time: &str, line: &str| format!("@time=2026-11-03T{time}.000Z {line}");
@@ -8490,7 +8522,10 @@ fn a_push_of_several_commits_lists_them_under_its_verb() {
                 },
             ),
             chrono::Utc::now(),
-            &|o| o.to_owned(),
+            view::Names {
+                owner: &str::to_owned,
+                session: &str::to_owned,
+            },
         )
     };
     let two = push(&["Sign the copy", "Jump to's last row"]);

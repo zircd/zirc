@@ -127,8 +127,9 @@ pub fn agent_label(session: Option<&str>, owner: &str) -> String {
 }
 
 /// Who something was from, as plain text names them: by `nick`, whose machine it is
-/// (`owner`, as its host said), and, for a zirc message, its `message`. An agent session by its
-/// name or id, the machine itself (or a plain line from it) by its name, the owner as
+/// (`owner`, as its host said), and, for a zirc message, its `message`. An agent session by the
+/// name `message` gives, or else as `session_name` says ([`Chat::session_label`], or its id with
+/// no [`Chat`] to ask), the machine itself (or a plain line from it) by its name, the owner as
 /// `owner_name` says ([`Chat::owner_name`], or their nick with no [`Chat`] to ask), an app by
 /// its label, a person as `owner_name` says too, as they show, and a guest by their nick.
 #[must_use]
@@ -137,6 +138,7 @@ pub fn sender_text(
     owner: Option<&str>,
     message: Option<&zirc_proto::Message>,
     owner_name: &dyn Fn(&str) -> String,
+    session_name: &dyn Fn(&str) -> String,
 ) -> String {
     match super::sender_kind(nick, owner) {
         SenderKind::Integration => {
@@ -151,7 +153,7 @@ pub fn sender_text(
                     message
                         .and_then(|message| message.name.as_deref())
                         .and_then(zirc_proto::session_name)
-                        .unwrap_or(session)
+                        .unwrap_or_else(|| session_name(&session))
                 });
             match session {
                 Some(_) => agent_name(session.as_deref(), &owner).0,

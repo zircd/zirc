@@ -153,20 +153,21 @@ fn zirc_item<'a>(
     entry: &'a Entry,
     message: &'a Message,
     continues: bool,
-    owner_name: &dyn Fn(&str) -> String,
+    names: Names<'_>,
 ) -> Item<'a> {
     let from = super::sender_text(
         &entry.from,
         entry.owner.as_deref(),
         Some(message),
-        owner_name,
+        names.owner,
+        names.session,
     );
     let parts = event_parts(
         &entry.from,
         entry.owner.as_deref(),
         message,
         entry.time,
-        owner_name,
+        names,
     );
     match &message.event {
         // A decision is said as a message is, in Markdown: its title, quote and bullets.
@@ -571,11 +572,13 @@ fn event_links(event: &Event) -> Vec<(String, String)> {
 }
 
 /// The agent that said `message`, as `nick`, whose `owner` its host says: its owner and, for
-/// one of its sessions, the session's id and what to call it, its name or else its id.
+/// one of its sessions, the session's id and what to call it, the name `message` gives or else
+/// as `session_name` says, the name it has gone by.
 fn agent_of(
     nick: &str,
     owner: Option<&str>,
     message: &Message,
+    session_name: &dyn Fn(&str) -> String,
 ) -> Option<(String, Option<(String, String)>)> {
     let owner = owner?;
     if sender_kind(nick, Some(owner)) != SenderKind::Agent {
@@ -586,20 +589,21 @@ fn agent_of(
             .name
             .as_deref()
             .and_then(zirc_proto::session_name)
-            .unwrap_or_else(|| session.to_owned());
+            .unwrap_or_else(|| session_name(session));
         (session.to_owned(), name)
     });
     Some((owner.to_owned(), named))
 }
 
-/// `message`'s parts, said by `nick` at `time`, an agent's owner as `owner_name` says.
+/// `message`'s parts, said by `nick` at `time`, its agent and their owner as `names` say.
 pub(super) fn event_parts(
     nick: &str,
     owner: Option<&str>,
     message: &Message,
     time: DateTime<Utc>,
-    owner_name: &dyn Fn(&str) -> String,
+    names: Names<'_>,
 ) -> Parts {
+    let owner_name = names.owner;
     let event = &message.event;
     let described = super::describe::describe(event);
     let said = |text: &str| (String::new(), strip_formatting(text));
@@ -651,7 +655,7 @@ pub(super) fn event_parts(
         (Event::Text { .. }, Some((session, rest))) => (Some(session.to_owned()), rest.to_owned()),
         _ => (None, details),
     };
-    let (actor, session, owner) = match agent_of(nick, owner, message) {
+    let (actor, session, owner) = match agent_of(nick, owner, message, names.session) {
         Some((owner, Some((session, name)))) => (name, Some(session), Some(owner)),
         Some((whose, None)) => (actor(nick, owner, owner_name), None, Some(whose)),
         None => (actor(nick, owner, owner_name), None, None),
@@ -1744,15 +1748,31 @@ impl Membership {
 impl super::Chat {
     /// `conversation`'s lines, oldest first, with the day of each time as `day` reckons it:
     /// in the view's own time zone. Agents' owners are named as [`super::Chat::owner_name`]
-    /// says, as every row's head names them.
+    /// says, and agent sessions as [`super::Chat::session_label`] does, as every row's head
+    /// names them.
     #[must_use]
     pub fn items<'a>(
         &self,
         conversation: &'a Conversation,
         day: impl Fn(DateTime<Utc>) -> NaiveDate,
     ) -> Vec<Item<'a>> {
-        items(conversation, day, &|owner| self.owner_name(owner))
+        let names = Names {
+            owner: &|owner| self.owner_name(owner),
+            session: &|session| self.session_label(session),
+        };
+        items(conversation, day, names)
     }
+}
+
+/// How a row names who said it, as [`super::Chat`] says: an agent's owner, or a person, by the
+/// name they show as ([`super::Chat::owner_name`]), and an agent session by the name it goes
+/// by ([`super::Chat::session_label`]), where its line doesn't say.
+#[derive(Clone, Copy)]
+pub(crate) struct Names<'a> {
+    /// An owner's, or a person's, by their nick.
+    pub owner: &'a dyn Fn(&str) -> String,
+    /// An agent session's, by its id.
+    pub session: &'a dyn Fn(&str) -> String,
 }
 
 /// A message's row, saying where it was sent from when that's news: `apps` keeps each
@@ -1801,12 +1821,12 @@ fn membership<'a>(items: &mut [Item<'a>], entry: &Entry, new_day: bool) -> Optio
     Some(Item::Membership(run))
 }
 
-/// `conversation`'s lines, as [`super::Chat::items`] says, its agents' owners named as
-/// `owner_name` says.
+/// `conversation`'s lines, as [`super::Chat::items`] says, its agents and their owners named
+/// as `names` says.
 pub(crate) fn items<'a>(
     conversation: &'a Conversation,
     day: impl Fn(DateTime<Utc>) -> NaiveDate,
-    owner_name: &dyn Fn(&str) -> String,
+    names: Names<'_>,
 ) -> Vec<Item<'a>> {
     let entries = &conversation.entries;
     let hidden = reconnects(entries);
@@ -1883,9 +1903,9 @@ pub(crate) fn items<'a>(
                     };
                     item
                 }
-                None => zirc_item(entry, message, continues, owner_name),
+                None => zirc_item(entry, message, continues, names),
             },
-            EntryKind::Unreadable(text) => unreadable_item(entry, text, owner_name),
+            EntryKind::Unreadable(text) => unreadable_item(entry, text, names.owner),
             EntryKind::Join | EntryKind::Part(_) | EntryKind::Quit(_) => {
                 match membership(&mut items, entry, new_day) {
                     Some(run) => run,
