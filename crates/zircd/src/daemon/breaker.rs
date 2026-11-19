@@ -2,7 +2,7 @@
 //! them, from a bug or a runaway loop, runs up the bill. zircd counts the wakes it lets
 //! through in a sliding window, for each session and for the whole machine, and past a
 //! limit holds the rest as notes for the session's next wake ([`super::later`]), tells the
-//! machine's owner by a direct message once, and lets wakes through again when the window
+//! machine's owner once, by a notice no phone pushes, and lets wakes through again when the window
 //! has drained to half the limit, or at once on `zirc wakes resume`.
 //!
 //! What a session asked to be woken for, a landing it waits on or an answer to its own
@@ -12,8 +12,7 @@
 //! paused. The machine's limit counts the messages that woke its sessions, not the wakes:
 //! one post naming fourteen sessions is one line said, not a loop. The breaker's notice goes
 //! to the owner alone, never to a session's watch and not to a channel, so tripping wakes
-//! nobody and `#ops` stays for what needs someone there: it was an alert the owner's own
-//! phone already had.
+//! nobody and `#ops` stays for what needs someone there.
 //!
 //! The user asked for "a conservative low number so if something goes wrong it can't run
 //! wild and I'll get notified" (6 Nov 2026), and raised it from 6 and 20 to 10 and 30 when
@@ -450,20 +449,23 @@ impl Daemon {
         }
     }
 
-    /// Tells the machine's owner that wakes are paused ([`Daemon::tell_owner`]).
+    /// Tells the machine's owner that wakes are paused, as notices in their conversation with
+    /// the machine, a line each: they see it there, and the phones never push a notice. It
+    /// was a direct message, pushed 21 times in 16-19 Nov 2026 for a pause that mostly ended
+    /// on its own; the user chose to see it without a push (19 Nov 2026).
     fn tell_of_trip(&mut self, notice: &str) {
-        self.tell_owner(notice);
+        self.to_owner(notice, |client, owner| {
+            notice
+                .lines()
+                .try_for_each(|line| client.send(Line::new("NOTICE", [owner, line])))
+        });
     }
 
-    /// Tells the machine's owner `notice` by a direct message, such as that wakes are
-    /// paused: never a session's watch, and no channel (6 Nov 2026: "so I'll get notified";
-    /// the first notices went to `#decisions` and then `#ops`, where they were one more line
-    /// among the alerts). A machine without an owner has no one to tell, so it only logs.
+    /// Tells the machine's owner `notice` by a direct message, such as that a broken master
+    /// has nobody on it: never a session's watch, and no channel (6 Nov 2026: "so I'll get
+    /// notified"; the breaker's first notices went to `#decisions` and then `#ops`, where
+    /// they were one more line among the alerts).
     pub(super) fn tell_owner(&mut self, notice: &str) {
-        tracing::warn!("{}", notice.replace('\n', " "));
-        let (Some(client), Some(owner)) = (&self.client, &self.owner) else {
-            return;
-        };
         let message = zirc_proto::Message {
             level: Some(zirc_proto::Level::Warn),
             ..self.signed(
@@ -473,7 +475,23 @@ impl Daemon {
                 },
             )
         };
-        if let Err(err) = zirc_core::send::send_message(client, owner, &message) {
+        self.to_owner(notice, |client, owner| {
+            zirc_core::send::send_message(client, owner, &message)
+        });
+    }
+
+    /// Logs `notice` and has `send` say it to the machine's owner. A machine without an owner
+    /// has no one to tell, so it only logs.
+    fn to_owner(
+        &self,
+        notice: &str,
+        send: impl FnOnce(&zirc_irc::Client, &str) -> Result<(), zirc_irc::Error>,
+    ) {
+        tracing::warn!("{}", notice.replace('\n', " "));
+        let (Some(client), Some(owner)) = (&self.client, &self.owner) else {
+            return;
+        };
+        if let Err(err) = send(client, owner) {
             tracing::warn!("couldn't tell {owner}: {err}");
         }
     }

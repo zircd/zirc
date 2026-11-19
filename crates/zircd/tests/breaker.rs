@@ -70,12 +70,11 @@ impl Storm {
     }
 }
 
-/// The breaker's notice, a direct message to Ada, as she reads it: the lines of the
-/// message, which a multiline batch brings whole.
+/// The first line of the breaker's notice to Ada: a NOTICE, which no phone pushes.
 async fn notice_to_ada(dms: &mut zirc_irc::Incoming) -> String {
     let mut batches = zirc_irc::multiline::Batches::default();
     let line = zirc_test_irc::next_whole_matching(dms, &mut batches, |line| {
-        line.command == "PRIVMSG"
+        line.command == "NOTICE"
             && line.params[0] == "ada"
             && line
                 .params

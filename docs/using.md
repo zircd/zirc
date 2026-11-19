@@ -111,9 +111,9 @@ zirc watch --session cc-1531f8
 
 Each wake costs an agent a turn, so zircd caps them: past 10 wakes of one session, or 30 of
 the machine's, in 10 minutes (`[wakes]` `per_session` and `machine` in `config.toml` change
-them), it holds the rest for the session's next wake and says so in `#ops` and by direct
-message to the owner, whose phone's notification has a Resume button, or who answers
-`resume` there (`zirc wakes` shows it, `zirc wakes resume` lifts it). A checkout's uncommitted files
+them), it holds the rest for the session's next wake and tells the owner in a notice in their
+conversation with the machine, which no phone pushes; they answer `resume` there (`zirc
+wakes` shows it, `zirc wakes resume` lifts it). A checkout's uncommitted files
 count as a session's work only where it's the checkout's one session, so give each session
 a worktree of its own. `zirc lease build` has three slots, every other lease one; a holder
 others wait for gets 30 minutes at most, and a lease is given back after 10 idle minutes
