@@ -1976,7 +1976,7 @@ fn point<'a>(items: &mut Vec<Item<'a>>, mut pointers: Vec<(usize, usize, usize, 
 /// something that does.
 #[must_use]
 pub fn people_only<'a>(items: Vec<Item<'a>>, me: &str) -> Vec<Item<'a>> {
-    let mentions_me = |text: &str| crate::names::mentions(text, me);
+    let mentions_me = |text: &str| crate::names::names_person(text, me);
     let by_person = |entry: &Entry| {
         !matches!(
             sender_kind(&entry.from, entry.owner.as_deref()),

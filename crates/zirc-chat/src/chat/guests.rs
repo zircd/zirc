@@ -640,7 +640,7 @@ impl Chat {
             Level::All => true,
             Level::Mentions => match &entry.kind {
                 EntryKind::Message(text) | EntryKind::Action(text) | EntryKind::Notice(text) => {
-                    crate::names::mentions(text, &self.me)
+                    crate::names::names_person(text, &self.me)
                 }
                 _ => false,
             },

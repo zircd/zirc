@@ -37,6 +37,23 @@ pub fn is_nick(nick: &str) -> bool {
 /// allows in nicks counts as part of a word.
 #[must_use]
 pub fn mentions(text: &str, name: &str) -> bool {
+    word(text, name, |_, _| true)
+}
+
+/// Whether `text` names the person `nick`, as [`mentions`] says, but not as part of a path
+/// or an address: `/Users/mattias/c` and `mattias@zirc.dev` aren't said to them, and
+/// pushed to their phone as if they were (four disk warnings and two commit subjects, 16-19
+/// Nov 2026). `@mattias` is.
+#[must_use]
+pub fn names_person(text: &str, nick: &str) -> bool {
+    word(text, nick, |before, after| {
+        before != Some('/') && !matches!(after, Some('/' | '@'))
+    })
+}
+
+/// Whether `name` is in `text` as a word of its own, without case, where `apart` also
+/// holds for the characters either side of it.
+fn word(text: &str, name: &str, apart: impl Fn(Option<char>, Option<char>) -> bool) -> bool {
     if name.is_empty() {
         return false;
     }
@@ -45,7 +62,7 @@ pub fn mentions(text: &str, name: &str) -> bool {
     text.match_indices(&name).any(|(at, _)| {
         let before = text[..at].chars().next_back();
         let after = text[at + name.len()..].chars().next();
-        !before.is_some_and(nick_char) && !after.is_some_and(nick_char)
+        !before.is_some_and(nick_char) && !after.is_some_and(nick_char) && apart(before, after)
     })
 }
 
@@ -102,5 +119,21 @@ mod tests {
         assert!(!mentions("cc-12 is done", "cc-1"));
         assert!(!mentions("mattias_ is away", "mattias"));
         assert!(!mentions("anything", ""));
+    }
+
+    #[test]
+    fn names_a_person_but_not_in_a_path_or_an_address() {
+        assert!(names_person("@mattias, over to you", "mattias"));
+        assert!(names_person("mattias: May I run it?", "mattias"));
+        assert!(!names_person(
+            "18.2 GB /Users/mattias/c/monorepo-worktrees",
+            "mattias"
+        ));
+        assert!(!names_person("mattias/cc-1 landed it", "mattias"));
+        assert!(names_person(
+            "from .mailmap, mattias@zirc.dev for Mattias",
+            "mattias"
+        ));
+        assert!(!names_person("committed as mattias@zirc.dev", "mattias"));
     }
 }

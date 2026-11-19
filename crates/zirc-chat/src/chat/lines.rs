@@ -1440,7 +1440,7 @@ mod tests {
     fn put(chat: &mut Chat, nick: &str, time: &str, id: &str, kind: crate::chat::EntryKind) {
         let at = chat.position("#api").unwrap();
         let mention = match &kind {
-            crate::chat::EntryKind::Message(text) => crate::names::mentions(text, "me"),
+            crate::chat::EntryKind::Message(text) => crate::names::names_person(text, "me"),
             _ => false,
         };
         let entry = Entry {

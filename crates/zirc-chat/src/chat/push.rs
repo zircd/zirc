@@ -90,7 +90,7 @@ pub fn why(settings: &NotifySettings, now: i64, me: &str, heard: &Heard<'_>) -> 
     // Aimed at them: as a mention, through a mute and a level of Nothing.
     let why = if heard.to_theirs {
         Some(Why::Reply)
-    } else if crate::names::mentions(&words, me) {
+    } else if crate::names::names_person(&words, me) {
         Some(Why::Mention)
     } else {
         None
