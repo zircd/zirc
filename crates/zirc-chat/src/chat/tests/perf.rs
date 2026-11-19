@@ -1,12 +1,13 @@
 //! How long the work an app repeats on every frame or every message takes with a big
-//! workspace, printed with `--nocapture`, and the speed budget it must keep to in a busy
-//! organisation ([`a_busy_organisation_refreshes_within_the_budget`]). The limits are loose:
-//! they catch a quadratic return, not noise.
+//! workspace, printed with `--nocapture`, and the speed budget it keeps to in a busy
+//! organisation: it grows no faster than the organisation ([`Budget`]). The limits are
+//! loose: they catch a quadratic return, not noise.
 
 use std::time::Instant;
 
 use chrono::FixedOffset;
 
+use super::busy::Size;
 use super::*;
 use crate::chat::ListOptions;
 
@@ -132,19 +133,6 @@ fn a_full_conversation_drops_its_oldest_in_batches_not_one_by_one() {
     println!("PERF {changes} drops over {} messages", max * 2);
     // A view starts over at each; one per message was the cost of a busy channel.
     assert!(changes <= 8, "{changes} drops");
-}
-
-/// The fastest of `runs` runs of `f`, in milliseconds, printed as `what`: the least the
-/// machine let it take, which another test running beside it moves least.
-fn fastest<T>(what: &str, runs: u32, mut f: impl FnMut() -> T) -> f64 {
-    let mut best = f64::MAX;
-    for _ in 0..runs {
-        let start = Instant::now();
-        std::hint::black_box(f());
-        best = best.min(start.elapsed().as_secs_f64() * 1000.0);
-    }
-    println!("PERF {what}: {best:.3} ms");
-    best
 }
 
 /// What zirc-web's view asks of the core each time the page redraws: for every line that
@@ -274,98 +262,122 @@ fn tui(chat: &Chat, zone: FixedOffset) -> usize {
         + chat.tabs().len()
 }
 
-/// The speed budget, which the tests below keep to: what each app asks of the core on every
-/// refresh, with a busy organisation open at its busiest channel ([`super::busy`]), takes
-/// no longer than its budget here, in this test's build (the landing's, unoptimised), the
-/// fastest of a few runs. Each budget is about four times what it took on an M-series Mac
-/// when it was set (19 Nov 2026), and 1 ms at least, so a slower machine running other
-/// tests beside it passes, while work that grows with the square of the conversations or
-/// the lines, as the agent feed's did and a channel's header did until then (16 times this
-/// budget's), fails. Optimised, as the apps run it, each takes a sixth to a tenth of it;
-/// the chat plan's speed budget has those numbers.
-#[derive(Default)]
+/// How many times longer what an app asks may take in the busy organisation than in a
+/// quarter of it ([`Size`]), where there's four times as much of everything. Work that grows
+/// with the organisation took 4 to 8 times as long when this was set (19 Nov 2026), more
+/// than 4 as the bigger one fits the processor's caches less well; work that grows with its
+/// square takes 16, as a channel's header line and a channel's app members did until then,
+/// and the agent feed's refresh before them.
+const GROWTH: f64 = 12.0;
+
+/// What takes less than this in the busy organisation, in milliseconds, is too quick for
+/// its growth to be timed, nor costs a refresh anything.
+const TOO_QUICK: f64 = 1.0;
+
+/// The speed budget, which the tests below keep to: what each app asks of the core on
+/// every refresh may grow no faster than the organisation ([`GROWTH`]). How long a call
+/// takes depends on the machine and what else runs on it (a loaded CI agent ran these
+/// 4 to 19 times slower than an M-series Mac), but how much longer it takes in an
+/// organisation four times the size doesn't: each is timed on both, in turn, the fastest
+/// of a few runs. The chat plan's speed budget has what each took.
 struct Budget {
-    /// What took longer than its budget, as the failure says it.
+    quarter: Chat,
+    busy: Chat,
+    /// What grew too fast, as the failure says it.
     over: Vec<String>,
 }
 
 impl Budget {
-    /// The busy organisation, as long as it took to make.
-    fn busy() -> Chat {
-        let started = Instant::now();
-        let chat = super::busy::busy();
-        println!(
-            "PERF build the busy organisation: {:.3} ms",
-            started.elapsed().as_secs_f64() * 1000.0
-        );
-        chat
+    /// Both organisations, as long as each took to make.
+    fn new() -> Self {
+        let made = |size: Size| {
+            let started = Instant::now();
+            let chat = super::busy::organisation(size);
+            println!(
+                "PERF make {size:?}: {:.3} ms",
+                started.elapsed().as_secs_f64() * 1000.0
+            );
+            chat
+        };
+        Self {
+            quarter: made(Size::QUARTER),
+            busy: made(Size::BUSY),
+            over: Vec::new(),
+        }
     }
 
-    /// `f`, `what` it does, may take `budget` milliseconds.
-    fn keeps<T>(&mut self, what: &str, budget: f64, f: impl FnMut() -> T) {
-        let took = fastest(what, 5, f);
-        if took > budget {
-            self.over
-                .push(format!("{what}: {took:.1} ms, over its {budget} ms"));
+    /// `f`, `what` it asks, grows no faster than the organisation.
+    fn keeps<T>(&mut self, what: &str, mut f: impl FnMut(&mut Chat) -> T) {
+        let mut time = |chat: &mut Chat| {
+            let start = Instant::now();
+            std::hint::black_box(f(chat));
+            start.elapsed().as_secs_f64() * 1000.0
+        };
+        let (mut quarter, mut busy) = (f64::MAX, f64::MAX);
+        for _ in 0..7 {
+            quarter = quarter.min(time(&mut self.quarter));
+            busy = busy.min(time(&mut self.busy));
+        }
+        let growth = busy / quarter.max(f64::MIN_POSITIVE);
+        println!("PERF {what}: {busy:.3} ms, a quarter of it {quarter:.3} ms, {growth:.1}×");
+        if growth > GROWTH && busy >= TOO_QUICK {
+            self.over.push(format!(
+                "{what}: {busy:.1} ms, {growth:.1} times a quarter of the organisation's {quarter:.1}"
+            ));
         }
     }
 
     fn kept(self) {
         assert!(
             self.over.is_empty(),
-            "over the speed budget: {:#?}",
+            "grows faster than the organisation, more than {GROWTH} times a quarter of it: {:#?}",
             self.over
         );
     }
 }
 
 #[test]
-fn each_app_refreshes_a_busy_organisation_within_the_budget() {
-    let chat = Budget::busy();
+fn each_apps_refresh_grows_no_faster_than_the_organisation() {
     let zone = FixedOffset::east_opt(0).unwrap();
-    let mut budget = Budget::default();
-    budget.keeps("web's refresh", 340.0, || web(&chat, zone));
-    budget.keeps("a phone's refresh", 480.0, || phone(&chat, zone));
-    budget.keeps("the desktop's refresh", 260.0, || desktop(&chat, zone));
-    budget.keeps("the TUI's draw", 120.0, || tui(&chat, zone));
+    let mut budget = Budget::new();
+    budget.keeps("web's refresh", |chat| web(chat, zone));
+    budget.keeps("a phone's refresh", |chat| phone(chat, zone));
+    budget.keeps("the desktop's refresh", |chat| desktop(chat, zone));
+    budget.keeps("the TUI's draw", |chat| tui(chat, zone));
     budget.kept();
 }
 
 #[test]
-fn what_a_refresh_asks_of_a_busy_organisation_is_within_the_budget() {
-    use super::busy::{self, OPEN};
-    let mut chat = Budget::busy();
+fn what_a_refresh_asks_grows_no_faster_than_the_organisation() {
+    use super::busy::{self, AGENT, OPEN};
     let zone = FixedOffset::east_opt(0).unwrap();
     let wall = |at: DateTime<Utc>| at.naive_utc();
-    let mut budget = Budget::default();
-    // The most costly first.
-    budget.keeps("lines", 180.0, || chat.lines(OPEN, zone, false));
-    budget.keeps("agent_lines", 10.0, || {
-        chat.agent_lines("p03-m3/cc-3", zone)
-    });
-    budget.keeps("sidebar_list", 52.0, || {
+    let mut budget = Budget::new();
+    budget.keeps("lines", |chat| chat.lines(OPEN, zone, false));
+    budget.keeps("agent_lines", |chat| chat.agent_lines(AGENT, zone));
+    budget.keeps("sidebar_list", |chat| {
         chat.sidebar_list(&ListOptions::default())
     });
-    budget.keeps("every conversation's channel_about", 50.0, || {
+    budget.keeps("every conversation's channel_about", |chat| {
         chat.conversations()
             .iter()
             .map(|c| chat.channel_about(&c.name))
             .collect::<Vec<_>>()
     });
-    budget.keeps("member_rows", 16.0, || chat.member_rows(OPEN));
-    budget.keeps("app_members", 16.0, || chat.app_members(OPEN));
-    budget.keeps("activity", 20.0, || chat.activity());
-    budget.keeps("badges", 9.0, || chat.badges());
-    budget.keeps("inbox_button", 8.0, || chat.inbox_button());
-    budget.keeps("org_header", 18.0, || chat.org_header());
-    budget.keeps("direct_rows", 26.0, || chat.direct_rows());
-    budget.keeps("header_line", 1.0, || chat.header_line(OPEN));
-    budget.keeps("unseen", 1.0, || chat.unseen(wall));
+    budget.keeps("member_rows", |chat| chat.member_rows(OPEN));
+    budget.keeps("app_members", |chat| chat.app_members(OPEN));
+    budget.keeps("activity", |chat| chat.activity());
+    budget.keeps("badges", |chat| chat.badges());
+    budget.keeps("inbox_button", |chat| chat.inbox_button());
+    budget.keeps("org_header", |chat| chat.org_header());
+    budget.keeps("direct_rows", |chat| chat.direct_rows());
+    budget.keeps("header_line", |chat| chat.header_line(OPEN));
+    budget.keeps("unseen", |chat| chat.unseen(wall));
     // Asked as the person types into search and Jump to.
-    budget.keeps("search here", 190.0, || chat.search(OPEN, "flaky"));
-    budget.keeps("switcher", 6.0, || chat.switcher("c1"));
+    budget.keeps("search here", |chat| chat.search(OPEN, "flaky"));
+    budget.keeps("switcher", |chat| chat.switcher("c1"));
     let mut n = 0;
-    budget.keeps("receive one line", 1.0, || {
+    budget.keeps("receive one line", |chat| {
         n += 1;
         chat.receive(busy::live(n))
     });

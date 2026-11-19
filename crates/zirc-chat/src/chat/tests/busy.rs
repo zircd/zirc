@@ -1,49 +1,87 @@
-//! A busy organisation, as the speed budget measures one ([`busy`]): 200 conversations
-//! holding 10,000 lines, said by 20 people and 30 agents, with intents, commits, CI's
-//! landings and their failure cards, mentions, links, code, reactions and replies.
+//! A busy organisation, as the speed budget measures one ([`Size::BUSY`]): 145 channels
+//! and 50 direct messages holding 11,000 lines, said by 20 people and 30 agents, with
+//! intents, commits, CI's landings and their failure cards, mentions, links, code,
+//! reactions and replies; and the same organisation a quarter of its size
+//! ([`Size::QUARTER`]), which the budget compares it with.
 
 use chrono::Duration;
 use zirc_proto::card::{Action, Card, State, Who};
 
 use super::*;
 
-/// The people, `p00` to `p19`.
-pub const PEOPLE: usize = 20;
-/// The agents: one session on each of 30 machines, `p<owner>-m<n>`, two or so a person.
-pub const AGENTS: usize = 30;
-/// The plain channels, `#c000` on, besides the repositories' ([`REPOS`]).
-pub const CHANNELS: usize = 140;
-/// The repositories, `#r0` on, each a channel with its agents room under it.
-pub const REPOS: usize = 5;
-/// What the busiest channel, `#c000`, holds: as much as a conversation keeps.
-pub const BUSIEST: usize = 2000;
-/// What every other conversation holds.
-pub const EACH: usize = 40;
+/// How big an organisation is.
+#[derive(Debug, Clone, Copy)]
+pub struct Size {
+    /// The people, `p00` on.
+    pub people: usize,
+    /// The agents: one session on each machine, `p<owner>-m<n>`, two or so a person.
+    pub agents: usize,
+    /// The plain channels, `#c000` on, besides the repositories'.
+    pub channels: usize,
+    /// The repositories, `#r0` on, each a channel with its agents room under it.
+    pub repos: usize,
+    /// What the busiest channel, [`OPEN`], holds.
+    pub busiest: usize,
+    /// What every other conversation holds.
+    pub each: usize,
+}
 
-/// The channel the person has open, which holds [`BUSIEST`].
+impl Size {
+    /// The busy organisation, its busiest channel holding as much as a conversation keeps.
+    pub const BUSY: Self = Self {
+        people: 20,
+        agents: 30,
+        channels: 140,
+        repos: 5,
+        busiest: 2000,
+        each: 40,
+    };
+
+    /// The busy organisation a quarter of its size, near enough: a quarter of the people,
+    /// agents and conversations, each as long, and its busiest a quarter as long, so a
+    /// quarter of the lines in all.
+    pub const QUARTER: Self = Self {
+        people: 5,
+        agents: 8,
+        channels: 35,
+        repos: 1,
+        busiest: 500,
+        each: 40,
+    };
+
+    fn person(self, n: usize) -> String {
+        format!("p{:02}", n % self.people)
+    }
+
+    fn machine(self, n: usize) -> String {
+        let n = n % self.agents;
+        format!("{}-m{n}", self.person(n))
+    }
+
+    /// The three agents in channel number `c`, which speak there.
+    fn agents_in(self, c: usize) -> [usize; 3] {
+        [0, 1, 2].map(|k| (c + k * self.agents / 3) % self.agents)
+    }
+
+    /// Every conversation's name: the channels, the repositories and their agents rooms,
+    /// the people's direct messages and the agents' machines'.
+    pub fn conversations(self) -> Vec<String> {
+        let mut names: Vec<String> = (0..self.channels).map(|c| format!("#c{c:03}")).collect();
+        for r in 0..self.repos {
+            names.push(format!("#r{r}"));
+            names.push(format!("#r{r}/agents"));
+        }
+        names.extend((0..self.people).map(|p| self.person(p)));
+        names.extend((0..self.agents).map(|a| self.machine(a)));
+        names
+    }
+}
+
+/// The channel the person has open, which holds [`Size::busiest`].
 pub const OPEN: &str = "#c000";
 
-fn person(n: usize) -> String {
-    format!("p{:02}", n % PEOPLE)
-}
-
-fn machine(n: usize) -> String {
-    let n = n % AGENTS;
-    format!("{}-m{n}", person(n))
-}
-
-/// Every conversation's name: the channels, the repositories and their agents rooms, the
-/// people's direct messages and the agents' machines'.
-pub fn conversations() -> Vec<String> {
-    let mut names: Vec<String> = (0..CHANNELS).map(|c| format!("#c{c:03}")).collect();
-    for r in 0..REPOS {
-        names.push(format!("#r{r}"));
-        names.push(format!("#r{r}/agents"));
-    }
-    names.extend((0..PEOPLE).map(person));
-    names.extend((0..AGENTS).map(machine));
-    names
-}
+/// An agent session's conversation that both sizes have.
+pub const AGENT: &str = "p03-m3/cc-3";
 
 /// `line` said at `at` with id `id`, in history `batch` if any.
 fn tagged(mut line: Line, batch: Option<&str>, at: DateTime<Utc>, id: &str) -> Line {
@@ -139,8 +177,8 @@ fn landing(a: usize, m: usize) -> Message {
 
 /// What's said in `channel` as its `count` lines of history, oldest first, the newest a
 /// minute before noon: of every ten, seven people's, one an agent's (one of the three in
-/// it, [`members`]), one CI's, and one a reaction or a reply to the line before.
-fn channel_history(channel: &str, c: usize, count: usize) -> Vec<Line> {
+/// it, [`Size::agents_in`]), one CI's, and one a reaction or a reply to the line before.
+fn channel_history(size: Size, channel: &str, c: usize, count: usize) -> Vec<Line> {
     let batch = format!("h-{}", channel.replace(['#', '/'], ""));
     let start =
         noon() - Duration::minutes(1) - Duration::seconds(i64::try_from(count).unwrap() * 97);
@@ -148,10 +186,11 @@ fn channel_history(channel: &str, c: usize, count: usize) -> Vec<Line> {
     for m in 0..count {
         let at = start + Duration::seconds(i64::try_from(m).unwrap() * 97);
         let id = format!("{batch}-{m}");
-        let who = person(c + m);
+        let who = size.person(c + m);
+        let agent = size.agents_in(c)[(m / 10) % 3];
         let line = match m % 10 {
-            7 => line_from(&machine(c + m), channel, &agent_says((c + m) % AGENTS, m)),
-            8 => line_from("zirc-ci", channel, &landing((c + m) % AGENTS, m)),
+            7 => line_from(&size.machine(agent), channel, &agent_says(agent, m)),
+            8 => line_from("zirc-ci", channel, &landing(agent, m)),
             9 if m % 20 == 9 => raw(&format!(
                 "@+draft/react=👍;+draft/reply={batch}-{} :{who}!u@h TAGMSG {channel}",
                 m - 1
@@ -193,52 +232,53 @@ fn direct_history(nick: &str, agent: Option<usize>, count: usize) -> Vec<Line> {
     lines
 }
 
-/// Who's in channel number `c`: us, eight people and the three machines whose agents speak
-/// there; the open one has everyone.
-fn members(c: usize) -> Vec<String> {
+/// Who's in channel number `c`: us, eight people (or all, when fewer) and the three
+/// machines whose agents speak there; the open one has everyone.
+fn members(size: Size, c: usize) -> Vec<String> {
     if c == 0 {
-        return (0..PEOPLE)
-            .map(person)
-            .chain((0..AGENTS).map(machine))
+        return (0..size.people)
+            .map(|p| size.person(p))
+            .chain((0..size.agents).map(|a| size.machine(a)))
             .collect();
     }
-    (0..8)
-        .map(|n| person(c + n))
-        .chain([7, 17, 27].map(|m| machine(c + m)))
+    (0..size.people.min(8))
+        .map(|n| size.person(c + n))
+        .chain(size.agents_in(c).map(|a| size.machine(a)))
         .collect()
 }
 
-/// The busy organisation: connected as `me`, in every channel, with each conversation's
-/// history in, and [`OPEN`] selected.
-pub fn busy() -> Chat {
+/// An organisation of `size`: connected as `me`, in every channel, with each
+/// conversation's history in, and [`OPEN`] selected.
+pub fn organisation(size: Size) -> Chat {
     let mut chat = bare();
     chat.connected(link(true));
-    let channels: Vec<String> = conversations()
+    let channels: Vec<String> = size
+        .conversations()
         .into_iter()
         .filter(|name| is_channel(name))
         .collect();
     for (c, channel) in channels.iter().enumerate() {
         let mut lines = vec![raw(&format!(":me!u@h JOIN {channel}"))];
-        for nick in members(c) {
+        for nick in members(size, c) {
             lines.push(raw(&format!(
                 ":{} JOIN {channel} {nick} :{}",
                 source(&nick),
                 nick.to_uppercase()
             )));
         }
-        let count = if c == 0 { BUSIEST } else { EACH };
-        lines.extend(channel_history(channel, c, count));
+        let count = if c == 0 { size.busiest } else { size.each };
+        lines.extend(channel_history(size, channel, c, count));
         for line in lines {
             chat.receive(line);
         }
     }
-    for p in 0..PEOPLE {
-        for line in direct_history(&person(p), None, EACH) {
+    for p in 0..size.people {
+        for line in direct_history(&size.person(p), None, size.each) {
             chat.receive(line);
         }
     }
-    for a in 0..AGENTS {
-        for line in direct_history(&machine(a), Some(a), EACH) {
+    for a in 0..size.agents {
+        for line in direct_history(&size.machine(a), Some(a), size.each) {
             chat.receive(line);
         }
     }
@@ -250,7 +290,7 @@ pub fn busy() -> Chat {
 /// One more line in [`OPEN`], live, as the person reads it: number `n`.
 pub fn live(n: usize) -> Line {
     tagged(
-        raw(&format!(":{}!u@h PRIVMSG {OPEN} :{}", person(n), words(n))),
+        raw(&format!(":p{:02}!u@h PRIVMSG {OPEN} :{}", n % 5, words(n))),
         None,
         noon(),
         &format!("live-{n}"),
@@ -258,21 +298,23 @@ pub fn live(n: usize) -> Line {
 }
 
 #[test]
-fn is_as_busy_as_the_budget_says() {
-    let chat = busy();
-    let names: Vec<&str> = chat
-        .conversations()
-        .iter()
-        .map(|c| c.name.as_str())
-        .collect();
-    for name in conversations() {
-        assert!(
-            chat.conversation(&name).is_some(),
-            "{name} missing from {names:?}"
-        );
+fn each_size_is_as_busy_as_it_says() {
+    for (size, least) in [(Size::BUSY, 9000), (Size::QUARTER, 2000)] {
+        let chat = organisation(size);
+        let names: Vec<&str> = chat
+            .conversations()
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        for name in size.conversations().iter().chain([&AGENT.to_owned()]) {
+            assert!(
+                chat.conversation(name).is_some(),
+                "{name} missing from {names:?}"
+            );
+        }
+        let held: usize = chat.conversations().iter().map(|c| c.entries.len()).sum();
+        println!("BUSY {} conversations, {held} entries", names.len());
+        assert!(held >= least, "{held} entries");
+        assert_eq!(chat.selected().name, OPEN);
     }
-    let held: usize = chat.conversations().iter().map(|c| c.entries.len()).sum();
-    println!("BUSY {} conversations, {held} entries", names.len());
-    assert!(held >= 9000, "{held} entries");
-    assert_eq!(chat.selected().name, OPEN);
 }
