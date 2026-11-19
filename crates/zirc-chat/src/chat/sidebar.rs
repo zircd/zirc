@@ -1,16 +1,17 @@
 //! The sidebar as one flat list of rows, in the order every app draws them
 //! ([`Chat::sidebar_list`]): each part's heading, its conversations, a channel's rooms and
-//! guests' rooms under it, the folds (a channel's `12 guests`),
-//! Browse channels and All messages are all rows. An app draws them as they come and works
+//! guests' rooms under it, the folds (a channel's `12 guests`) and All messages are all
+//! rows. An app draws them as they come and works
 //! out nothing of its own: what's folded away isn't in the list, so moving to the next or
 //! previous row walks the list as it is.
 //!
-//! The parts, in order: the Server channel, alone and with no heading, in both halves of the
-//! sidebar; Starred (anything starred, there alone); Channels (each repository's
-//! channel with its rooms and its guests' rooms under it, then Browse channels); Direct
+//! The parts, in order: Starred (anything starred, there alone); Channels (each channel with
+//! its rooms and its guests' rooms under it); Direct
 //! messages (people, groups, agent sessions and machines' own threads, newest first; an
-//! agent session that ended and went quiet isn't listed, till it's opened). A guest is talked to in their room, under its
-//! channel, so there's no part for guests. A part with nothing in it is left out.
+//! agent session that ended and went quiet isn't listed, till it's opened). A guest is talked
+//! to in their room, under its channel, so there's no part for guests. A part with nothing in
+//! it is left out. The Server channel, Browse channels and New channel have no rows: Jump to
+//! finds the first two, and every app's + makes a channel (the user's choices, 19 Nov 2026).
 
 use std::collections::HashMap;
 
@@ -20,10 +21,7 @@ use ts_rs::TS;
 use super::conversation::{Kind, fold};
 use super::face::Face;
 use super::list::{ChannelGroup, DirectKind, DirectRow, Shelf, SidebarSection};
-use super::{
-    Attendance, Avatar, BROWSE_CHANNELS, Chat, NEW_CHANNEL, Presence, SERVER_TITLE, ago_short,
-    badge_label, is_group, room_label,
-};
+use super::{Attendance, Avatar, Chat, Presence, ago_short, badge_label, room_label};
 
 /// What the row after the first few direct messages says, where an app lists only those
 /// ([`ListOptions::direct_limit`]): it shows them all.
@@ -48,11 +46,6 @@ pub enum ListKind {
     Room,
     /// A guest's room under its channel, by the guest's name: opening it joins it.
     GuestRoom,
-    /// Browse channels, after the channels: opens the list of channels to join.
-    Browse,
-    /// New channel, ending the channels, there with none joined or listed too: asks a name
-    /// and makes it ([`Chat::join_offer`]).
-    NewChannel,
     /// All messages, after the first few direct messages where an app lists only those.
     AllDirect,
 }
@@ -85,11 +78,11 @@ pub struct ListRow {
     pub shelf: Shelf,
     /// The conversation it opens ([`Chat::open`]); for a channel's guests' fold, the
     /// channel, and for a machine's `N earlier`, the machine; empty for a heading, the other
-    /// folds, Browse channels, New channel and All messages.
+    /// folds and All messages.
     pub name: String,
     /// What it says: a heading's part, a room by its own name under its channel, a direct
     /// message as [`DirectRow::label`] says it, a guest by their name, a fold's words,
-    /// `Browse channels`, `New channel`, `All messages`.
+    /// `All messages`.
     pub title: String,
     /// How far it's indented: 1 for a room, a guest's room or the guests' fold under their
     /// channel, and for an agent session or its `N earlier` under its machine, else 0.
@@ -248,8 +241,8 @@ impl ListRow {
 }
 
 impl Chat {
-    /// The sidebar, as every app draws it: one flat list of rows in order, headings, folds,
-    /// Browse channels and All messages among them (see the module's doc). What's starred
+    /// The sidebar, as every app draws it: one flat list of rows in order, headings, folds and
+    /// All messages among them (see the module's doc). What's starred
     /// is under Starred alone, a starred repository channel with its rooms. A folded part
     /// keeps only its heading and the rows unread, counted or shown; a shut fold, nothing
     /// under it; a fold holding the conversation shown is open.
@@ -261,8 +254,9 @@ impl Chat {
         // Agent sessions and machines' threads are direct messages among people's, newest
         // first (the user's choice, 15 Nov 2026).
         let directs = self.listed_direct_rows();
-        // The Server channel first, always (the user's choice, 16 Nov 2026).
-        let mut list: Vec<ListRow> = self.server_list_row().into_iter().collect();
+        // No Server row: the server's channel is found through Jump to (the user's choice,
+        // 19 Nov 2026).
+        let mut list: Vec<ListRow> = Vec::new();
 
         let mut starred = Vec::new();
         for name in &self.stars {
@@ -298,7 +292,7 @@ impl Chat {
         // Every channel, the feeds systems post to among them (no part of their own, the
         // user's choice, 19 Nov 2026): a feed's traffic never shows bold, though what
         // mentions us still counts.
-        let mut channels: Vec<ListRow> = groups
+        let channels: Vec<ListRow> = groups
             .iter()
             .filter(|group| !self.is_starred(&group.name))
             .flat_map(|group| {
@@ -311,24 +305,6 @@ impl Chat {
                     })
             })
             .collect();
-        let any_channel = !channels.is_empty()
-            || !self.browse().is_empty()
-            || self.conversations.iter().any(|c| {
-                c.kind == Kind::Channel && !is_group(&c.name) && c.standing != Attendance::Left
-            });
-        if any_channel {
-            channels.push(ListRow::new(
-                ListKind::Browse,
-                Shelf::Channels,
-                BROWSE_CHANNELS.to_owned(),
-            ));
-        }
-        // Always, so a server with no channel yet shows how to make its first.
-        channels.push(ListRow::new(
-            ListKind::NewChannel,
-            Shelf::Channels,
-            NEW_CHANNEL.to_owned(),
-        ));
         list.extend(self.sidebar_part(Shelf::Channels, channels, &shown));
 
         let direct = self.direct_part(&directs, &working, *options);
@@ -347,40 +323,11 @@ impl Chat {
         list
     }
 
-    /// The Server channel's row: the newest thing the server or a service said under it, never
-    /// bold or counted.
-    fn server_list_row(&self) -> Option<ListRow> {
-        let server = &self.conversations[self.position(&self.server)?];
-        let newest = server.entries.last();
-        Some(ListRow {
-            name: server.name.clone(),
-            opens: true,
-            joined: true,
-            preview: newest.map(|entry| match &entry.kind {
-                super::EntryKind::Notice(text) | super::EntryKind::Message(text)
-                    if !entry.from.eq_ignore_ascii_case(&server.name) =>
-                {
-                    format!("{}: {text}", entry.from)
-                }
-                super::EntryKind::Notice(text) | super::EntryKind::Message(text) => text.clone(),
-                _ => String::new(),
-            }),
-            when: newest.map(|entry| ago_short(entry.time, (self.clock)())),
-            latest_ms: newest.map(|entry| entry.time.timestamp_millis()),
-            ..ListRow::new(
-                ListKind::Conversation,
-                Shelf::Server,
-                SERVER_TITLE.to_owned(),
-            )
-        })
-    }
-
     /// Whether `row` says [`NO_MESSAGES`] under its name: a channel's, a room's under its
     /// channel or a direct message's, with nothing to preview or note
     /// ([`Chat::nothing_said`]).
     fn says_no_messages(&self, row: &ListRow) -> bool {
         matches!(row.kind, ListKind::Conversation | ListKind::Room)
-            && row.shelf != Shelf::Server
             && row.preview.is_none()
             && row.note.is_none()
             && self.nothing_said(&row.name)

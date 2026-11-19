@@ -711,15 +711,10 @@ fn card_buttons(item: &Item<'_>, who: Who<'_>, id: Option<&String>) -> Option<Ro
     })
 }
 
-/// What goes dim after a line: which app a message was sent from, after its header, and
-/// the session an app's post is about, at the end of its first row.
+/// What goes dim after a line: the session an app's post is about, at the end of its first
+/// row. Never the app a message was sent from, which only its details say.
 fn hints(item: &Item<'_>) -> (String, String) {
     match item {
-        Item::Message {
-            sent_from: Some(app),
-            show_sent_from: true,
-            ..
-        } => (format!("· {app}"), String::new()),
         Item::Landing(landing) => (
             String::new(),
             landing
@@ -1454,40 +1449,6 @@ mod tests {
         assert_eq!(chip_at(chips, 0).map(|c| c.emoji.as_str()), Some("🎉"));
         assert_eq!(chip_at(chips, 6), None, "the gap");
         assert_eq!(chip_at(chips, 7).map(|c| c.emoji.as_str()), Some("🚀"));
-    }
-
-    #[test]
-    fn hints_which_app_a_run_was_sent_from() {
-        let mut api = Conversation::new("#api", Kind::Channel);
-        for (minute, text, app) in [
-            (0, "hi", Some("desktop")),
-            (1, "still here", Some("desktop")),
-            (2, "on my phone", Some("android")),
-            (3, "from irssi", None),
-        ] {
-            api.entries.push(Entry {
-                sent_from: app.map(str::to_owned),
-                ..at(30, 9, minute, says("mattias", text))
-            });
-        }
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        assert_eq!(
-            shown(&layout(
-                &api,
-                who(),
-                None,
-                80,
-                (utc(), today),
-                (true, Links::Plain, false)
-            )),
-            [
-                "--- Today",
-                "09:00 mattias hi  · desktop",
-                "09:01         still here",
-                "09:02         on my phone  · android",
-                "09:03         from irssi",
-            ]
-        );
     }
 
     #[test]

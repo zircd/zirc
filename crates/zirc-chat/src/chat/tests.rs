@@ -1241,13 +1241,7 @@ fn shown(item: &Item<'_>) -> String {
             entry,
             text,
             continues,
-            sent_from,
-            show_sent_from,
         } => {
-            let text = match (sent_from, show_sent_from) {
-                (Some(app), true) => format!("{text}  [from {app}]"),
-                _ => (*text).to_owned(),
-            };
             if *continues {
                 format!("  {text}")
             } else {
@@ -1385,9 +1379,9 @@ fn shows_a_channel_as_every_app_does() {
             "◆ cc-1 committed on main: Fix",
             "◆ mattias: hello!",
             "· bob and carol left",
-            "mattias: hi all  [from desktop]",
+            "mattias: hi all",
             "  back in a bit",
-            "  on my phone now  [from android]",
+            "  on my phone now",
             "* alice waves",
             "· dave joined",
         ]
@@ -6355,7 +6349,6 @@ fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
         for row in chat.sidebar_list(&ListOptions::default()) {
             match row.kind {
                 ListKind::Heading => shelves.push((row.shelf, Vec::new())),
-                _ if row.shelf == Shelf::Server => shelves.push((row.shelf, vec![row.title])),
                 ListKind::Conversation | ListKind::Room => {
                     let indent = "  ".repeat(usize::from(row.depth));
                     shelves
@@ -6372,7 +6365,6 @@ fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
     assert_eq!(
         shelves(&chat),
         [
-            (Shelf::Server, vec![crate::chat::SERVER_TITLE.to_owned()]),
             (Shelf::Starred, vec!["carol".to_owned()]),
             (
                 Shelf::Channels,
@@ -8743,19 +8735,13 @@ fn the_server_channel_shows_notices_and_sends_what_is_typed_there_as_it_is() {
             &EntryKind::Notice("Nickname me has 1 push subscription(s)".into()),
         ]
     );
-    // Never unread nor counted, and at the top of the sidebar with the newest under it.
+    // Never unread nor counted, and no row in the sidebar: Jump to finds it by its name, never
+    // among the recent (the user's choice, 19 Nov 2026).
     assert_eq!(chat.conversations()[0].unread, 0);
     let rows = chat.sidebar_list(&ListOptions::default());
-    let top = &rows[0];
-    assert_eq!(
-        (top.shelf, top.title.as_str()),
-        (Shelf::Server, crate::chat::SERVER_TITLE)
-    );
-    assert!(!top.unread && top.badge == 0);
-    assert_eq!(
-        top.preview.as_deref(),
-        Some("NickServ: Nickname me has 1 push subscription(s)")
-    );
+    assert!(rows.iter().all(|row| row.name != "irc.zirc.test"));
+    assert!(chat.switcher("").iter().all(|name| name != "irc.zirc.test"));
+    assert_eq!(chat.switcher("serv"), ["irc.zirc.test"]);
 
     // Listed with every conversation while it's shown, so apps show it.
     assert_eq!(chat.channel_rows()[0].title, crate::chat::SERVER_TITLE);

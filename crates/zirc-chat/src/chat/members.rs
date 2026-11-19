@@ -20,10 +20,10 @@ use super::{Avatar, BothChanging, BothChangingLine, Chat, Face, Presence, YOU};
 pub struct MemberRow {
     /// Their nick, to open their card or a conversation with, and which mentions use.
     pub nick: String,
-    /// The row's line: `alice`, `alice op · 2 agents` ([`PersonRow::label`]).
+    /// The row's line: `alice`, `alice · 2 agents` ([`PersonRow::label`]).
     pub label: String,
-    /// What follows their name on their row, muted after it in every app: `op · 2 agents`,
-    /// `· 1 agent`; none when the line is their name alone.
+    /// What follows their name on their row, muted after it in every app: `· 2 agents`; none
+    /// when the line is their name alone.
     pub detail: Option<String>,
     /// What their row says at its end: `you` for us, else that they're away or offline
     /// ([`MemberRow::away_label`]).

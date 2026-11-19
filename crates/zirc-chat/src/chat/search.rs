@@ -546,15 +546,17 @@ impl Chat {
     /// nothing typed, the most recent first ([`Chat::last_said`]), those with nothing said by
     /// what they show; else best first, as [`switch_rank`] ranks their titles and an agent
     /// session's task, then what's unread ([`Chat::is_unread`]), then in the order of the
-    /// conversations. Never the server's.
+    /// conversations. The server's only for what's typed: it has no row in the sidebar, so
+    /// Jump to is where it's found (the user's choice, 19 Nov 2026), never among the recent.
     #[must_use]
     pub fn switcher(&self, query: &str) -> Vec<String> {
+        let typed = !query.trim().is_empty();
         let names = self
             .conversations()
             .iter()
-            .filter(|conversation| conversation.kind != Kind::Server)
+            .filter(|conversation| typed || conversation.kind != Kind::Server)
             .map(|conversation| conversation.name.as_str());
-        if query.trim().is_empty() {
+        if !typed {
             let mut recent: Vec<&str> = names.collect();
             recent.sort_by_cached_key(|name| {
                 (

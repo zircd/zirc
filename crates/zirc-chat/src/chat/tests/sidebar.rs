@@ -82,7 +82,6 @@ fn lists_starred_then_channels_with_guests_rooms_then_direct_messages() {
     assert_eq!(
         lines(&rows),
         [
-            "Conversation Server Server",
             "Heading Starred Starred",
             "Conversation Starred carol",
             "Heading Channels Channels",
@@ -91,13 +90,11 @@ fn lists_starred_then_channels_with_guests_rooms_then_direct_messages() {
             "Conversation Channels #lobby",
             "  GuestRoom Channels Anna",
             "Conversation Channels #web",
-            "Browse Channels Browse channels",
-            "NewChannel Channels New channel",
             "Heading Direct Direct messages",
             "Conversation Direct bob",
         ]
     );
-    let heading = &rows[1];
+    let heading = &rows[0];
     assert_eq!((heading.name.as_str(), heading.open), ("", Some(true)));
     // A direct message's row says what it's with, its dot and what was said.
     let bob = row(&rows, "bob");
@@ -223,7 +220,6 @@ fn whats_starred_is_under_starred_alone_a_channel_with_its_rooms() {
     assert_eq!(
         lines(&rows),
         [
-            "Conversation Server Server",
             "Heading Starred Starred",
             "Conversation Starred #api",
             "  Room Starred login",
@@ -232,8 +228,6 @@ fn whats_starred_is_under_starred_alone_a_channel_with_its_rooms() {
             "Heading Channels Channels",
             "Conversation Channels #lobby",
             "Conversation Channels #web",
-            "Browse Channels Browse channels",
-            "NewChannel Channels New channel",
             "Heading Direct Direct messages",
             "Conversation Direct carol",
         ]
@@ -330,10 +324,9 @@ fn a_channels_guests_rooms_nest_under_it_folded_on_its_row() {
     );
     assert!(sam.guest && sam.opens && !sam.joined);
     assert_eq!(sam.presence, Some(Presence::Gone));
-    // Right under #web, before Browse channels: no row for the fold.
+    // Right under #web: no row for the fold.
     let at = rows.iter().position(|r| r.name == "#web").unwrap();
     assert_eq!(rows[at + 1].name, "#web/guest-1111");
-    assert_eq!(rows[at + 2].kind, ListKind::Browse);
 
     // However many, they fold.
     chat.set_guest_rooms_open("#web", false);
@@ -388,50 +381,31 @@ fn a_channels_guests_rooms_nest_under_it_folded_on_its_row() {
 }
 
 #[test]
-fn browse_channels_then_new_channel_end_the_channels() {
+fn no_server_browse_or_new_channel_rows() {
+    // The user's choices, 19 Nov 2026: Jump to finds the Server channel and the channels to
+    // join, and every app's + makes a channel, so the list holds conversations alone.
     let chat = busy();
     let rows = chat.sidebar_list(&all());
     let channels: Vec<&ListRow> = rows.iter().filter(|r| r.shelf == Shelf::Channels).collect();
-    // New channel is last, and there with no channel joined or listed: a server's first.
-    let new = channels.last().unwrap();
-    assert_eq!(
-        (new.kind, new.title.as_str()),
-        (ListKind::NewChannel, NEW_CHANNEL)
+    assert!(
+        channels.iter().skip(1).all(|r| matches!(
+            r.kind,
+            ListKind::Conversation | ListKind::Room | ListKind::GuestRoom
+        )),
+        "{channels:?}"
     );
-    assert!(new.name.is_empty() && !new.opens);
+    assert!(rows.iter().all(|r| r.title != crate::chat::SERVER_TITLE));
+    // A server with nothing joined lists nothing at all.
     let empty = Chat::new("me", "irc.example", Vec::new(), Options::default()).sidebar_list(&all());
-    let kinds: Vec<ListKind> = empty.iter().map(|r| r.kind).collect();
-    assert_eq!(
-        kinds,
-        [
-            ListKind::Conversation,
-            ListKind::Heading,
-            ListKind::NewChannel
-        ]
-    );
-    let browse = channels[channels.len() - 2];
-    assert_eq!(browse.kind, ListKind::Browse);
-    assert_eq!(browse.title, BROWSE_CHANNELS);
-    assert!(browse.name.is_empty() && !browse.opens);
-    assert_eq!(
-        rows.iter().filter(|r| r.kind == ListKind::Browse).count(),
-        1
-    );
+    assert!(empty.is_empty(), "{empty:?}");
 
-    // Every channel starred, Browse channels still ends the part.
+    // Every channel starred: Channels has nothing left, so it's left out.
     let mut chat = Scene::in_api();
     chat.star("#api", true);
     let rows = chat.sidebar_list(&all());
     assert_eq!(
         lines(&rows),
-        [
-            "Conversation Server Server",
-            "Heading Starred Starred",
-            "Conversation Starred #api",
-            "Heading Channels Channels",
-            "Browse Channels Browse channels",
-            "NewChannel Channels New channel",
-        ]
+        ["Heading Starred Starred", "Conversation Starred #api",]
     );
 }
 
@@ -638,8 +612,8 @@ fn each_tab_lists_its_own_parts_and_whats_starred_in_it() {
     let both = chat.sidebar_list(&all());
     assert_eq!(
         both.len(),
-        channels.len() + messages.len() - 2,
-        "one Server row and one Starred heading"
+        channels.len() + messages.len() - 1,
+        "one Starred heading"
     );
     assert_eq!(
         SidebarSection::ALL.map(SidebarSection::label),

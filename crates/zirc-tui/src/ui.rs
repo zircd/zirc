@@ -679,8 +679,10 @@ fn sidebar_width(app: &App) -> u16 {
         })
         .max()
         .unwrap_or(0);
-    // A space, the name, room for a count, and the border.
-    u16::try_from(widest + 7).unwrap_or(u16::MAX).clamp(14, 26)
+    // A space, the name, room for a count, and the border; at least as wide as the list was
+    // while Browse channels ended its channels, so short names still leave room for what was
+    // said last.
+    u16::try_from(widest + 7).unwrap_or(u16::MAX).clamp(22, 26)
 }
 
 fn sidebar_block() -> Block<'static> {
@@ -2300,7 +2302,7 @@ mod tests {
         let (rows, _) = draw(&app, 120, 20);
         // Heading what she said, in the member list, and in the direct messages.
         assert!(row_with(&rows, "Alice Liddell  11:0").contains("Alice Liddell  11:00"));
-        assert!(row_with(&rows, "Alice Liddell op").ends_with("│ ● Alice Liddell op"));
+        assert!(row_with(&rows, "Alice Liddell").ends_with("│ ● Alice Liddell"));
         row_with(&rows, " Alice Liddell ");
     }
 
@@ -2724,21 +2726,19 @@ mod tests {
             target_at(&app, screen, x, y),
             Some(Target::Shelf(zirc_core::chat::Shelf::Channels))
         );
-        assert_eq!(at("alice op"), Some(Target::Member("alice".into())));
+        assert_eq!(at("alice"), Some(Target::Member("alice".into())));
         assert_eq!(at("○ mattias"), Some(Target::Member("mattias".into())));
         assert_eq!(at("morning"), Some(Target::Scrollback));
         // The member count, the header and the input line aren't anything to click.
         assert_eq!(at(PEOPLE_SECTION), None);
         assert_eq!(at("the API"), None);
         assert_eq!(at("#api ›"), None);
-        // The last channel in the list, #web (A–Z), under the header naming it, then
-        // Browse channels.
+        // The last channel in the list, #web (A–Z), under the header naming it.
         let (x, y) = place_of(&rows[1..], "▎#web");
         assert_eq!(
             target_at(&app, screen, x, y + 1),
             Some(Target::Conversation(2))
         );
-        assert_eq!(target_at(&app, screen, x, y + 2), Some(Target::Browse));
     }
 
     #[test]
@@ -2852,7 +2852,7 @@ mod tests {
         // ours and mattias-mbp into mattias's, who's gone. dana-mbp is someone.
         assert_eq!(
             members,
-            ["● alice op", "● bob", "● dana-mbp", "● me", "○ mattias"]
+            ["● alice", "● bob", "● dana-mbp", "● me", "○ mattias"]
         );
     }
 
@@ -2876,8 +2876,8 @@ mod tests {
             rows.join("\n")
         );
         // Away, by zirc-chat's presence mark in the warning colour, the name quieter.
-        assert!(row_with(&rows, "alice op").ends_with("│ ◐ alice op"));
-        let (x, y) = place_of(&rows, "◐ alice op");
+        assert!(row_with(&rows, "alice").ends_with("│ ◐ alice"));
+        let (x, y) = place_of(&rows, "◐ alice");
         let buffer = draw(&app, 120, 16).1;
         assert_eq!(
             buffer.backend().buffer()[(x, y)].fg,
@@ -3264,7 +3264,7 @@ mod tests {
         );
         assert!(!rows.iter().any(|row| row.contains("ZIRC")), "no payloads");
         assert!(row_with(&rows, PEOPLE_SECTION).contains(&format!("│ {PEOPLE_SECTION}")));
-        assert!(row_with(&rows, "alice op").contains("│ ● alice op"));
+        assert!(row_with(&rows, "alice").contains("│ ● alice"));
 
         assert!(rows.last().unwrap().starts_with("#api ›"));
 
@@ -3283,10 +3283,9 @@ mod tests {
         let (rows, terminal) = draw(&app, 100, 16);
         let y = rows
             .iter()
-            .position(|row| row.contains("│ ◐ alice op"))
+            .position(|row| row.contains("│ ◐ alice"))
             .unwrap();
-        let x =
-            u16::try_from(rows[y][..rows[y].find("alice op").unwrap()].chars().count()).unwrap();
+        let x = u16::try_from(rows[y][..rows[y].find("alice").unwrap()].chars().count()).unwrap();
         let cell = &terminal.backend().buffer()[(x, u16::try_from(y).unwrap())];
         assert_eq!(cell.fg, colour(app.theme.muted));
     }
@@ -3451,33 +3450,26 @@ mod tests {
         }
         let listed: Vec<String> = app.listed().map(|(_, c)| app.chat.title(&c.name)).collect();
         // Channels A–Z, then direct messages newest first, agent sessions among them.
-        assert_eq!(
-            listed,
-            [SERVER_TITLE, "#api", "#web", "bob", "cc-77aa01", "alice"]
-        );
+        assert_eq!(listed, ["#api", "#web", "bob", "cc-77aa01", "alice"]);
         let screen = Rect::new(0, 0, 100, 16);
         // The list under the switch.
-        // Under Server, first.
         let side = |rows: &[String], under: usize| -> Vec<String> {
-            rows[3..3 + under]
+            rows[2..2 + under]
                 .iter()
                 .map(|row| row.split('│').next().unwrap().trim_end().to_owned())
                 .collect()
         };
         let (rows, _) = draw(&app, screen.width, screen.height);
         let channels = format!(" {}", Shelf::Channels.label());
-        let browse = format!(" {BROWSE_CHANNELS}");
         let direct = format!(" {}", Shelf::Direct.label());
-        // The switch's Channels: A–Z and Browse channels, each with what was said last and
-        // when, where it fits.
+        // The switch's Channels: A–Z, each with what was said last and when, where it fits.
         assert_eq!(
-            side(&rows, 4),
+            side(&rows, 3),
             [
                 // Unread in bold with a pip at the edge; a pill counts what mentions us.
                 channels.as_str(),
                 "▎#api cc-12: F… 58m 1",
                 "▎#web bob: deploy… 57m",
-                browse.as_str(),
             ]
         );
         // Its Messages: the direct messages newest first, every conversation on its own, our
@@ -3609,7 +3601,7 @@ mod tests {
         let (rows, _) = draw(&app, screen.width, screen.height);
         row_with(&rows, " Channels ▸");
         row_with(&rows, "#api");
-        let gone = ["#quiet", zirc_core::chat::BROWSE_CHANNELS];
+        let gone = ["#quiet"];
         assert!(
             !rows
                 .iter()
@@ -3621,12 +3613,6 @@ mod tests {
         let _ = app.pointer(click, target_at(&app, screen, x + 1, y));
         let (rows, _) = draw(&app, screen.width, screen.height);
         row_with(&rows, "#quiet");
-        // Browse channels ends the channels; a click opens the list of channels to join.
-        let (x, y) = place_of(&rows, zirc_core::chat::BROWSE_CHANNELS);
-        let target = target_at(&app, screen, x, y);
-        assert_eq!(target, Some(Target::Browse));
-        let _ = app.pointer(click, target);
-        assert!(app.browsing());
     }
 
     #[test]
@@ -3966,7 +3952,7 @@ mod tests {
         let side = |app: &App| {
             let (rows, _) = draw(app, 100, 16);
             // Under the switch.
-            rows[3..7]
+            rows[2..6]
                 .iter()
                 .map(|row| row.split('│').next().unwrap().trim_end().to_owned())
                 .collect::<Vec<_>>()

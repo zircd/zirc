@@ -66,8 +66,6 @@ pub enum Target {
     Shelf(Shelf),
     /// A half of the sidebar's `Channels | Messages` switch, which shows it.
     Tab(zirc_core::chat::SidebarSection),
-    /// Browse channels, ending the channels: opens the list of channels to join (`/browse`).
-    Browse,
     /// A guest's room we aren't in, under its channel: opening it joins it.
     Open(String),
     /// The row a channel's guests' rooms fold under when there are many, by the channel.
@@ -470,7 +468,7 @@ impl App {
     /// The list down the left, as zirc-chat lists it for every app
     /// ([`Chat::sidebar_list`]), under the organisation's name and the `Channels | Messages`
     /// switch, for the half shown: what's starred in it, then the channels A–Z, each
-    /// repository's with its rooms under it and Browse channels at the end; or the direct
+    /// repository's with its rooms under it; or the direct
     /// messages (people, groups, agent sessions and our machines' threads) newest first, our
     /// machines online and, for staff, the conversations with guests, the closed ones folded.
     #[must_use]
@@ -508,9 +506,7 @@ impl App {
                     open: row.open != Some(false),
                 });
             }
-            // A terminal makes a channel with /join, as IRC does: no row for it.
-            ListKind::AllDirect | ListKind::NewChannel => return None,
-            ListKind::Browse => Some(Target::Browse),
+            ListKind::AllDirect => return None,
             ListKind::Conversation | ListKind::Room | ListKind::GuestRoom => {
                 self.side_target(&row.name)
             }
@@ -1831,7 +1827,6 @@ impl App {
                 self.chat.set_collapsed(part, !folded);
                 Vec::new()
             }
-            (MouseEventKind::Down(MouseButton::Left), Some(Target::Browse)) => self.browse(),
             (MouseEventKind::Down(MouseButton::Left), Some(Target::Message(id))) => {
                 self.picked = Some((fold(&self.current().name), id));
                 Vec::new()
@@ -2797,13 +2792,9 @@ mod tests {
         app.key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL));
         assert_eq!(app.current().name, "bob");
         app.key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL));
-        assert_eq!(
-            app.current().name,
-            "irc.zirc.test",
-            "round the ends, to Server"
-        );
+        assert_eq!(app.current().name, "#api", "round the ends, to the top");
         app.key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL));
-        assert_eq!(app.current().name, "#api", "and on from there");
+        assert_eq!(app.current().name, "bob", "and on from there");
         app.key(KeyEvent::new(KeyCode::Char('2'), KeyModifiers::ALT));
         assert_eq!(app.current().name, "bob");
         app.key(KeyEvent::new(KeyCode::Char('9'), KeyModifiers::ALT));
@@ -3011,19 +3002,7 @@ mod tests {
             .take_while(|label| label != Shelf::Direct.label())
             .collect();
         let (starred, channels) = (Shelf::Starred.label(), Shelf::Channels.label());
-        assert_eq!(
-            listed,
-            [
-                zirc_core::chat::SERVER_TITLE,
-                starred,
-                "#web",
-                channels,
-                "#api",
-                "#mid",
-                "#zoo",
-                zirc_core::chat::BROWSE_CHANNELS
-            ]
-        );
+        assert_eq!(listed, [starred, "#web", channels, "#api", "#mid", "#zoo"]);
     }
 
     #[test]

@@ -96,9 +96,8 @@ impl SidebarSection {
     #[must_use]
     pub fn has(self, part: Shelf) -> bool {
         match part {
-            // Starred is in both: what's starred shows in its own section's. The Server
-            // channel is at the top of both.
-            Shelf::Server | Shelf::Starred => true,
+            // Starred is in both: what's starred shows in its own section's.
+            Shelf::Starred => true,
             Shelf::Channels => self == Self::Channels,
             Shelf::Direct => self == Self::Direct,
         }
@@ -630,7 +629,7 @@ impl PersonRow {
             .sum()
     }
 
-    /// The row's line: `alice`, `alice op · 2 agents`, `alice · 1 agent`.
+    /// The row's line: `alice`, `alice · 2 agents`, `alice · 1 agent`.
     #[must_use]
     pub fn label(&self) -> String {
         match self.agents() {
@@ -1147,9 +1146,6 @@ impl Chat {
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub enum Shelf {
-    /// The Server channel alone, first in both halves of the sidebar, with no heading: what
-    /// the server and its services said ([`super::SERVER_TITLE`]).
-    Server,
     /// What the person starred, in the order they starred it.
     Starred,
     /// Every channel, each with its threads, alphabetically: the feeds systems post to
@@ -1166,7 +1162,6 @@ impl Shelf {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Server => super::SERVER_TITLE,
             Self::Starred => "Starred",
             Self::Channels => "Channels",
             Self::Direct => "Direct messages",

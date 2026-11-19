@@ -75,12 +75,13 @@ fn next_and_previous_conversation_go_round_the_ends() {
         ..ListOptions::default()
     };
     let next = |chat: &Chat, by| chat.next_conversation(&channels, by).unwrap();
-    // Down the sidebar: the Server channel first, then the channels A–Z.
+    // Down the sidebar: the channels A–Z, the Server channel not among them.
     assert_eq!(next(&chat, 1), "#docs");
-    assert_eq!(next(&chat, -1), "irc.zirc.test");
+    assert_eq!(next(&chat, -1), "#web");
     let _ = chat.open("#web");
     // Past the end, back to the top; and up from the top, to the end.
-    assert_eq!(next(&chat, 1), "irc.zirc.test");
+    assert_eq!(next(&chat, 1), "#api");
+    // From the Server channel, which has no row, to either end.
     chat.show_server();
     assert_eq!(next(&chat, -1), "#web");
     assert_eq!(next(&chat, 1), "#api");

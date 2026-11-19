@@ -36,11 +36,9 @@ pub enum Item<'a> {
         /// What they said.
         text: &'a str,
         /// Whether it carries on a run from the same sender, so its sender can be left out.
+        /// Never the app it was sent from, which only its details say (the user's choice, 19
+        /// Nov 2026).
         continues: bool,
-        /// The zirc app it was sent from, such as `desktop`, when the sender's app said.
-        sent_from: Option<&'a str>,
-        /// Whether to show [`Item::Message::sent_from`]: see [`shows_sent_from`].
-        show_sent_from: bool,
     },
     /// A notice: a message that expects no answer.
     Notice {
@@ -175,8 +173,6 @@ fn zirc_item<'a>(
             entry,
             text,
             continues,
-            sent_from: None,
-            show_sent_from: false,
         },
         Event::File(file) => Item::File {
             entry,
@@ -1775,25 +1771,6 @@ pub(crate) struct Names<'a> {
     pub session: &'a dyn Fn(&str) -> String,
 }
 
-/// A message's row, saying where it was sent from when that's news: `apps` keeps each
-/// sender's last message's app, by folded nick.
-fn message_item<'a>(
-    entry: &'a Entry,
-    text: &'a str,
-    continues: bool,
-    apps: &mut HashMap<String, Option<&'a str>>,
-) -> Item<'a> {
-    let sent_from = entry.sent_from.as_deref();
-    let before = apps.insert(fold(&entry.from), sent_from).flatten();
-    Item::Message {
-        entry,
-        text,
-        continues,
-        sent_from,
-        show_sent_from: shows_sent_from(sent_from, continues, before),
-    }
-}
-
 /// Whether `message` starts a thread on a message that's among `entries`: then it's the line
 /// under that message ([`super::Chat::thread_links`]), not a row of its own.
 fn starts_thread_here(entries: &[Entry], message: &zirc_proto::Message) -> bool {
@@ -1821,6 +1798,14 @@ fn membership<'a>(items: &mut [Item<'a>], entry: &Entry, new_day: bool) -> Optio
     Some(Item::Membership(run))
 }
 
+/// `text`, and why after it when there's a reason: `bob removed eve (spam)`.
+fn with_reason(text: String, reason: Option<&str>) -> String {
+    match reason {
+        Some(reason) => format!("{text} ({reason})"),
+        None => text,
+    }
+}
+
 /// `conversation`'s lines, as [`super::Chat::items`] says, its agents and their owners named
 /// as `names` says.
 pub(crate) fn items<'a>(
@@ -1834,8 +1819,6 @@ pub(crate) fn items<'a>(
     let mut previous: Option<&Entry> = None;
     // The last talk that isn't a system row, which a run carries on from.
     let mut talk: Option<&Entry> = None;
-    // Each sender's last message's app, by folded nick.
-    let mut apps: HashMap<String, Option<&str>> = HashMap::new();
     let mut landings: HashMap<String, usize> = HashMap::new();
     // Each card's latest update: where its card is, where the update came, its event's
     // place in `entries`, and its event.
@@ -1861,12 +1844,12 @@ pub(crate) fn items<'a>(
             talk = Some(entry);
         }
         let from = &entry.from;
-        let with_reason = |text: String, reason: &Option<String>| match reason {
-            Some(reason) => format!("{text} ({reason})"),
-            None => text,
-        };
         let item = match &entry.kind {
-            EntryKind::Message(text) => message_item(entry, text, continues, &mut apps),
+            EntryKind::Message(text) => Item::Message {
+                entry,
+                text,
+                continues,
+            },
             EntryKind::Notice(text) => Item::Notice {
                 entry,
                 text,
@@ -1914,7 +1897,7 @@ pub(crate) fn items<'a>(
             }
             EntryKind::Kick { nick, reason } => Item::Note {
                 entry,
-                text: with_reason(format!("{from} removed {nick}"), reason),
+                text: with_reason(format!("{from} removed {nick}"), reason.as_deref()),
             },
             EntryKind::Nick(new) => Item::Note {
                 entry,
@@ -2026,14 +2009,6 @@ fn session_of(entry: &Entry) -> Option<&str> {
         EntryKind::Zirc(message) => Some(message.session.as_str()),
         _ => None,
     }
-}
-
-/// Whether a message shows the app it was sent from, `sent_from`: on the first message of a
-/// run, and where the sender's app changed since their previous message, `before`. Never
-/// when no app said, as from plain IRC clients.
-#[must_use]
-pub fn shows_sent_from(sent_from: Option<&str>, continues: bool, before: Option<&str>) -> bool {
-    sent_from.is_some() && (!continues || sent_from != before)
 }
 
 /// A day as a divider says it: `Today`, `Yesterday`, or `Thursday 29 October 2026`.

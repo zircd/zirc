@@ -1,14 +1,12 @@
 //! Who is in a conversation, as every app names them: a person by the name they show as,
 //! `Mattias Granlund` ([`super::Chat::shown_name`]), and a machine as its owner and its own
-//! name, `mattias · mbp`, operators tagged [`OP_LABEL`]. A person's nick is said only where
-//! there's room for both, as under the name on their card.
+//! name, `mattias · mbp`. Never "op": operators come first in the list, untagged, as IRC's
+//! word means nothing to most (the user's choice, 19 Nov 2026). A person's nick is said only
+//! where there's room for both, as under the name on their card.
 
 use super::conversation::{Conversation, Member, fold};
 use super::list::{MachineRow, PersonRow};
 
-/// What tags a channel operator, after their name, in the muted tag style where an app has
-/// one: `ada op`. Never `@`, which reads as a mention.
-pub const OP_LABEL: &str = "op";
 /// The statuses that count as operator or higher.
 const OPERATORS: &str = "~&@";
 
@@ -44,18 +42,12 @@ impl Person {
         super::Standing::of(true, self.away.as_deref())
     }
 
-    /// Their name as shown, an operator's tagged after it: `Mattias Granlund`, `mattias · mbp`,
-    /// `Mattias Granlund op`.
+    /// Their name as shown: `Mattias Granlund`, `mattias · mbp`.
     #[must_use]
     pub fn label(&self) -> String {
-        let name = match &self.machine {
+        match &self.machine {
             Some((owner, machine)) => machine_label(owner, machine),
             None => self.name.clone(),
-        };
-        if self.op {
-            format!("{name} {OP_LABEL}")
-        } else {
-            name
         }
     }
 }
@@ -232,7 +224,7 @@ mod tests {
         assert_eq!(
             shown,
             [
-                "mattias op",
+                "mattias",
                 "alice-mbp",
                 "Bob Dylan",
                 "carol · laptop",

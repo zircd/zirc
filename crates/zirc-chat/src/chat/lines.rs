@@ -188,9 +188,6 @@ pub struct Line {
     pub mention: bool,
     /// Whether it's our own.
     pub mine: bool,
-    /// The zirc app it was sent from, `desktop`, where that's worth showing
-    /// ([`super::shows_sent_from`]).
-    pub sent_from: Option<String>,
     /// Whether its author corrected it, which apps say after its words as
     /// [`super::EDITED`] does.
     pub edited: bool,
@@ -622,11 +619,8 @@ impl<'a> Layout<'a> {
                 entry,
                 text,
                 continues,
-                sent_from,
-                show_sent_from,
             } => {
                 let mut line = self.said(entry, LineKind::Chat, text, continues);
-                line.sent_from = sent_from.filter(|_| show_sent_from).map(str::to_owned);
                 self.body(&mut line, entry.rich());
                 self.sealed(&mut line, entry);
                 line
@@ -722,7 +716,6 @@ impl<'a> Layout<'a> {
             link: None,
             mention: false,
             mine: false,
-            sent_from: None,
             edited: false,
             reactions: Vec::new(),
             quote: None,
@@ -927,17 +920,20 @@ impl<'a> Layout<'a> {
                     ..drawn
                 })
             });
+        // The session it's about, dim after it, unless its card's line names it already, as
+        // a branch called after its session does: `checkout · build 418 · landed`, then
+        // `checkout` again (the user's choice, 19 Nov 2026).
+        let session = landing
+            .session
+            .map(str::to_owned)
+            .filter(|id| card_line.is_none() || !names_word(&text, &self.chat.session_label(id)));
         line.system = Some(SystemLine {
             outcome,
             body,
             card: card_line.is_some(),
             buttons: self.buttons(landing, &version),
             card_version: landing.card.as_ref().map(|_| version),
-            ..self.system(
-                &parts,
-                landing.session.map(str::to_owned),
-                line.id.as_deref(),
-            )
+            ..self.system(&parts, session, line.id.as_deref())
         });
         line
     }
@@ -1067,6 +1063,13 @@ impl<'a> Layout<'a> {
     fn clock(&self, at: DateTime<Utc>) -> String {
         super::clock(at.with_timezone(&self.offset).naive_local())
     }
+}
+
+/// Whether `text` has `word` as a word of its own, as a branch's name is in a card's line:
+/// `checkout` in `checkout · build 418 · landed`, not in `checkout-v2`.
+fn names_word(text: &str, word: &str) -> bool {
+    text.split(|c: char| c.is_whitespace() || matches!(c, '·' | ':' | ',' | '(' | ')'))
+        .any(|part| part == word)
 }
 
 /// Every width zirc.dev resizes `file`'s image to, for a view to pick from by its pixels.
@@ -1374,10 +1377,9 @@ mod tests {
         assert_eq!(alice.presence, Some(Presence::Here));
         let speaker = alice.speaker.as_ref().unwrap();
         assert_eq!((speaker.name.as_str(), speaker.app), ("alice", false));
-        // Ours by its folded nick, whatever its case; its app shown at the start of a run.
+        // Ours by its folded nick, whatever its case; never the app it was sent from.
         let mine = line(&lines, "on it");
         assert!(mine.mine && !mine.mention);
-        assert_eq!(mine.sent_from.as_deref(), Some("desktop"));
         assert_eq!(line(&lines, "fine").presence, Some(Presence::Away));
         let guest = line(&lines, "hello?");
         assert!(guest.guest);
@@ -2606,5 +2608,21 @@ mod tests {
         assert!(!line(&lines, "theirs").actions.edit);
         assert!(!line(&lines, "a notice").actions.edit);
         assert_eq!(lines.iter().filter(|l| l.text.contains("fix")).count(), 1);
+    }
+
+    #[test]
+    fn a_card_names_its_session_once() {
+        // The branch called after its session: the session's name isn't said again.
+        assert!(super::names_word(
+            "checkout · build 418 · landed",
+            "checkout"
+        ));
+        assert!(super::names_word("build 1418 failed on main: e2e", "main"));
+        // A name only inside another word is a different one.
+        assert!(!super::names_word(
+            "checkout-v2 · build 418 · landed",
+            "checkout"
+        ));
+        assert!(!super::names_word("build 1421 failed: e2e", "flaky-e2e"));
     }
 }

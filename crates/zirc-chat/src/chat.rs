@@ -173,7 +173,7 @@ pub use names::{
 pub use new_message::{PEOPLE_OFFERED, Pickable, Started, TO, TYPE_A_NAME, pick_people};
 pub use notify::{Level, Muted, NotifySettings, menu as conversation_menu};
 pub use org::{OrgHeader, members_label, threads_label};
-pub use people::{GUEST_PREFIX, OP_LABEL, Person, is_guest, machine_label, runs_on};
+pub use people::{GUEST_PREFIX, Person, is_guest, machine_label, runs_on};
 pub use plain::{
     APPS_SECTION, NO_OTHER_CHANNELS, PEOPLE_SECTION, QUOTE_MARK, ReactionChip, TO_MARK, UNASSIGNED,
 };
@@ -227,7 +227,7 @@ pub use typing::{EVERY as TYPING_EVERY, SESSION_TAG, TYPING_TAG, Typist, typing_
 pub use view::{
     EVENT_MARK, Icon, Item, LANDING_KIND, Landing, Membership, Outcome, Parts, Pointer,
     RECONNECT_GAP, SenderKind, Stage, UPDATES_SHOWN, Update, ZIRC_LABEL, actor, app_label,
-    day_label, is_system, people_only, sender_kind, shows_sent_from, trail_stubs,
+    day_label, is_system, people_only, sender_kind, trail_stubs,
 };
 pub use words::{
     ACTIVITY, ACTIVITY_HINT, ADD_PICTURE, ADD_REACTION, ADVANCED, ASKING_ZIRC_DEV, ATTACH, BACK,
