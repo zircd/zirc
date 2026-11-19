@@ -54,7 +54,7 @@ impl Chat {
 
     /// Whether no conversation is open: the server's own is selected, but not as the Server
     /// channel.
-    fn none_open(&self) -> bool {
+    pub(super) fn none_open(&self) -> bool {
         self.selected().kind == Kind::Server && !self.server_shown
     }
 
@@ -169,6 +169,9 @@ impl Chat {
     /// its own name, and a person by the name they show as. Every app's composer says this.
     #[must_use]
     pub fn short_title(&self, name: &str) -> String {
+        if self.is_server(name) {
+            return SERVER_TITLE.to_owned();
+        }
         if let Some(parent) = self.our_room_beside(name) {
             return parent;
         }

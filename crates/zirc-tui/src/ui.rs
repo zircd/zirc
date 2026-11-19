@@ -2685,7 +2685,7 @@ mod tests {
         assert!(row_with(&rows, "#web").starts_with("▎#web bob: "));
         // Long names are cut to fit, the same way everywhere.
         assert_eq!(row_with(&rows, " #a-"), " #a-channel-with-a-very… │");
-        // The Server channel is shown, and first in the list.
+        // The Server channel shown: its name heads the screen, though no list holds it.
         assert!(
             rows[0].starts_with(&format!(" {SERVER_TITLE}")),
             "{}",

@@ -8744,12 +8744,26 @@ fn the_server_channel_shows_notices_and_sends_what_is_typed_there_as_it_is() {
     assert!(chat.switcher("").iter().all(|name| name != "irc.zirc.test"));
     assert_eq!(chat.switcher("serv"), ["irc.zirc.test"]);
 
-    // Listed with every conversation while it's shown, so apps show it.
-    assert_eq!(chat.channel_rows()[0].title, crate::chat::SERVER_TITLE);
+    // Never listed, even while it's shown: apps draw it by the shown row.
+    assert!(
+        chat.channel_rows()
+            .iter()
+            .all(|row| row.name != "irc.zirc.test")
+    );
+    let shown = chat.shown_row().expect("the Server channel is open");
+    assert_eq!(
+        (shown.name.as_str(), shown.title.as_str()),
+        ("irc.zirc.test", crate::chat::SERVER_TITLE)
+    );
+    assert_eq!(chat.short_title("irc.zirc.test"), crate::chat::SERVER_TITLE);
 
     // Another conversation shown, the server's stands for nothing shown again.
     let _ = chat.open("#api");
     assert!(!chat.server_shown());
+    assert_eq!(
+        chat.shown_row().map(|row| row.name),
+        Some("#api".to_owned())
+    );
     assert!(
         chat.channel_rows()
             .iter()

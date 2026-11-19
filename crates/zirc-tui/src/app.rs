@@ -1964,12 +1964,8 @@ impl App {
 
     /// Shows the conversation `nth` in the list, if there is one. Returns what to send.
     fn show_listed(&mut self, nth: usize) -> Vec<Line> {
-        // Alt-1 is the first conversation, as before the Server channel was listed above it.
-        let at = self
-            .listed()
-            .filter(|(_, conversation)| conversation.kind != Kind::Server)
-            .nth(nth)
-            .map(|(at, _)| at);
+        // Alt-1 is the first conversation listed: the Server channel never is.
+        let at = self.listed().nth(nth).map(|(at, _)| at);
         at.map(|at| self.select(at)).unwrap_or_default()
     }
 

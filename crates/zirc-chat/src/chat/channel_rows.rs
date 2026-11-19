@@ -27,8 +27,9 @@ pub struct ChannelRow {
 }
 
 impl Chat {
-    /// The channel list: the Server channel while it's shown, the server's channels, then
-    /// direct messages, each sorted by what it shows. Direct messages are our private conversations and groups, and the agent
+    /// The channel list: the server's channels, then direct messages, each sorted by what it
+    /// shows. Never the Server channel, even while it's shown: Jump to is where it's found
+    /// (the user's choice, 19 Nov 2026); [`Chat::shown_row`] is what's open. Direct messages are our private conversations and groups, and the agent
     /// sessions on our own machines, whether or not we've talked to them yet.
     #[must_use]
     pub fn channel_rows(&self) -> Vec<ChannelRow> {
@@ -67,18 +68,41 @@ impl Chat {
         }
         let mut rows: Vec<ChannelRow> = rows.into_values().collect();
         rows.sort_by_cached_key(|row| (row.section, fold(&row.title)));
-        // The Server channel while it's shown, first: an app shows what's open only if it's
-        // here.
-        if self.server_shown() {
-            rows.insert(
-                0,
-                ChannelRow {
-                    joined: true,
-                    title: super::SERVER_TITLE.to_owned(),
-                    ..row(&self.selected().name)
-                },
-            );
-        }
         rows
+    }
+
+    /// The row of the conversation shown, listed or not: what an app draws the open
+    /// conversation by, its title and section, the Server channel's too. `None` while none is
+    /// open ([`Chat::nothing_joined`], [`Chat::pick_a_conversation`]).
+    #[must_use]
+    pub fn shown_row(&self) -> Option<ChannelRow> {
+        if self.none_open() {
+            return None;
+        }
+        self.row_of(&self.selected().name)
+    }
+
+    /// The row of the conversation called `name`, listed or not, as [`Chat::channel_rows`]
+    /// would list it: for one no list holds, such as the Server channel Jump to finds.
+    #[must_use]
+    pub fn row_of(&self, name: &str) -> Option<ChannelRow> {
+        let conversation = self.conversation(name)?;
+        let name = conversation.name.as_str();
+        let users = if conversation.joined {
+            conversation.members.len()
+        } else {
+            self.listed()
+                .iter()
+                .find(|(listed, _)| fold(listed) == fold(name))
+                .map_or(0, |(_, users)| *users)
+        };
+        Some(ChannelRow {
+            name: name.to_owned(),
+            title: self.title(name),
+            section: SidebarSection::of(name),
+            joined: conversation.joined || conversation.kind != Kind::Channel,
+            unread: conversation.unread,
+            users,
+        })
     }
 }

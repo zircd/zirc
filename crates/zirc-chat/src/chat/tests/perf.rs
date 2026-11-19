@@ -196,6 +196,9 @@ fn phone(chat: &Chat, zone: FixedOffset) -> usize {
         .collect::<Vec<_>>()
         .len()
         + chat.channel_groups().len()
+        + chat.direct_rows().len()
+        // The open conversation's row (`view::open_row`), and its faces: the direct messages again.
+        + chat.shown_row().map_or(0, |row| row.title.len())
         + chat.direct_rows().len();
     let sidebar = [
         None,
