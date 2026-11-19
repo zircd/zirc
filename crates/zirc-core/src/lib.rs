@@ -56,4 +56,6 @@ pub mod update;
 pub mod waits;
 pub mod which_org;
 
-pub use zirc_chat::{chat, clock, command, compose, link_ask, names, orgs, presence, trim, utf16};
+pub use zirc_chat::{
+    chat, clock, command, compose, keys, link_ask, names, orgs, presence, trim, utf16,
+};
