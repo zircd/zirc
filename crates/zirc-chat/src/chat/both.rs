@@ -247,23 +247,23 @@ impl Chat {
     /// too, in every channel: for their card and their row in the people list.
     #[must_use]
     pub fn both_changing_for(&self, who: &str) -> Vec<BothChanging> {
+        both_changing_among(self.both_changing_everywhere(), who)
+    }
+
+    /// Every channel's overlaps ([`Chat::both_changing`]), the channels in order: what
+    /// [`Chat::both_changing_for`] picks one session's from, made once for a list of many
+    /// sessions rather than once a session.
+    pub(super) fn both_changing_everywhere(&self) -> Vec<BothChanging> {
         let channels: BTreeSet<String> = self
             .conversations
             .iter()
             .filter(|c| super::is_channel(&c.name))
             .map(|c| c.name.clone())
             .collect();
-        let mut found: Vec<BothChanging> = Vec::new();
-        for channel in channels {
-            for item in self.both_changing(&channel) {
-                if item.who.iter().any(|changer| is(changer, who))
-                    && !found.iter().any(|known| known.path == item.path)
-                {
-                    found.push(item);
-                }
-            }
-        }
-        found
+        channels
+            .iter()
+            .flat_map(|channel| self.both_changing(channel))
+            .collect()
     }
 
     /// `item` as the one phrase every app says it in, from `from`'s side (a session's id or
@@ -531,4 +531,21 @@ pub(super) fn row_words(event: &Event) -> Option<(String, String, String)> {
         word("details").unwrap_or_default(),
         word("path")?,
     ))
+}
+
+/// What `who` (a session's id or a person's nick) is changing with others, among `all`
+/// ([`Chat::both_changing_everywhere`]): each path once, as the first channel says it.
+pub(super) fn both_changing_among(
+    all: impl IntoIterator<Item = BothChanging>,
+    who: &str,
+) -> Vec<BothChanging> {
+    let mut found: Vec<BothChanging> = Vec::new();
+    for item in all {
+        if item.who.iter().any(|changer| is(changer, who))
+            && !found.iter().any(|known| known.path == item.path)
+        {
+            found.push(item);
+        }
+    }
+    found
 }

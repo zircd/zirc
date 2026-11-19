@@ -7,7 +7,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::list::{Agent, MachineRow, PersonRow};
-use super::{Avatar, BothChangingLine, Chat, Face, Presence, YOU};
+use super::{Avatar, BothChanging, BothChangingLine, Chat, Face, Presence, YOU};
 
 /// A person in a conversation, with their machines there under them.
 #[expect(
@@ -104,9 +104,11 @@ impl Chat {
     /// order ([`Chat::people_rows`]).
     #[must_use]
     pub fn member_rows(&self, name: &str) -> Vec<MemberRow> {
+        // Every channel's overlaps, once for all the sessions listed.
+        let both = self.both_changing_everywhere();
         self.people_rows(name)
             .into_iter()
-            .map(|row| self.member_row(row))
+            .map(|row| self.member_row_among(row, &both))
             .collect()
     }
 
@@ -129,6 +131,12 @@ impl Chat {
     /// `row` as the people list draws it, with its machines and their sessions.
     #[must_use]
     pub fn member_row(&self, row: PersonRow) -> MemberRow {
+        self.member_row_among(row, &self.both_changing_everywhere())
+    }
+
+    /// [`Chat::member_row`], its sessions' overlaps among `both`
+    /// ([`Chat::both_changing_everywhere`]).
+    fn member_row_among(&self, row: PersonRow, both: &[BothChanging]) -> MemberRow {
         let label = row.label();
         let presence = row.standing().presence();
         let away_label = row.away_label();
@@ -153,7 +161,7 @@ impl Chat {
             machines: row
                 .machines
                 .into_iter()
-                .map(|machine| self.member_machine(machine))
+                .map(|machine| self.member_machine(machine, both))
                 .collect(),
             label,
             presence,
@@ -170,7 +178,7 @@ impl Chat {
         }
     }
 
-    fn member_machine(&self, machine: MachineRow) -> MemberMachine {
+    fn member_machine(&self, machine: MachineRow, both: &[BothChanging]) -> MemberMachine {
         MemberMachine {
             name: machine.name(),
             presence: machine.presence(),
@@ -178,16 +186,19 @@ impl Chat {
             sessions: machine
                 .sessions
                 .into_iter()
-                .map(|agent| self.member_session(agent))
+                .map(|agent| self.member_session(agent, both))
                 .collect(),
             nick: machine.person.nick,
             away: machine.person.away,
         }
     }
 
-    fn member_session(&self, agent: Agent) -> MemberSession {
+    fn member_session(&self, agent: Agent, both: &[BothChanging]) -> MemberSession {
+        let both = super::both::both_changing_among(both.iter().cloned(), &agent.short);
         MemberSession {
-            both: self.session_both(&agent).map(BothChangingLine::from),
+            both: self
+                .both_changing_caption(&both, &agent.short)
+                .map(BothChangingLine::from),
             face: Some(self.face(&agent.avatar)),
             conversation: agent.name,
             short: agent.short,
