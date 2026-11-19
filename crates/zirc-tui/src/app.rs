@@ -35,6 +35,7 @@ use zirc_core::compose::{self, Completing};
 use zirc_core::connection::Status;
 use zirc_core::emoji::{self, Recent};
 use zirc_core::ipc::{Request, Response};
+use zirc_core::keys;
 use zirc_core::orgs::Unread;
 use zirc_theme::Theme;
 
@@ -1608,6 +1609,25 @@ impl App {
         }
     }
 
+    /// Enter with `held`, as zirc-chat says for every app ([`keys::enter`]): it sends; with
+    /// Shift, Alt, Ctrl or Super, a new line.
+    fn enter(&mut self, held: KeyModifiers) -> Action {
+        let pressed = keys::Pressed {
+            shift: held.contains(KeyModifiers::SHIFT),
+            alt: held.contains(KeyModifiers::ALT),
+            ctrl: held.contains(KeyModifiers::CONTROL),
+            meta: held.contains(KeyModifiers::SUPER),
+            ..keys::Pressed::default()
+        };
+        match keys::enter(pressed) {
+            keys::Enter::Send => self.submit(),
+            keys::Enter::NewLine | keys::Enter::Composing => {
+                self.input.insert('\n');
+                Action::Send(Vec::new())
+            }
+        }
+    }
+
     /// Takes in a key, saying what to send.
     pub fn key(&mut self, key: KeyEvent) -> Action {
         if !lays_out_the_same(key) {
@@ -1665,10 +1685,10 @@ impl App {
             KeyCode::Char('d') if ctrl && self.input.text().is_empty() => {
                 return Action::Quit(vec![quit(None)]);
             }
-            // A new line, as in Slack: Shift+Enter, or Alt+Enter where the terminal can't
-            // tell Shift+Enter from Enter.
-            KeyCode::Enter if shift || alt => self.input.insert('\n'),
-            KeyCode::Enter => return self.submit(),
+            // What Enter does is zirc-chat's, as in every app (keys::enter): it sends; with
+            // Shift, Alt, Ctrl or Super, a new line. Alt+Enter is the one a terminal that can't
+            // tell Shift+Enter from Enter still sends us.
+            KeyCode::Enter => return self.enter(key.modifiers),
             KeyCode::Char('n') if ctrl => return Action::Send(self.cycle(1)),
             KeyCode::Char('p') if ctrl => return Action::Send(self.cycle(-1)),
             KeyCode::Down if alt || ctrl => return Action::Send(self.cycle(1)),
@@ -2752,6 +2772,49 @@ mod tests {
                 ) || e.from != "me"
             })
         }));
+    }
+
+    #[test]
+    fn enter_with_any_modifier_is_a_new_line_and_plain_enter_sends() {
+        let mut app = app();
+        app.connected(link(true));
+        feed(&mut app, &[":me!u@h JOIN #api"]);
+        let _ = app.select(0);
+        app.input.insert('a');
+        for held in [
+            KeyModifiers::SHIFT,
+            KeyModifiers::ALT,
+            KeyModifiers::CONTROL,
+            KeyModifiers::SUPER,
+        ] {
+            app.key(KeyEvent::new(KeyCode::Enter, held));
+        }
+        assert_eq!(app.input.text(), "a\n\n\n\n");
+        assert!(matches!(
+            app.key(KeyEvent::from(KeyCode::Enter)),
+            Action::Send(_)
+        ));
+        assert!(app.input.text().is_empty());
+    }
+
+    #[test]
+    fn typing_goes_on_in_the_composer_as_conversations_change_and_messages_come() {
+        let mut app = app();
+        app.connected(link(true));
+        feed(&mut app, &[":me!u@h JOIN #api", ":me!u@h JOIN #web"]);
+        let _ = app.select(0);
+        app.key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL));
+        for c in "typing".chars() {
+            app.key(KeyEvent::from(KeyCode::Char(c)));
+        }
+        feed(
+            &mut app,
+            &[":bob!u@h PRIVMSG #api :hi", ":bob!u@h PRIVMSG #web :hi"],
+        );
+        for c in " on".chars() {
+            app.key(KeyEvent::from(KeyCode::Char(c)));
+        }
+        assert_eq!(app.input.text(), "typing on");
     }
 
     #[test]
