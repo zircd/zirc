@@ -211,9 +211,6 @@ pub struct App {
     pub input: Input,
     /// Which time zone to show times in.
     pub zone: Zone,
-    /// Whether the scrollback is laid out IRC's way, a time and a nick in front of each
-    /// row, rather than as zirc's other apps show it.
-    pub compact: bool,
     /// How the terminal shows links: clickable labels, or as written.
     pub links: Links,
     /// The conversations, folded, showing only what people say (`/people`).
@@ -379,7 +376,6 @@ impl App {
             chat: Chat::new(nick, server, joins, options),
             input: Input::default(),
             zone: Zone::Local,
-            compact: false,
             links: Links::Plain,
             people_only: std::collections::BTreeSet::new(),
             editor: None,
@@ -1070,13 +1066,12 @@ impl App {
             self.chat.divider(),
             width,
             (self.zone, today),
-            (self.compact, self.links),
+            self.links,
         );
         self.laid.borrow_mut().stamp((
             fold(&conversation.name),
             width,
             look.text_width,
-            self.compact,
             self.links,
             people,
             today,
@@ -1337,7 +1332,6 @@ impl App {
         Prefs {
             pins: self.chat.stars().to_vec(),
             send_typing: self.send_typing,
-            compact: self.compact,
             editor: self.editor.clone(),
             people_only: self.people_only.iter().cloned().collect(),
             thresholds: self
@@ -1361,7 +1355,6 @@ impl App {
         self.chat.set_stars(prefs.pins);
         self.send_typing = prefs.send_typing;
         self.chat.set_send_typing(prefs.send_typing);
-        self.compact = prefs.compact;
         self.chat
             .set_editor(zirc_core::editor::editor(prefs.editor.as_deref()));
         self.editor = prefs.editor;
@@ -1762,14 +1755,6 @@ impl App {
         self.chat.typing_text(&self.current().name)
     }
 
-    /// `/compact [on|off]`: lays the scrollback out IRC's way, or as zirc's other apps do, or
-    /// with neither, the other way from now. Returns what to send: nothing.
-    fn set_compact(&mut self, on: Option<bool>) -> Vec<Line> {
-        self.compact = on.unwrap_or(!self.compact);
-        self.prefs_changed = true;
-        Vec::new()
-    }
-
     /// `/typing [on|off]`: says, or sets, whether others are told we're typing. Returns
     /// what to send: nothing.
     fn set_send_typing(&mut self, on: Option<bool>) -> Vec<Line> {
@@ -2125,7 +2110,6 @@ impl App {
             Command::Editor(choice) => self.choose_editor(choice.as_deref()),
             Command::Press(name) => self.press(&name),
             Command::Sessions => return self.open_sessions(),
-            Command::Compact(on) => self.set_compact(on),
             Command::Help => self.help(),
             Command::Profile => return self.profile_page(),
             Command::Org(name) => return self.org(name),

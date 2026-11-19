@@ -91,9 +91,6 @@ pub enum Command {
     Typing(Option<bool>),
     /// `/sessions`: show what every session is doing, as `zirc sessions` says.
     Sessions,
-    /// `/compact [on|off]`: lay the scrollback out IRC's way, a time and a nick in front of
-    /// each row, or with nothing, the other way from now.
-    Compact(Option<bool>),
     /// `/profile`: open our account's page on zirc.dev, where our name and picture are set.
     Profile,
     /// `/people`: show only what people say, and whatever mentions us, or with that on,
@@ -148,7 +145,6 @@ impl Command {
             Self::Quote(_) => "quote",
             Self::Typing(_) => "typing",
             Self::Sessions => "sessions",
-            Self::Compact(_) => "compact",
             Self::Profile => "profile",
             Self::People => "people",
             Self::Editor(_) => "editor",
@@ -182,7 +178,7 @@ impl Command {
     }
 }
 
-/// The `command` that takes `on`, `off`, or nothing, as `/typing` and `/compact` do, with
+/// The `command` that takes `on`, `off`, or nothing, as `/typing` does, with
 /// `words`; `None` for anything else.
 fn on_off(words: &str, command: fn(Option<bool>) -> Command) -> Option<Command> {
     match words.to_ascii_lowercase().as_str() {
@@ -395,7 +391,6 @@ pub fn parse(input: &str) -> Result<Command, Unread> {
         "react" => Ok(Command::React(some(rest))),
         "trim" => Ok(Command::Trim(some(rest))),
         "typing" => on_off(rest, Command::Typing).ok_or_else(|| needs("on or off")),
-        "compact" => on_off(rest, Command::Compact).ok_or_else(|| needs("on or off")),
         "reply" | "r" => Ok(Command::Reply(some(rest))),
         "quote" | "raw" => some(rest)
             .map(Command::Quote)

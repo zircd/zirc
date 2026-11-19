@@ -152,7 +152,7 @@ pub use guests::{
     SIGNED_IN_KEY, assigned_label, guest_label, support_text,
 };
 pub use header_line::{HeaderLine, HeaderLineKind};
-pub use layout::{COMPACT_SETTING, ClockAt, Heading, Layout};
+pub use layout::{ClockAt, Heading, row_heading};
 pub use lines::{
     ANIMATION_PLAYS, CardAction, CardButtons, FileShape, LineActions, LineFile, LineKind, LineMore,
     LineQuote, LineReaction, MEDIA_HEIGHT, MEDIA_WIDTH, RowShape, SessionName, SystemBody,

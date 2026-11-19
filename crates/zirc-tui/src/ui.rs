@@ -15,7 +15,7 @@ use unicode_width::UnicodeWidthStr as _;
 use crate::app::{App, SessionsPanel, Side, Target, Trimming};
 use crate::hyperlink;
 use crate::picker::{self, Picker};
-use crate::rows::{self, Row, TIME_WIDTH, Tone, fit, wrap};
+use crate::rows::{self, Row, Tone, fit, wrap};
 use zirc_core::chat::{
     APP_TAG, APPS_SECTION, Avatar, COMPOSER_NOTE, GUEST_PILL, GuestHeader, Icon, Kind, OUTSIDE,
     OrgHeader, Presence, Profile, QUOTE_MARK, UNASSIGNED, agent, assigned_label, away_label,
@@ -1083,15 +1083,12 @@ fn intro_card(frame: &mut Frame<'_>, app: &App, area: Rect, intro: &[String]) {
 }
 
 fn scrollback_rows(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let nick_width = rows::nick_width(app.current());
     let shown = shown_rows(app, area);
     let lines: Vec<Line<'_>> = shown
         .iter()
         .map(|row| {
-            row.as_ref().map_or_else(
-                || Line::raw(""),
-                |row| row_line(app, row, nick_width, area.width),
-            )
+            row.as_ref()
+                .map_or_else(|| Line::raw(""), |row| row_line(app, row, area.width))
         })
         .collect();
     frame.render_widget(Paragraph::new(lines), area);
@@ -1157,11 +1154,10 @@ fn trim_card(frame: &mut Frame<'_>, app: &App, trimming: &Trimming, area: Rect) 
 /// What's at `column` in the scrollback's `row`, `area`: a reaction, a message or neither.
 fn scrollback_target(app: &App, area: Rect, column: u16, row: u16) -> Target {
     let shown = shown_rows(app, area);
-    let text_column = rows::text_column(app.current(), app.compact);
     let x = usize::from(column - area.x);
     match shown.get(usize::from(row - area.y)).cloned().flatten() {
         Some(Row::Reactions { id, chips }) => x
-            .checked_sub(text_column)
+            .checked_sub(rows::INDENT)
             .and_then(|x| rows::chip_at(&chips, x))
             .map_or(Target::Message(id.clone()), |chip| Target::Reaction {
                 id: id.clone(),
@@ -1311,18 +1307,14 @@ fn header_line(
     Line::from(spans)
 }
 
-fn row_line(app: &App, row: &Row, nick_width: usize, width: u16) -> Line<'static> {
+fn row_line(app: &App, row: &Row, width: u16) -> Line<'static> {
     let theme = app.theme;
     let picked = |id: &Option<String>| id.is_some() && id.as_deref() == app.picked();
     match row {
-        Row::Buttons { labels, id } => {
-            highlight(app, buttons_line(app, labels, nick_width), picked(id))
+        Row::Buttons { labels, id } => highlight(app, buttons_line(app, labels), picked(id)),
+        Row::Reactions { chips, id } => {
+            highlight(app, reactions_line(app, chips), picked(&Some(id.clone())))
         }
-        Row::Reactions { chips, id } => highlight(
-            app,
-            reactions_line(app, chips, nick_width),
-            picked(&Some(id.clone())),
-        ),
         Row::Header {
             nick,
             time,
@@ -1337,7 +1329,7 @@ fn row_line(app: &App, row: &Row, nick_width: usize, width: u16) -> Line<'static
             picked(id),
         ),
         Row::New => new_line(app, width),
-        Row::System { id, .. } => highlight(app, system_line(app, row, nick_width), picked(id)),
+        Row::System { id, .. } => highlight(app, system_line(app, row), picked(id)),
         Row::Divider(day) => {
             let label = format!(" {day} ");
             let side = usize::from(width).saturating_sub(label.width()) / 2;
@@ -1347,7 +1339,6 @@ fn row_line(app: &App, row: &Row, nick_width: usize, width: u16) -> Line<'static
             )
         }
         Row::Text {
-            time,
             nick,
             text,
             tone,
@@ -1356,51 +1347,27 @@ fn row_line(app: &App, row: &Row, nick_width: usize, width: u16) -> Line<'static
             id,
             ..
         } => {
-            let pad = nick_width.saturating_sub(nick.width());
             let (nick_style, text_style) = text_styles(app, nick, *tone);
-            if !app.compact {
-                // Under its header: a mark in front, the bar of the message picked, or the
-                // edge of one that mentions us.
-                let lead = if picked(id) && nick.is_empty() {
-                    Span::styled("▌", fg(theme.signal))
-                } else if *mention && nick.is_empty() {
-                    Span::styled("▎", fg(theme.mention_edge))
-                } else {
-                    Span::styled(nick.clone(), nick_style)
-                };
-                let pad = rows::INDENT.saturating_sub(lead.width());
-                let mut spans = vec![lead, Span::raw(" ".repeat(pad))];
-                spans.extend(lead_spans(app, text, *tone, text_style));
-                // The session an app's post is about, dim at the end.
-                if !hint.is_empty() {
-                    spans.push(Span::styled(
-                        format!(" {hint}"),
-                        fg(theme.muted).add_modifier(Modifier::DIM),
-                    ));
-                }
-                return mentioned(app, highlight(app, Line::from(spans), picked(id)), *mention);
-            }
-            let mut spans = vec![
-                Span::styled(format!("{time:5} "), fg(theme.muted)),
-                Span::raw(" ".repeat(pad)),
-                Span::styled(nick.clone(), nick_style),
-                Span::raw(" "),
-                Span::styled(text.clone(), text_style),
-            ];
-            // Which app it was sent from, dimmed, out of the way at the end of the row.
+            // Under its header: a mark in front, the bar of the message picked, or the edge
+            // of one that mentions us.
+            let lead = if picked(id) && nick.is_empty() {
+                Span::styled("▌", fg(theme.signal))
+            } else if *mention && nick.is_empty() {
+                Span::styled("▎", fg(theme.mention_edge))
+            } else {
+                Span::styled(nick.clone(), nick_style)
+            };
+            let pad = rows::INDENT.saturating_sub(lead.width());
+            let mut spans = vec![lead, Span::raw(" ".repeat(pad))];
+            spans.extend(lead_spans(app, text, *tone, text_style));
+            // The session an app's post is about, dim at the end.
             if !hint.is_empty() {
                 spans.push(Span::styled(
-                    format!("  {hint}"),
+                    format!(" {hint}"),
                     fg(theme.muted).add_modifier(Modifier::DIM),
                 ));
             }
-            // The message picked to react to stands out, with a bar in the time's place.
-            if picked(id) {
-                spans[0] = Span::styled(format!("{:5} ", "▌"), fg(theme.signal));
-                Line::from(spans).style(Style::new().bg(colour(theme.panel)))
-            } else {
-                mentioned(app, Line::from(spans), *mention)
-            }
+            mentioned(app, highlight(app, Line::from(spans), picked(id)), *mention)
         }
     }
 }
@@ -1453,14 +1420,9 @@ fn new_line(app: &App, width: u16) -> Line<'static> {
 }
 
 /// A message's reactions, as chips from the text column.
-fn reactions_line(app: &App, chips: &[rows::Chip], nick_width: usize) -> Line<'static> {
+fn reactions_line(app: &App, chips: &[rows::Chip]) -> Line<'static> {
     let theme = app.theme;
-    let column = if app.compact {
-        TIME_WIDTH + 1 + nick_width + 1
-    } else {
-        rows::INDENT
-    };
-    let mut spans = vec![Span::raw(" ".repeat(column))];
+    let mut spans = vec![Span::raw(" ".repeat(rows::INDENT))];
     for (i, chip) in chips.iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw(" ".repeat(rows::CHIP_GAP)));
@@ -1477,14 +1439,9 @@ fn reactions_line(app: &App, chips: &[rows::Chip], nick_width: usize) -> Line<'s
 
 /// A card's buttons, from the text column: each a tonal word, as every app draws them,
 /// `/press` presses one.
-fn buttons_line(app: &App, labels: &[String], nick_width: usize) -> Line<'static> {
+fn buttons_line(app: &App, labels: &[String]) -> Line<'static> {
     let theme = app.theme;
-    let column = if app.compact {
-        TIME_WIDTH + 1 + nick_width + 1
-    } else {
-        rows::INDENT
-    };
-    let mut spans = vec![Span::raw(" ".repeat(column))];
+    let mut spans = vec![Span::raw(" ".repeat(rows::INDENT))];
     for (i, label) in labels.iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw(" ".repeat(rows::CHIP_GAP)));
@@ -1508,7 +1465,7 @@ fn mentioned(app: &App, line: Line<'static>, mention: bool) -> Line<'static> {
     }
 }
 
-/// How a row of text reads: the style of what's in its nick column, and of its text.
+/// How a row of text reads: the style of what's in its indent, and of its text.
 fn text_styles(app: &App, nick: &str, tone: Tone) -> (Style, Style) {
     let theme = app.theme;
     let nick_style = match tone {
@@ -1533,9 +1490,8 @@ fn text_styles(app: &App, nick: &str, tone: Tone) -> (Style, Style) {
 }
 
 /// A system row's first line: its icon or its agent's mark, then who in bold, whose agent
-/// and what they did, then when, dim. Compact, the time goes in the time column and the icon in the nick
-/// column's place.
-fn system_line(app: &App, row: &Row, nick_width: usize) -> Line<'static> {
+/// and what they did, then when, dim.
+fn system_line(app: &App, row: &Row) -> Line<'static> {
     let Row::System {
         time,
         icon,
@@ -1556,28 +1512,18 @@ fn system_line(app: &App, row: &Row, nick_width: usize) -> Line<'static> {
         Some(agent) if icon == Icon::Post => (agent.mark, fg_colour(hue_colour(app, agent.hue))),
         _ => (icon.glyph(), icon_style(app, icon)),
     };
-    let mut spans = if app.compact {
-        vec![
-            Span::styled(format!("{time:5} "), fg(theme.muted)),
-            Span::raw(" ".repeat(nick_width.saturating_sub(mark.width()))),
-            Span::styled(mark, mark_style),
-            Span::raw(" "),
-        ]
-    } else {
-        let mut spans = Vec::new();
-        // An agent's other doings: its mark, as other apps draw its avatar, then the icon.
-        if let Some(agent) = agent.filter(|_| icon != Icon::Post) {
-            spans.push(Span::styled(
-                format!("{:1$}", agent.mark, rows::AGENT_MARK_WIDTH),
-                fg_colour(hue_colour(app, agent.hue)),
-            ));
-        }
-        spans.push(Span::styled(mark, mark_style));
-        spans.push(Span::raw(
-            " ".repeat(rows::INDENT.saturating_sub(mark.width())),
+    let mut spans = Vec::new();
+    // An agent's other doings: its mark, as other apps draw its avatar, then the icon.
+    if let Some(agent) = agent.filter(|_| icon != Icon::Post) {
+        spans.push(Span::styled(
+            format!("{:1$}", agent.mark, rows::AGENT_MARK_WIDTH),
+            fg_colour(hue_colour(app, agent.hue)),
         ));
-        spans
-    };
+    }
+    spans.push(Span::styled(mark, mark_style));
+    spans.push(Span::raw(
+        " ".repeat(rows::INDENT.saturating_sub(mark.width())),
+    ));
     // One that mentions us stands out, as a message that does.
     let (actor_style, verb_style) = if *mention {
         let style = fg(theme.warning).add_modifier(Modifier::BOLD);
@@ -1589,19 +1535,15 @@ fn system_line(app: &App, row: &Row, nick_width: usize) -> Line<'static> {
         spans.push(Span::styled(actor.to_owned(), actor_style));
     }
     let dim = fg(theme.muted).add_modifier(Modifier::DIM);
-    // Whose agent it is, unless compact, IRC's way, which has no room for it.
-    if let Some(agent) =
-        agent.filter(|agent| !app.compact && !agent.detail.is_empty() && !actor.is_empty())
-    {
+    // Whose agent it is.
+    if let Some(agent) = agent.filter(|agent| !agent.detail.is_empty() && !actor.is_empty()) {
         spans.push(Span::styled(format!(" {}", agent.detail), dim));
     }
     if !verb.is_empty() {
         let gap = if actor.is_empty() { "" } else { " " };
         spans.push(Span::styled(format!("{gap}{verb}"), verb_style));
     }
-    if !app.compact {
-        spans.push(Span::styled(format!(" · {time}"), dim));
-    }
+    spans.push(Span::styled(format!(" · {time}"), dim));
     Line::from(spans)
 }
 
@@ -1979,7 +1921,6 @@ mod tests {
 
     fn app() -> App {
         let mut app = App::new("me", "irc.zirc.test", Vec::new());
-        app.compact = true;
         app.chat.clock = noon;
         app.zone = Zone::Fixed(FixedOffset::east_opt(0).unwrap());
         app.connected(Link {
@@ -2230,10 +2171,6 @@ mod tests {
         row_with(&rows, COMPOSER_NOTE);
         // The pill every app shows after a guest's name.
         assert!(row_with(&rows, &format!("Anna {GUEST_PILL}")).contains("11:00"));
-        // IRC's way, the tag goes in front of what they said.
-        app.compact = true;
-        let (rows, _) = draw(&app, screen.width, screen.height);
-        row_with(&rows, &format!("[{GUEST_PILL}] hello, is anyone there?"));
     }
 
     #[test]
@@ -2291,7 +2228,6 @@ mod tests {
     #[test]
     fn shows_people_by_the_names_their_profiles_give() {
         let mut app = app();
-        app.compact = false;
         let _ = app.select(1);
         for line in [
             ":s METADATA alice display-name * :Alice Liddell",
@@ -2309,7 +2245,6 @@ mod tests {
     #[test]
     fn names_agent_sessions_and_says_who_a_post_is_for() {
         let mut app = app();
-        app.compact = false;
         let _ = app.select(1);
         let post = |session: &str, name: Option<&str>, body: &str| {
             let mut message =
@@ -2409,7 +2344,6 @@ mod tests {
     #[test]
     fn shows_agents_talk_as_rows_and_only_people_on_asking() {
         let mut app = app();
-        app.compact = false;
         let _ = app.select(1);
         let post = |session: &str, name: &str, body: &str, minute: u32| {
             let mut message =
@@ -2452,7 +2386,6 @@ mod tests {
         let mut app = app();
         app.chat
             .set_threshold("#api", zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT);
-        app.compact = false;
         let _ = app.select(1);
         // A second commit after the one already in #api: both show, nothing folds.
         let commit = zirc_proto::encode(&zirc_proto::Message::new(
@@ -2480,7 +2413,6 @@ mod tests {
     #[test]
     fn draws_a_cards_buttons_and_presses_one_once_confirmed() {
         let mut app = app();
-        app.compact = false;
         let _ = app.select(1);
         let card = |note: &str| {
             let message = zirc_proto::Message::new(
@@ -2546,7 +2478,6 @@ mod tests {
     #[test]
     fn marks_an_event_that_mentions_us_as_a_message_that_does() {
         let mut app = app();
-        app.compact = false;
         let _ = app.select(2);
         let post = zirc_proto::Message::new(
             "cc-598aa1",
@@ -2574,7 +2505,6 @@ mod tests {
     #[test]
     fn heads_an_agents_rows_with_its_tools_mark_in_its_own_colour() {
         let mut app = app();
-        app.compact = false;
         let _ = app.select(1);
         let mut post = zirc_proto::Message::new(
             "cc-598aa1",
@@ -2612,7 +2542,6 @@ mod tests {
     #[test]
     fn shows_a_landing_as_one_card_with_its_build_linked() {
         let mut app = app();
-        app.compact = false;
         app.links = crate::hyperlink::Links::Labelled;
         let _ = app.select(1);
         let post = |kind: &str, text: &str| {
@@ -2661,7 +2590,6 @@ mod tests {
     #[test]
     fn quotes_an_agent_by_its_name_never_its_machines_nick() {
         let mut app = app();
-        app.compact = false;
         let _ = app.select(1);
         let mut post = zirc_proto::Message::new(
             "cc-598aa1",
@@ -3156,7 +3084,8 @@ mod tests {
         );
         assert_eq!(app.replying(), None, "only the next line answers it");
 
-        // The server echoes it; it shows beneath a quote of what it answers.
+        // The server echoes it; it shows under its header, beneath a quote of what it
+        // answers.
         app.handle(
             "@msgid=m8;+draft/reply=m7;time=2026-10-30T11:05:00.000Z :me!u@h PRIVMSG #api :it is"
                 .parse()
@@ -3168,7 +3097,7 @@ mod tests {
             .position(|row| row.contains("↪ bob: is staging up?"))
             .expect("quoted");
         assert!(
-            rows[quote + 1].contains("me") && rows[quote + 1].contains("it is"),
+            rows[quote - 1].contains("me  11:05") && rows[quote + 1].contains("it is"),
             "{rows:?}"
         );
 
@@ -3251,20 +3180,24 @@ mod tests {
             rows[0]
         );
         assert!(row_with(&rows, "Today").contains("─ Today ─"));
-        assert!(row_with(&rows, "morning").contains("│ 11:00   alice morning"));
-        // The second message from alice continues her run: no nick.
-        let mention = row_with(&rows, "can you look?");
         assert!(
-            mention.contains("│ 11:01         me: can you look?"),
-            "{mention}"
+            rows.iter().any(|row| row.contains("│ alice  11:00")),
+            "{rows:#?}"
         );
+        assert!(row_with(&rows, "morning").contains("│   morning"));
+        // The second message from alice continues her run: no header.
+        let mention = row_with(&rows, "can you look?");
+        assert!(mention.contains("│ ▎ me: can you look?"), "{mention}");
         assert!(
             row_with(&rows, "committed")
-                .contains("11:02       ● cc-12 committed: Fix login  (main abc)")
+                .contains("● cc-12 committed: Fix login  (main abc) · 11:02")
         );
         assert!(!rows.iter().any(|row| row.contains("ZIRC")), "no payloads");
         assert!(row_with(&rows, PEOPLE_SECTION).contains(&format!("│ {PEOPLE_SECTION}")));
-        assert!(row_with(&rows, "alice").contains("│ ● alice"));
+        assert!(
+            rows.iter().any(|row| row.contains("│ ● alice")),
+            "{rows:#?}"
+        );
 
         assert!(rows.last().unwrap().starts_with("#api ›"));
 
@@ -3643,7 +3576,6 @@ mod tests {
     #[test]
     fn browses_channels_over_the_scrollback_and_asks_before_leaving() {
         let mut app = app();
-        app.compact = false;
         let _ = app.select(app.chat.position("#api").unwrap());
         let typing = |app: &mut App, text: &str| {
             for c in text.chars() {
@@ -3684,7 +3616,6 @@ mod tests {
     #[test]
     fn says_once_two_sessions_are_changing_a_file_and_shows_it_on_who() {
         let mut app = app();
-        app.compact = false;
         let _ = app.select(app.chat.position("#api").unwrap());
         // bob-mbp's working sets, one snapshot in parts: checkout's, then rate-limits'.
         let snapshot = |limits: &[&str]| {
@@ -3738,11 +3669,6 @@ mod tests {
             rows[at.unwrap() + 1].contains("web/src/api/client.ts"),
             "{rows:#?}"
         );
-        // On one line, IRC's way.
-        app.compact = true;
-        let (rows, _) = draw(&app, 120, 36);
-        row_with(&rows, "checkout is also changing web/src/api/client.ts");
-        app.compact = false;
 
         // Its card: Now, then what it's changing with others.
         let typing = |app: &mut App, text: &str| {
@@ -3765,7 +3691,6 @@ mod tests {
     #[test]
     fn runs_an_agents_posts_on_and_chips_the_people_named() {
         let mut app = app();
-        app.compact = false;
         let post = |body: &str| {
             let mut message = zirc_proto::Message::new(
                 "cc-1531f8",
@@ -3801,7 +3726,6 @@ mod tests {
     #[test]
     fn says_an_agents_taking_on_in_a_channel_as_one_quiet_line() {
         let mut app = app();
-        app.compact = false;
         let _ = app.select(1);
         let taking = zirc_proto::encode(&zirc_proto::Message::new(
             "cc-1531f8",
@@ -3882,7 +3806,12 @@ mod tests {
         );
         let _ = app.select(app.chat.position("#api").unwrap());
         let (rows, _) = draw(&app, 120, 16);
-        row_with(&rows, "-Zirc- Guests can join #api");
+        // Headed by its name, Zirc, as a message is.
+        let at = rows
+            .iter()
+            .position(|row| row.contains("Guests can join #api"))
+            .unwrap();
+        assert!(rows[at - 1].contains("Zirc"), "{rows:?}");
         assert!(
             !rows.iter().any(|row| row.contains("zirc-system")),
             "{rows:?}"
@@ -4065,11 +3994,10 @@ mod tests {
     }
 
     #[test]
-    fn heads_runs_with_who_and_when_unless_compact() {
+    fn heads_runs_with_who_and_when() {
         let mut app = app();
         app.chat
             .set_threshold("#api", zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT);
-        app.compact = false;
         let _ = app.select(app.chat.position("#api").unwrap());
         let screen = Rect::new(0, 0, 100, 16);
         app.view = scrollback_size(&app, screen);
@@ -4080,9 +4008,9 @@ mod tests {
                 .filter(|row| !row.trim().is_empty())
                 .collect::<Vec<_>>()
         };
-        // No time column: the time after the name, and alice's second message under the
-        // first's header; an agent's commit a message too: its header, who and when, then
-        // its lead and what it was.
+        // The time after the name, and alice's second message under the first's header; an
+        // agent's commit a message too: its header, who and when, then its lead and what it
+        // was.
         let rows = scrollback(&app);
         assert!(rows.len() >= 4, "{rows:#?}");
         assert_eq!(
@@ -4106,20 +4034,6 @@ mod tests {
         app.key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
         let rows = scrollback(&app);
         assert_eq!(rows[rows.len() - 2..], [" bob  11:05", " ▌ looking"]);
-        app.key(KeyEvent::from(KeyCode::Esc));
-
-        // /compact: IRC's way, kept.
-        for c in "/compact".chars() {
-            app.key(KeyEvent::from(KeyCode::Char(c)));
-        }
-        app.key(KeyEvent::from(KeyCode::Enter));
-        assert!(app.compact);
-        assert!(app.take_prefs().unwrap().compact);
-        let rows = scrollback(&app);
-        assert!(
-            rows.iter().any(|row| row.contains("11:00   alice morning")),
-            "{rows:#?}"
-        );
     }
 
     #[test]

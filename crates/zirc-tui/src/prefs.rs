@@ -1,6 +1,6 @@
 //! What the client keeps for the person between runs, in `tui-prefs.toml` in zirc's
-//! directory: the conversations they pinned, whether others see them typing, and how the
-//! scrollback's laid out. The run loop saves it when [`crate::App`] says it changed.
+//! directory: the conversations they pinned, whether others see them typing, and what each
+//! conversation shows. The run loop saves it when [`crate::App`] says it changed.
 
 use std::path::{Path, PathBuf};
 
@@ -15,8 +15,6 @@ pub struct Prefs {
     pub pins: Vec<String>,
     /// Whether others are told when we're typing.
     pub send_typing: bool,
-    /// Whether the scrollback is laid out IRC's way.
-    pub compact: bool,
     /// The conversations showing only what people say (`/people`).
     pub people_only: Vec<String>,
     /// The editor files named in messages open in, by its id: `vs-code`, `cursor`, `zed`
@@ -34,7 +32,6 @@ impl Default for Prefs {
         Self {
             pins: Vec::new(),
             send_typing: true,
-            compact: false,
             people_only: Vec::new(),
             editor: None,
             thresholds: std::collections::BTreeMap::new(),
@@ -87,7 +84,6 @@ mod tests {
         let prefs = Prefs {
             pins: vec!["#api".into(), "bob".into()],
             send_typing: false,
-            compact: true,
             people_only: vec!["#web".into()],
             editor: Some("zed".into()),
             thresholds: [("#ops".to_owned(), "info".to_owned())].into(),
@@ -95,6 +91,16 @@ mod tests {
         };
         prefs.save(&path).unwrap();
         assert_eq!(Prefs::load(&path), prefs);
+        // A file kept when there was a Compact layout still loads, its choice ignored.
+        std::fs::write(&path, "pins = [\"#api\"]\ncompact = true\n").unwrap();
+        assert_eq!(
+            Prefs::load(&path),
+            Prefs {
+                pins: vec!["#api".into()],
+                ..Prefs::default()
+            },
+            "an old compact choice, ignored"
+        );
         std::fs::write(&path, "pins = 3").unwrap();
         assert_eq!(
             Prefs::load(&path),

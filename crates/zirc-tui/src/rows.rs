@@ -1,9 +1,7 @@
 //! A conversation laid out as rows of the scrollback: the lines zirc-core says it has
 //! ([`items`]: days, runs, events, comings and goings), and long text wrapped to the width.
 //! As zirc's other apps show them, a run starts with a header, the nick and then the time,
-//! and its messages follow under it; compact, as IRC clients show them, each row has a time
-//! and a nick in front, the nick only at the start of a run. The UI only has to colour them
-//! in.
+//! and its messages follow under it. The UI only has to colour them in.
 
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Utc};
 use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
@@ -12,16 +10,12 @@ use zirc_core::chat::file::size_text;
 
 use crate::hyperlink::{Link, Links, fragments, label};
 use zirc_core::chat::{
-    Avatar, CellAlign, Chat, Conversation, Entry, EntryKind, GUEST_PILL, Icon, Item, Landing,
-    Parts, SenderKind, SpanKind, Speaker, day_label, people_only, sender_kind, strip_formatting,
+    Avatar, CellAlign, Chat, Conversation, Entry, EntryKind, Icon, Item, Landing, Parts,
+    SenderKind, SpanKind, Speaker, day_label, people_only, sender_kind, strip_formatting,
     tables_in,
 };
 use zirc_proto::card::Card;
 
-/// Width of the time in front of a row: `12:04`.
-pub const TIME_WIDTH: usize = 5;
-/// The narrowest and widest the nick column gets.
-const NICK_WIDTH: (usize, usize) = (4, 16);
 /// The narrowest text column, however narrow the terminal.
 const MIN_TEXT_WIDTH: usize = 10;
 /// How far in the text goes under a run's header, leaving room for a mark (`◆`, `→`) or
@@ -68,11 +62,11 @@ pub enum Row {
         /// The buttons' labels, in order.
         labels: Vec<String>,
     },
-    /// A system row drawn in one line: someone coming or going, or any event in the IRC
-    /// display mode. Its icon, who in bold and what they did, then when, dim; what it's
-    /// about follows in [`Tone::Status`] rows when it wraps. Any other event is a message:
-    /// a [`Row::Header`], unless it carries on a run, then a [`Tone::Lead`] row, zirc-chat's
-    /// `Parts::lead`, [`Tone::Message`] rows for what it was, and a [`Tone::Path`] row.
+    /// A system row drawn in one line: someone coming or going, or an agent's routine work.
+    /// Its icon, who in bold and what they did, then when, dim; what it's about follows in
+    /// [`Tone::Status`] rows when it wraps. Any other event is a message: a [`Row::Header`],
+    /// unless it carries on a run, then a [`Tone::Lead`] row, zirc-chat's `Parts::lead`,
+    /// [`Tone::Message`] rows for what it was, and a [`Tone::Path`] row.
     System {
         /// When, `12:04`.
         time: String,
@@ -93,9 +87,7 @@ pub enum Row {
     },
     /// Part of an entry.
     Text {
-        /// The time, on an entry's first row when it's worth showing; empty otherwise.
-        time: String,
-        /// What goes in the nick column: a nick, a marker such as `→`, or nothing.
+        /// What goes in the indent in front of the text: a marker such as `→`, or nothing.
         nick: String,
         /// The text on this row.
         text: String,
@@ -162,21 +154,6 @@ pub fn chip_at(chips: &[Chip], column: usize) -> Option<&Chip> {
         start = end + CHIP_GAP;
     }
     None
-}
-
-/// Where the text column starts in a row of `conversation`'s scrollback, `compact` or not.
-#[must_use]
-pub fn text_column(conversation: &Conversation, compact: bool) -> usize {
-    column(nick_width(conversation), compact)
-}
-
-/// Where the text column starts, after a nick column `nick_width` wide when `compact`.
-fn column(nick_width: usize, compact: bool) -> usize {
-    if compact {
-        TIME_WIDTH + 1 + nick_width + 1
-    } else {
-        INDENT
-    }
 }
 
 /// What an item of the conversation comes to, before it's laid out in rows.
@@ -313,8 +290,7 @@ impl<F: Fn(&str, &Card) -> Option<String>> Pressed for F {
 }
 
 /// The rows of `conversation` at `width` columns, `today` being the date in `zone`, for us,
-/// `me`: `compact`, IRC's way, or as zirc's other apps show them. The "New" divider goes
-/// above the message `divider`.
+/// `me`, as zirc's other apps show them. The "New" divider goes above the message `divider`.
 #[must_use]
 pub fn layout(
     conversation: &Conversation,
@@ -322,16 +298,9 @@ pub fn layout(
     divider: Option<&str>,
     width: usize,
     (zone, today): (Zone, NaiveDate),
-    (compact, links, people): (bool, Links, bool),
+    (links, people): (Links, bool),
 ) -> Vec<Row> {
-    let look = Look::new(
-        conversation,
-        who,
-        divider,
-        width,
-        (zone, today),
-        (compact, links),
-    );
+    let look = Look::new(conversation, who, divider, width, (zone, today), links);
     let items = shown(who.chat, conversation, zone, people);
     (0..items.len())
         .flat_map(|at| item_rows(&look, &items[at], at.checked_sub(1).map(|i| &items[i])))
@@ -346,11 +315,8 @@ pub struct Look<'a> {
     divider: Option<&'a str>,
     /// How wide the text column is.
     pub text_width: usize,
-    /// How wide the nick column is, compact.
-    nick_width: usize,
     zone: Zone,
     today: NaiveDate,
-    compact: bool,
     links: Links,
 }
 
@@ -363,21 +329,16 @@ impl<'a> Look<'a> {
         divider: Option<&'a str>,
         width: usize,
         (zone, today): (Zone, NaiveDate),
-        (compact, links): (bool, Links),
+        links: Links,
     ) -> Self {
-        let nick_width = nick_width(conversation);
-        let text_width = width
-            .saturating_sub(column(nick_width, compact))
-            .max(MIN_TEXT_WIDTH);
+        let text_width = width.saturating_sub(INDENT).max(MIN_TEXT_WIDTH);
         Self {
             conversation,
             who,
             divider,
             text_width,
-            nick_width,
             zone,
             today,
-            compact,
             links,
         }
     }
@@ -459,8 +420,6 @@ pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) ->
         who,
         divider,
         text_width,
-        nick_width,
-        compact,
         links,
         ..
     } = *look;
@@ -471,8 +430,6 @@ pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) ->
         }
         return rows;
     };
-    // The minute the line before showed at, to leave out repeats within a run.
-    let minute = before.and_then(|before| look.minute(before));
     if divider.is_some_and(|id| holds(item, id)) {
         rows.push(Row::New);
     }
@@ -490,7 +447,6 @@ pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) ->
             &parts,
             &shown,
             id.as_deref(),
-            compact,
             (text_width, &|kind| who.chat.kind_label(kind), links),
             (
                 head.as_ref().and_then(|head| head.1.clone()),
@@ -513,7 +469,7 @@ pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) ->
         item,
         Item::Message { .. } | Item::Notice { .. } | Item::File { .. } | Item::Landing(_)
     );
-    let (nick, text, tone, continues) = columns(who.chat, item, compact, look.zone);
+    let (nick, text, tone, continues) = columns(who.chat, item, look.zone);
     // A corrected message says so after its words, as in every zirc app.
     let text = if item.said_entry().is_some_and(|entry| entry.edited) {
         format!("{text} {}", zirc_core::chat::EDITED)
@@ -524,22 +480,15 @@ pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) ->
     // A reply names who's speaking under its quote, even within a run. The New divider
     // doesn't break a run, as in every zirc app: one header, not the same one twice.
     let continues = continues && quote.is_none();
-    // Compact, the time's left out within a run when it's the same minute.
-    let time = if compact && continues && minute.as_ref() == Some(&shown) {
-        String::new()
-    } else {
-        shown
-    };
-    // Heading a run as zirc's other apps do, by who it's from; compact, by nick.
+    // Heading a run as zirc's other apps do, by who it's from.
     let (nick, agent, app) = match head {
         _ if continues => (String::new(), None, false),
-        _ if compact => (fit(&nick, nick_width), None, false),
         Some(head) if said => head,
         _ => (nick, None, false),
     };
     let (hint, after) = hints(item);
     let piece = Piece {
-        time,
+        time: shown,
         nick,
         text,
         tone,
@@ -554,11 +503,7 @@ pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) ->
         pill: pill(who.chat, entry.filter(|_| said), app),
         agent,
     };
-    if compact {
-        compact_rows(&mut rows, &piece, text_width);
-    } else {
-        standard_rows(&mut rows, &piece, text_width);
-    }
+    standard_rows(&mut rows, &piece, text_width);
     rows.extend(under(conversation, item, who, &piece, text_width));
     rows
 }
@@ -785,13 +730,9 @@ fn system_parts(item: &Item<'_>) -> Option<Parts> {
 }
 
 /// `item` as one quiet line, as the core says ([`Conversation::brief`]): an agent's routine
-/// work, unless someone has reacted to it or it's an agent's own conversation. `None` too in
-/// IRC's way (`compact`), which says every event whole on its line, as it always has. What
-/// follows a brief line heads itself again: there's no header for it to carry on from.
+/// work, unless someone has reacted to it or it's an agent's own conversation. What follows
+/// a brief line heads itself again: there's no header for it to carry on from.
 fn brief_of(look: &Look<'_>, item: &Item<'_>) -> Option<String> {
-    if look.compact {
-        return None;
-    }
     let id = entry_of(item).and_then(|entry| entry.id.as_deref());
     look.conversation.brief(&system_parts(item)?, id)
 }
@@ -809,16 +750,15 @@ fn mark_mentions(rows: &mut [Row], mentions: bool) {
 /// and how the terminal shows links.
 type Shape<'a> = (usize, &'a dyn Fn(&SpanKind) -> Option<String>, Links);
 
-/// A system row, `parts`, at `time`. A short one, or any `compact`, is one line, `dana's
-/// agent pushed main`, wrapped; an agent's routine work with its `brief` is that brief on
-/// one line, its paths left out; otherwise a header, `dana's agent · intent · 14:03`, with
-/// what it's about under it. Its paths follow, unless compact, on a dim row cut to fit.
+/// A system row, `parts`, at `time`. A short one is one line, `dana's agent pushed main`,
+/// wrapped; an agent's routine work with its `brief` is that brief on one line, its paths
+/// left out; otherwise a header, `dana's agent · intent · 14:03`, with what it's about
+/// under it. Its paths follow on a dim row cut to fit.
 fn system_rows(
     rows: &mut Vec<Row>,
     parts: &Parts,
     time: &str,
     id: Option<&str>,
-    compact: bool,
     (text_width, named, link_mode): Shape<'_>,
     (agent, pill, continues, brief): (Option<Agent>, Option<&'static str>, bool, Option<String>),
 ) {
@@ -837,10 +777,10 @@ fn system_rows(
                 .map(|(word, url)| (word.clone(), Some(url.clone()))),
         );
     }
-    // People coming and going are one line, as zirc-chat decides (`Parts::compact`), and
-    // everything is in the IRC display mode, its icon in front. Anything else is drawn as a
-    // message: its actor's header, unless it carries on their run, then its body.
-    let one_line = compact || parts.compact || brief.is_some();
+    // People coming and going are one line, as zirc-chat decides (`Parts::compact`), as is
+    // an agent's routine work, its icon in front. Anything else is drawn as a message: its
+    // actor's header, unless it carries on their run, then its body.
+    let one_line = parts.compact || brief.is_some();
     let agent = agent.map(|agent| Agent {
         detail: if one_line {
             String::new()
@@ -850,7 +790,7 @@ fn system_rows(
         ..agent
     });
     let lines = if one_line {
-        let text_width = if agent.is_some() && !compact {
+        let text_width = if agent.is_some() {
             text_width.saturating_sub(AGENT_MARK_WIDTH)
         } else {
             text_width
@@ -859,7 +799,7 @@ fn system_rows(
             brief.clone().unwrap_or_else(|| parts.line()),
             text_width,
             time,
-            (agent.is_some(), compact),
+            agent.is_some(),
         );
         let wrapped = wrap(&said, width);
         let marked = fragments(&wrapped, &marks, width);
@@ -909,7 +849,6 @@ fn system_rows(
         lines
     };
     let text_row = |(text, links): (String, Vec<Link>), tone: Tone| Row::Text {
-        time: String::new(),
         nick: String::new(),
         text,
         tone,
@@ -919,7 +858,7 @@ fn system_rows(
         links,
     };
     rows.extend(lines.into_iter().map(|(line, tone)| text_row(line, tone)));
-    if !compact && brief.is_none() && !parts.paths.is_empty() {
+    if brief.is_none() && !parts.paths.is_empty() {
         rows.push(text_row(
             (paths_line(&parts.paths, text_width), Vec::new()),
             Tone::Path,
@@ -938,16 +877,8 @@ fn body(parts: &Parts) -> [(String, Tone); 2] {
 
 /// A one-line system row's words, `said`, and the width to wrap them in, `text_width` less
 /// room for its time at the end, ` · 14:03`, which is never cut: an `agent`'s doings are
-/// cut short to one line, anything else wraps; `compact`, IRC's way, the time is in front.
-fn time_room(
-    said: String,
-    text_width: usize,
-    time: &str,
-    (agent, compact): (bool, bool),
-) -> (String, usize) {
-    if compact {
-        return (said, text_width);
-    }
+/// cut short to one line, anything else wraps.
+fn time_room(said: String, text_width: usize, time: &str, agent: bool) -> (String, usize) {
     let width = text_width.saturating_sub(time.width() + 3);
     let said = if agent { fit(&said, width) } else { said };
     (said, width)
@@ -982,7 +913,6 @@ fn paths_line(paths: &[String], width: usize) -> String {
 /// The quote of what `piece` answers, if it's a reply, as a row.
 fn quote_row(piece: &Piece) -> Option<Row> {
     Some(Row::Text {
-        time: String::new(),
         nick: String::new(),
         text: piece.quote.clone()?,
         tone: Tone::Quote,
@@ -991,43 +921,6 @@ fn quote_row(piece: &Piece) -> Option<Row> {
         id: piece.id.clone(),
         links: Vec::new(),
     })
-}
-
-/// `piece` as IRC clients show it: the time and the nick in front of its first row.
-fn compact_rows(rows: &mut Vec<Row>, piece: &Piece, text_width: usize) {
-    rows.extend(quote_row(piece));
-    // A guest is tagged in front of what they say, as the nick column has no room.
-    let text = match piece.pill {
-        Some(GUEST_PILL) => format!("[{GUEST_PILL}] {}", piece.text),
-        _ => piece.text.clone(),
-    };
-    let wrapped = wrap(&text, text_width);
-    let links = fragments(&wrapped, &piece.links, text_width);
-    for (i, (text, links)) in wrapped.into_iter().zip(links).enumerate() {
-        let first = i == 0;
-        rows.push(Row::Text {
-            time: if first {
-                piece.time.clone()
-            } else {
-                String::new()
-            },
-            nick: if first {
-                piece.nick.clone()
-            } else {
-                String::new()
-            },
-            text,
-            tone: piece.tone,
-            mention: piece.mention,
-            hint: match (first, piece.hint.is_empty()) {
-                (false, _) => String::new(),
-                (true, true) => piece.after.clone(),
-                (true, false) => piece.hint.clone(),
-            },
-            id: piece.id.clone(),
-            links,
-        });
-    }
 }
 
 /// `piece` as zirc's other apps show it: what someone said under a header, its nick and
@@ -1049,7 +942,6 @@ fn standard_rows(rows: &mut Vec<Row>, piece: &Piece, text_width: usize) {
     let links = fragments(&wrapped, &piece.links, text_width);
     for (i, (text, links)) in wrapped.into_iter().zip(links).enumerate() {
         rows.push(Row::Text {
-            time: String::new(),
             // What nobody said has its mark in front, and an app's post its outcome's icon.
             nick: match piece.tone {
                 _ if i > 0 => String::new(),
@@ -1115,35 +1007,10 @@ pub fn message_ids(rows: &[Row]) -> Vec<&str> {
     ids
 }
 
-/// The width of the nick column: as wide as the widest nick that talks, or app that posts,
-/// within limits.
-#[must_use]
-pub fn nick_width(conversation: &Conversation) -> usize {
-    conversation
-        .entries
-        .iter()
-        .filter_map(|entry| {
-            entry.speaker().or_else(|| {
-                (matches!(entry.kind, EntryKind::Zirc(_))
-                    && sender_kind(&entry.from, entry.owner.as_deref()) == SenderKind::Integration)
-                    .then_some(entry.from.as_str())
-            })
-        })
-        .map(|nick| nick.width() + 2)
-        .max()
-        .unwrap_or(0)
-        .clamp(NICK_WIDTH.0, NICK_WIDTH.1)
-}
-
-/// What a line shows in the nick column and as text, how it reads, and whether it carries
+/// What a line shows as its name, or its mark in front, and as text, how it reads, and whether it carries
 /// on a run. System rows are laid out by [`system_rows`] instead. A notice is headed by its
 /// sender's name, as a message's head names them ([`Chat::speaker`]): zirc's own as zirc.
-fn columns(
-    chat: &Chat,
-    item: &Item<'_>,
-    compact: bool,
-    zone: Zone,
-) -> (String, String, Tone, bool) {
+fn columns(chat: &Chat, item: &Item<'_>, zone: Zone) -> (String, String, Tone, bool) {
     match item {
         Item::Message {
             entry,
@@ -1177,8 +1044,8 @@ fn columns(
             Tone::Action,
             false,
         ),
-        // An app's post, under its name like anyone's, its outcome's icon in front: in the
-        // indent, or compact, before the text.
+        // An app's post, under its name like anyone's, its outcome's icon in front, in the
+        // indent.
         // A card's updates under it, each on its line: the terminal shows them all.
         Item::Landing(landing) => {
             let icon = Some(landing.parts().icon).filter(|icon| *icon != Icon::Post);
@@ -1191,11 +1058,12 @@ fn columns(
                 )
                 .collect::<Vec<_>>()
                 .join("\n");
-            let (text, tone) = match icon {
-                Some(icon) if compact => (format!("{} {plain}", icon.glyph()), Tone::App(None)),
-                _ => (plain, Tone::App(icon)),
-            };
-            (landing.entry.from.clone(), text, tone, landing.continues)
+            (
+                landing.entry.from.clone(),
+                plain,
+                Tone::App(icon),
+                landing.continues,
+            )
         }
         // The link opens it: terminals make URLs clickable, and zirc.dev asks the person to
         // sign in.
@@ -1364,12 +1232,8 @@ mod tests {
                     format!("{nick}{pill} {time}  {hint}").trim_end().to_owned()
                 }
                 Row::Text {
-                    time,
-                    nick,
-                    text,
-                    hint,
-                    ..
-                } => format!("{time:5} {nick:>7} {text}  {hint}")
+                    nick, text, hint, ..
+                } => format!("{:5} {nick:>7} {text}  {hint}", "")
                     .trim_end()
                     .to_owned(),
                 Row::Reactions { chips, .. } => {
@@ -1411,39 +1275,27 @@ mod tests {
         }
         let api = chat.conversation("#api").unwrap();
         let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(
-            api,
-            who(),
-            None,
-            80,
-            (utc(), today),
-            (true, Links::Plain, false),
-        );
+        let rows = layout(api, who(), None, 80, (utc(), today), (Links::Plain, false));
         assert_eq!(
             shown(&rows),
             [
                 "--- Today",
-                "09:00   alice shipped it",
+                "alice 09:00",
+                "              shipped it",
                 "              [🎉 2*] [🚀 1]",
-                "09:01     bob nice",
+                "bob 09:01",
+                "              nice",
             ]
         );
         assert_eq!(message_ids(&rows), ["m1", "m2"]);
         // Too many for a row go on to the next.
-        let narrow = layout(
-            api,
-            who(),
-            None,
-            26,
-            (utc(), today),
-            (true, Links::Plain, false),
-        );
+        let narrow = layout(api, who(), None, 14, (utc(), today), (Links::Plain, false));
         assert_eq!(
-            shown(&narrow)[2..4],
+            shown(&narrow)[3..5],
             ["              [🎉 2*]", "              [🚀 1]"]
         );
         // Where each is, for clicks.
-        let Row::Reactions { chips, .. } = &rows[2] else {
+        let Row::Reactions { chips, .. } = &rows[3] else {
             panic!("{rows:?}")
         };
         assert_eq!(chip_at(chips, 0).map(|c| c.emoji.as_str()), Some("🎉"));
@@ -1473,17 +1325,21 @@ mod tests {
                 None,
                 80,
                 (utc(), today),
-                (true, Links::Plain, false)
+                (Links::Plain, false)
             )),
             [
                 "--- Yesterday",
-                "23:50   alice late",
+                "alice 23:50",
+                "              late",
                 "--- Today",
-                "09:00   alice morning",
+                "alice 09:00",
+                "              morning",
                 "              again",
-                "09:03         and again",
-                "09:04     bob hi",
-                "09:30     bob much later",
+                "              and again",
+                "bob 09:04",
+                "              hi",
+                "bob 09:30",
+                "              much later",
                 "09:31       + |carol joined",
             ]
         );
@@ -1495,47 +1351,32 @@ mod tests {
                 None,
                 80,
                 (utc(), older),
-                (true, Links::Plain, false)
+                (Links::Plain, false)
             ))[0],
             "--- Thursday 29 October 2026"
         );
     }
 
     #[test]
-    fn shows_zirc_events_as_one_line_and_wraps_long_text() {
+    fn wraps_long_text_under_its_header() {
         let mut api = Conversation::new("#api", Kind::Channel);
-        api.threshold = zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT;
-        let commit = zirc_proto::Message::new(
-            "cc-12",
-            zirc_proto::Event::Commit {
-                paths: Vec::new(),
-                branch: "main".into(),
-                sha: "abc".into(),
-                subject: "Fix".into(),
-                repo: None,
-            },
-        );
-        api.entries
-            .push(at(30, 9, 0, ("mattias-mbp", EntryKind::Zirc(commit))));
         api.entries
             .push(at(30, 9, 1, says("alice", "one two three four five")));
         let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        // 5 + 1 + 7 (alice + 2) + 1 leaves 18 columns of text.
+        // 20 less the indent, 2, leaves 18 columns of text.
         assert_eq!(
             shown(&layout(
                 &api,
                 who(),
                 None,
-                32,
+                20,
                 (utc(), today),
-                (true, Links::Plain, false)
+                (Links::Plain, false)
             )),
             [
                 "--- Today",
-                // An agent session goes by its name, or else its id.
-                "09:00       ● cc-12|committed:",
-                "              Fix  (main abc)",
-                "09:01   alice one two three four",
+                "alice 09:01",
+                "              one two three four",
                 "              five",
             ]
         );
@@ -1579,14 +1420,7 @@ mod tests {
             .push(at(30, 9, 0, ("mattias-mbp", commit("cc-12", "abc", None))));
         api.entries
             .push(at(30, 9, 1, ("mattias-mbp", EntryKind::Zirc(push))));
-        let rows = layout(
-            &api,
-            who(),
-            None,
-            80,
-            (utc(), today),
-            (false, Links::Plain, false),
-        );
+        let rows = layout(&api, who(), None, 80, (utc(), today), (Links::Plain, false));
         // One message: its header, whose agent too, then what it was under it.
         assert_eq!(
             shown(&rows),
@@ -1630,14 +1464,15 @@ mod tests {
                 Some("a2"),
                 80,
                 (utc(), today),
-                (true, Links::Plain, false)
+                (Links::Plain, false)
             )),
             [
                 "--- Today",
-                "09:00   alice a1",
+                "alice 09:00",
+                "              a1",
                 "--- New",
                 // Still alice's run: no second header for her.
-                "09:01         a2",
+                "              a2",
             ]
         );
     }
@@ -1663,14 +1498,7 @@ mod tests {
             ));
         }
         let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(
-            &api,
-            who(),
-            None,
-            80,
-            (utc(), today),
-            (false, Links::Plain, false),
-        );
+        let rows = layout(&api, who(), None, 80, (utc(), today), (Links::Plain, false));
         assert_eq!(
             shown(&rows),
             [
@@ -1688,21 +1516,6 @@ mod tests {
                 ..
             }
         ));
-        // Compact, the icon goes before the text, and the app's name only once.
-        assert_eq!(
-            shown(&layout(
-                &api,
-                who(),
-                None,
-                80,
-                (utc(), today),
-                (true, Links::Plain, false)
-            ))[1..],
-            [
-                "09:00 zirc-ci ✓ landed web-look as 3d5fe8a (build 435)  · cc-cdbba7",
-                "09:01         ✗ build 436 failed in test: //crates/zirc-tui:zirc-tui_test  · cc-cdbba7",
-            ]
-        );
     }
 
     #[test]
@@ -1719,14 +1532,7 @@ mod tests {
         api.entries.push(at(30, 14, 3, zirc("dana-mbp", intent)));
         api.entries.push(at(30, 14, 4, ("bob", EntryKind::Join)));
         let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(
-            &api,
-            who(),
-            None,
-            60,
-            (utc(), today),
-            (false, Links::Plain, false),
-        );
+        let rows = layout(&api, who(), None, 60, (utc(), today), (Links::Plain, false));
         // The core's brief: who, what and the first file's name, no paths after it (the
         // user's choice, 14 Nov 2026).
         assert_eq!(
@@ -1737,31 +1543,6 @@ mod tests {
                 "14:04       + |bob joined",
             ]
         );
-    }
-
-    #[test]
-    fn says_every_event_whole_in_irc_mode() {
-        let mut api = Conversation::new("#api", Kind::Channel);
-        let intent = zirc_proto::Event::Intent {
-            summary: "split the login form".into(),
-            paths: vec!["web/src/login/part1.tsx".into()],
-            expires: None,
-            lasts: None,
-        };
-        api.entries.push(at(30, 14, 3, zirc("dana-mbp", intent)));
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(
-            &api,
-            who(),
-            None,
-            100,
-            (utc(), today),
-            (true, Links::Plain, false),
-        );
-        // Compact, IRC's way: the event's own words, its summary too, never the brief.
-        let line = shown(&rows).join("\n");
-        assert!(line.contains("split the login form"), "{line}");
-        assert!(!line.contains("part1.tsx and"), "{line}");
     }
 
     #[test]
@@ -1780,14 +1561,7 @@ mod tests {
         api.entries.push(at(30, 14, 3, zirc("dana-mbp", intent)));
         api.entries.push(at(30, 14, 4, ("bob", EntryKind::Join)));
         let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(
-            &api,
-            who(),
-            None,
-            60,
-            (utc(), today),
-            (false, Links::Plain, false),
-        );
+        let rows = layout(&api, who(), None, 60, (utc(), today), (Links::Plain, false));
         assert_eq!(
             shown(&rows),
             [
@@ -1866,14 +1640,7 @@ mod tests {
             api.entries.push(entry);
         }
         let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(
-            &api,
-            who(),
-            None,
-            40,
-            (utc(), today),
-            (false, Links::Plain, false),
-        );
+        let rows = layout(&api, who(), None, 40, (utc(), today), (Links::Plain, false));
         let shown: Vec<String> = rows
             .iter()
             .map(|row| match row {
