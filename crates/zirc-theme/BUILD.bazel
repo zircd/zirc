@@ -116,6 +116,13 @@ filegroup(
     srcs = glob(["art/avatars/*.svg"]),
 )
 
+# Small line icons for controls, every app's by name (zirc_theme::glyphs): glyphs/<name>.svg,
+# drawn by hand, so kept apart from art/, which zirc-theme-art makes.
+filegroup(
+    name = "glyphs",
+    srcs = glob(["glyphs/*.svg"]),
+)
+
 # Each whole WOFF2 in fonts/ cut in two, fonts/<name>-latin.woff2 and fonts/<name>-rest.woff2,
 # as zirc-theme.css names them with their unicode-range: a browser fetches the rest only for a
 # page that draws something outside Latin (bin/web_fonts.py, lib.rs's fonts::LATIN).

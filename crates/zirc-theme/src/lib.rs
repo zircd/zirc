@@ -196,12 +196,28 @@ pub mod avatars {
     }
 }
 
-/// Small line icons for controls, as SVGs in black strokes on nothing, 24 by 24, for apps
-/// to tint as they draw them: `glyphs/<name>.svg`, drawn by hand, outside `art/`, which
-/// zirc-theme-art makes.
+/// Small line icons for controls, as SVGs of strokes on nothing, 24 by 24, for apps to tint
+/// as they draw them: `glyphs/<name>.svg`, every app's by that name (web chat reads the files,
+/// the desktop these bytes), drawn by hand, outside `art/`, which zirc-theme-art makes.
 pub mod glyphs {
     /// A padlock, for sealing a message's parts.
-    pub const LOCK: &[u8] = include_bytes!("../glyphs/lock.svg");
+    pub const LOCK: &str = "lock";
+    /// Notifications: a bell.
+    pub const BELL: &str = "bell";
+
+    /// Every glyph: its name and its SVG.
+    pub const ALL: &[(&str, &[u8])] = &[
+        (LOCK, include_bytes!("../glyphs/lock.svg")),
+        (BELL, include_bytes!("../glyphs/bell.svg")),
+    ];
+
+    /// The glyph called `name`, as an SVG: `None` for one there isn't.
+    #[must_use]
+    pub fn svg(name: &str) -> Option<&'static [u8]> {
+        ALL.iter()
+            .find(|(known, _)| *known == name)
+            .map(|(_, svg)| *svg)
+    }
 }
 
 /// The Android app's logo files, for an app built from the crate.
