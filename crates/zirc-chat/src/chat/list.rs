@@ -264,16 +264,7 @@ impl Chat {
     /// they show ([`Chat::title`]).
     #[must_use]
     pub fn list(&self, section: SidebarSection) -> Vec<usize> {
-        let mut listed: Vec<usize> = (0..self.conversations.len())
-            .filter(|&at| {
-                let conversation = &self.conversations[at];
-                conversation.kind != super::Kind::Server
-                    && conversation.standing != super::Attendance::Left
-                    && !(conversation.kind == super::Kind::Query
-                        && self.is_blocked(&conversation.name))
-                    && SidebarSection::of(&conversation.name) == section
-            })
-            .collect();
+        let mut listed = self.listed_in(section);
         listed.sort_by_cached_key(|&at| {
             let name = &self.conversations[at].name;
             let starred = self
@@ -289,6 +280,20 @@ impl Chat {
             )
         });
         listed
+    }
+
+    /// Where the conversations of `section` that [`Chat::list`] lists are, in no order.
+    fn listed_in(&self, section: SidebarSection) -> Vec<usize> {
+        (0..self.conversations.len())
+            .filter(|&at| {
+                let conversation = &self.conversations[at];
+                conversation.kind != super::Kind::Server
+                    && conversation.standing != super::Attendance::Left
+                    && !(conversation.kind == super::Kind::Query
+                        && self.is_blocked(&conversation.name))
+                    && SidebarSection::of(&conversation.name) == section
+            })
+            .collect()
     }
 
     /// Stars the conversation called `name`, after those starred already, or unstars it.
@@ -798,6 +803,21 @@ impl Chat {
     /// thing said anywhere in it.
     #[must_use]
     pub fn channel_groups(&self) -> Vec<ChannelGroup> {
+        self.groups(self.list(SidebarSection::Channels), None)
+    }
+
+    /// The channel called `channel`'s group as [`Chat::channel_groups`] has it, but with its
+    /// rooms in no order: what one channel's header asks for. Making every channel's group,
+    /// each with its preview, to find one made a list of channels with their headers cost
+    /// the square of how many there are.
+    fn channel_group(&self, channel: &str) -> Option<ChannelGroup> {
+        let listed = self.listed_in(SidebarSection::Channels);
+        self.groups(listed, Some(channel)).into_iter().next()
+    }
+
+    /// The groups of the channels `listed`, in its order, or only `only`'s.
+    fn groups(&self, listed: Vec<usize>, only: Option<&str>) -> Vec<ChannelGroup> {
+        let wanted = |parent: &str| only.is_none_or(|only| only.eq_ignore_ascii_case(parent));
         let mut groups: Vec<ChannelGroup> = Vec::new();
         let known = self.known_guest_rooms();
         let group_of = |groups: &mut Vec<ChannelGroup>, parent: &str| {
@@ -819,9 +839,12 @@ impl Chat {
                     groups.len() - 1
                 })
         };
-        for at in self.list(SidebarSection::Channels) {
+        for at in listed {
             let name = &self.conversations[at].name;
             let parent = room_parts(name).map_or(name.as_str(), |(repo, _)| repo);
+            if !wanted(parent) {
+                continue;
+            }
             let at = group_of(&mut groups, parent);
             let (unread, mentions, latest) = self.counts(name);
             let group = &mut groups[at];
@@ -837,7 +860,7 @@ impl Chat {
             group.latest = group.latest.max(latest);
         }
         // A channel with guests' rooms is listed for them, even while we aren't in it.
-        for (parent, _) in &known {
+        for (parent, _) in known.iter().filter(|(parent, _)| wanted(parent)) {
             group_of(&mut groups, parent);
         }
         for group in &mut groups {
@@ -888,11 +911,7 @@ impl Chat {
     /// its header's "Threads" list. None for a channel without any.
     #[must_use]
     pub fn threads(&self, channel: &str) -> Vec<Thread> {
-        let Some(group) = self
-            .channel_groups()
-            .into_iter()
-            .find(|group| group.name.eq_ignore_ascii_case(channel))
-        else {
+        let Some(group) = self.channel_group(channel) else {
             return Vec::new();
         };
         let mut rooms = group.rooms;
