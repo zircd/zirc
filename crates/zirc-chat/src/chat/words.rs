@@ -202,10 +202,6 @@ pub const REPLY_LABEL: &str = "Reply";
 /// The list of a search's matches, and the pill in a conversation that goes back to it.
 pub const RESULTS: &str = "Results";
 
-/// On zircd's notice that an agent's wakes are paused: the button that lets the held ones
-/// through.
-pub const RESUME: &str = "Resume";
-
 /// What tries to connect again from the offline line.
 pub const RETRY: &str = "Retry";
 
@@ -853,8 +849,6 @@ pub struct Words {
     pub reply: String,
     /// A search's matches, and the pill that goes back to them: `Results`.
     pub results: String,
-    /// A paused-wakes notice's button that lets the held ones through: `Resume`.
-    pub resume: String,
     /// What tries to connect again from the offline line: `Retry`.
     pub retry: String,
     /// The title of the list of people a search narrows to: `Said by`.
@@ -1007,7 +1001,6 @@ pub fn words() -> Words {
         react: REACT_LABEL.to_owned(),
         reply: REPLY_LABEL.to_owned(),
         results: RESULTS.to_owned(),
-        resume: RESUME.to_owned(),
         retry: RETRY.to_owned(),
         said_by: SAID_BY.to_owned(),
         search: SEARCH.to_owned(),
