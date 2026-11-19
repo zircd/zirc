@@ -200,6 +200,14 @@ impl Entry {
         }
     }
 
+    /// Whether it's a commit or a push zircd said at info: sessions read them to find
+    /// overlaps, and a person follows a task by its `taking:` and `done:`, and its landing.
+    fn is_commit_or_push(&self) -> bool {
+        matches!(&self.kind, EntryKind::Zirc(message)
+            if matches!(message.event, zirc_proto::Event::Commit { .. } | zirc_proto::Event::Push { .. })
+                && message.level_or_info() == Level::Info)
+    }
+
     /// The id of the card it updates, when it's a live update of one ([`Message::is_live`]):
     /// how the card's steps stand now, out of history. It folds into the card further up,
     /// and is never a row, a preview or anything unread; only the latest of a card's is
@@ -383,10 +391,19 @@ impl super::Chat {
 
 impl Conversation {
     /// Whether `entry` is shown here: at or above the [`Conversation::threshold`], or
-    /// addressed to us, whatever its level.
+    /// addressed to us, whatever its level. In a channel, a commit or a push
+    /// ([`Entry::is_commit_or_push`]) shows only under Everything, though it stays in history
+    /// at info: 771 of the agents room's 1,395 lines in 16-19 Nov 2026 were these, and the
+    /// user chose to see them only there (19 Nov 2026). In an agent's own conversation, its
+    /// work is whole.
     #[must_use]
     pub fn shows(&self, entry: &Entry) -> bool {
-        entry.mention || entry.level() >= self.threshold
+        let level = if self.kind == Kind::Channel && entry.is_commit_or_push() {
+            Level::Debug
+        } else {
+            entry.level()
+        };
+        entry.mention || level >= self.threshold
     }
 
     /// Whether `entry` counts as unread here, `me` being our nick: shown, and someone
@@ -978,6 +995,28 @@ mod tests {
                 _ => "",
             })
             .collect()
+    }
+
+    #[test]
+    fn shows_commits_and_pushes_only_under_everything() {
+        let entry = |event: zirc_proto::Event| Entry {
+            kind: EntryKind::Zirc(zirc_proto::Message::new("cc-1", event)),
+            ..at(0, None, "")
+        };
+        let push: zirc_proto::Event = serde_json::from_str(
+            r#"{"type": "push", "branch": "login", "head": "abc1234", "forced": false}"#,
+        )
+        .unwrap();
+        let push = entry(push);
+        let taking = entry(zirc_proto::Event::Text {
+            body: "taking: login retries".into(),
+        });
+        let mut agents = Conversation::new("#web/agents", Kind::Channel);
+        assert!(!agents.shows(&push) && agents.shows(&taking));
+        agents.threshold = Level::Debug;
+        assert!(agents.shows(&push));
+        // Its own conversation shows an agent's work whole.
+        assert!(Conversation::new("ada-mbp/cc-1", Kind::Query).shows(&push));
     }
 
     #[test]
