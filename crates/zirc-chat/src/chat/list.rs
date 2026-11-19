@@ -1008,7 +1008,11 @@ impl Chat {
                     || self.is_unread(name)
                     || self.selected().name.eq_ignore_ascii_case(name)
             })
-            .map(|name| self.direct_row_heard(name, &heard))
+            .map(|name| {
+                self.direct_row_heard(name, &|nick, session| {
+                    heard.get(&(fold(nick), session.to_owned())).copied()
+                })
+            })
             .collect();
         self.order(&mut rows, |row| (&row.name, row.latest));
         rows
@@ -1036,12 +1040,16 @@ impl Chat {
 
     /// The conversation called `name` as its direct-message row shows it.
     pub(super) fn direct_row(&self, name: String) -> DirectRow {
-        self.direct_row_heard(name, &self.heard_all())
+        self.direct_row_heard(name, &|nick, session| self.heard(nick, session))
     }
 
-    /// [`Chat::direct_row`], when each session was last heard as `heard` says
-    /// ([`Chat::heard_all`]).
-    fn direct_row_heard(&self, name: String, heard: &super::agent_card::Heard) -> DirectRow {
+    /// [`Chat::direct_row`], when a session was last heard as `heard` says: [`Chat::heard`]
+    /// for one row, or [`Chat::heard_all`]'s, made once, for many.
+    fn direct_row_heard(
+        &self,
+        name: String,
+        heard: &dyn Fn(&str, &str) -> Option<DateTime<Utc>>,
+    ) -> DirectRow {
         let (unread, mentions, latest) = self.counts(&name);
         let (preview, when) = self.row_preview([name.as_str()]);
         let person = |nick: &str| super::Avatar::Person {
@@ -1079,9 +1087,7 @@ impl Chat {
             row.mine = owner.eq_ignore_ascii_case(&self.me);
             row.owner = Some(self.owner_name(&owner));
             // Active is anything it said, anywhere we are, or anything said with it.
-            let active = row
-                .latest
-                .max(heard.get(&(fold(nick), session_id.to_owned())).copied());
+            let active = row.latest.max(heard(nick, session_id));
             row.folded = self.session_live(nick, session_id) != Some(true)
                 && self.quiet(&row.name, row.unread, active);
             // Ended, it says so where its time was, and folds soon after.
