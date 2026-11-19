@@ -13,7 +13,7 @@ use chrono::{DateTime, Utc};
 use zirc_proto::Event;
 use zirc_proto::session::SessionCard;
 
-use super::conversation::{EntryKind, Kind};
+use super::conversation::{EntryKind, Kind, fold};
 use super::profile::{Standing, ago_short};
 
 /// What the Message button says.
@@ -221,6 +221,21 @@ impl super::Chat {
         self.said_last(nick, session, |_| true)
     }
 
+    /// [`Chat::heard`] for every session at once, in one pass over what's held rather than
+    /// one a session, for a list of them.
+    pub(super) fn heard_all(&self) -> Heard {
+        let mut heard = Heard::new();
+        for entry in self.conversations.iter().flat_map(|c| &c.entries) {
+            if let EntryKind::Zirc(message) = &entry.kind {
+                let at = heard
+                    .entry((fold(&entry.from), message.session.clone()))
+                    .or_insert(entry.time);
+                *at = (*at).max(entry.time);
+            }
+        }
+        heard
+    }
+
     /// When the session `session` on `nick` last said an event that's `wanted`, anywhere
     /// we are.
     fn said_last(
@@ -250,6 +265,10 @@ impl super::Chat {
             .max()
     }
 }
+
+/// When each agent session was last heard, by its machine's nick, folded, and its id
+/// ([`Chat::heard_all`]).
+pub(super) type Heard = std::collections::HashMap<(String, String), DateTime<Utc>>;
 
 /// What a session is doing, in the parts its card's Now line draws.
 pub(super) struct Doing {

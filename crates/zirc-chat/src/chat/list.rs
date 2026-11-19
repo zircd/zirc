@@ -977,6 +977,8 @@ impl Chat {
     /// in its own conversation.
     #[must_use]
     pub fn direct_rows(&self) -> Vec<DirectRow> {
+        // When each session was last heard, once for all the rows.
+        let heard = self.heard_all();
         let mut rows: Vec<DirectRow> = self
             .list(SidebarSection::Direct)
             .into_iter()
@@ -988,7 +990,7 @@ impl Chat {
                     || self.is_unread(name)
                     || self.selected().name.eq_ignore_ascii_case(name)
             })
-            .map(|name| self.direct_row(name))
+            .map(|name| self.direct_row_heard(name, &heard))
             .collect();
         self.order(&mut rows, |row| (&row.name, row.latest));
         rows
@@ -1016,6 +1018,12 @@ impl Chat {
 
     /// The conversation called `name` as its direct-message row shows it.
     pub(super) fn direct_row(&self, name: String) -> DirectRow {
+        self.direct_row_heard(name, &self.heard_all())
+    }
+
+    /// [`Chat::direct_row`], when each session was last heard as `heard` says
+    /// ([`Chat::heard_all`]).
+    fn direct_row_heard(&self, name: String, heard: &super::agent_card::Heard) -> DirectRow {
         let (unread, mentions, latest) = self.counts(&name);
         let (preview, when) = self.row_preview([name.as_str()]);
         let person = |nick: &str| super::Avatar::Person {
@@ -1053,7 +1061,9 @@ impl Chat {
             row.mine = owner.eq_ignore_ascii_case(&self.me);
             row.owner = Some(self.owner_name(&owner));
             // Active is anything it said, anywhere we are, or anything said with it.
-            let active = row.latest.max(self.heard(nick, session_id));
+            let active = row
+                .latest
+                .max(heard.get(&(fold(nick), session_id.to_owned())).copied());
             row.folded = self.session_live(nick, session_id) != Some(true)
                 && self.quiet(&row.name, row.unread, active);
             // Ended, it says so where its time was, and folds soon after.
