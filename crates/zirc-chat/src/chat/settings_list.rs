@@ -103,6 +103,10 @@ pub const SETTINGS_ACCOUNT: &str = "Account";
 /// The title of the app's group.
 pub const SETTINGS_APP: &str = "App";
 
+/// The title of the organisation's group while it has no name: before the first sign-in, or
+/// on a server of one's own.
+pub const SETTINGS_ORGANISATION: &str = "Organisation";
+
 /// Settings' own name: its page's title, and what opens it.
 pub const SETTINGS: &str = "Settings";
 
@@ -244,11 +248,13 @@ pub fn sign_out_of(org: &str) -> String {
     format!("Sign out of {org}…")
 }
 
-/// The title of a group, the organisation's by `org`, its name.
+/// The title of a group, the organisation's by `org`, its name, or [`SETTINGS_ORGANISATION`]
+/// while it has none, never a blank heading.
 #[must_use]
 pub fn settings_group_title(group: SettingsGroup, org: &str) -> String {
     match group {
         SettingsGroup::Account => SETTINGS_ACCOUNT.to_owned(),
+        SettingsGroup::Organisation if org.trim().is_empty() => SETTINGS_ORGANISATION.to_owned(),
         SettingsGroup::Organisation => org.to_owned(),
         SettingsGroup::App => SETTINGS_APP.to_owned(),
     }
@@ -494,6 +500,11 @@ mod tests {
             "Acme"
         );
         assert_eq!(settings_group_title(SettingsGroup::App, "Acme"), "App");
+        // Unnamed, as on the desktop's first run: a word, never a blank heading.
+        assert_eq!(
+            settings_group_title(SettingsGroup::Organisation, ""),
+            SETTINGS_ORGANISATION
+        );
         assert_eq!(sign_out_of("Acme"), "Sign out of Acme…");
         // The system's, unless one is kept.
         assert!(theme_dark(None, true) && !theme_dark(Some("light"), true));
