@@ -3,6 +3,7 @@ use chrono::TimeZone as _;
 use super::*;
 
 mod agent_activity;
+mod busy;
 mod finder;
 mod guest_rooms;
 mod live;

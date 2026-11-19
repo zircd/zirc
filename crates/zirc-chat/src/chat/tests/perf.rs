@@ -130,3 +130,79 @@ fn a_full_conversation_drops_its_oldest_in_batches_not_one_by_one() {
     // A view starts over at each; one per message was the cost of a busy channel.
     assert!(changes <= 8, "{changes} drops");
 }
+
+/// What every app asks the core for on each refresh, with the busy organisation open at its
+/// busiest channel, one call at a time.
+#[test]
+fn a_busy_organisation_refreshes_quickly() {
+    use super::busy::{self, OPEN};
+    let started = Instant::now();
+    let mut chat = busy::busy();
+    println!(
+        "PERF build the busy organisation: {:.3} ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+    let zone = chrono::FixedOffset::east_opt(0).unwrap();
+    let wall = |at: DateTime<Utc>| at.naive_utc();
+    let runs = 10;
+    time("lines", runs, || chat.lines(OPEN, zone, false));
+    time("lines people_only", runs, || chat.lines(OPEN, zone, true));
+    time("agent_lines", runs, || chat.agent_lines("p03-m3/cc-3", zone));
+    time("sidebar_list both", runs, || chat.sidebar_list(&ListOptions::default()));
+    time("sidebar_list channels", runs, || {
+        chat.sidebar_list(&ListOptions {
+            tab: Some(SidebarSection::Channels),
+            ..ListOptions::default()
+        })
+    });
+    time("sidebar_list direct", runs, || {
+        chat.sidebar_list(&ListOptions {
+            tab: Some(SidebarSection::Direct),
+            ..ListOptions::default()
+        })
+    });
+    time("tabs", runs, || chat.tabs());
+    time("badges", runs, || chat.badges());
+    time("unseen", runs, || chat.unseen(wall));
+    time("activity", runs, || chat.activity());
+    time("inbox_button", runs, || chat.inbox_button());
+    time("member_rows", runs, || chat.member_rows(OPEN));
+    time("app_members", runs, || chat.app_members(OPEN));
+    time("header_line", runs, || chat.header_line(OPEN));
+    time("threads", runs, || chat.threads(OPEN));
+    time("typing_text", runs, || chat.typing_text(OPEN));
+    time("show_choices", runs, || chat.show_choices(OPEN));
+    time("intro", runs, || chat.intro(OPEN));
+    time("channel_rows", runs, || chat.channel_rows());
+    time("direct_rows", runs, || chat.direct_rows());
+    time("channel_groups", runs, || chat.channel_groups());
+    time("every conversation's row (web)", runs, || {
+        chat.conversations()
+            .iter()
+            .map(|c| {
+                (
+                    chat.title(&c.name),
+                    chat.short_title(&c.name),
+                    chat.channel_about(&c.name),
+                    chat.subtitle(&c.name),
+                    chat.badge(&c.name),
+                )
+            })
+            .collect::<Vec<_>>()
+    });
+    time("org_header", runs, || chat.org_header());
+    time("profile card (me)", runs, || {
+        chat.profile("me").card(noon(), wall)
+    });
+    time("search here", runs, || chat.search(OPEN, "flaky"));
+    time("switcher", runs, || chat.switcher("c1"));
+    let query = chat.search_start(Some(OPEN));
+    time("search_screen", runs, || {
+        chat.search_screen(&query, None, true, false, wall)
+    });
+    let mut n = 0;
+    time("receive one line", 200, || {
+        n += 1;
+        chat.receive(busy::live(n))
+    });
+}
