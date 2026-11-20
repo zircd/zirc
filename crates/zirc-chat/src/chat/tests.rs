@@ -8757,6 +8757,12 @@ fn the_server_channel_shows_notices_and_sends_what_is_typed_there_as_it_is() {
         ("irc.zirc.test", crate::chat::SERVER_TITLE)
     );
     assert_eq!(chat.short_title("irc.zirc.test"), crate::chat::SERVER_TITLE);
+    // Every app's header says the same: its short title, the Server channel's too.
+    assert_eq!(
+        chat.header_title("irc.zirc.test"),
+        crate::chat::SERVER_TITLE
+    );
+    assert_eq!(chat.header_title("#api"), chat.short_title("#api"));
 
     // Another conversation shown, the server's stands for nothing shown again.
     let _ = chat.open("#api");

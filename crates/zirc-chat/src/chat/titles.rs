@@ -163,6 +163,16 @@ impl Chat {
         agent_name(Some(session), &self.owner_name(&owner)).1
     }
 
+    /// What every app's header calls the conversation called `name`: a guest's room, to staff,
+    /// by the guest's label ([`Chat::guest_header`]); anything else by its short title
+    /// ([`Chat::short_title`]), an agent session by what it goes by (the user's choice, 20 Nov
+    /// 2026).
+    #[must_use]
+    pub fn header_title(&self, name: &str) -> String {
+        self.guest_header(name)
+            .map_or_else(|| self.short_title(name), |guest| guest.label)
+    }
+
     /// The conversation called `name` as a composer names it, `Message <short title>`: a
     /// channel as named, an agent session as it goes by ([`Chat::session_label`]), a group
     /// by who's in it, a guest as [`Chat::guest_name`] names them, a machine as its owner and
