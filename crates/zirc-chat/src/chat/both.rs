@@ -201,22 +201,25 @@ impl Chat {
     /// those on the same lines, then by path.
     #[must_use]
     pub fn both_changing(&self, channel: &str) -> Vec<BothChanging> {
-        let mut by_path: BTreeMap<String, BTreeMap<Key, BothChanger>> = BTreeMap::new();
-        for member in self.presence.members(channel) {
-            let changer = self.changer(&member);
-            let key = key(&member);
-            for path in &member.paths {
-                by_path
-                    .entry(path.clone())
-                    .or_default()
-                    .entry(key.clone())
-                    .or_insert_with(|| changer.clone());
+        // By repository and path: in #agents, one repository's file is no other's.
+        let mut by_path: BTreeMap<(&str, String), BTreeMap<Key, BothChanger>> = BTreeMap::new();
+        for scope in self.presence.keys(channel) {
+            for member in self.presence.members_in(scope) {
+                let changer = self.changer(&member);
+                let key = key(&member);
+                for path in &member.paths {
+                    by_path
+                        .entry((scope, path.clone()))
+                        .or_default()
+                        .entry(key.clone())
+                        .or_insert_with(|| changer.clone());
+                }
             }
         }
         let mut both: Vec<BothChanging> = by_path
             .into_iter()
             .filter(|(_, who)| who.len() > 1)
-            .map(|(path, who)| {
+            .map(|((_, path), who)| {
                 let same_lines = self
                     .both
                     .same_lines

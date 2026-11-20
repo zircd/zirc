@@ -2370,8 +2370,10 @@ mod tests {
                 shared: Vec::new(),
             }],
         }));
+        // A line in #agents about api counts as said in api's scope (Entry::place).
+        let place = zirc_core::project::scope("api");
         assert_eq!(
-            app.chat.code_links("#api/agents", "broke at src/a.rs:4"),
+            app.chat.code_links(&place, "broke at src/a.rs:4"),
             [(
                 "src/a.rs:4".to_owned(),
                 "zed://file/src/api/src/a.rs:4".to_owned()

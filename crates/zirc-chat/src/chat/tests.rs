@@ -430,33 +430,30 @@ fn a_short_page_closes_the_gap() {
 }
 
 #[test]
-fn joins_a_repositorys_agents_room_with_it_and_counts_what_is_said_there_as_its() {
-    assert_eq!(agents_room("#api"), "#api/agents");
-    assert_eq!(home_channel("#api/agents"), "#api");
-    assert_eq!(home_channel("#api/AGENTS"), "#api");
-    assert_eq!(home_channel("#api/login"), "#api/login");
-    assert_eq!(home_channel("#api"), "#api");
-
+fn keeps_each_repositorys_work_in_agents_apart_and_names_it_once_there_are_several() {
     let mut chat = chat();
     let _ = chat.connected(link(true));
-    // Nothing listed is joined, but what was asked for; the agents' room comes with its
-    // channel, once we're in it, and a branch's room is by choice.
-    let sent = feed(
-        &mut chat,
-        &[
-            ":s 322 me #api 3 :the API",
-            ":s 322 me #api/agents 2 :",
-            ":s 322 me #api/login 1 :",
-            ":s 323 me :End of LIST",
-        ],
-    );
-    assert_eq!(sent, ["JOIN #extra"]);
-    let sent = feed(&mut chat, &[":me!u@h JOIN #api"]);
-    assert!(sent.contains(&"JOIN #api/agents".to_owned()), "{sent:?}");
-
-    // What an agent takes on in the room is the repository's, on its machine's card.
-    let claim = Message::new(
-        "cc-1",
+    let in_repo = |repo: &str, event: Event| Message {
+        repo: Some(repo.into()),
+        ..Message::new("cc-1", event)
+    };
+    let working = |repo: &str, path: &str| {
+        in_repo(
+            repo,
+            Event::Working {
+                paths: vec![path.into()],
+                continued: false,
+                worktree: Some(repo.into()),
+                branch: Some("main".into()),
+                part: Some(zirc_proto::ALONE),
+                base: None,
+                committed: Vec::new(),
+            },
+        )
+    };
+    let say = |from: &str, message: &Message| line_from(from, "#agents", message).to_string();
+    let taking = in_repo(
+        "api",
         Event::Text {
             body: "taking: the login bug".into(),
         },
@@ -464,60 +461,50 @@ fn joins_a_repositorys_agents_room_with_it_and_counts_what_is_said_there_as_its(
     feed(
         &mut chat,
         &[
-            ":me!u@h JOIN #api/agents",
-            ":alice-mbp!u@machine/alice JOIN #api",
-            ":alice-mbp!u@machine/alice JOIN #api/agents",
-            &format!(
-                ":alice-mbp!u@machine/alice PRIVMSG #api/agents :{}",
-                zirc_proto::encode(&claim).unwrap()
-            ),
+            ":me!u@h JOIN #agents",
+            ":alice-mbp!u@machine/alice JOIN #agents",
+            &say("alice-mbp", &taking),
         ],
     );
+    // What an agent takes on in #agents is on its machine's card, and its claim.
     let card = chat.profile("alice-mbp").card(noon(), |at| at.naive_utc());
     assert!(
-        card.work.iter().any(|work| work.heading == "taken on"
-            && work
-                .lines
-                .iter()
-                .any(|line| line.starts_with("#api ") && line.ends_with("the login bug"))),
+        card.work.iter().any(|work| work
+            .lines
+            .iter()
+            .any(|line| line.ends_with("the login bug"))),
         "{:?}",
         card.work
     );
-    assert!(
-        card.about.iter().any(|line| line == "in #api"),
-        "{:?}",
-        card.about
+    assert_eq!(
+        chat.claim("alice-mbp", "cc-1")
+            .map(|(task, _)| task)
+            .as_deref(),
+        Some("the login bug")
     );
-    // As Active now has it.
-    assert_eq!(chat.active_now()[0].task, "the login bug");
-}
+    // One repository: its lines say nothing of it.
+    let utc = chrono::FixedOffset::east_opt(0).unwrap();
+    let detail = |chat: &Chat, text: &str| {
+        let lines = chat.lines("#agents", utc, false);
+        let line = lines.iter().find(|line| line.text.contains(text)).unwrap();
+        line.speaker.clone().unwrap().detail.unwrap_or_default()
+    };
+    assert!(!detail(&chat, "login bug").contains("api"));
 
-#[test]
-fn joins_a_channels_listed_agents_room_when_the_person_joins_it_later() {
-    let mut chat = chat();
-    let _ = chat.connected(link(true));
-    // Left before: the list joins neither, until the person joins #api again.
-    let _ = chat.part("#api", None);
-    let sent = feed(
+    // Two repositories' working sets from one machine, each said in turn: both stand, and
+    // the same path in each is no file both change.
+    feed(
         &mut chat,
         &[
-            ":s 322 me #api 3 :",
-            ":s 322 me #api/agents 2 :",
-            ":s 323 me :End of LIST",
+            &say("alice-mbp", &working("api", "README.md")),
+            &say("bob-mbp", &working("web", "README.md")),
         ],
     );
-    assert_eq!(sent, ["JOIN #extra"]);
-    let sent = feed(&mut chat, &[":me!u@h JOIN #api"]);
-    assert!(
-        sent.iter().any(|line| line == "JOIN #api/agents"),
-        "{sent:?}"
-    );
-    // Not a room the server doesn't list: joining makes one.
-    let sent = feed(&mut chat, &[":me!u@h JOIN #web"]);
-    assert!(
-        !sent.iter().any(|line| line.contains("#web/agents")),
-        "{sent:?}"
-    );
+    assert_eq!(chat.presence.members("#agents").len(), 2);
+    assert!(chat.both_changing("#agents").is_empty());
+    // Several repositories: each line says which it's about.
+    let said = detail(&chat, "login bug");
+    assert!(said.ends_with(" · api") || said == "api", "{said}");
 }
 
 #[test]

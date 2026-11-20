@@ -153,31 +153,8 @@ pub struct ActiveCard {
     pub since: DateTime<Utc>,
 }
 
-/// The room under a repository's channel where its agents' lines go, `#<repo>/agents`,
-/// unless the team's config names another (zirc-core's `team`): leaving the repository's
-/// channel as its catch-all. What's said there counts as the repository's ([`home_channel`]),
-/// and apps join it with the repository's channel.
-pub const AGENTS_ROOM: &str = zirc_proto::AGENTS_ROOM;
-
-/// The agents' room of the repository channel `channel`: `#api/agents` for `#api`.
-#[must_use]
-pub fn agents_room(channel: &str) -> String {
-    format!("{channel}/{AGENTS_ROOM}")
-}
-
-/// The channel what's said in `name` counts as: a repository's for its agents' room, `#api`
-/// for `#api/agents`, and anything else itself. Who's changing what, about to, and taking
-/// what on, said in the room, is the repository's.
-#[must_use]
-pub fn home_channel(name: &str) -> &str {
-    match room_parts(name) {
-        Some((channel, room)) if room.eq_ignore_ascii_case(AGENTS_ROOM) => channel,
-        _ => name,
-    }
-}
-
-/// A room's channel name, `#zirc/fix-login`, in its two parts: its repository's channel
-/// and its own name, `("#zirc", "fix-login")`; `None` for a channel that isn't a room.
+/// A room's channel name, `#support/fix-login`, in its two parts: its parent channel and its
+/// own name, `("#support", "fix-login")`; `None` for a channel that isn't a room.
 /// Every split of a room's name is this one.
 #[must_use]
 pub fn room_parts(name: &str) -> Option<(&str, &str)> {
@@ -1220,32 +1197,18 @@ impl Chat {
     }
 
     /// Whether the channel called `name` is a feed, where systems post, rather than a room
-    /// people made: a standing room under a repository's channel (`#api/agents`,
-    /// [`zirc_proto::STANDING_ROOMS`]), the organisation's `#ops` or `#decisions`, or a
-    /// repository's own channel, one with a standing room under it that we know of. Its
+    /// people made: the organisation's `#agents`, `#gotchas`, `#ops` or `#decisions`. Its
     /// traffic never shows bold, in every app's sidebar.
     #[must_use]
     pub fn is_feed(&self, name: &str) -> bool {
-        let standing = |room: &str| {
-            zirc_proto::STANDING_ROOMS
-                .iter()
-                .any(|kind| room.eq_ignore_ascii_case(kind))
-        };
-        if [zirc_proto::state::CHANNEL, zirc_proto::request::CHANNEL]
-            .iter()
-            .any(|channel| name.eq_ignore_ascii_case(channel))
-        {
-            return true;
-        }
-        if let Some((_, room)) = room_parts(name) {
-            return standing(room);
-        }
-        is_channel(name)
-            && self.conversations.iter().any(|c| {
-                room_parts(&c.name).is_some_and(|(parent, room)| {
-                    parent.eq_ignore_ascii_case(name) && standing(room)
-                })
-            })
+        [
+            zirc_proto::AGENTS_CHANNEL,
+            zirc_proto::gotchas::CHANNEL,
+            zirc_proto::state::CHANNEL,
+            zirc_proto::request::CHANNEL,
+        ]
+        .iter()
+        .any(|channel| name.eq_ignore_ascii_case(channel))
     }
 
     /// The parts of the sidebar folded away, sorted.

@@ -531,11 +531,11 @@ fn linked(
     conversation: &str,
 ) -> (String, Vec<(String, Option<String>)>) {
     match item {
-        Item::Message { .. } | Item::Notice { .. } | Item::Action { .. } => {
+        Item::Message { entry, .. } | Item::Notice { entry, .. } | Item::Action { entry, .. } => {
             // Files and commits it names link into the editor or to the forge, as zirc-chat
-            // says, where the terminal can.
+            // says, where the terminal can: a line in #agents, its own repository's.
             let code = if links == Links::Labelled {
-                who.chat.code_links(conversation, &text)
+                who.chat.code_links(&entry.place(conversation), &text)
             } else {
                 Vec::new()
             };

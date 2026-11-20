@@ -1,8 +1,8 @@
 //! The channels - listing, browsing, joining, leaving and who is in them.
 
 use super::{
-    Attendance, Chat, Entry, EntryKind, Kind, Line, WHO_TOKEN, agent, agents_room, fold, group,
-    is_channel, is_group, joins, nick_of, some, strip_formatting, target,
+    Attendance, Chat, Entry, EntryKind, Kind, Line, WHO_TOKEN, agent, fold, group, is_channel,
+    is_group, joins, nick_of, some, strip_formatting, target,
 };
 
 impl Chat {
@@ -440,17 +440,6 @@ impl Chat {
         }
         if self.link.as_ref().is_some_and(|l| l.chathistory) {
             lines.push(self.catch_up(channel));
-        }
-        // A repository's channel comes with its agents' room, where its agents talk, when the
-        // server lists one: never one made by asking.
-        let room = agents_room(channel);
-        let listed = self
-            .listed
-            .iter()
-            .any(|(name, _)| name.eq_ignore_ascii_case(&room));
-        // One we have been in and left is still here, not joined again by itself.
-        if !again && listed && self.conversation(&room).is_none() {
-            lines.extend(joins(&[room]));
         }
         lines
     }

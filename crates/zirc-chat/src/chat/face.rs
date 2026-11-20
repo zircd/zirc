@@ -192,7 +192,10 @@ impl Chat {
         zirc_proto::agent_picture(chosen, name).to_owned()
     }
 
-    /// Who `entry` is from, as a line's head shows them ([`Chat::speaker`]).
+    /// Who `entry` is from, as a line's head shows them ([`Chat::speaker`]): with the
+    /// repository its line is about after the detail, `mattias's agent · api`, once `#agents`
+    /// has heard more than one repository (the user's choice, 20 Nov 2026), so a team with
+    /// one sees nothing new.
     #[must_use]
     pub fn line_speaker(&self, entry: &Entry) -> LineSpeaker {
         let speaker = self.speaker(entry);
@@ -200,11 +203,22 @@ impl Chat {
             Avatar::Agent { session, .. } => session.clone(),
             _ => None,
         };
+        let several = self.presence.repositories(zirc_proto::AGENTS_CHANNEL) > 1;
+        let (detail, label) = match entry.repo().filter(|_| several) {
+            Some(repo) => (
+                Some(match speaker.detail {
+                    Some(detail) => format!("{detail} · {repo}"),
+                    None => repo.to_owned(),
+                }),
+                format!("{}, in {repo}", speaker.label),
+            ),
+            None => (speaker.detail, speaker.label),
+        };
         LineSpeaker {
             face: self.face(&speaker.avatar),
             name: speaker.name,
-            detail: speaker.detail,
-            label: speaker.label,
+            detail,
+            label,
             session,
             app: speaker.is_app,
         }

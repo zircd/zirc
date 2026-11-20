@@ -127,6 +127,23 @@ pub const QUOTE_CHARS: usize = 80;
 pub const CLIENT_TAG: &str = "+zirc.dev/client";
 
 impl Entry {
+    /// The repository it's about, as a zirc message says ([`zirc_proto::Message::repo`]).
+    #[must_use]
+    pub fn repo(&self) -> Option<&str> {
+        match &self.kind {
+            EntryKind::Zirc(message) => message.repo.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Where it counts as said, in `conversation`: in a room every repository shares, its
+    /// repository's scope ([`crate::names::scope_of`]), whose forge and checkout its files
+    /// and commits link to; else `conversation`.
+    #[must_use]
+    pub fn place(&self, conversation: &str) -> String {
+        crate::names::scope_of(conversation, self.repo())
+    }
+
     /// The agent session it came from, for a zirc message ([`super::agent_session`]).
     #[must_use]
     pub fn agent_session(&self) -> Option<&str> {

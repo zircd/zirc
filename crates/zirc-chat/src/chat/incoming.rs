@@ -344,7 +344,9 @@ impl Chat {
         if theirs {
             self.learn_session(message);
         }
-        self.learn_forge(name, from, &message.event);
+        // A repository's forge, from a line in a room every repository shares, is its own.
+        let place = crate::names::scope_of(name, message.repo.as_deref());
+        self.learn_forge(&place, from, &message.event);
         if let Some(card) = zirc_proto::session::SessionCard::of(&message.event)
             && theirs
             && card.session == message.session

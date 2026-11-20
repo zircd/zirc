@@ -568,23 +568,21 @@ impl Chat {
         spans.into_iter().map(|span| reader.span(span)).collect()
     }
 
-    /// The files and commits `text`, said in `conversation`, names that link somewhere, in
-    /// order, as written and where each goes: for an app that draws `text` as it was written,
-    /// such as the terminal's, to link them ([`Chat::flat_in`]).
+    /// The files and commits `text`, said in `place` (a conversation, or where a line in it
+    /// counts as said: [`super::Entry::place`]), names that link somewhere, in order, as
+    /// written and where each goes: for an app that draws `text` as it was written, such as
+    /// the terminal's, to link them ([`Chat::flat_in`]).
     #[must_use]
-    pub fn code_links(&self, conversation: &str, text: &str) -> Vec<(String, String)> {
+    pub fn code_links(&self, place: &str, text: &str) -> Vec<(String, String)> {
         let mut out = Vec::new();
-        if self.code.links(conversation).any() {
-            RichBlock::each_span(
-                &self.flat_in(conversation, super::rich(text)),
-                &mut |span| {
-                    if let RichSpanKind::Link { url } = &span.kind
-                        && span.code.is_some()
-                    {
-                        out.push((span.text.clone(), url.clone()));
-                    }
-                },
-            );
+        if self.code.links(place).any() {
+            RichBlock::each_span(&self.flat_in(place, super::rich(text)), &mut |span| {
+                if let RichSpanKind::Link { url } = &span.kind
+                    && span.code.is_some()
+                {
+                    out.push((span.text.clone(), url.clone()));
+                }
+            });
         }
         out
     }

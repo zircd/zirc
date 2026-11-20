@@ -340,6 +340,10 @@ pub struct Presence {
     avatars: BTreeMap<(String, String), String>,
     /// channel → nick → session → the lines its work changes ([`zirc_proto::lines`]).
     lines: BTreeMap<String, BTreeMap<String, BTreeMap<String, zirc_proto::lines::Lines>>>,
+    /// A room every repository shares (`#agents`), lowercase → the scopes of the repositories
+    /// heard in it ([`crate::names::scope_of`]): what's said there is kept by its
+    /// repository's scope, as zircd keeps it, and read back as the room's.
+    scopes: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Presence {
@@ -364,6 +368,16 @@ impl Presence {
             };
             return self.apply(channel, nick, &said, at, default_branch);
         }
+        // In a room every repository shares, each repository's work apart: one machine says
+        // each repository's working sets in turn, each replacing what it said before.
+        let scope = crate::names::scope_of(channel, message.repo.as_deref());
+        if scope != channel {
+            self.scopes
+                .entry(channel.to_lowercase())
+                .or_default()
+                .insert(scope.clone());
+        }
+        let channel = scope.as_str();
         let session = &message.session;
         if let Some(name) = &message.name {
             self.names
@@ -588,13 +602,41 @@ impl Presence {
     /// The latest landings in `channel`, newest first.
     #[must_use]
     pub fn landings(&self, channel: &str) -> Vec<Landing> {
-        self.landings
-            .get(channel)
-            .into_iter()
+        let mut landings: Vec<Landing> = self
+            .keys(channel)
+            .filter_map(|key| self.landings.get(key))
             .flatten()
-            .rev()
             .cloned()
-            .collect()
+            .collect();
+        landings.reverse();
+        landings
+    }
+
+    /// How many repositories have been heard in `channel`, a room every repository shares
+    /// (`#agents`): none for any other.
+    #[must_use]
+    pub fn repositories(&self, channel: &str) -> usize {
+        self.scopes_in(channel).map_or(0, BTreeSet::len)
+    }
+
+    /// The scopes heard in `channel`, a room every repository shares, found without making a
+    /// string: it's asked for every line drawn.
+    fn scopes_in(&self, channel: &str) -> Option<&BTreeSet<String>> {
+        self.scopes
+            .iter()
+            .find(|(room, _)| room.eq_ignore_ascii_case(channel))
+            .map(|(_, scopes)| scopes)
+    }
+
+    /// What `channel`'s presence is kept under: itself, and, for a room every repository
+    /// shares, each repository's scope heard there.
+    pub fn keys<'a>(&'a self, channel: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+        std::iter::once(channel).chain(
+            self.scopes_in(channel)
+                .into_iter()
+                .flatten()
+                .map(String::as_str),
+        )
     }
 
     /// Records `intent` in `channel` at `now`, replacing what its session intended before,
@@ -609,9 +651,8 @@ impl Presence {
     /// The intents in `channel` that haven't expired at `now`, by nick and session.
     #[must_use]
     pub fn intents(&self, channel: &str, now: u64) -> Vec<Intent> {
-        self.intents
-            .get(channel)
-            .into_iter()
+        self.keys(channel)
+            .filter_map(|key| self.intents.get(key))
             .flat_map(BTreeMap::values)
             .filter(|intent| live(intent, now))
             .map(|intent| Intent {
@@ -652,23 +693,32 @@ impl Presence {
     /// tool or picture: asked for every agent the lists show, each refresh, so one pass
     /// over every claim rather than a look-up of each channel.
     pub fn claims_of(&self, nick: &str, session: &str) -> impl Iterator<Item = (&str, &str, u64)> {
-        self.claims.iter().flat_map(move |(channel, claims)| {
+        self.claims.iter().flat_map(move |(key, claims)| {
+            let channel = self.room_of(key);
             claims
                 .values()
                 .filter(move |claim| {
                     claim.session == session && claim.nick.eq_ignore_ascii_case(nick)
                 })
-                .map(move |claim| (channel.as_str(), claim.task.as_str(), claim.since))
+                .map(move |claim| (channel, claim.task.as_str(), claim.since))
         })
+    }
+
+    /// The channel what's kept under `key` was said in: the room every repository shares
+    /// for one of its repositories' scopes ([`Presence::keys`]), else `key` itself.
+    fn room_of<'a>(&'a self, key: &'a str) -> &'a str {
+        self.scopes
+            .iter()
+            .find(|(_, scopes)| scopes.contains(key))
+            .map_or(key, |(room, _)| room.as_str())
     }
 
     /// What sessions in `channel` have said they're taking on, oldest first.
     #[must_use]
     pub fn claims(&self, channel: &str) -> Vec<Claim> {
         let mut claims: Vec<Claim> = self
-            .claims
-            .get(channel)
-            .into_iter()
+            .keys(channel)
+            .filter_map(|key| self.claims.get(key))
             .flat_map(BTreeMap::values)
             .map(|claim| Claim {
                 session_name: self.name_of(&claim.nick, &claim.session),
@@ -724,9 +774,8 @@ impl Presence {
     /// Every session's lines said in `channel`: its nick, the session, and the lines.
     #[must_use]
     pub fn all_lines(&self, channel: &str) -> Vec<(String, String, zirc_proto::lines::Lines)> {
-        self.lines
-            .get(channel)
-            .into_iter()
+        self.keys(channel)
+            .filter_map(|key| self.lines.get(key))
             .flatten()
             .flat_map(|(nick, sessions)| {
                 sessions
@@ -739,6 +788,14 @@ impl Presence {
     /// `nick` left `channel`: whatever it was working on or taking on there no longer
     /// counts.
     pub fn left(&mut self, channel: &str, nick: &str) {
+        let keys: Vec<String> = self.keys(channel).map(str::to_owned).collect();
+        for key in keys {
+            self.left_key(&key, nick);
+        }
+    }
+
+    /// [`Presence::left`] for one of a channel's keys ([`Presence::keys`]).
+    fn left_key(&mut self, channel: &str, nick: &str) {
         if let Some(members) = self.working.get_mut(channel) {
             members.remove(nick);
         }
@@ -823,13 +880,23 @@ impl Presence {
         self.alerted.clear();
         self.claims.clear();
         self.intents.clear();
+        self.scopes.clear();
     }
 
-    /// The working sets in `channel`, by nick, then by worktree.
+    /// The working sets in `channel`, by nick, then by worktree: in a room every repository
+    /// shares, every repository's ([`Presence::keys`]).
     #[must_use]
     pub fn members(&self, channel: &str) -> Vec<Member> {
+        self.keys(channel)
+            .flat_map(|key| self.members_in(key))
+            .collect()
+    }
+
+    /// The working sets kept under `key`, one of a channel's [`Presence::keys`].
+    #[must_use]
+    pub fn members_in(&self, key: &str) -> Vec<Member> {
         self.working
-            .get(channel)
+            .get(key)
             .into_iter()
             .flatten()
             .flat_map(|(nick, sets)| {
@@ -864,9 +931,8 @@ impl Presence {
     /// machines say.
     #[must_use]
     pub fn built(&self, channel: &str) -> Vec<Built> {
-        self.working
-            .get(channel)
-            .into_iter()
+        self.keys(channel)
+            .filter_map(|key| self.working.get(key))
             .flatten()
             .flat_map(|(nick, sets)| {
                 sets.values().filter_map(|(place, paths)| {

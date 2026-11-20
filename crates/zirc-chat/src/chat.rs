@@ -162,10 +162,10 @@ pub use lines::{
     SystemLine, VIDEO_MAKING, VIDEO_PLAN, VIDEO_UNREACHABLE, VideoPlan,
 };
 pub use list::{
-    AGENTS_ROOM, ActiveCard, Agent, AppMember, AppRow, BADGE_MOST, Badges, ChannelGroup,
-    DirectKind, DirectRow, ENDED_FOLD_AFTER, MachineRow, PersonRow, ROOM_QUIET_AFTER, SHOW_LABEL,
-    Shelf, ShowChoice, SidebarSection, SidebarTab, THREAD_ACTIVE_FOR, Thread, Unseen, agents_room,
-    badge_label, home_channel, room_label, room_parts,
+    ActiveCard, Agent, AppMember, AppRow, BADGE_MOST, Badges, ChannelGroup, DirectKind, DirectRow,
+    ENDED_FOLD_AFTER, MachineRow, PersonRow, ROOM_QUIET_AFTER, SHOW_LABEL, Shelf, ShowChoice,
+    SidebarSection, SidebarTab, THREAD_ACTIVE_FOR, Thread, Unseen, badge_label, room_label,
+    room_parts,
 };
 pub use members::{MemberMachine, MemberRow, MemberSession};
 pub use more::{CODE_LINES, More, PROSE_LINES, Shown, cut};
@@ -861,11 +861,10 @@ fn stamp(time: DateTime<Utc>) -> String {
     time.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
-/// Whether `channel` is one people join by choice, never by being listed: a branch's, as
-/// `#api/login`, or a repository's topic, as `#api/auth` (zirc-core's `project` names them).
-/// A repository's agents' room isn't: it's joined with the repository's channel.
+/// Whether `channel` is one people join by choice, never by being listed: a room under
+/// another, as `#support/login`.
 fn by_choice(channel: &str) -> bool {
-    channel.contains('/') && home_channel(channel) == channel
+    channel.contains('/')
 }
 
 /// `AWAY` with `message`, or without one to say we're back.

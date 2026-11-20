@@ -621,7 +621,11 @@ impl<'a> Layout<'a> {
                 continues,
             } => {
                 let mut line = self.said(entry, LineKind::Chat, text, continues);
-                self.body(&mut line, entry.rich());
+                self.body(
+                    &mut line,
+                    entry.rich(),
+                    &entry.place(&self.conversation.name),
+                );
                 self.sealed(&mut line, entry);
                 line
             }
@@ -631,7 +635,11 @@ impl<'a> Layout<'a> {
                 continues,
             } => {
                 let mut line = self.said(entry, LineKind::Notice, text, continues);
-                self.body(&mut line, entry.rich());
+                self.body(
+                    &mut line,
+                    entry.rich(),
+                    &entry.place(&self.conversation.name),
+                );
                 line
             }
             Item::Action {
@@ -650,7 +658,8 @@ impl<'a> Layout<'a> {
                 // A post's words read as a message's: drawn, and cut when long, as one is,
                 // after whom it's to.
                 if parts.icon == Icon::Post && !parts.details.is_empty() {
-                    self.post(&mut line, &parts.details, system.to.as_ref());
+                    let place = entry.place(&self.conversation.name);
+                    self.post(&mut line, &parts.details, system.to.as_ref(), &place);
                     system.body = SystemBody::Blocks;
                 }
                 line.system = Some(system);
@@ -757,7 +766,7 @@ impl<'a> Layout<'a> {
         line.text = self.chat.sealed_text(entry, &line.text);
         if line.rich.is_empty() {
             line.rich = self.chat.flat_in(
-                &self.conversation.name,
+                &entry.place(&self.conversation.name),
                 self.chat.body(&line.key, entry.rich(), line.mention).blocks,
             );
         }
@@ -765,13 +774,14 @@ impl<'a> Layout<'a> {
     }
 
     /// `line`'s words as `blocks`, drawn and cut when long, with its control: none when
-    /// they're one plain paragraph shown whole, which its text says.
-    fn body(&self, line: &mut Line, blocks: Vec<Block>) {
-        self.words(line, blocks, false);
+    /// they're one plain paragraph shown whole, which its text says. Its files and commits
+    /// link as said in `place` ([`Entry::place`]).
+    fn body(&self, line: &mut Line, blocks: Vec<Block>, place: &str) {
+        self.words(line, blocks, false, place);
     }
 
     /// [`Self::body`], or, `always`, as blocks though they're plain.
-    fn words(&self, line: &mut Line, blocks: Vec<Block>, always: bool) {
+    fn words(&self, line: &mut Line, blocks: Vec<Block>, always: bool, place: &str) {
         let shown = self.chat.body(&line.key, blocks, line.mention);
         let more = shown.more.map(|more| {
             // Whose message, as its head says: `Maya Chen's agent`, or the person's name.
@@ -789,7 +799,7 @@ impl<'a> Layout<'a> {
             }
         });
         let plain = more.is_none() && is_plain(&shown.blocks);
-        let rich = self.chat.flat_in(&self.conversation.name, shown.blocks);
+        let rich = self.chat.flat_in(place, shown.blocks);
         // Plain words draw as text, unless they name code that links.
         if !always && plain && !names_code(&rich) {
             return;
@@ -800,7 +810,7 @@ impl<'a> Layout<'a> {
 
     /// `line`'s words as a post's, `details`: always as blocks, drawn and cut when long as a
     /// message's are, after `→ zirc-chat ` when it's `to` an agent session.
-    fn post(&self, line: &mut Line, details: &str, to: Option<&SessionName>) {
+    fn post(&self, line: &mut Line, details: &str, to: Option<&SessionName>, place: &str) {
         let mut blocks = super::rich(details);
         if let Some(to) = to {
             let span = |text: &str, kind| Span {
@@ -820,7 +830,7 @@ impl<'a> Layout<'a> {
                 _ => blocks.insert(0, Block::Paragraph(lead.into())),
             }
         }
-        self.words(line, blocks, true);
+        self.words(line, blocks, true, place);
     }
 
     /// A system line from `parts`, about the agent session `session`, if any, said as the

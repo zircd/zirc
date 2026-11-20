@@ -497,8 +497,7 @@ impl Chat {
     }
 
     /// What those `theirs` takes in are changing, about to change at `seconds` and have
-    /// taken on, in every channel, each by the channel it counts as ([`super::home_channel`]):
-    /// a repository's for what's said in its agents' room.
+    /// taken on, in every channel, each by the channel it was said in.
     fn work_of(&self, theirs: &dyn Fn(&str) -> bool, seconds: u64) -> Work {
         let mut work = Work::default();
         for conversation in self
@@ -507,27 +506,27 @@ impl Chat {
             .filter(|c| c.kind == Kind::Channel)
         {
             let name = &conversation.name;
-            let home = super::home_channel(name).to_owned();
+            let channel = name.clone();
             work.working.extend(
                 self.presence
                     .members(name)
                     .into_iter()
                     .filter(|member| theirs(&member.nick))
-                    .map(|member| (home.clone(), member)),
+                    .map(|member| (channel.clone(), member)),
             );
             work.intents.extend(
                 self.presence
                     .intents(name, seconds)
                     .into_iter()
                     .filter(|intent| theirs(&intent.nick))
-                    .map(|intent| (home.clone(), intent)),
+                    .map(|intent| (channel.clone(), intent)),
             );
             work.claims.extend(
                 self.presence
                     .claims(name)
                     .into_iter()
                     .filter(|claim| theirs(&claim.nick))
-                    .map(|claim| (home.clone(), claim)),
+                    .map(|claim| (channel.clone(), claim)),
             );
         }
         work
@@ -573,15 +572,13 @@ impl Chat {
         let mut last_said: Option<(&str, DateTime<Utc>)> = None;
         for conversation in &self.conversations {
             let name = &conversation.name;
-            // A repository's agents' room is the repository's.
-            let home = super::home_channel(name);
             if conversation.kind == Kind::Channel
                 && conversation.has_member(nick)
                 && !channels
                     .iter()
-                    .any(|c: &String| c.eq_ignore_ascii_case(home))
+                    .any(|c: &String| c.eq_ignore_ascii_case(name))
             {
-                channels.push(home.to_owned());
+                channels.push(name.clone());
             }
             let said = conversation.entries.iter().rev().find(|entry| {
                 entry.from.eq_ignore_ascii_case(nick)
