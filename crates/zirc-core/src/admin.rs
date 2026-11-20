@@ -3,8 +3,8 @@
 //! Guests API's requests that [`crate::chat::Chat`] gives an organisation's owners and
 //! admins ([`GuestRequest`]), such as banning a guest; listing the guests it keeps, whose rooms
 //! the channels list for them ([`Client::kept_guests`]); and reading how people show
-//! ([`zirc_proto::profile`]). The account itself is edited on zirc.dev's own page (20 Nov
-//! 2026). All as the app's own account, which zirc.dev takes by HTTP Basic.
+//! ([`zirc_proto::profile`]); and deleting the account, from the phones. The account is
+//! otherwise edited on zirc.dev's own page (20 Nov 2026). All as the app's own account, which zirc.dev takes by HTTP Basic.
 
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
@@ -20,6 +20,10 @@ pub const ME_PATH: &str = "/api/me";
 
 /// The browser's session at zirc.dev, which a person's app ends with `DELETE`.
 pub const SESSION_PATH: &str = "/api/session";
+
+/// The signed-in person's account, which `DELETE` deletes: the phones' Delete account (the
+/// user's choice, 20 Nov 2026, as the stores ask of an app that makes accounts).
+pub const ACCOUNT_PATH: &str = "/api/account";
 
 /// Someone's role in one of their organisations, as `/api/me` says it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -102,6 +106,26 @@ impl Client {
             .send()
             .await?;
         Ok(self.checked(response).await?.json().await?)
+    }
+
+    /// Deletes `account`'s owner's account at zirc.dev, `confirm` being their email address
+    /// typed out to say they mean it: they leave each of their organisations, and the account
+    /// and every app's sign-in go. Only the person's own account may, never a machine's.
+    ///
+    /// # Errors
+    ///
+    /// When the address isn't theirs, they're an organisation's only owner, or zirc.dev
+    /// can't be reached or refuses, saying why.
+    pub async fn delete_account(&self, account: &Account, confirm: &str) -> Result<(), Error> {
+        let response = self
+            .http
+            .delete(format!("{}{ACCOUNT_PATH}", self.web))
+            .basic_auth(&account.name, Some(&account.password))
+            .json(&serde_json::json!({ "confirm": confirm }))
+            .send()
+            .await?;
+        self.checked(response).await?;
+        Ok(())
     }
 
     /// Ends the zirc.dev browser session that let `account`'s app in, by the hash its login

@@ -10,9 +10,10 @@
 //! their own.
 //!
 //! The account is zirc.dev's alone (the user's choice, 20 Nov 2026): its one name and one
-//! picture, the handle in each organisation and deleting it are edited on zirc.dev's account
-//! page, which every app's [`SettingsKind::Profile`] opens with [`super::EDIT_PROFILE`]. Apps
-//! keep what concerns the device, and whether the person is away and whom they block.
+//! picture and the handle in each organisation are edited on zirc.dev's account page, which
+//! every app's [`SettingsKind::Profile`] opens with [`super::EDIT_PROFILE`]. Apps keep what
+//! concerns the device, and whether the person is away and whom they block; the phones keep
+//! deleting the account too ([`SettingsKind::DeleteAccount`]), as the stores ask.
 
 use serde::Serialize;
 use ts_rs::TS;
@@ -57,6 +58,9 @@ pub enum SettingsKind {
     /// and signing out of it; adding one, and signing out of everything; before signing in,
     /// signing in.
     Organisations,
+    /// Deleting the account, for good, in the app: the phones' alone, as Apple and Google
+    /// ask of an app that makes accounts (the user's choice, 19 and 20 Nov 2026).
+    DeleteAccount,
     /// Whether the person is away there, and why.
     Status,
     /// Muting the organisation: nothing of it notifies.
@@ -112,6 +116,9 @@ pub const SETTINGS: &str = "Settings";
 /// drawn before its wasm is loaded (`oss/web/src/App.tsx`).
 pub const ORGANISATIONS: &str = "Organisations";
 
+/// Deleting the account: [`SettingsKind::DeleteAccount`]'s title, and its page's.
+pub const DELETE_ACCOUNT: &str = "Delete account";
+
 /// The server a sign-in is to: [`SettingsKind::Server`]'s title, and the label of its
 /// address wherever that shows. The web page types it too on its dev sign-in, drawn before
 /// its wasm is loaded (`oss/web/src/App.tsx`).
@@ -159,6 +166,44 @@ pub fn mute_org_note(org: &str) -> String {
     format!(
         "Nothing from {org} notifies, and it leaves the app's badge. Its own count stays, in grey."
     )
+}
+
+/// What deleting the account does, naming the organisations `orgs` they'd leave: zirc.dev's
+/// account page's words (web/src/app/account/page.tsx).
+#[must_use]
+pub fn deletion_words(orgs: &[String]) -> String {
+    use std::fmt::Write as _;
+    let mut words =
+        "This deletes your account on zirc.dev and signs you out everywhere.".to_owned();
+    if !orgs.is_empty() {
+        let (its, servers) = if orgs.len() == 1 {
+            ("its", "its server are")
+        } else {
+            ("their", "their servers are")
+        };
+        let _ = write!(
+            words,
+            " You leave {}: your machines stop working there, and your accounts on {servers} \
+             deleted, so your names there are free for others. Messages you sent stay in {its} \
+             history.",
+            orgs.join(", ")
+        );
+    }
+    words.push_str(" Signing up again with the same address makes a new account.");
+    words
+}
+
+/// Over the field Delete account asks for the person's `email` in: what to type.
+#[must_use]
+pub fn type_to_confirm(email: &str) -> String {
+    format!("Type {email} to confirm")
+}
+
+/// Whether `typed` is the person's `email`, as zirc.dev takes it to confirm deleting their
+/// account: spaces around it and case don't matter. What enables Delete account.
+#[must_use]
+pub fn confirms_deletion(email: &str, typed: &str) -> bool {
+    !email.is_empty() && typed.trim().eq_ignore_ascii_case(email.trim())
 }
 
 /// How the app looks, in Appearance: as the system is, or always light or dark, by the key
@@ -218,9 +263,10 @@ pub fn settings_group_title(group: SettingsGroup, org: &str) -> String {
 
 impl SettingsKind {
     /// Every kind, in the order Settings lists them.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Profile,
         Self::Organisations,
+        Self::DeleteAccount,
         Self::Status,
         Self::Mute,
         Self::Sealed,
@@ -236,7 +282,7 @@ impl SettingsKind {
     #[must_use]
     pub fn group(self) -> SettingsGroup {
         match self {
-            Self::Profile | Self::Organisations => SettingsGroup::Account,
+            Self::Profile | Self::Organisations | Self::DeleteAccount => SettingsGroup::Account,
             Self::Status | Self::Mute | Self::Sealed => SettingsGroup::Organisation,
             Self::Notifications
             | Self::Appearance
@@ -253,6 +299,7 @@ impl SettingsKind {
         match self {
             Self::Profile => super::PROFILE,
             Self::Organisations => ORGANISATIONS,
+            Self::DeleteAccount => DELETE_ACCOUNT,
             Self::Status => "Status",
             Self::Mute => "Mute",
             Self::Sealed => super::sealing::SEALED_MESSAGES,
@@ -272,6 +319,7 @@ impl SettingsKind {
         match self {
             Self::Profile => "profile",
             Self::Organisations => "organisations",
+            Self::DeleteAccount => "delete-account",
             Self::Status => "status",
             Self::Mute => "mute",
             Self::Sealed => "sealed",
@@ -294,6 +342,9 @@ impl SettingsKind {
             // The account's link to zirc.dev: none before signing in. Away and why, in every
             // app's Settings (the user's choice, 17 Nov 2026).
             Self::Profile | Self::Status => signed_in,
+            // The phones', which the stores ask to delete an account in the app; elsewhere
+            // zirc.dev's account page, which Profile opens, has it.
+            Self::DeleteAccount => signed_in && app == SettingsApp::Phone,
             // What notifies of the organisation, which a browser doesn't.
             Self::Mute => signed_in && app != SettingsApp::Web,
             // Who may ask a machine's agents is its zircd's, which only a computer has (the
@@ -356,7 +407,12 @@ mod tests {
             ]
         );
         // The phones choose no server, their sign-in sets it, and have no zircd whose
-        // agents anyone may ask.
+        // agents anyone may ask; they alone delete the account in the app.
+        assert_eq!(
+            kinds(SettingsApp::Phone, true)[..3],
+            [Profile, Organisations, DeleteAccount]
+        );
+        assert!(!kinds(SettingsApp::Phone, false).contains(&DeleteAccount));
         assert!(!kinds(SettingsApp::Phone, true).contains(&Server));
         assert!(!kinds(SettingsApp::Phone, true).contains(&Agents));
         // A browser: the link to zirc.dev's account page, away and why, how it looks, and
@@ -389,6 +445,32 @@ mod tests {
         assert_eq!(
             (profile.title.as_str(), profile.id.as_str()),
             ("Profile", "settings:profile")
+        );
+    }
+
+    #[test]
+    fn deleting_says_which_organisations_are_left() {
+        assert_eq!(
+            deletion_words(&[]),
+            "This deletes your account on zirc.dev and signs you out everywhere. Signing up \
+             again with the same address makes a new account."
+        );
+        let words = deletion_words(&["Acme".to_owned(), "Zirc".to_owned()]);
+        assert!(words.contains("You leave Acme, Zirc: "), "{words}");
+        assert!(words.contains("on their servers are deleted"), "{words}");
+    }
+
+    #[test]
+    fn deleting_is_confirmed_by_the_address_however_typed() {
+        assert!(confirms_deletion(
+            "maya@acme.example",
+            " Maya@Acme.example "
+        ));
+        assert!(!confirms_deletion("", ""));
+        assert!(!confirms_deletion("maya@acme.example", "maya"));
+        assert_eq!(
+            type_to_confirm("maya@acme.example"),
+            "Type maya@acme.example to confirm"
         );
     }
 

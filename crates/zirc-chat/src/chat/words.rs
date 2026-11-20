@@ -100,6 +100,9 @@ pub const COPY_TEXT: &str = "Copy text";
 /// A message's menu: deletes it.
 pub const DELETE: &str = "Delete";
 
+/// The button that deletes the account, once what that does is read.
+pub const DELETE_MY_ACCOUNT: &str = "Delete my account";
+
 /// What puts away an error once it's read, such as a send's that failed.
 pub const DISMISS: &str = "Dismiss";
 
@@ -666,6 +669,11 @@ pub struct Words {
     pub message_details: String,
     /// A message's menu, deleting it: `Delete`.
     pub delete: String,
+    /// Settings' section for deleting the account, and that page's title: `Delete
+    /// account`.
+    pub delete_account: String,
+    /// The button that deletes the account: `Delete my account`.
+    pub delete_my_account: String,
     /// What puts away an error once it's read: `Dismiss`.
     pub dismiss: String,
     /// What shuts a page once it's finished with: `Done`.
@@ -977,6 +985,8 @@ pub fn words() -> Words {
         copy_text: COPY_TEXT.to_owned(),
         message_details: super::MESSAGE_DETAILS.to_owned(),
         delete: DELETE.to_owned(),
+        delete_account: settings_list::DELETE_ACCOUNT.to_owned(),
+        delete_my_account: DELETE_MY_ACCOUNT.to_owned(),
         dismiss: DISMISS.to_owned(),
         done: DONE.to_owned(),
         check_the_code: CHECK_THE_CODE.to_owned(),

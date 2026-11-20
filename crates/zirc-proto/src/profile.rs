@@ -23,6 +23,10 @@ use ts_rs::TS;
 /// Where the signed-in person's profile is, under the web app's address.
 pub const ME_PATH: &str = "/api/me";
 
+/// The signed-in person's account page, under the web app's address: where its name,
+/// picture and handles are set, and it's deleted. Every app's Settings opens it from Profile.
+pub const ACCOUNT_PAGE_PATH: &str = "/account";
+
 /// Where the signed-in person's account picture is, under the web app's address.
 pub const ME_AVATAR_PATH: &str = "/api/me/avatar";
 

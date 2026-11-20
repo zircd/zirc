@@ -737,7 +737,11 @@ impl App {
             self.note("this server isn't zirc.dev's: there's no account page to open".into());
             return Action::Send(Vec::new());
         };
-        Action::Open(format!("{}/account", site.web.trim_end_matches('/')))
+        Action::Open(format!(
+            "{}{}",
+            site.web.trim_end_matches('/'),
+            zirc_proto::profile::ACCOUNT_PAGE_PATH
+        ))
     }
 
     /// Leaving a channel, waiting on the person: y leaves, Ctrl-C quits, and anything else

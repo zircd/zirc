@@ -206,10 +206,11 @@ pub use search::{
 pub use seek::{HOLE_LABEL, LATEST_LABEL};
 pub use settings_list::{
     ADD_ORGANISATION, ADD_ORGANISATION_NAME, AWAY, AWAY_ELSEWHERE_NOTE, AWAY_NOTE, AWAY_WHY,
-    ORGANISATIONS, SERVER, SETTINGS, SETTINGS_ACCOUNT, SETTINGS_APP, SIGN_OUT_EVERYTHING,
-    SYSTEM_NOTIFICATIONS, SettingsApp, SettingsGroup, SettingsKind, SettingsSection, THEMES,
-    ThemeChoice, mute_org, mute_org_note, settings_group_title, settings_sections, sign_out_of,
-    theme_dark, themes,
+    DELETE_ACCOUNT, ORGANISATIONS, SERVER, SETTINGS, SETTINGS_ACCOUNT, SETTINGS_APP,
+    SIGN_OUT_EVERYTHING, SYSTEM_NOTIFICATIONS, SettingsApp, SettingsGroup, SettingsKind,
+    SettingsSection, THEMES, ThemeChoice, confirms_deletion, deletion_words, mute_org,
+    mute_org_note, settings_group_title, settings_sections, sign_out_of, theme_dark, themes,
+    type_to_confirm,
 };
 pub use sidebar::{ALL_MESSAGES, ListKind, ListOptions, ListRow, NO_MESSAGES};
 pub use speaker::{
@@ -231,17 +232,17 @@ pub use words::{
     ACTIVITY, ACTIVITY_HINT, ADD_REACTION, ADVANCED, ASKING_ZIRC_DEV, ATTACH, BACK,
     BACK_TO_RESULTS, BROWSE_CHANNELS, CANCEL, CHANNEL_NAME, CHECK_THE_CODE, CHOOSE_A_SERVER, CLEAR,
     CLOSE_SEARCH, CONNECTION, CONTINUE_WITH_EMAIL, CONVERSATION_OPTIONS, COPY, COPY_CODE,
-    COPY_LINK, COPY_MESSAGE_LINK, COPY_TEXT, COULDNT_SIGN_IN, DELETE, DISMISS, DONE, DOWNLOAD,
-    EARLIER_MESSAGE, EARLIER_REPLY, EDIT_PROFILE, EVERYWHERE, GO_TO_NEWEST, GUEST_ACTIONS, HOME,
-    JUMP_TO, JUMP_TO_PROMPT, MACHINES, MORE, MORE_PEOPLE_ONLY, NEW_CHANNEL, NEW_DIVIDER,
-    NEW_MESSAGE, NEW_TAG, NO_CHANNELS, NO_DIRECTS, NO_DIRECTS_HINT, NOT_NOW, NOTHING_YET,
-    NOTIFICATION_CHANNEL, PEOPLE_ONLY, PICK_A_CONVERSATION, PROFILE, REACT_LABEL, REPLY_LABEL,
-    REPLYING_TO, RESULTS, RETRY, SAID_BY, SAVE, SEARCH, SEARCH_IN, SEND, SENDING, SETTINGS_ALL,
-    SHOWN_PATHS, SIGNED_IN, STOP_REPLYING, THREADS, TRY_AGAIN, TURN_ON_NOTIFICATIONS, VERSION,
-    Words, YOU_PAGE, YOUR_NAME, activity_empty, couldnt_label, details_label, guests_label,
-    in_label, mentions_label, menu_bar, more_paths_label, new_label, nothing_called, profile_label,
-    react_with_label, removed_label, scope_label, sharing_label, show_more_paths_label,
-    signin_failed, version_label, words,
+    COPY_LINK, COPY_MESSAGE_LINK, COPY_TEXT, COULDNT_SIGN_IN, DELETE, DELETE_MY_ACCOUNT, DISMISS,
+    DONE, DOWNLOAD, EARLIER_MESSAGE, EARLIER_REPLY, EDIT_PROFILE, EVERYWHERE, GO_TO_NEWEST,
+    GUEST_ACTIONS, HOME, JUMP_TO, JUMP_TO_PROMPT, MACHINES, MORE, MORE_PEOPLE_ONLY, NEW_CHANNEL,
+    NEW_DIVIDER, NEW_MESSAGE, NEW_TAG, NO_CHANNELS, NO_DIRECTS, NO_DIRECTS_HINT, NOT_NOW,
+    NOTHING_YET, NOTIFICATION_CHANNEL, PEOPLE_ONLY, PICK_A_CONVERSATION, PROFILE, REACT_LABEL,
+    REPLY_LABEL, REPLYING_TO, RESULTS, RETRY, SAID_BY, SAVE, SEARCH, SEARCH_IN, SEND, SENDING,
+    SETTINGS_ALL, SHOWN_PATHS, SIGNED_IN, STOP_REPLYING, THREADS, TRY_AGAIN, TURN_ON_NOTIFICATIONS,
+    VERSION, Words, YOU_PAGE, YOUR_NAME, activity_empty, couldnt_label, details_label,
+    guests_label, in_label, mentions_label, menu_bar, more_paths_label, new_label, nothing_called,
+    profile_label, react_with_label, removed_label, scope_label, sharing_label,
+    show_more_paths_label, signin_failed, version_label, words,
 };
 pub use working::{Intending, WorkingPerson, WorkingSet};
 pub use zirc_proto::search::{
