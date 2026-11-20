@@ -1,6 +1,6 @@
 //! Suggestions for the team's playbook ([`zirc_proto::suggestions`]): what the activity store
-//! ([`crate::activity`]) shows went wrong for several sessions the same way, said in the
-//! repository's channel as zirc's own account for the sessions to put into words and a person
+//! ([`crate::activity`]) shows went wrong for several sessions the same way, said in
+//! `#agents`, saying its repository, as zirc's own account for the sessions to put into words and a person
 //! to keep or mute.
 //!
 //! The first kind: a test target that failed the first landing of
@@ -47,7 +47,7 @@ const DAY: u64 = 24 * 3_600;
 /// Something noticed: a target that failed several sessions' first landings.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Noticed {
-    /// The repository's channel, such as `#api`.
+    /// The repository's scope, such as `#api` ([`zirc_chat::names::repo_scope`]).
     pub repo: String,
     /// The target.
     pub target: String,
@@ -62,7 +62,8 @@ fn directory(path: &str) -> &str {
     path.rsplit_once('/').map_or(path, |(parent, _)| parent)
 }
 
-/// The repository's channel a row said in `channel`, one of its rooms, is about.
+/// The repository's scope a row kept under `channel` is about: the scope itself, or one of
+/// the rooms repositories had under their channels before 20 Nov 2026.
 fn repo_of(channel: &str) -> String {
     channel.split('/').next().unwrap_or(channel).to_lowercase()
 }
@@ -223,7 +224,7 @@ pub fn noticed(activity: &Connection, since: i64) -> rusqlite::Result<Vec<Notice
 /// One suggestion, as kept.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
-    /// The repository's channel it's said in.
+    /// The scope of the repository it's about, which its lines in `#agents` say.
     pub repo: String,
     /// The suggestion, as its last step said it.
     pub suggestion: Suggestion,
@@ -241,9 +242,9 @@ impl Entry {
     /// Its step as it stands, to say.
     fn say(&self) -> Say {
         Say {
-            channel: self.repo.clone(),
+            channel: zirc_proto::AGENTS_CHANNEL.to_owned(),
             event: self.suggestion.event(),
-            repo: None,
+            repo: Some(self.repo.trim_start_matches('#').to_owned()),
         }
     }
 }
@@ -301,9 +302,9 @@ impl Kept {
         entry.said = now;
         entry.message = None;
         let mut says = vec![Say {
-            channel: entry.repo.clone(),
+            channel: zirc_proto::AGENTS_CHANNEL.to_owned(),
             event: said.event(),
-            repo: None,
+            repo: Some(entry.repo.trim_start_matches('#').to_owned()),
         }];
         if state == State::Kept {
             says.push(Say {
@@ -387,7 +388,7 @@ impl Kept {
         person: impl Fn(&str) -> bool,
         now: u64,
     ) -> Vec<Say> {
-        let Place::Channel(channel) = &row.place else {
+        let Place::Channel(_) = &row.place else {
             return Vec::new();
         };
         let account = row.said.account.to_lowercase();
@@ -410,9 +411,8 @@ impl Kept {
         let Some((id, state)) = self
             .suggestions
             .iter()
-            .find(|(_, entry)| {
-                entry.message.as_ref() == Some(replied) && entry.repo.eq_ignore_ascii_case(channel)
-            })
+            // The server's ids are its own: one names one message, wherever it was said.
+            .find(|(_, entry)| entry.message.as_ref() == Some(replied))
             .map(|(id, entry)| (id.clone(), entry.suggestion.state))
         else {
             return Vec::new();
@@ -720,7 +720,7 @@ mod tests {
         history::Kept {
             msgid: msgid.into(),
             nanotime: 0,
-            place: Place::Channel("#api".into()),
+            place: Place::Channel("#agents".into()),
             said: Said {
                 kind,
                 nick: account.into(),
@@ -752,7 +752,14 @@ mod tests {
         let person = |account: &str| account == "ada";
         let mut kept = Kept::default();
         let asked = kept.notice(vec![found()], 100);
-        assert_eq!((asked.len(), asked[0].channel.as_str()), (1, "#api"));
+        assert_eq!(
+            (
+                asked.len(),
+                asked[0].channel.as_str(),
+                asked[0].repo.as_deref()
+            ),
+            (1, "#agents", Some("api"))
+        );
         assert_eq!(state_of(&asked[0]).state, State::Asked);
         // Noticed again, it isn't asked about twice.
         assert!(kept.notice(vec![found()], 200).is_empty());

@@ -6,8 +6,7 @@
 //! each repository had channels of its own (`#api`, `#api/agents`, `#api/<branch>`…): they're
 //! left as they were, and nothing makes or reads them.
 
-/// The longest channel name we make. Ergo's default limit is 64 bytes.
-const MAX_CHANNEL_BYTES: usize = 64;
+use zirc_chat::names::channel;
 
 /// The organisation-wide channel, which zirc-chat puts new people in.
 pub use zirc_chat::chat::ORG_CHANNEL;
@@ -45,28 +44,12 @@ impl Project {
 
 /// The scope ([`Project::scope`]) of the repository named `repo`, as a line about it says
 /// it ([`zirc_proto::Message::repo`]): `#api` for `api`.
-#[must_use]
-pub fn scope(repo: &str) -> String {
-    channel(&clean(repo))
-}
+pub use zirc_chat::names::repo_scope as scope;
 
 /// The organisation's channel for the topic `topic`, `#auth`.
 #[must_use]
 pub fn topic_channel(topic: &str) -> String {
     channel(&clean(topic))
-}
-
-/// `#` and a name, cut to fit.
-fn channel(name: &str) -> String {
-    let mut channel = format!("#{name}");
-    if channel.len() > MAX_CHANNEL_BYTES {
-        let mut end = MAX_CHANNEL_BYTES;
-        while !channel.is_char_boundary(end) {
-            end -= 1;
-        }
-        channel.truncate(end);
-    }
-    channel
 }
 
 /// Lowercase, with only what channel names and URLs agree on, as every channel part is
@@ -156,6 +139,7 @@ fn repo_name(url: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zirc_chat::names::MAX_CHANNEL_BYTES;
 
     fn api() -> Project {
         Project::new(Some("git@github.com:Acme/API.git"), "checkout")

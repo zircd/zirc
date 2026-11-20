@@ -983,19 +983,11 @@ pub struct Delivery {
 }
 
 impl Delivery {
-    /// What it's about, for keying it by repository: in a room every repository shares
-    /// (`#agents`, `#gotchas`), the scope of the repository it says
-    /// ([`zirc_proto::Message::repo`], [`crate::project::scope`]); else, as in a topic, its
-    /// channel.
+    /// What it counts as said in, for keying it by repository
+    /// ([`zirc_chat::names::scope_of`]): in `#agents` or `#gotchas`, its repository's scope.
     #[must_use]
     pub fn scope(&self) -> String {
-        let shared = [zirc_proto::AGENTS_CHANNEL, zirc_proto::gotchas::CHANNEL]
-            .iter()
-            .any(|room| room.eq_ignore_ascii_case(&self.channel));
-        match self.message.repo.as_deref() {
-            Some(repo) if shared => crate::project::scope(repo),
-            _ => self.channel.clone(),
-        }
+        zirc_chat::names::scope_of(&self.channel, self.message.repo.as_deref())
     }
 
     /// `message` from `from` in `channel`, with nothing the server says of it: as zircd's own

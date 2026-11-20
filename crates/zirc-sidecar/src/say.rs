@@ -47,6 +47,9 @@ pub struct Say {
     /// What CI's post asks of its readers, when CI says; an integration's has none.
     #[serde(default)]
     pub level: Option<zirc_proto::Level>,
+    /// The repository it's about, by name ([`Message::repo`]), as CI says in `#agents`.
+    #[serde(default)]
+    pub repo: Option<String>,
 }
 
 /// An integration's nick, as zirc-proto says (`zirc-` and a short plain name), and not one of
@@ -172,6 +175,7 @@ impl Say {
         );
         message.app = zirc_proto::app_label(self.nick.trim_start_matches("zirc-"));
         message.level = level;
+        message.repo.clone_from(&self.repo);
         Ok(message)
     }
 }
@@ -314,6 +318,7 @@ mod tests {
             data,
             ci: false,
             level: None,
+            repo: None,
         }
     }
 
@@ -329,9 +334,16 @@ mod tests {
     fn ci_says_a_landing_as_zirc_ci_with_its_card_and_lines() {
         let data = json!({"landing": "web/7", "build": "7", "state": "failed", "session": "cc-1"});
         let text = "cc-1: build 7 failed\r\n- failed: `//web:e2e`\u{1}";
-        let message = ci("x-zirc/landing", text, data).message().unwrap();
+        let said = Say {
+            channel: zirc_proto::AGENTS_CHANNEL.into(),
+            repo: Some("web".into()),
+            ..ci("x-zirc/landing", text, data)
+        };
+        let message = said.message().unwrap();
         assert_eq!(message.session, "ci");
         assert_eq!(message.app.as_deref(), Some("ci"));
+        // In #agents, it says its repository.
+        assert_eq!(message.repo.as_deref(), Some("web"));
         let Event::Custom { data, text, .. } = &message.event else {
             panic!("not a custom event")
         };

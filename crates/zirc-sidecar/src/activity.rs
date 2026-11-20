@@ -216,6 +216,9 @@ pub struct Fact {
     pub task: Option<String>,
     /// A few fields of its data ([`metadata`]), never text.
     pub data: Option<Value>,
+    /// The repository it's about ([`Message::repo`]): a row said in `#agents` is kept under
+    /// the repository's scope, `#<repo>` ([`zirc_chat::names::scope_of`]).
+    pub repo: Option<String>,
 }
 
 impl Fact {
@@ -233,6 +236,7 @@ impl Fact {
                 session: Some(message.session.clone()).filter(|s| !s.is_empty()),
                 account,
                 kind: "text".into(),
+                repo: message.repo.clone(),
                 ..Self::default()
             };
         }
@@ -249,6 +253,7 @@ impl Fact {
                 .and_then(|value| value.as_str().map(str::to_owned)),
             task: message.task.as_deref().and_then(zirc_proto::task_id),
             data: metadata(message),
+            repo: message.repo.clone(),
         }
     }
 }
@@ -496,6 +501,7 @@ pub(crate) fn insert(
     fact: &Fact,
 ) -> rusqlite::Result<()> {
     let data = fact.data.as_ref().map(Value::to_string);
+    let channel = channel.map(|channel| zirc_chat::names::scope_of(channel, fact.repo.as_deref()));
     let again = fact.kind == "working"
         && fact.session.is_some()
         && connection
@@ -1110,6 +1116,24 @@ mod tests {
         let again = rows(&store, 0, 0, 100, true).unwrap();
         assert_eq!(msgids(&again[..5]), ["m1", "m3", "m4", "m6", "m7"]);
         assert_eq!(again.len(), 6, "the live record kept");
+    }
+
+    #[test]
+    fn a_row_in_agents_is_kept_under_its_repositorys_scope() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = open(&dir.path().join("activity.db")).unwrap();
+        let said = |repo: Option<&str>| Message {
+            repo: repo.map(str::to_owned),
+            ..Message::new("cc-1", Event::Text { body: "x".into() })
+        };
+        for (at, channel, repo) in [(1, "#agents", Some("API")), (2, "#auth", Some("api"))] {
+            let fact = Fact::of_message(Some("ada-mbp".into()), &said(repo));
+            insert(&store, None, None, at, Some(channel), false, &fact).unwrap();
+        }
+        let kept = rows(&store, 0, 0, 10, true).unwrap();
+        let channels: Vec<_> = kept.iter().map(|row| row.channel.as_deref()).collect();
+        // A topic's line is the topic's, whatever repository it says.
+        assert_eq!(channels, [Some("#api"), Some("#auth")]);
     }
 
     #[test]

@@ -2096,18 +2096,19 @@ async fn say_as_zirc(
         .map_err(|failure| failure.to_string())
 }
 
-/// Says a change to the team's hints, as zirc's own account, in the repository's channel, or
-/// `#ops` for the organisation's: what each machine's zircd takes to read them again, and what
-/// people see of who changed what. A failure is logged; machines read them again when they
-/// next connect.
+/// Says a change to the team's hints, as zirc's own account, in `#agents` saying its
+/// repository, or `#ops` for the organisation's: what each machine's zircd takes to read them
+/// again, and what people see of who changed what. A failure is logged; machines read them
+/// again when they next connect.
 async fn tell_hints_changed(ergo: Arc<Ergo>, change: zirc_proto::hints::Change) {
-    let channel = if change.hint.scope == zirc_proto::hints::ORG {
-        zirc_proto::state::CHANNEL
+    let (channel, repo) = if change.hint.scope == zirc_proto::hints::ORG {
+        (zirc_proto::state::CHANNEL, None)
     } else {
-        change.hint.scope.as_str()
+        let repo = change.hint.scope.trim_start_matches('#').to_owned();
+        (zirc_proto::AGENTS_CHANNEL, Some(repo))
     };
     let changed = zirc_proto::hints::Changed::of_change(&change);
-    if let Err(failure) = say_as_zirc(&ergo, channel, changed.event(&change), None).await {
+    if let Err(failure) = say_as_zirc(&ergo, channel, changed.event(&change), repo).await {
         warn!(%failure, channel, "couldn't say the hints changed");
     }
 }

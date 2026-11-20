@@ -89,9 +89,59 @@ pub fn channel_part(name: &str) -> String {
         .to_owned()
 }
 
+/// The longest channel name zirc makes. Ergo's default limit is 64 bytes.
+pub const MAX_CHANNEL_BYTES: usize = 64;
+
+/// `#` and `name`, cut to fit a channel's name ([`MAX_CHANNEL_BYTES`]).
+#[must_use]
+pub fn channel(name: &str) -> String {
+    let mut channel = format!("#{name}");
+    if channel.len() > MAX_CHANNEL_BYTES {
+        let mut end = MAX_CHANNEL_BYTES;
+        while !channel.is_char_boundary(end) {
+            end -= 1;
+        }
+        channel.truncate(end);
+    }
+    channel
+}
+
+/// What zirc keys what's said about the repository named `repo` by, `#api` for `api`: how
+/// zircd, hints, shared states and the server's activity store have named a repository since
+/// it had a channel of that name. It's no channel now.
+#[must_use]
+pub fn repo_scope(repo: &str) -> String {
+    channel(&channel_part(repo))
+}
+
+/// What a line said in `channel` about `repo` ([`zirc_proto::Message::repo`]) counts as said
+/// in: in a room every repository shares ([`zirc_proto::AGENTS_CHANNEL`],
+/// [`zirc_proto::gotchas::CHANNEL`]), its repository's scope ([`repo_scope`]); else, as in a
+/// topic, its channel.
+#[must_use]
+pub fn scope_of(channel: &str, repo: Option<&str>) -> String {
+    let shared = [zirc_proto::AGENTS_CHANNEL, zirc_proto::gotchas::CHANNEL]
+        .iter()
+        .any(|room| room.eq_ignore_ascii_case(channel));
+    match repo {
+        Some(repo) if shared => repo_scope(repo),
+        _ => channel.to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_line_in_a_shared_room_counts_as_its_repositorys() {
+        assert_eq!(repo_scope("API"), "#api");
+        assert_eq!(scope_of("#agents", Some("api")), "#api");
+        assert_eq!(scope_of("#Gotchas", Some("api")), "#api");
+        assert_eq!(scope_of("#agents", None), "#agents");
+        assert_eq!(scope_of("#auth", Some("api")), "#auth");
+        assert_eq!(repo_scope(&"x".repeat(100)).len(), MAX_CHANNEL_BYTES);
+    }
 
     #[test]
     fn makes_nicks_irc_accepts() {
