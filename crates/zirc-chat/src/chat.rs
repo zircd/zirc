@@ -95,6 +95,7 @@ use zirc_line::Line;
 use zirc_line::multiline::{self, Batches, Limits};
 use zirc_proto::{Event, Message};
 
+pub use crate::connection::CONNECTING;
 pub use activity::{ActivityKind, ActivityRow, InboxButton, MENTIONED, REACTED, REPLIED, UNREAD};
 pub use agent_activity::{
     AGENTS_GLYPH, AGENTS_LABEL, ActivityEntry, AgentHeader, AgentIntro, ReadOnlyNote,

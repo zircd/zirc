@@ -921,6 +921,14 @@ pub struct Words {
     pub menu_sign_out_everything: String,
     /// What a screen reader says of a conversation's muted mark: `muted`.
     pub muted: String,
+    /// The mark before a reply's quote: `↪`.
+    pub quote_mark: String,
+    /// The message field and the empty pane before it's ever connected: `Connecting…`.
+    pub connecting: String,
+    /// Jump to's key, beside its field: `⌘K`.
+    pub jump_key: String,
+    /// Search everywhere's key, beside its row: `⌘⇧F`.
+    pub search_everywhere_key: String,
     /// The composer's attach menu, picking a photo: `Photo`.
     pub photo: String,
     /// The composer's attach menu, picking a file: `File`.
@@ -1108,6 +1116,10 @@ pub fn words() -> Words {
         react_prompt: labels::REACT_PROMPT.to_owned(),
         menu_sign_out_everything: menu_bar::SIGN_OUT_EVERYTHING.to_owned(),
         muted: labels::MUTED.to_owned(),
+        quote_mark: plain::QUOTE_MARK.to_owned(),
+        connecting: crate::connection::CONNECTING.to_owned(),
+        jump_key: labels::keys::JUMP_TO.to_owned(),
+        search_everywhere_key: labels::keys::SEARCH_EVERYWHERE.to_owned(),
         photo: labels::PHOTO.to_owned(),
         file: labels::FILE.to_owned(),
         card: labels::CARD.to_owned(),

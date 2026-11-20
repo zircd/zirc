@@ -332,6 +332,26 @@ pub mod tui {
     pub const SCROLLED_BACK: &str = "scrolled back, PgDn for newer";
 }
 
+/// What a computer's keys for Jump to, search here and search everywhere are, as every app's
+/// hint beside them says them.
+pub mod keys {
+    /// Jump to.
+    pub const JUMP_TO: &str = "⌘K";
+    /// Search in the conversation shown.
+    pub const SEARCH: &str = "⌘F";
+    /// Search everywhere.
+    pub const SEARCH_EVERYWHERE: &str = "⌘⇧F";
+}
+
+/// The desktop's status line before there's a server: `no server yet`.
+pub const NO_SERVER_YET: &str = "no server yet";
+
+/// The desktop's status line while connected: `mattias on irc.zirc.dev`.
+#[must_use]
+pub fn signed_in_on(me: &str, host: &str) -> String {
+    format!("{me} on {host}")
+}
+
 /// What the desktop's shortcuts do, as its ⌘/ list says them.
 pub mod shortcuts {
     /// ⌘K.

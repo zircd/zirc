@@ -376,8 +376,9 @@ pub enum BannerKind {
 /// How a [`Status::banner`] starts once it's offline.
 const OFFLINE: &str = "Offline";
 
-/// What a [`Status::banner`] says while getting on, before it's ever been connected.
-const CONNECTING: &str = "Connecting…";
+/// What a [`Status::banner`] says while getting on, before it's ever been connected; what
+/// an app's message field and empty pane say then too.
+pub const CONNECTING: &str = "Connecting…";
 
 /// What a screen reader hears once offline ([`Status::banner_spoken`]), until it's connected.
 pub const OFFLINE_SPOKEN: &str = "Offline. Retrying automatically.";
