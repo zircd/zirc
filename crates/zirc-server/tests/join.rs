@@ -63,7 +63,9 @@ async fn it_joins_once_and_is_managed_with_zirc_dev_s_tokens() {
     };
     let noted = join::joined(&server.options.data).expect("joined");
     assert_eq!(noted.organisation, "acme");
-    let request = heard.lock().unwrap()[0].clone();
+    // The running server's: one that stopped as it started, on a port taken, joined too, with
+    // its own ports, before start_with tried again on others.
+    let request = heard.lock().unwrap().last().cloned().expect("a join");
     assert_eq!(
         (request.host.as_str(), request.port),
         ("irc.acme.test", server.irc)
