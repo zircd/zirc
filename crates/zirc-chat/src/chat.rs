@@ -125,7 +125,9 @@ pub use conversation::{
     for_agent, is_channel, target, to_agent,
 };
 pub use copied::{CopiedMessage, copied};
-pub use correcting::{EDIT_LABEL, EDITED, EDITING, STOP_EDITING, TOO_LATE_TO_EDIT, editable};
+pub use correcting::{
+    EDIT_LABEL, EDITED, EDITING, STOP_EDITING, TOO_LATE_TO_EDIT, editable, editing_after,
+};
 pub use describe::{
     Described, EventKind, RUN_GAP, copy_text, describe, entry_text, first_link, notice_text, sender,
 };

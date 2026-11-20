@@ -21,6 +21,14 @@ pub const EDITED: &str = "(edited)";
 /// What the composer says while it corrects a message, over its old words.
 pub const EDITING: &str = "Editing";
 
+/// What follows [`EDITING`] in the bar over the composer while it corrects a message whose
+/// words are `text`: `: ` and its first line, so every app's bar reads `Editing: teh fix`
+/// (the user's choice, 20 Nov 2026), [`EDITING`] in bold.
+#[must_use]
+pub fn editing_after(text: &str) -> String {
+    format!(": {}", text.lines().next().unwrap_or_default())
+}
+
 /// What stops correcting a message, for a screen reader, beside [`EDITING`].
 pub const STOP_EDITING: &str = "Stop editing";
 
@@ -109,5 +117,18 @@ impl Chat {
             entry.kind.clone(),
             entry.formatted.clone(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EDITING, editing_after};
+
+    #[test]
+    fn the_editing_bar_says_the_first_line_after_editing() {
+        let said = |text: &str| format!("{EDITING}{}", editing_after(text));
+        assert_eq!(said("teh fix"), "Editing: teh fix");
+        assert_eq!(said("first\nsecond"), "Editing: first");
+        assert_eq!(said(""), "Editing: ");
     }
 }
