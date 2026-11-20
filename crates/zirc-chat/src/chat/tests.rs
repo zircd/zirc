@@ -8763,6 +8763,9 @@ fn the_server_channel_shows_notices_and_sends_what_is_typed_there_as_it_is() {
         crate::chat::SERVER_TITLE
     );
     assert_eq!(chat.header_title("#api"), chat.short_title("#api"));
+    // The AGENT tag is any agent session's, a teammate's too, and nothing else's.
+    assert!(chat.shows_agent_tag("maya-mbp/cc-1"));
+    assert!(!chat.shows_agent_tag("#api") && !chat.shows_agent_tag("irc.zirc.test"));
 
     // Another conversation shown, the server's stands for nothing shown again.
     let _ = chat.open("#api");

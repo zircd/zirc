@@ -163,6 +163,13 @@ impl Chat {
         agent_name(Some(session), &self.owner_name(&owner)).1
     }
 
+    /// Whether the header of the conversation called `name` carries the AGENT tag: any agent
+    /// session's, a teammate's too (the user's choice, 20 Nov 2026).
+    #[must_use]
+    pub fn shows_agent_tag(&self, name: &str) -> bool {
+        agent(name).is_some()
+    }
+
     /// What every app's header calls the conversation called `name`: a guest's room, to staff,
     /// by the guest's label ([`Chat::guest_header`]); anything else by its short title
     /// ([`Chat::short_title`]), an agent session by what it goes by (the user's choice, 20 Nov
