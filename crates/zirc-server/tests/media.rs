@@ -369,8 +369,9 @@ async fn imgproxy() -> String {
 #[tokio::test(flavor = "multi_thread")]
 async fn images_are_resized_by_imgproxy_reading_them_beside_the_server() {
     let imgproxy = imgproxy().await;
-    let [beside] = zirc_test_ergo::free_ports();
     let Some(server) = common::start_with(|options| {
+        // A port of its own each time the server is started again, as the others are.
+        let [beside] = zirc_test_ergo::free_ports();
         options.beside_listen = Some(([127, 0, 0, 1], beside).into());
         options.beside_url = format!("http://127.0.0.1:{beside}");
         options.imgproxy = Some(imgproxy.clone());
@@ -444,8 +445,9 @@ async fn worker() -> String {
 #[tokio::test(flavor = "multi_thread")]
 async fn videos_play_from_copies_the_worker_makes_when_first_asked_for() {
     let worker = worker().await;
-    let [beside] = zirc_test_ergo::free_ports();
     let Some(server) = common::start_with(|options| {
+        // A port of its own each time the server is started again, as the others are.
+        let [beside] = zirc_test_ergo::free_ports();
         options.beside_listen = Some(([127, 0, 0, 1], beside).into());
         options.beside_url = format!("http://127.0.0.1:{beside}");
         options.media_worker = Some(worker.clone());
