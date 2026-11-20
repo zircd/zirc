@@ -340,7 +340,7 @@ fn agent_card(frame: &mut Frame<'_>, app: &App, nick: &str, session: &str, area:
         lines.push(Line::styled(fit(&heard, text), muted));
     }
     lines.push(Line::default());
-    lines.push(Line::styled("Esc closes", muted));
+    lines.push(Line::styled(zirc_core::chat::labels::ESC_CLOSES, muted));
     let height = u16::try_from(lines.len() + 2)
         .unwrap_or(u16::MAX)
         .min(area.height);
@@ -396,7 +396,10 @@ fn sessions_card(frame: &mut Frame<'_>, app: &App, panel: &SessionsPanel, area: 
             })
             .collect(),
     };
-    lines.push(Line::styled("Esc closes", fg(theme.muted)));
+    lines.push(Line::styled(
+        zirc_core::chat::labels::ESC_CLOSES,
+        fg(theme.muted),
+    ));
     let height = u16::try_from(lines.len() + 2)
         .unwrap_or(u16::MAX)
         .min(area.height);
@@ -457,7 +460,13 @@ fn browse_card(frame: &mut Frame<'_>, app: &App, area: Rect) {
     }
     lines.push(Line::default());
     lines.push(Line::styled(
-        fit("/join #name joins, Tab completes · Esc closes", text),
+        fit(
+            &format!(
+                "/join #name joins, Tab completes · {}",
+                zirc_core::chat::labels::ESC_CLOSES
+            ),
+            text,
+        ),
         fg(theme.muted).add_modifier(Modifier::DIM),
     ));
     let height = u16::try_from(lines.len() + 2)
@@ -544,11 +553,14 @@ fn profile_lines(app: &App, profile: &Profile, width: usize) -> Vec<Line<'static
     }
     lines.push(Line::default());
     let keys = if me {
-        "Esc closes"
+        zirc_core::chat::labels::ESC_CLOSES.to_owned()
     } else {
-        "Enter talks to them · Esc closes"
+        format!(
+            "Enter talks to them · {}",
+            zirc_core::chat::labels::ESC_CLOSES
+        )
     };
-    lines.push(line(keys.to_owned(), muted));
+    lines.push(line(keys, muted));
     lines
 }
 
@@ -1222,7 +1234,10 @@ fn picker_card(frame: &mut Frame<'_>, app: &App, picker: &Picker, area: Rect) {
         .unwrap_or_default();
     lines.push(Line::styled(fit(chosen, text), fg(theme.text)));
     lines.push(Line::styled(
-        fit("Enter reacts · Esc closes", text),
+        fit(
+            &format!("Enter reacts · {}", zirc_core::chat::labels::ESC_CLOSES),
+            text,
+        ),
         fg(theme.muted),
     ));
     let height = u16::try_from(lines.len() + 2)
@@ -2027,7 +2042,7 @@ mod tests {
                 .iter()
                 .any(|row| row.contains(zirc_core::chat::MESSAGE_DETAILS))
         );
-        assert_eq!(app.picked(), Some("m9"), "Esc closes the details first");
+        assert_eq!(app.picked(), Some("m9"), "Esc shuts the details first");
     }
 
     fn row_with<'a>(rows: &'a [String], text: &str) -> &'a str {
@@ -2646,7 +2661,7 @@ mod tests {
         // The switch's halves show theirs, by their words, which fit with two; under it a
         // section's heading folds it.
         assert_eq!(
-            at("Messages"),
+            at(zirc_core::chat::SidebarSection::Direct.label()),
             Some(Target::Tab(zirc_core::chat::SidebarSection::Direct))
         );
         let (x, y) = heading_at(&rows, Shelf::Channels.label());
@@ -2890,7 +2905,13 @@ mod tests {
         assert!(card.contains(" react "), "{card}");
         assert!(row_with(&rows, "search").contains("search tada"), "{card}");
         assert!(card.contains("party popper"), "{card}");
-        assert!(card.contains("Enter reacts · Esc closes"), "{card}");
+        assert!(
+            card.contains(&format!(
+                "Enter reacts · {}",
+                zirc_core::chat::labels::ESC_CLOSES
+            )),
+            "{card}"
+        );
         // The message reacted to stays in view below it.
         assert!(row_with(&rows, "shipped it").contains("▌"), "{card}");
     }
@@ -3249,7 +3270,13 @@ mod tests {
         assert!(card.contains("account alice"), "{card}");
         assert!(card.contains("in #api"), "{card}");
         assert!(card.contains("last said 11:01 here"), "{card}");
-        assert!(card.contains("Enter talks to them · Esc closes"), "{card}");
+        assert!(
+            card.contains(&format!(
+                "Enter talks to them · {}",
+                zirc_core::chat::labels::ESC_CLOSES
+            )),
+            "{card}"
+        );
 
         // A machine's card says whose it is.
         app.key(KeyEvent::from(KeyCode::Esc));
@@ -4073,7 +4100,7 @@ mod tests {
             "  taking: the login bug",
             "  landing: landing login in build 12",
             "  waiting on: its landing, build 12",
-            "Esc closes",
+            zirc_core::chat::labels::ESC_CLOSES,
         ] {
             assert!(card.contains(line), "{line} in\n{card}");
         }

@@ -88,7 +88,7 @@ impl SidebarSection {
     pub fn label(self) -> &'static str {
         match self {
             Self::Channels => "Channels",
-            Self::Direct => "Messages",
+            Self::Direct => super::labels::MESSAGES,
         }
     }
 

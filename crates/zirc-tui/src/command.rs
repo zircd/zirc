@@ -34,6 +34,7 @@ pub const HELP: &[&str] = &[
     "/show [errors|warnings|info|everything]  what this conversation shows; what names",
     "                          you always shows",
     "/press <button>           press a card's button, [Retry], once you've said y",
+    // words-guard: a line of the fixed help table, which says zirc-chat's ESC_CLOSES in passing
     "/sessions                 what every session is doing: Alt-S too, Esc closes it",
     "/editor [choice]          where code links open: automatic, an editor or forge",
     "/assign nick              assign the conversation with a guest to someone",

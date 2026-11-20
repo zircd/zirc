@@ -225,6 +225,7 @@ pub use view::{
     RECONNECT_GAP, SenderKind, Stage, UPDATES_SHOWN, Update, ZIRC_LABEL, actor, app_label,
     day_label, is_system, people_only, sender_kind, trail_stubs,
 };
+pub use words::labels;
 pub use words::{
     ACTIVITY, ACTIVITY_HINT, ADD_REACTION, ADVANCED, ASKING_ZIRC_DEV, ATTACH, BACK,
     BACK_TO_RESULTS, BROWSE_CHANNELS, CANCEL, CHANNEL_NAME, CHECK_THE_CODE, CHOOSE_A_SERVER, CLEAR,

@@ -9,6 +9,8 @@ use ts_rs::TS;
 
 use super::{agent_card, finder, notify::menu, plain, search, settings_list, speaker};
 
+pub mod labels;
+
 /// What the composer says while it replies, before who it answers: `Replying to` bob.
 pub const REPLYING_TO: &str = "Replying to";
 
@@ -801,6 +803,110 @@ pub struct Words {
     pub you: String,
     /// What stands for a name not given yet: `Your name`.
     pub your_name: String,
+    /// While what's drawn next isn't here yet: `Loading…`.
+    pub loading: String,
+    /// While a sign-in finishes: `Signing in…`.
+    pub signing_in: String,
+    /// The button that connects with the server and nick typed in: `Connect`.
+    pub connect: String,
+    /// The title over a sign-in with no organisation: `No organisation yet`.
+    pub no_organisation: String,
+    /// Under `no_organisation`, before `create_or_join` and `then_come_back`.
+    pub no_organisation_note: String,
+    /// `no_organisation_note`'s link: `Create or join one`.
+    pub create_or_join: String,
+    /// What follows `create_or_join`: `, then come back.`.
+    pub then_come_back: String,
+    /// The title over a failed sign-in: `Couldn't sign in`.
+    pub couldnt_sign_in: String,
+    /// Why a guest can't press a card's button.
+    pub card_needs_member: String,
+    /// Why what needs the server can't be done now: `Not connected.`.
+    pub not_connected: String,
+    /// A guest's own room's note, for a screen reader: `Private`.
+    pub room_private: String,
+    /// A guest's own room's note.
+    pub room_private_note: String,
+    /// A public room's note, for a screen reader: `Public`.
+    pub room_public: String,
+    /// A public room's note.
+    pub room_public_note: String,
+    /// The line over the first unread message, for a screen reader: `New messages`.
+    pub new_messages: String,
+    /// The note over a composer writing to a guest, for a screen reader.
+    pub writing_to_guest: String,
+    /// The line of who's typing, for a screen reader: `Typing`.
+    pub typing: String,
+    /// What shuts the people list: `Close people`.
+    pub close_people: String,
+    /// What shuts a person's card: `Close profile`.
+    pub close_profile: String,
+    /// A card's list of what others change too, for a screen reader.
+    pub both_changing: String,
+    /// A message's hover bar, for a screen reader: `Message actions`.
+    pub message_actions: String,
+    /// A card's buttons, for a screen reader: `Card actions`.
+    pub card_actions: String,
+    /// What a copy button says once it has copied: `Copied`.
+    pub copied: String,
+    /// The picture or file shown large, for a screen reader: `Viewer`.
+    pub viewer: String,
+    /// What shuts `viewer`: `Close viewer`.
+    pub close_viewer: String,
+    /// What opens what `viewer` shows in a tab: `Open in a new tab`.
+    pub open_in_new_tab: String,
+    /// When a guest page's captcha can't load.
+    pub captcha_failed: String,
+    /// What signs in, as a link: `Sign in`.
+    pub sign_in: String,
+    /// After `sign_in` on a guest's page.
+    pub to_chat_as_yourself: String,
+    /// A guest's name field while it's empty.
+    pub guest_name_hint: String,
+    /// A guest's name field's label: `Your name (optional)`.
+    pub your_name_optional: String,
+    /// While a guest joins: `Joining…`.
+    pub joining: String,
+    /// What a guest joins with: `Start chatting`.
+    pub start_chatting: String,
+    /// The composer's reply line, for a screen reader: `Replying`.
+    pub replying: String,
+    /// The composer's completions, for a screen reader: `Suggestions`.
+    pub suggestions: String,
+    /// The emoji picker, and the button that opens it: `Emoji`.
+    pub emoji: String,
+    /// The search field, for a screen reader: `Search messages`.
+    pub search_messages: String,
+    /// A search's filters, for a screen reader: `Filters`.
+    pub filters: String,
+    /// Who a guest's conversation can be assigned to: `Assign to`.
+    pub assign_to: String,
+    /// What opens what else an admin can do to a guest.
+    pub more_guest_actions: String,
+    /// The list of conversations, for a screen reader: `Conversations`.
+    pub conversations: String,
+    /// The sidebar's tabs, for a screen reader: `Sidebar`.
+    pub sidebar: String,
+    /// The list of messages, for a screen reader: `Messages`.
+    pub messages: String,
+    /// The dot on a guest's conversation assigned to the person.
+    pub assigned_to_you: String,
+    /// When a file's upload fails.
+    pub upload_failed: String,
+    /// When zirc.dev's web app can't be reached.
+    pub web_app_unreachable: String,
+    /// The person's account, as a menu's name: `Account`.
+    pub account: String,
+    /// Said beside what Esc closes: `Esc closes`.
+    pub esc_closes: String,
+    /// A sign-in's title: `Sign in to Zirc`.
+    pub sign_in_to_zirc: String,
+    /// The button that signs in in the browser: `Sign in with zirc.dev`.
+    pub sign_in_with_zirc_dev: String,
+    /// The button that asks who a guest's conversation goes to: `Assign to…`.
+    pub assign_to_label: String,
+    /// A message's menu item that opens the emoji to react with: `React…`.
+    pub react_prompt: String,
 }
 
 /// The core's fixed words ([`Words`]).
@@ -919,5 +1025,57 @@ pub fn words() -> Words {
         version: VERSION.to_owned(),
         you: YOU_PAGE.to_owned(),
         your_name: YOUR_NAME.to_owned(),
+        loading: labels::LOADING.to_owned(),
+        signing_in: labels::SIGNING_IN.to_owned(),
+        connect: labels::CONNECT.to_owned(),
+        no_organisation: labels::NO_ORGANISATION.to_owned(),
+        no_organisation_note: labels::NO_ORGANISATION_NOTE.to_owned(),
+        create_or_join: labels::CREATE_OR_JOIN.to_owned(),
+        then_come_back: labels::THEN_COME_BACK.to_owned(),
+        couldnt_sign_in: super::COULDNT_SIGN_IN.to_owned(),
+        card_needs_member: labels::CARD_NEEDS_MEMBER.to_owned(),
+        not_connected: labels::NOT_CONNECTED.to_owned(),
+        room_private: labels::ROOM_PRIVATE.to_owned(),
+        room_private_note: labels::ROOM_PRIVATE_NOTE.to_owned(),
+        room_public: labels::ROOM_PUBLIC.to_owned(),
+        room_public_note: labels::ROOM_PUBLIC_NOTE.to_owned(),
+        new_messages: labels::NEW_MESSAGES.to_owned(),
+        writing_to_guest: labels::WRITING_TO_GUEST.to_owned(),
+        typing: labels::TYPING.to_owned(),
+        close_people: labels::CLOSE_PEOPLE.to_owned(),
+        close_profile: labels::CLOSE_PROFILE.to_owned(),
+        both_changing: labels::BOTH_CHANGING.to_owned(),
+        message_actions: labels::MESSAGE_ACTIONS.to_owned(),
+        card_actions: labels::CARD_ACTIONS.to_owned(),
+        copied: labels::COPIED.to_owned(),
+        viewer: labels::VIEWER.to_owned(),
+        close_viewer: labels::CLOSE_VIEWER.to_owned(),
+        open_in_new_tab: labels::OPEN_IN_NEW_TAB.to_owned(),
+        captcha_failed: labels::CAPTCHA_FAILED.to_owned(),
+        sign_in: labels::SIGN_IN.to_owned(),
+        to_chat_as_yourself: labels::TO_CHAT_AS_YOURSELF.to_owned(),
+        guest_name_hint: labels::GUEST_NAME_HINT.to_owned(),
+        your_name_optional: labels::your_name_optional(),
+        joining: labels::JOINING.to_owned(),
+        start_chatting: labels::START_CHATTING.to_owned(),
+        replying: labels::REPLYING.to_owned(),
+        suggestions: labels::SUGGESTIONS.to_owned(),
+        emoji: labels::EMOJI.to_owned(),
+        search_messages: labels::SEARCH_MESSAGES.to_owned(),
+        filters: labels::FILTERS.to_owned(),
+        assign_to: labels::ASSIGN_TO.to_owned(),
+        more_guest_actions: labels::MORE_GUEST_ACTIONS.to_owned(),
+        conversations: labels::CONVERSATIONS.to_owned(),
+        sidebar: labels::SIDEBAR.to_owned(),
+        messages: labels::MESSAGES.to_owned(),
+        assigned_to_you: labels::ASSIGNED_TO_YOU.to_owned(),
+        upload_failed: labels::UPLOAD_FAILED.to_owned(),
+        web_app_unreachable: labels::WEB_APP_UNREACHABLE.to_owned(),
+        account: settings_list::SETTINGS_ACCOUNT.to_owned(),
+        esc_closes: labels::ESC_CLOSES.to_owned(),
+        sign_in_to_zirc: labels::sign_in_to_zirc(),
+        sign_in_with_zirc_dev: labels::SIGN_IN_WITH_ZIRC_DEV.to_owned(),
+        assign_to_label: labels::ASSIGN_TO_LABEL.to_owned(),
+        react_prompt: labels::REACT_PROMPT.to_owned(),
     }
 }

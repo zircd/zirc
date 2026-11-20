@@ -141,7 +141,7 @@ impl GuestAction {
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
-            Self::Assign => "Assign to…",
+            Self::Assign => super::labels::ASSIGN_TO_LABEL,
             Self::Close => "Close",
             Self::Ban => "Ban",
             Self::Unban => "Unban",

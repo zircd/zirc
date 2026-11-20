@@ -841,7 +841,7 @@ pub fn code_actions(code: &CodeRef, editor: Option<Editor>) -> Vec<CodeAction> {
     let mut actions = Vec::new();
     if let (Some(local), Some(editor)) = (&code.local, editor) {
         actions.push(CodeAction {
-            label: format!("Open in {}", editor.name()),
+            label: super::labels::open_in_label(editor.name()),
             url: editor.link(local, code.line, code.column),
         });
     }
