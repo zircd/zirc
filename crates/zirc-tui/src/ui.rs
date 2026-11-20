@@ -1462,8 +1462,8 @@ fn reactions_line(app: &App, chips: &[rows::Chip]) -> Line<'static> {
     Line::from(spans)
 }
 
-/// A card's buttons, from the text column: each a tonal word, as every app draws them,
-/// `/press` presses one.
+/// A card's buttons, from the text column: the first a tonal word and the rest outlined (in
+/// brackets), as every app draws them (zirc-chat's `CardAction::primary`); `/press` presses one.
 fn buttons_line(app: &App, labels: &[String]) -> Line<'static> {
     let theme = app.theme;
     let mut spans = vec![Span::raw(" ".repeat(rows::INDENT))];
@@ -1471,12 +1471,16 @@ fn buttons_line(app: &App, labels: &[String]) -> Line<'static> {
         if i > 0 {
             spans.push(Span::raw(" ".repeat(rows::CHIP_GAP)));
         }
-        spans.push(Span::styled(
-            format!(" {label} "),
-            fg(theme.tonal_text)
-                .bg(colour(theme.tonal_ground))
-                .add_modifier(Modifier::BOLD),
-        ));
+        spans.push(if i == 0 {
+            Span::styled(
+                format!(" {label} "),
+                fg(theme.tonal_text)
+                    .bg(colour(theme.tonal_ground))
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::styled(format!("[{label}]"), fg(theme.text))
+        });
     }
     Line::from(spans)
 }
@@ -2488,15 +2492,13 @@ mod tests {
         );
         assert!(!rows.iter().any(|row| row.contains("Abort")));
 
-        // /press asks first; y presses, through zirc.dev.
+        // /press presses through zirc.dev at once: the card doesn't ask first, so no app
+        // does (the user's choice, 20 Nov 2026).
         for c in "/press retry".chars() {
             app.key(KeyEvent::from(KeyCode::Char(c)));
         }
-        app.key(KeyEvent::from(KeyCode::Enter));
-        let (rows, _) = draw(&app, 140, 24);
-        row_with(&rows, "press Redeploy? y/n");
-        let Action::Press(press) = app.key(KeyEvent::from(KeyCode::Char('y'))) else {
-            panic!("y presses");
+        let Action::Press(press) = app.key(KeyEvent::from(KeyCode::Enter)) else {
+            panic!("Enter presses");
         };
         assert_eq!(
             (

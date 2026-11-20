@@ -421,8 +421,12 @@ pub struct CardAction {
     pub id: String,
     /// What the button says.
     pub label: String,
-    /// What to ask before pressing it, if anything.
+    /// What to ask before pressing it, if anything; the ask's other choice is
+    /// [`super::CANCEL`] in every app (the user's choice, 20 Nov 2026).
     pub confirm: Option<String>,
+    /// Whether it's the card's first, drawn tonal; the rest are outlined, in every app (the
+    /// user's choice, 20 Nov 2026).
+    pub primary: bool,
 }
 
 /// How a shared file is drawn ([`file::shape`]).
@@ -955,10 +959,12 @@ impl<'a> Layout<'a> {
             .actions
             .iter()
             .filter(|action| self.chat.shows_action(card, action))
-            .map(|action| CardAction {
+            .enumerate()
+            .map(|(at, action)| CardAction {
                 id: action.id.clone(),
                 label: action.label.clone(),
                 confirm: action.confirm.clone(),
+                primary: at == 0,
             })
             .collect();
         (!actions.is_empty()).then(|| CardButtons {
@@ -2077,6 +2083,7 @@ mod tests {
                     id: "approve".into(),
                     label: "APPROVE".into(),
                     confirm: Some("approve?".into()),
+                    primary: true,
                 }],
             })
         );

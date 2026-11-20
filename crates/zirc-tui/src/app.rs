@@ -774,9 +774,10 @@ impl App {
         self.pressing.as_ref()
     }
 
-    /// Asks the person to confirm pressing the button `name`, its id or its label, on the
-    /// card picked with Shift-↑, or the latest card in the conversation shown.
-    fn press(&mut self, name: &str) -> Vec<Line> {
+    /// Presses the button `name`, its id or its label, on the card picked with Shift-↑, or the
+    /// latest card in the conversation shown: asking first only when the card asks, as in
+    /// every app (the user's choice, 20 Nov 2026).
+    fn press(&mut self, name: &str) -> Action {
         let picked = self.picked().map(str::to_owned);
         let channel = self.current().name.clone();
         let cards: Vec<(String, zirc_proto::card::Card, Option<String>)> = self
@@ -796,28 +797,30 @@ impl App {
             .find(|(.., id)| id.is_some() && *id == picked)
             .or_else(|| cards.last());
         let Some((sender, card, _)) = card else {
-            return self.refuse("there's no card here to press");
+            return Action::Send(self.refuse("there's no card here to press"));
         };
         let Some(action) = card.actions.iter().find(|action| {
             (action.id.eq_ignore_ascii_case(name) || action.label.eq_ignore_ascii_case(name))
                 && self.chat.shows_action(card, action)
         }) else {
-            return self.refuse(&format!("\"{}\" has no button {name} for you", card.title));
+            return Action::Send(
+                self.refuse(&format!("\"{}\" has no button {name} for you", card.title)),
+            );
         };
-        self.pressing = Some(Pressing {
-            press: zirc_proto::card::Press {
-                channel,
-                sender: sender.clone(),
-                card: card.id.clone(),
-                action: action.id.clone(),
-            },
-            ask: action
-                .confirm
-                .clone()
-                .unwrap_or_else(|| format!("press {}?", action.label)),
-        });
+        let press = zirc_proto::card::Press {
+            channel,
+            sender: sender.clone(),
+            card: card.id.clone(),
+            action: action.id.clone(),
+        };
         self.pressing_card = Some(format!("{card:?}"));
-        Vec::new()
+        match action.confirm.clone() {
+            Some(ask) => {
+                self.pressing = Some(Pressing { press, ask });
+                Action::Send(Vec::new())
+            }
+            None => Action::Press(press),
+        }
     }
 
     /// What came of pressing a card's button, `press`: what the integration said, or why it
@@ -828,8 +831,8 @@ impl App {
         answer: Result<Option<String>, String>,
     ) {
         let said = match answer {
-            Ok(message) => message.unwrap_or_else(|| format!("{} pressed", press.action)),
-            Err(why) => format!("couldn't: {why}"),
+            Ok(message) => message.unwrap_or_else(|| zirc_core::chat::DONE.to_owned()),
+            Err(why) => zirc_core::chat::couldnt_label(&why),
         };
         let then = self.pressing_card.take().unwrap_or_default();
         self.pressed
@@ -2135,7 +2138,7 @@ impl App {
             Command::People => self.toggle_people(),
             Command::Show(choice) => self.show(choice.as_deref()),
             Command::Editor(choice) => self.choose_editor(choice.as_deref()),
-            Command::Press(name) => self.press(&name),
+            Command::Press(name) => return self.press(&name),
             Command::Sessions => return self.open_sessions(),
             Command::Help => self.help(),
             Command::Profile => return self.profile_page(),
