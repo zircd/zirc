@@ -83,7 +83,8 @@ pub struct ListRow {
     /// A line under it: what an agent session at work said it's taking on.
     pub note: Option<String>,
     /// Whether there's a conversation to open: a repository's channel whose rooms alone
-    /// we're in has none.
+    /// we're in has none. Every row that opens one has its menu ([`Chat::row_menu`]), in
+    /// every app.
     pub opens: bool,
     /// Whether it's a direct message, with a person, a group, an agent session, a machine
     /// or a guest.
