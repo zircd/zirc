@@ -51,48 +51,39 @@ pub(crate) fn duration_arg(text: &str) -> Result<u64, String> {
         .ok_or_else(|| format!("{text}: say how long, such as 90s, 20m, 2h, 3d or 2w"))
 }
 
-/// Where a post goes, other than the repository's channel.
+/// Where a post goes, other than `#agents`.
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub(crate) enum Scope {
-    /// The repository's channel, #<repo>, where every session and person working on it is.
-    Repo,
-    /// Your branch's channel, #<repo>/<branch>, for a pushed branch others work on too.
-    Branch,
     /// The organisation's channel, #general.
     Org,
 }
 
-/// Which channel a post or event goes to: as the team's configuration says, unless one of
-/// these does.
+/// Which channel a post or event goes to: the organisation's `#agents`, unless one of these
+/// says otherwise.
 #[derive(Debug, Args)]
 pub(crate) struct Destination {
-    /// The repository whose channels to post to. Defaults to the current directory.
+    /// The repository it's about. Defaults to the current directory.
     #[arg(long)]
     repo: Option<PathBuf>,
-    /// Post to the repository's channel, your pushed branch's, or the organisation's
-    /// (#general), rather than where posts go by default.
+    /// Post to the organisation's channel (#general) rather than #agents.
     #[arg(long, value_enum, conflicts_with = "topic")]
     to: Option<Scope>,
-    /// Post to a topic you've joined: the repository's, or with --org, the organisation's.
+    /// Post to a topic you've joined, the organisation's #<topic>.
     #[arg(long)]
     topic: Option<String>,
-    /// With --topic, the organisation's topic rather than the repository's.
-    #[arg(long, requires = "topic")]
+    /// Topics are the organisation's since 20 Nov 2026: taken, and nothing more, for what
+    /// was written before.
+    #[arg(long, requires = "topic", hide = true)]
     org: bool,
 }
 
 impl Destination {
-    /// The repository, and which of its channels.
+    /// The repository, and which channel.
     pub(crate) fn target(self) -> (Option<PathBuf>, Target) {
         let target = match (self.to, self.topic) {
-            (_, Some(name)) => Target::Topic {
-                name,
-                org: self.org,
-            },
-            (Some(Scope::Repo), None) => Target::Repo,
-            (None, None) => Target::Default,
-            (Some(Scope::Branch), None) => Target::Branch,
+            (_, Some(name)) => Target::Topic { name },
             (Some(Scope::Org), None) => Target::Org,
+            (None, None) => Target::Agents,
         };
         (self.repo, target)
     }

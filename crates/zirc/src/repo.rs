@@ -8,7 +8,7 @@ use clap::Subcommand;
 use zirc_core::ipc::{Repo, Request, Response};
 use zirc_proto::PROGRAM;
 
-use crate::client::{NOT_WATCHING, ask_in, channel_in, here, several, shown};
+use crate::client::{NOT_WATCHING, ask_in, here, several, shown, watched_in};
 use crate::status::shared_warnings;
 
 #[derive(Debug, Subcommand)]
@@ -113,11 +113,11 @@ pub(crate) async fn repo(socket: &Path, command: RepoCommand, out: &mut impl Wri
     }) {
         writeln!(
             out,
-            "watching {} in {}: see who's working on what there with `zirc who`, or \
+            "watching {} as {}: see who's working on what there with `zirc who`, or \
              follow it with `zirc watch`",
             shown(&repo.path),
-            channel_in(
-                &repo.channel,
+            watched_in(
+                repo,
                 several(&repos).then_some(repo.org.as_deref()).flatten()
             )
         )?;
@@ -127,7 +127,7 @@ pub(crate) async fn repo(socket: &Path, command: RepoCommand, out: &mut impl Wri
         // A person adding it, not an agent: where its agents will talk, and, until the
         // repository's instructions say so, how to have Claude Code use zirc at all.
         if adding.is_none() {
-            for line in for_agents(&repo.path, &repo.channel) {
+            for line in for_agents(&repo.path) {
                 writeln!(out, "{line}")?;
             }
             writeln!(out)?;
@@ -141,12 +141,7 @@ pub(crate) async fn repo(socket: &Path, command: RepoCommand, out: &mut impl Wri
         let several = several(&repos);
         for repo in &repos {
             let org = several.then_some(repo.org.as_deref()).flatten();
-            write!(
-                out,
-                "{} {}",
-                channel_in(&repo.channel, org),
-                shown(&repo.path)
-            )?;
+            write!(out, "{} {}", watched_in(repo, org), shown(&repo.path))?;
             // Each session working there.
             let sessions: Vec<&str> = repo.sessions.iter().map(|it| it.session.as_str()).collect();
             if sessions.is_empty() {
@@ -163,18 +158,16 @@ pub(crate) async fn repo(socket: &Path, command: RepoCommand, out: &mut impl Wri
 pub(crate) const TRY: &str = "Try it: start two Claude Code sessions here and ask both to change the \
      same file. The second hears about the first before it starts.";
 
-/// What `zirc repo add` tells a person about the repository at `root`, watched in
-/// `channel`: where its agents talk, that Claude Code's sessions there use zirc by
-/// themselves, through the zirc skill, and, while its `AGENTS.md` doesn't mention zirc, how
-/// other agents can.
-pub(crate) fn for_agents(root: &Path, channel: &str) -> Vec<String> {
-    let talks_in = match zirc_core::team::Team::load(root).map(|team| team.room()) {
-        Ok(zirc_core::team::Room::Repo) => channel.to_owned(),
-        Ok(zirc_core::team::Room::Topic(topic)) => format!("{channel}/{topic}"),
-        Err(_) => format!("{channel}/{}", zirc_core::team::AGENTS),
-    };
+/// What `zirc repo add` tells a person about the repository at `root`: where its agents
+/// talk, that Claude Code's sessions there use zirc by themselves, through the zirc skill,
+/// and, while its `AGENTS.md` doesn't mention zirc, how other agents can.
+pub(crate) fn for_agents(root: &Path) -> Vec<String> {
     let mut lines = vec![
-        format!("Agents working here talk in {talks_in}: Zirc's apps join it for you."),
+        format!(
+            "Agents working here talk in {}, with every repository's: Zirc's apps join it for \
+             you.",
+            zirc_proto::AGENTS_CHANNEL
+        ),
         format!(
             "Claude Code sessions here use {PROGRAM} by themselves, through the {PROGRAM} skill."
         ),
@@ -207,9 +200,9 @@ async fn here_watched(socket: &Path, path: &Path, out: &mut impl Write) -> Resul
     let org = several(&repos).then_some(repo.org.as_deref()).flatten();
     writeln!(
         out,
-        "{} is watched in {}",
+        "{} is watched as {}",
         shown(&repo.path),
-        channel_in(&repo.channel, org)
+        watched_in(repo, org)
     )?;
     Ok(org.map(str::to_owned))
 }
@@ -290,15 +283,15 @@ mod tests {
 
     #[test]
     fn finds_the_innermost_watched_repository() {
-        let repo = |path: &str, channel: &str| Repo {
+        let repo = |path: &str, scope: &str| Repo {
             path: path.into(),
-            channel: channel.into(),
+            scope: scope.into(),
             sessions: Vec::new(),
             org: None,
             shared: Vec::new(),
         };
         let repos = [repo("/src/api", "#api"), repo("/src/api/vendor/ui", "#ui")];
-        let here = |cwd: &str| repo_here(&repos, Path::new(cwd)).map(|repo| &*repo.channel);
+        let here = |cwd: &str| repo_here(&repos, Path::new(cwd)).map(|repo| &*repo.scope);
         assert_eq!(here("/src/api/crates"), Some("#api"));
         assert_eq!(here("/src/api/vendor/ui/src"), Some("#ui"));
         assert_eq!(here("/src/apiary"), None);
@@ -309,7 +302,7 @@ mod tests {
     fn says_what_a_checkout_is_watched_for_when_its_not_the_session() {
         let repo = Repo {
             path: "/src/api".into(),
-            channel: "#api".into(),
+            scope: "#api".into(),
             sessions: vec![
                 ipc::RepoSession {
                     session: "cc-1".into(),
@@ -332,26 +325,18 @@ mod tests {
     #[test]
     fn tells_a_person_where_agents_talk_and_that_claude_code_needs_nothing() {
         let root = tempfile::tempdir().unwrap();
-        let lines = for_agents(root.path(), "#todo");
+        let lines = for_agents(root.path());
         assert_eq!(
             lines[0],
-            "Agents working here talk in #todo/agents: Zirc's apps join it for you."
+            "Agents working here talk in #agents, with every repository's: Zirc's apps join it \
+             for you."
         );
         assert!(lines[1].starts_with("Claude Code sessions here use zirc by themselves"));
         assert_eq!(lines[2], "Other agents: zirc agent-guide >> AGENTS.md");
 
         // Once AGENTS.md mentions zirc, other agents need no telling.
         std::fs::write(root.path().join("AGENTS.md"), "Follow zirc's guide.\n").unwrap();
-        assert_eq!(for_agents(root.path(), "#todo").len(), 2);
-
-        // A team that posts in the repository's own channel.
-        std::fs::create_dir(root.path().join(".zirc")).unwrap();
-        std::fs::write(
-            root.path().join(".zirc/config.toml"),
-            "[post]\ndefault = \"repo\"\n",
-        )
-        .unwrap();
-        assert!(for_agents(root.path(), "#todo")[0].contains("talk in #todo:"));
+        assert_eq!(for_agents(root.path()).len(), 2);
     }
 
     #[test]

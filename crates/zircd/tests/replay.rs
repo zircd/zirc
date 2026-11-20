@@ -24,7 +24,7 @@ async fn a_mention_said_while_zircd_was_stopped_wakes_the_session_once_it_is_bac
     let beta = Peer::join(Machine::start(&ergo, "beta").await, Some("cc-b")).await;
     // A plain IRC client in #api, which tells when something's been said there.
     let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_in, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
     {
         let mut watching = alpha.watch().await;
         beta.says("cc-a: heard live").await;

@@ -247,9 +247,9 @@ async fn register(socket: &Path, session: &str, repo: &ipc::Repo, cwd: &Path) ->
         return None;
     };
     Some(format!(
-        "{PROGRAM}: registered {session} in {}, watched in {}",
+        "{PROGRAM}: registered {session} in {}, watched as {}",
         shown(cwd),
-        repo.channel
+        crate::client::watched_in(repo, None)
     ))
 }
 

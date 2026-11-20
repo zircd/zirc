@@ -1,7 +1,7 @@
 //! Gotchas: one-line lessons a session learnt the hard way, tied to the paths they're about,
 //! such as a lint only Linux CI runs, or a test that's flaky under load. `zirc gotcha` posts
-//! one, as an [`KIND`] event in the repository's [`ROOM`], `#<repo>/gotchas`, so they live
-//! in the server's history rather than the repository, shared at once by every machine;
+//! one, as an [`KIND`] event in the organisation's gotchas room, [`CHANNEL`] (`#gotchas`),
+//! saying its repository, so they live in the server's history rather than the repository, shared at once by every machine;
 //! `zirc gotchas <path>` lists those about a path, newest first. `zirc intend` says those
 //! under the paths it names, and zircd tells a session those under the directories it
 //! starts changing without one ([`under`]).
@@ -12,7 +12,8 @@
 //! once more.
 
 pub use zirc_proto::gotchas::{
-    Data, Gotcha, KIND, READ, RETIRED, ROOM, Retired, SHOWN, Said, is_kind, is_room, retired_text,
+    CHANNEL, Data, Gotcha, KIND, READ, RETIRED, Retired, SHOWN, Said, is_kind, is_room,
+    retired_text,
 };
 
 use crate::ipc::Delivery;
@@ -230,9 +231,10 @@ mod tests {
         let mut other = said("cc-1", &["src"], "x", "2026-11-09T10:00:00Z");
         other.message.event = Event::Text { body: "x".into() };
         assert_eq!(of(&other), None);
-        assert!(is_room("#api/gotchas"));
-        assert!(!is_room("#api/agents"));
-        assert!(!is_room("#gotchas"));
+        assert!(is_room("#gotchas"));
+        assert!(is_room("#Gotchas"));
+        assert!(!is_room("#api/gotchas"));
+        assert!(!is_room("#agents"));
     }
 
     fn retiring(gotcha: &Gotcha) -> Delivery {

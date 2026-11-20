@@ -1023,8 +1023,7 @@ pub enum Why {
     /// A push changes the same lines as the session's worktree: one of them will have to
     /// resolve a conflict.
     Conflict,
-    /// A post in a topic channel this machine joined, or the branch channel the session
-    /// works in.
+    /// A post in a topic channel the session joined.
     Topic,
     /// A push to the default branch, or to the session's branch, that changed paths the
     /// session has changed: it may need to rebase.

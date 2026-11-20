@@ -212,7 +212,7 @@ pub fn seen(heard: &Heard, watching: Option<&str>) -> Option<Seen> {
             } else {
                 kind
             };
-            (kind, delivery.channel.clone(), names_me, false)
+            (kind, delivery.scope(), names_me, false)
         }
     };
     Some(Seen {
@@ -550,7 +550,7 @@ pub struct Team {
 #[must_use]
 pub fn team(home: &Path, repo: &Repo) -> (Team, Option<String>) {
     let (repository, organisation) =
-        crate::team_hints::for_repo(home, repo.org.as_deref(), &repo.channel.to_lowercase());
+        crate::team_hints::for_repo(home, repo.org.as_deref(), &repo.scope.to_lowercase());
     if !repository.is_empty() {
         return (
             Team {
@@ -582,9 +582,9 @@ pub fn team(home: &Path, repo: &Repo) -> (Team, Option<String>) {
 pub struct Watch {
     /// The person's own, from `config.toml`.
     personal: Vec<Hint>,
-    /// Each watched repository's and its organisation's ([`team`]), by its channel.
+    /// Each watched repository's and its organisation's ([`team`]), by its scope.
     repos: Vec<(String, Team)>,
-    /// Every organisation's own, for what's said outside the repositories' channels.
+    /// Every organisation's own, for what's said about no repository.
     organisations: Vec<Hint>,
     defaults: Vec<Hint>,
     /// By kind, the text last shown.
@@ -636,7 +636,7 @@ impl Watch {
             .map(|repo| {
                 let (team, problem) = team(home, repo);
                 problems.extend(problem);
-                (repo.channel.clone(), team)
+                (repo.scope.clone(), team)
             })
             .collect();
         let watch = Self {
@@ -653,16 +653,14 @@ impl Watch {
         (watch, problems)
     }
 
-    /// The layers for an event in `channel`, highest first: a repository's hints are for
-    /// its channel and the rooms under it, such as its agents' room and landings.
+    /// The layers for an event about `scope`, highest first: a repository's hints are for
+    /// what's said about it ([`crate::ipc::Delivery::scope`]).
     #[must_use]
-    pub fn layers(&self, channel: &str) -> Vec<(Layer, &[Hint])> {
-        let repo = self.repos.iter().find(|(repo, _)| {
-            channel.eq_ignore_ascii_case(repo)
-                || channel
-                    .to_ascii_lowercase()
-                    .starts_with(&format!("{}/", repo.to_ascii_lowercase()))
-        });
+    pub fn layers(&self, scope: &str) -> Vec<(Layer, &[Hint])> {
+        let repo = self
+            .repos
+            .iter()
+            .find(|(repo, _)| scope.eq_ignore_ascii_case(repo));
         let mut layers = vec![(Layer::Personal, self.personal.as_slice())];
         match repo {
             Some((_, team)) => {
@@ -1244,7 +1242,7 @@ mod tests {
             Layer::Default,
         ];
         assert_eq!(names("#api"), all);
-        assert_eq!(names("#API/landings"), all);
+        assert_eq!(names("#API"), all);
         assert_eq!(
             names("#apiary"),
             [Layer::Personal, Layer::Organisation, Layer::Default]
@@ -1258,7 +1256,7 @@ mod tests {
         let repo = tempfile::tempdir().unwrap();
         let watched = Repo {
             path: repo.path().to_owned(),
-            channel: "#API".into(),
+            scope: "#API".into(),
             sessions: Vec::new(),
             org: Some("acme".into()),
             shared: Vec::new(),

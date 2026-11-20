@@ -13,7 +13,7 @@ use zirc_irc::{Client, Line};
 use zirc_proto::decision::Decision;
 use zirc_proto::telemetry as usage;
 use zirc_proto::telemetry::Event as Usage;
-use zirc_proto::{Event, Message};
+use zirc_proto::{AGENTS_CHANNEL, Event, Message};
 
 use crate::git;
 
@@ -24,7 +24,7 @@ use super::{
 };
 
 impl Daemon {
-    /// Tells the channel of the repository at `repo` what `session` is about to change.
+    /// Tells `#agents` what `session` is about to change in the repository at `repo`.
     pub(super) async fn intend(
         &mut self,
         repo: &Path,
@@ -33,7 +33,7 @@ impl Daemon {
         paths: &[PathBuf],
         seconds: u64,
     ) -> Result<Response> {
-        let channel = self.watched(repo).await?.agents_channel().to_owned();
+        let channel = self.watched(repo).await?.scope.clone();
         let root = git::root(repo).await?;
         let base = repo.canonicalize().unwrap_or_else(|_| repo.to_owned());
         let paths = paths
@@ -51,14 +51,14 @@ impl Daemon {
         };
         self.publish(&channel, session, event);
         self.count(&Usage::IntentPosted(usage::IntentPosted {}));
-        Ok(Response::channel(channel))
+        Ok(Response::channel(self.wire_name(&channel)))
     }
 
-    /// The default branch of the repositories in `channel`.
+    /// The default branch of the repositories in the scope `channel`.
     pub(super) fn default_branch(&self, channel: &str) -> Option<String> {
         self.repos
             .values()
-            .find(|watched| watched.channel == channel)
+            .find(|watched| watched.scope == channel)
             .map(|watched| watched.default_branch.clone())
     }
 
@@ -108,7 +108,7 @@ impl Daemon {
         }
         let watched = self.watched(repo).await?;
         let state = zirc_proto::state::State {
-            repo: watched.channel.clone(),
+            repo: watched.scope.clone(),
             ..state
         };
         let ops = zirc_core::states::CHANNEL.to_owned();
@@ -199,31 +199,24 @@ impl Daemon {
         Ok(())
     }
 
-    /// The channel of the repository containing `repo` that `to` names, once it's joined.
+    /// Where `to` goes from the repository containing `repo`, once it's joined: its scope,
+    /// which goes out in `#agents` ([`Daemon::on_wire`]), or an organisation's channel.
     pub(super) async fn channel_to(&mut self, repo: &Path, to: Target) -> Result<String> {
         let watched = self.watched(repo).await?;
         let channel = match to {
-            Target::Repo | Target::Default => watched.channel.clone(),
-            Target::Branch => {
-                let channel = watched.branch_channel().context(
-                    "this branch has no channel: only a pushed branch other than the default \
-                     one has one",
-                )?;
-                let branch = watched.snapshot.branch.clone().unwrap_or_default();
-                anyhow::ensure!(
-                    self.joined.contains(&channel),
-                    "{channel} isn't joined: branch channels are by choice, so join it first \
-                     with `zirc join {branch}`"
-                );
-                channel
-            }
+            Target::Agents => watched.scope.clone(),
             Target::Org => ORG_CHANNEL.to_owned(),
-            Target::Topic { name, org } => watched.project.topic_channel(&name, org),
+            Target::Topic { name } => zirc_core::project::topic_channel(&name),
         };
         self.connected()?;
         anyhow::ensure!(
             self.joined.contains(&channel),
-            "{channel} isn't joined: join a topic first with `zirc join`"
+            "{} isn't joined: join a topic first with `zirc join`",
+            if self.is_scope(&channel) {
+                AGENTS_CHANNEL
+            } else {
+                &channel
+            }
         );
         Ok(channel)
     }
@@ -689,6 +682,9 @@ impl Daemon {
         if message.task.is_none() {
             message.task = self.tasks.on(&message.session).cloned();
         }
+        // A repository's scope goes out in `#agents`, saying the repository.
+        let scope = channel;
+        let channel = &self.on_wire(scope, &mut message);
         if matches!(message.event, Event::Text { .. } | Event::Custom { .. }) {
             self.stop_typing(&message.session, channel);
         }
@@ -715,10 +711,9 @@ impl Daemon {
         }
         // This machine's own working sets are its worktrees', kept apart.
         if !matches!(message.event, Event::Working { .. }) {
-            let home = self.home_channel(channel);
-            let default = self.default_branch(&home);
+            let default = self.default_branch(scope);
             self.presence
-                .apply(&home, &nick, &message, now(), default.as_deref());
+                .apply(scope, &nick, &message, now(), default.as_deref());
         }
         if !matches!(message.event, Event::Working { .. }) {
             let mut delivery = Delivery {

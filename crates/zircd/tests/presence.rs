@@ -54,7 +54,7 @@ async fn a_working_set_reaches_people_as_a_tagmsg_and_is_said_again_when_an_app_
     alpha.add_repo(None, clone.path()).await.unwrap();
     alpha
         .eventually(
-            |status| status.channels.iter().any(|c| c == "#api"),
+            |status| status.channels.iter().any(|c| c == "#agents"),
             "joining #api",
         )
         .await;
@@ -72,7 +72,7 @@ async fn a_working_set_reaches_people_as_a_tagmsg_and_is_said_again_when_an_app_
 
     // Ada joining hears it.
     let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_in, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
     assert_eq!(
         next_working_tagmsg(&mut ada_in, "alpha").await,
         ["README.md"]
@@ -80,7 +80,7 @@ async fn a_working_set_reaches_people_as_a_tagmsg_and_is_said_again_when_an_app_
 
     // An app asking, as one attaching to an account that's always in the channel does, hears
     // it again, though nothing changed and the hour isn't up.
-    ada.send(zirc_core::presence::ask("#api")).unwrap();
+    ada.send(zirc_core::presence::ask("#agents")).unwrap();
     assert_eq!(
         next_working_tagmsg(&mut ada_in, "alpha").await,
         ["README.md"]

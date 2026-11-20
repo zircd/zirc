@@ -37,8 +37,8 @@ pub const PROTOCOL: u32 = 1;
 pub struct StateWait {
     /// Its name, such as `master`.
     pub name: String,
-    /// The channel of the repository it's in, such as `#monorepo`: any repository's when
-    /// absent.
+    /// The repository it's in, as [`crate::project::Project::scope`] names it, such as
+    /// `#monorepo`: any repository's when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repo: Option<String>,
     /// How it stands as the session asks: a state said at any other level wakes it. Absent
@@ -78,7 +78,7 @@ pub enum Request {
     },
     /// The repositories being watched.
     RepoList,
-    /// Say something in a channel of the repository containing `repo`.
+    /// Say something about the repository containing `repo`.
     Post {
         /// Anywhere inside a watched repository.
         repo: PathBuf,
@@ -86,7 +86,7 @@ pub enum Request {
         session: String,
         /// The text.
         text: String,
-        /// Which of the repository's channels.
+        /// Which channel.
         #[serde(default)]
         to: Target,
         /// The short name apps show for an integration posting it, in place of a generic app
@@ -96,11 +96,6 @@ pub enum Request {
         /// A broadcast, for every session hearing it ([`zirc_proto::Message::everyone`]).
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         everyone: bool,
-        /// Post it to the repository's channel even though an agent session says it and it
-        /// isn't for a person: `zirc post --force`. Left out when false, so an older zircd
-        /// still understands it.
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        force: bool,
         /// The id of the message it replies to (`+draft/reply`), whole or by a start of it as
         /// `zirc watch` shows it: it then goes where that message was said, whatever `to`
         /// says. Left out when absent, so an older zircd still understands a post without one.
@@ -118,12 +113,9 @@ pub enum Request {
         session: String,
         /// The text, its parts to seal between `||` markers.
         text: String,
-        /// Which of the repository's channels.
+        /// Which channel.
         #[serde(default)]
         to: Target,
-        /// As [`Request::Post`]'s.
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        force: bool,
         /// As [`Request::Post`]'s.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reply: Option<String>,
@@ -272,7 +264,7 @@ pub enum Request {
         data: serde_json::Value,
         /// What it says, for people.
         text: String,
-        /// Which of the repository's channels.
+        /// Which channel.
         #[serde(default)]
         to: Target,
         /// The short name apps show for an integration posting it, in place of a generic app
@@ -307,7 +299,7 @@ pub enum Request {
         /// What.
         event: zirc_proto::Event,
     },
-    /// Tell the repository's channel what the session is about to touch.
+    /// Tell the organisation's agents what the session is about to touch.
     Intend {
         /// Anywhere inside a watched repository.
         repo: PathBuf,
@@ -356,14 +348,12 @@ pub enum Request {
         /// How many seconds at most.
         seconds: u64,
     },
-    /// Join a topic channel: `#<repo>/<topic>`, or `#<topic>` across the organisation.
+    /// Join the organisation's channel for a topic, `#<topic>`.
     Join {
-        /// Anywhere inside a watched repository, which names the repository's topics.
+        /// Anywhere inside a watched repository.
         repo: PathBuf,
         /// The topic.
         topic: String,
-        /// Whether it's the organisation's topic rather than the repository's.
-        org: bool,
         /// The session joining, whose watch then hears the topic's posts; without one,
         /// the machine joins, and only watchers that aren't a session hear them.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -423,8 +413,6 @@ pub enum Request {
         repo: PathBuf,
         /// As for [`Request::Join`].
         topic: String,
-        /// As for [`Request::Join`].
-        org: bool,
         /// The session leaving: the channel is left once no session or person is in it.
         /// Without one, the machine leaves it, whoever joined.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -588,23 +576,20 @@ pub enum Request {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Target {
-    /// The repository's channel, where every session working on it is.
+    /// The organisation's agents channel, [`zirc_proto::AGENTS_CHANNEL`], which every
+    /// repository's sessions share, the post saying its repository. Said as `default`, which a
+    /// zircd from before 20 Nov 2026, still running under a newer CLI, takes too (as its
+    /// agents room); what such a CLI sends for the channels repositories had (`repo`,
+    /// `branch`) goes here too.
     #[default]
-    Repo,
-    /// Where a post goes when it doesn't say ([`crate::team`]): the repository's agents
-    /// channel, `#<repo>/agents`, unless the team names another room, or the repository's
-    /// channel for a post that's for a person. Anywhere but a post, the repository's channel.
-    Default,
-    /// The channel of the branch checked out, which only a branch that's been pushed has.
-    Branch,
+    #[serde(rename = "default", alias = "agents", alias = "repo", alias = "branch")]
+    Agents,
     /// The organisation's channel, `#general`.
     Org,
-    /// A topic channel, which must have been joined.
+    /// The organisation's channel for a topic, which must have been joined.
     Topic {
         /// The topic.
         name: String,
-        /// Whether it's the organisation's topic rather than the repository's.
-        org: bool,
     },
 }
 
@@ -869,8 +854,11 @@ pub const RESTARTING: &str = "zircd is restarting";
 pub struct Repo {
     /// The root of its working tree.
     pub path: PathBuf,
-    /// The channel its work goes to.
-    pub channel: String,
+    /// How lines about it, hints and shared states name it
+    /// ([`crate::project::Project::scope`]), `#<name>`: the channel its work went to before
+    /// 20 Nov 2026. Compare a line's [`Delivery::scope`].
+    #[serde(alias = "channel")]
+    pub scope: String,
     /// Every session added with it, the last one added last.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sessions: Vec<RepoSession>,
@@ -1002,6 +990,21 @@ pub struct Delivery {
 }
 
 impl Delivery {
+    /// What it's about, for keying it by repository: in a room every repository shares
+    /// (`#agents`, `#gotchas`), the scope of the repository it says
+    /// ([`zirc_proto::Message::repo`], [`crate::project::scope`]); else, as in a topic, its
+    /// channel.
+    #[must_use]
+    pub fn scope(&self) -> String {
+        let shared = [zirc_proto::AGENTS_CHANNEL, zirc_proto::gotchas::CHANNEL]
+            .iter()
+            .any(|room| room.eq_ignore_ascii_case(&self.channel));
+        match self.message.repo.as_deref() {
+            Some(repo) if shared => crate::project::scope(repo),
+            _ => self.channel.clone(),
+        }
+    }
+
     /// `message` from `from` in `channel`, with nothing the server says of it: as zircd's own
     /// lines are, and one read before its tags are.
     #[must_use]
@@ -1660,7 +1663,6 @@ mod tests {
         let join = Request::Join {
             repo: "/src/api".into(),
             topic: "auth".into(),
-            org: true,
             session: None,
         };
         let sent = serde_json::to_string(&Versioned::new(&join, Some("acme"))).unwrap();

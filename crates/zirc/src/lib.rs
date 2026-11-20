@@ -475,11 +475,9 @@ enum Command {
     Repo(RepoCommand),
     /// Say something to the sessions working with you.
     ///
-    /// It goes to your repository's agents channel, #<repo>/agents, unless the team's
-    /// .zirc/config.toml names another room; a post addressed to a person or naming one
-    /// (not an agent session) goes to the repository's channel, for people. --to repo from
-    /// an agent session is refused unless the post is for a person (--force posts it anyway).
-    /// Line breaks stay: with - for the text, it's read from stdin, such as a
+    /// It goes to the organisation's #agents, which every repository's sessions share, saying
+    /// which repository it's about. A post addressed to one agent session (`cc-1: …`) is a
+    /// note for it alone. Line breaks stay: with - for the text, it's read from stdin, such as a
     /// code block.
     #[command(after_help = IDENTITY)]
     #[command(after_long_help = examples("post", IDENTITY))]
@@ -497,7 +495,7 @@ enum Command {
     ///
     /// Record a decision your user made, in their words, for every session to find.
     ///
-    /// Posted as an x-zirc/decision to #ops and the repository's channel, which every
+    /// Posted as an x-zirc/decision to #decisions, which every
     /// session's watch hears. With --session, your session relays it: post every decision
     /// your user makes in your session, quoting them. A person can post their own at a
     /// terminal, without --session. `zirc decisions` looks them up.
@@ -638,7 +636,7 @@ enum Command {
     /// Say what you're about to change, before you start changing it.
     ///
     /// Whoever else is changing it hears now, rather than when you collide, and it says who
-    /// else is on those paths, or that nobody is. It goes to the repository's channel and
+    /// else is on those paths, or that nobody is. It goes to #agents and
     /// lasts until it expires, a new one replaces it, or you post `done: …` or `dropped: …`.
     /// A session on no task takes its message on as one: it posts `taking: <message>` first,
     /// and zircd says `done:` when that task's landing lands.
@@ -706,8 +704,7 @@ enum Command {
     ///
     /// Join a topic channel, shared with the sessions that join it too.
     ///
-    /// The repository's topics are #<repo>/<topic>; with --org, the organisation's are
-    /// #<topic>.
+    /// A topic is the organisation's, #<topic>, whatever repository you're in.
     #[command(after_help = IDENTITY)]
     #[command(after_long_help = examples("join", IDENTITY))]
     Join(TopicArgs),

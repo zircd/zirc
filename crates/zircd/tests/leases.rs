@@ -165,7 +165,7 @@ async fn one_session_holds_a_lease_at_a_time_and_the_next_hears_its_turn() {
         beta.clone.path(),
         "cc-b",
         "cc-a: marker",
-        zirc_core::ipc::Target::Repo,
+        zirc_core::ipc::Target::Agents,
     ))
     .await;
     let told: Vec<String> = common::until_marker(&mut alpha_hears, |heard| {

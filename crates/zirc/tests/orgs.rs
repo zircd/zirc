@@ -50,8 +50,10 @@ impl Machine {
         tokio::spawn(zircd::run(home.path().to_owned(), std::future::pending()));
         let repo = zirc_test_ergo::git::clone("https://github.com/acme/web.git");
         let machine = Self { home, repo };
-        let added = machine.until(&["repo", "add", "--org", ACME], "#web").await;
-        assert!(added.contains("#web"), "{added}");
+        let added = machine
+            .until(&["repo", "add", "--org", ACME], "as web in #agents")
+            .await;
+        assert!(added.contains("as web in"), "{added}");
         machine
     }
 

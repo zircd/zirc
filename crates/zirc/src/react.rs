@@ -47,7 +47,7 @@ pub struct ReactArgs {
 /// How many of a conversation's newest messages `zirc react` offers when it's given none.
 const OFFERED: usize = 8;
 
-/// Lists what was said lately where `args` point, `--in` or the repository's channel here,
+/// Lists what was said lately where `args` point, `--in` or, in a watched repository, `#agents`,
 /// each with the command that reacts to it with `typed`: `zirc react :eyes:` alone once
 /// only said what was missing.
 async fn offer(socket: &Path, args: &ReactArgs, typed: &str, out: &mut impl Write) -> Result<()> {
@@ -60,10 +60,10 @@ async fn offer(socket: &Path, args: &ReactArgs, typed: &str, out: &mut impl Writ
         };
         let cwd = std::env::current_dir()?;
         let cwd = cwd.canonicalize().unwrap_or(cwd);
-        let Some(repo) = repo_here(&repos, &cwd) else {
+        if repo_here(&repos, &cwd).is_none() {
             bail!("say which message and the emoji: zirc react <id> {typed}");
-        };
-        repo.channel.clone()
+        }
+        zirc_proto::AGENTS_CHANNEL.to_owned()
     };
     let read = Request::Read {
         target: target.clone(),

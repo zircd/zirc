@@ -51,20 +51,12 @@ impl Daemon {
                 to,
                 app,
                 everyone,
-                force,
                 reply,
             } => match reply {
                 Some(reply) => self.say_reply(&session, &text, &reply, app.as_deref(), &[])?,
                 None => {
-                    self.say(
-                        &repo,
-                        session,
-                        (text, Vec::new()),
-                        (to, force),
-                        app,
-                        everyone,
-                    )
-                    .await?
+                    self.say(&repo, session, (text, Vec::new()), to, app, everyone)
+                        .await?
                 }
             },
             Request::SealedPost {
@@ -72,7 +64,6 @@ impl Daemon {
                 session,
                 text,
                 to,
-                force,
                 reply,
             } => {
                 let split = zirc_core::sealed::split(&text);
@@ -81,15 +72,8 @@ impl Daemon {
                         self.say_reply(&session, &split.text, &reply, None, &split.parts)?
                     }
                     None => {
-                        self.say(
-                            &repo,
-                            session,
-                            (split.text, split.parts),
-                            (to, force),
-                            None,
-                            false,
-                        )
-                        .await?
+                        self.say(&repo, session, (split.text, split.parts), to, None, false)
+                            .await?
                     }
                 }
             }
@@ -242,15 +226,13 @@ impl Daemon {
             Request::Join {
                 repo,
                 topic,
-                org,
                 session,
-            } => self.join_topic(&repo, &topic, org, session).await?,
+            } => self.join_topic(&repo, &topic, session).await?,
             Request::Leave {
                 repo,
                 topic,
-                org,
                 session,
-            } => self.leave_topic(&repo, &topic, org, session).await?,
+            } => self.leave_topic(&repo, &topic, session).await?,
             Request::Who => self.who(),
             Request::LocalSessions => self.local_sessions(),
             Request::LiveSessions => {
@@ -318,11 +300,19 @@ impl Daemon {
 
     /// How this machine's zircd stands ([`Request::Status`]).
     fn status(&mut self) -> Response {
+        // The channels it's in on the server, not the repositories' scopes ([`Daemon::is_scope`]).
+        let desired = self.desired_channels();
+        let channels = self
+            .joined
+            .iter()
+            .filter(|channel| desired.contains(*channel) || !self.is_scope(channel))
+            .cloned()
+            .collect();
         Response::Status(Status {
             connected: self.client.is_some(),
             server: self.server.clone(),
             nick: self.client.as_ref().map(|client| client.nick().to_owned()),
-            channels: self.joined.iter().cloned().collect(),
+            channels,
             problem: self.problem.clone(),
             watching: self.watching(),
             protocol: zirc_core::ipc::PROTOCOL,
@@ -367,7 +357,7 @@ impl Daemon {
         repo: &Path,
         session: String,
         (text, sealed): (String, Vec<String>),
-        (to, force): (Target, bool),
+        to: Target,
         app: Option<String>,
         everyone: bool,
     ) -> Result<Response> {
@@ -389,7 +379,7 @@ impl Daemon {
             return Ok(Response::channel(channel));
         }
         // Addressed to one agent session, it's a note for it alone.
-        if matches!(to, Target::Default)
+        if matches!(to, Target::Agents)
             && !everyone
             && let Some((address, said)) = self.note_address(&text)
         {
@@ -400,24 +390,18 @@ impl Daemon {
             let to = self.note_to(&session, &address, &said)?;
             return Ok(Response::Noted { to });
         }
-        if matches!(to, Target::Repo) && !force && app.is_none() {
-            self.ensure_for_people(&session, &text)?;
-        }
-        let to = match to {
-            Target::Default => self.default_target(repo, &text).await?,
-            to => to,
-        };
         let channel = self.channel_to(repo, to).await?;
         let sealed = self.seal_for(&channel, &sealed, None)?;
         self.task_said(&session, &text, &channel);
         let message = Message {
             app: app.as_deref().and_then(zirc_proto::app_label),
             everyone,
+            repo: Some(self.watched(repo).await?.project.repo.clone()),
             ..Message::new(session.clone(), Event::Text { body: text.clone() })
         };
         self.publish_sealed(&channel, message, None, sealed);
         self.task_ended(&session, &text);
-        Ok(Response::channel(channel))
+        Ok(Response::channel(self.wire_name(&channel)))
     }
 
     /// Says `text` from `session` as a reply to the message `reply` names, in the channel it
@@ -574,6 +558,7 @@ impl Daemon {
         }
         let message = Message {
             app: app.as_deref().and_then(zirc_proto::app_label),
+            repo: Some(self.watched(repo).await?.project.repo.clone()),
             ..Message::new(session, Event::Custom { kind, data, text })
         };
         // Its echo may not come back: this machine's own gotcha is kept as it's said.
@@ -591,18 +576,19 @@ impl Daemon {
             });
         }
         self.emit(&channel, message)?;
-        Ok(Response::channel(channel))
+        Ok(Response::channel(self.wire_name(&channel)))
     }
 
-    /// Joins `session` to a topic of `repo`'s, or of the organisation's ([`Request::Join`]).
+    /// Joins `session` to the organisation's topic `topic` ([`Request::Join`]), from inside
+    /// the watched repository `repo`.
     async fn join_topic(
         &mut self,
         repo: &Path,
         topic: &str,
-        org: bool,
         session: Option<String>,
     ) -> Result<Response> {
-        let channel = self.watched(repo).await?.project.topic_channel(topic, org);
+        self.watched(repo).await?;
+        let channel = zirc_core::project::topic_channel(topic);
         self.topics
             .entry(channel.clone())
             .or_default()
@@ -617,10 +603,10 @@ impl Daemon {
         &mut self,
         repo: &Path,
         topic: &str,
-        org: bool,
         session: Option<String>,
     ) -> Result<Response> {
-        let channel = self.watched(repo).await?.project.topic_channel(topic, org);
+        self.watched(repo).await?;
+        let channel = zirc_core::project::topic_channel(topic);
         let joined = match session {
             None => self.topics.remove(&channel).is_some(),
             Some(session) => match self.topics.get_mut(&channel) {

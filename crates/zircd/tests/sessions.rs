@@ -173,7 +173,7 @@ async fn a_sessions_title_goes_on_its_card_and_its_link_stays_here() {
             card.title.as_str(),
             delivery.channel.as_str()
         ),
-        (Some("desktop"), "Desktop: 3f review fixes", "#api")
+        (Some("desktop"), "Desktop: 3f review fixes", "#agents")
     );
     assert_eq!(delivery.message.name.as_deref(), Some("desktop"));
     assert!(
@@ -345,10 +345,10 @@ async fn a_session_hears_what_concerns_it_and_not_its_own_posts() {
         ("done: the docs".into(), None),
         "chatter"
     );
-    post(&beta, beta_clone.path(), "cc-2", "cc-1: can you rebase?").await;
+    post(&beta, beta_clone.path(), "cc-2", "can you rebase, cc-1?").await;
     assert_eq!(
         next_post_why(&mut cc1).await,
-        ("cc-1: can you rebase?".into(), Some(Why::Mention))
+        ("can you rebase, cc-1?".into(), Some(Why::Mention))
     );
     std::fs::write(alpha_clone.path().join("router.ts"), "export {}\n").unwrap();
     // Once alpha's own working set has it.
@@ -369,40 +369,14 @@ async fn a_session_hears_what_concerns_it_and_not_its_own_posts() {
     })
     .await
     .expect("alpha never noticed router.ts");
-    post(
-        &beta,
-        beta_clone.path(),
-        "cc-2",
-        "heads up, router.ts is changing",
-    )
-    .await;
-    assert_eq!(
-        next_post_why(&mut cc1).await,
-        ("heads up, router.ts is changing".into(), Some(Why::Paths))
-    );
-
-    // A checkout two sessions share has nobody's changes: neither is woken by them.
+    // In #agents a post naming a path it changes isn't news to it: only one naming it is.
+    let heads_up = "heads up, router.ts is changing";
+    post(&beta, beta_clone.path(), "cc-2", heads_up).await;
+    assert_eq!(next_post_why(&mut cc1).await, (heads_up.into(), None));
     let add = |session: &str, path: &std::path::Path| Request::RepoAdd {
         path: path.to_owned(),
         session: Some(session.into()),
     };
-    alpha.request(add("cc-3", alpha_clone.path())).await;
-    let shared = "router.ts again, shared";
-    post(&beta, beta_clone.path(), "cc-2", shared).await;
-    assert_eq!(next_post_why(&mut cc1).await, (shared.into(), None));
-    // Taken out, cc-3 leaves cc-1 alone there again.
-    alpha
-        .request(Request::RepoRemove {
-            path: alpha_clone.path().to_owned(),
-            session: Some("cc-3".into()),
-        })
-        .await;
-    let alone = "router.ts once more";
-    post(&beta, beta_clone.path(), "cc-2", alone).await;
-    assert_eq!(
-        next_post_why(&mut cc1).await,
-        (alone.into(), Some(Why::Paths))
-    );
     // Added in another clone of the repository, cc-1 no longer works in the first.
     let other = clone();
     let Response::Repos { repos } = alpha.request(add("cc-1", other.path())).await else {
@@ -440,13 +414,13 @@ async fn a_session_no_repository_was_added_with_hears_only_what_names_it() {
         &machine,
         &main_root,
         "cc-main",
-        "cc-stranger: which worktree are you in?",
+        "which worktree are you in, cc-stranger?",
     )
     .await;
     assert_eq!(
         next_post_why(&mut stranger).await,
         (
-            "cc-stranger: which worktree are you in?".to_owned(),
+            "which worktree are you in, cc-stranger?".to_owned(),
             Some(Why::Mention)
         )
     );
@@ -461,7 +435,7 @@ async fn a_wake_and_what_the_session_did_go_to_the_recorder_alone() {
     let (_recorder, mut recorded) =
         zirc_test_irc::person(&ergo, zirc_proto::activity::RECORDER).await;
     let (ada, mut ada_hears) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_hears, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_hears, "#agents").await;
     let next_record = async |recorded: &mut zirc_irc::Incoming| {
         let line = zirc_test_irc::next_matching(recorded, |line| line.command == "TAGMSG").await;
         assert_eq!(
@@ -472,7 +446,7 @@ async fn a_wake_and_what_the_session_did_go_to_the_recorder_alone() {
         zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG).unwrap()).unwrap()
     };
 
-    ada.privmsg("#api", "cc-login: can you look at the login page?")
+    ada.privmsg("#agents", "cc-login: can you look at the login page?")
         .unwrap();
     assert_eq!(next_post(&mut agent).await.why, Some(Why::Mention));
     let sent = next_record(&mut recorded).await;
@@ -654,15 +628,15 @@ async fn agents_neither_hear_guests_nor_write_to_them() {
     let mut person = machine.watch(None).await;
     let (guest, mut guest_in) = zirc_test_irc::person(&ergo, "guest-7k2q").await;
     let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&guest, &mut guest_in, "#api").await;
-    zirc_test_irc::joins(&ada, &mut ada_in, "#api").await;
+    zirc_test_irc::joins(&guest, &mut guest_in, "#agents").await;
+    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
 
     // A guest naming the session wakes no agent, nor is its watch line; a person sees it.
     guest
-        .privmsg("#api", "cc-login: @everyone my order never came")
+        .privmsg("#agents", "cc-login: @everyone my order never came")
         .unwrap();
     while next_post(&mut person).await.from != "guest-7k2q" {}
-    ada.privmsg("#api", "cc-login: can you look at the login page?")
+    ada.privmsg("#agents", "cc-login: can you look at the login page?")
         .unwrap();
     let heard = next_post(&mut agent).await;
     assert_eq!(heard.from, "ada", "{heard:?}");
@@ -693,11 +667,11 @@ async fn a_person_typing_in_any_irc_client_reaches_the_session_they_name() {
     let (machine, _main, _main_root, _login_root) = machine_with_a_session_worktree(&ergo).await;
     let mut login_hears = machine.watch(Some("cc-login")).await;
     let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_in, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
 
     // Chatter that names nobody stays out of the session's way; a line naming it doesn't.
-    ada.privmsg("#api", "lunch, anyone?").unwrap();
-    ada.privmsg("#api", "cc-login: can you look at the login page?")
+    ada.privmsg("#agents", "lunch, anyone?").unwrap();
+    ada.privmsg("#agents", "cc-login: can you look at the login page?")
         .unwrap();
     let delivery = loop {
         let delivery = next(&mut login_hears).await;
@@ -724,7 +698,7 @@ async fn a_reaction_to_a_sessions_message_reaches_it_as_who_gave_it() {
     let mut login_hears = machine.watch(Some("cc-login")).await;
     let mut main_hears = machine.watch(Some("cc-main")).await;
     let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_in, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
 
     post(&machine, &login_root, "cc-login", "merge the login page?").await;
     // Ada's client sees it, with the id the server gave it, and reacts.
@@ -734,7 +708,7 @@ async fn a_reaction_to_a_sessions_message_reaches_it_as_who_gave_it() {
     .await;
     let id = said.tag("msgid").expect("a msgid").to_owned();
     let react = |tag: &str| {
-        let mut line = zirc_irc::Line::new("TAGMSG", ["#api"]);
+        let mut line = zirc_irc::Line::new("TAGMSG", ["#agents"]);
         line.tags = vec![
             (tag.to_owned(), Some("👍".to_owned())),
             ("+draft/reply".to_owned(), Some(id.clone())),
@@ -788,7 +762,7 @@ async fn naming_the_machine_or_its_owner_wakes_its_person_not_each_session() {
             .await;
         machine
             .eventually(
-                |status| status.channels.iter().any(|c| c == "#api"),
+                |status| status.channels.iter().any(|c| c == "#agents"),
                 "joining",
             )
             .await;
@@ -837,7 +811,7 @@ async fn a_session_messages_a_person_it_names() {
             body: "your build is green".into()
         }
     );
-    let refused = ipc::request(&alpha.socket(), &dm("#api"))
+    let refused = ipc::request(&alpha.socket(), &dm("#agents"))
         .await
         .unwrap_err()
         .to_string();
@@ -893,10 +867,10 @@ async fn a_session_reacts_to_a_message_as_the_apps_do() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), _beta] = two_machines(&ergo).await;
     let (ada, mut ada_hears) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_hears, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_hears, "#agents").await;
     let mut cc1 = alpha.watch(Some("cc-1")).await;
 
-    ada.privmsg("#api", "can someone look at the login page?")
+    ada.privmsg("#agents", "can someone look at the login page?")
         .unwrap();
     let asked = loop {
         let delivery = next(&mut cc1).await;
@@ -919,17 +893,17 @@ async fn a_session_reacts_to_a_message_as_the_apps_do() {
     // By the start of its id, as zirc watch shows it.
     assert_eq!(
         alpha.request(react(Some(&id[..8]), None, "👀")).await,
-        Response::channel("#api")
+        Response::channel("#agents")
     );
     let line = zirc_test_irc::next_matching(&mut ada_hears, tagmsg).await;
-    assert_eq!(line.params, ["#api"]);
+    assert_eq!(line.params, ["#agents"]);
     assert_eq!(line.tag("+draft/react"), Some("👀"));
     assert_eq!(line.tag("+draft/reply"), Some(id.as_str()));
 
     // Or the latest from someone, without its id.
     assert_eq!(
         alpha.request(react(None, Some("ada"), "👍")).await,
-        Response::channel("#api")
+        Response::channel("#agents")
     );
     let line = zirc_test_irc::next_matching(&mut ada_hears, tagmsg).await;
     assert_eq!(line.tag("+draft/react"), Some("👍"));
@@ -951,26 +925,25 @@ async fn a_sessions_post_is_answered_with_its_link() {
         .eventually(|status| status.channels == JOINED, "joining")
         .await;
     let (ada, mut ada_hears) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_hears, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_hears, "#agents").await;
     // A post is answered once the server echoes it, with its own link.
     let Response::Channel { channel, link } = alpha
         .request(Request::Post {
             repo: checkout.path().to_owned(),
             session: "cc-1".into(),
             text: "looking at it".into(),
-            to: ipc::Target::Repo,
+            to: ipc::Target::Agents,
             app: None,
             everyone: false,
-            force: true,
             reply: None,
         })
         .await
     else {
         panic!("not posted");
     };
-    assert_eq!(channel, "#api");
+    assert_eq!(channel, "#agents");
     let read = zirc_proto::link::parse(&link.expect("the post's link")).unwrap();
-    assert_eq!(read.channel, "#api");
+    assert_eq!(read.channel, "#agents");
     let posted = loop {
         let heard =
             zirc_test_irc::next_matching(&mut ada_hears, |line| line.command == "PRIVMSG").await;
@@ -990,7 +963,7 @@ async fn a_sessions_first_watch_says_it_is_live_before_it_posts() {
     let ergo = require_ergo!();
     let [(alpha, _alpha_clone), _beta] = two_machines(&ergo).await;
     let (ada, mut ada_hears) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_hears, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_hears, "#agents").await;
     let live_of = |line: &zirc_irc::Line| {
         let message = zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG)?).ok()?;
         assert_eq!(message.level, Some(zirc_proto::Level::Debug));
@@ -1003,7 +976,7 @@ async fn a_sessions_first_watch_says_it_is_live_before_it_posts() {
     })
     .await;
     assert_eq!(line.command, "TAGMSG");
-    assert_eq!(line.params, ["#api"]);
+    assert_eq!(line.params, ["#agents"]);
 }
 
 #[tokio::test]
@@ -1011,7 +984,7 @@ async fn a_sessions_roles_ride_with_the_live_list_until_its_done() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), _beta] = two_machines(&ergo).await;
     let (ada, mut ada_hears) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_hears, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_hears, "#agents").await;
     let live_of = |line: &zirc_irc::Line| {
         let message = zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG)?).ok()?;
         zirc_proto::session::Live::of(&message.event)
@@ -1041,10 +1014,9 @@ async fn a_sessions_roles_ride_with_the_live_list_until_its_done() {
             repo: alpha_clone.path().to_owned(),
             session: "cc-1".into(),
             text: "done: the fix".into(),
-            to: ipc::Target::Default,
+            to: ipc::Target::Agents,
             app: None,
             everyone: false,
-            force: true,
             reply: None,
         })
         .await;
@@ -1096,7 +1068,7 @@ async fn a_workflows_file_is_sent_only_where_the_server_runs_workflows() {
 }
 
 #[tokio::test]
-async fn starting_to_watch_a_repository_invites_the_machines_owner_to_its_rooms() {
+async fn starting_to_watch_a_repository_invites_the_machines_owner_to_agents() {
     let ergo = require_ergo!();
     let (_ada, mut ada_hears) = zirc_test_irc::person(&ergo, "ada").await;
     let alpha = Machine::start_with(&ergo, "ada-mbp", "owner = \"ada\"\n").await;
@@ -1107,18 +1079,8 @@ async fn starting_to_watch_a_repository_invites_the_machines_owner_to_its_rooms(
             session: None,
         })
         .await;
-    let mut invited = Vec::new();
-    while invited.len() < 4 {
-        let line =
-            zirc_test_irc::next_matching(&mut ada_hears, |line| line.command == "INVITE").await;
-        assert_eq!(line.params[0], "ada");
-        invited.push(line.params[1].clone());
-    }
-    invited.sort();
-    assert_eq!(
-        invited,
-        ["#api", "#api/agents", "#api/gotchas", "#api/landings"]
-    );
+    let line = zirc_test_irc::next_matching(&mut ada_hears, |line| line.command == "INVITE").await;
+    assert_eq!(line.params, ["ada", "#agents"]);
 
     // Another checkout of the same repository, and a session added to it: nothing new.
     for (path, session) in [(first.path(), Some("cc-1")), (second.path(), None)] {

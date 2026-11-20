@@ -285,14 +285,16 @@ pub async fn next_local_overlap(watching: &mut Watching) -> LocalOverlap {
 }
 
 /// Every channel a machine watching a clone of the test repository joins, sorted, as its
-/// status says them once it's settled.
-pub const JOINED: [&str; 7] = [
+/// status says them once it's settled: the organisation's, and the repository's own that CI
+/// still speaks in until it says everything in `#agents`.
+pub const JOINED: [&str; 8] = [
+    "#agents",
     "#api",
-    "#api/agents",
-    "#api/gotchas",
+    "#api/ci",
     "#api/landings",
     "#decisions",
     "#general",
+    "#gotchas",
     "#ops",
 ];
 
@@ -310,7 +312,7 @@ pub async fn two_machines(ergo: &Ergo) -> [(Machine, TempDir); 2] {
         else {
             panic!("not a repo list")
         };
-        assert_eq!(repos[0].channel, "#api");
+        assert_eq!(repos[0].scope, "#api");
         machine
             .eventually(|status| status.channels == JOINED, "joining")
             .await;
@@ -349,7 +351,7 @@ pub async fn machine_with_a_session_worktree(ergo: &Ergo) -> (Machine, TempDir, 
     }
     machine
         .eventually(
-            |status| status.channels.iter().any(|c| c == "#api"),
+            |status| status.channels.iter().any(|c| c == "#agents"),
             "joining",
         )
         .await;
@@ -377,7 +379,6 @@ pub fn plain_post(repo: &Path, session: &str, text: &str, to: Target) -> Request
         to,
         app: None,
         everyone: false,
-        force: true,
         reply: None,
     }
 }
@@ -388,10 +389,9 @@ pub async fn post(machine: &Machine, repo: &Path, session: &str, text: &str) {
             repo: repo.to_owned(),
             session: session.into(),
             text: text.into(),
-            to: Target::Repo,
+            to: Target::Agents,
             app: None,
             everyone: false,
-            force: true,
             reply: None,
         })
         .await;
@@ -505,11 +505,9 @@ pub fn to_deploys(clone: &TempDir, session: &str, text: &str) -> Request {
         text: text.into(),
         to: Target::Topic {
             name: "deploys".into(),
-            org: true,
         },
         app: None,
         everyone: !session.is_empty() && text.starts_with("@everyone"),
-        force: false,
         reply: None,
     }
 }
@@ -535,10 +533,9 @@ impl Peer {
             .await;
         machine
             .eventually(
-                // #general too: leases are agreed there, and it's joined after the repository's
-                // rooms.
+                // #general too: leases are agreed there, and it's joined after #agents.
                 |status| {
-                    ["#api", "#general"]
+                    ["#agents", "#general"]
                         .iter()
                         .all(|want| status.channels.iter().any(|c| c == want))
                 },

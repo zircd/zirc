@@ -208,11 +208,7 @@ impl Daemon {
         let Some(watched) = self.repos.get(root) else {
             return;
         };
-        let channel = watched.agents_channel().to_owned();
-        let repo_channel = watched.channel.clone();
-        let gotchas_room = watched
-            .project
-            .topic_channel(zirc_core::gotchas::ROOM, false);
+        let channel = watched.scope.clone();
         let sessions: Vec<(String, BTreeSet<String>, Option<String>)> = watched
             .sessions
             .names()
@@ -237,7 +233,7 @@ impl Daemon {
                 None => continue,
             };
             if !renews {
-                self.tell_gotchas(&repo_channel, &gotchas_room, &session, &dirs);
+                self.tell_gotchas(&channel, &session, &dirs);
             }
             let intent = auto_intent(branch.as_deref(), &paths, dirs, now, LASTS);
             let event = if renews {
@@ -256,7 +252,7 @@ impl Daemon {
         let again: Vec<(String, Event)> = self
             .repos
             .values()
-            .filter(|watched| watched.agents_channel() == channel)
+            .filter(|watched| watched.scope == channel)
             .flat_map(|watched| {
                 watched.sessions.names().filter_map(|session| {
                     let (dirs, at) = self.auto_intents.said.get(session)?;

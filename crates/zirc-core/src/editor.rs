@@ -122,7 +122,7 @@ pub fn local_text(code: &zirc_chat::chat::CodeRef) -> Option<String> {
     std::fs::read_to_string(local).ok()
 }
 
-/// One checkout for each repository's channel zircd watches, `(channel, root)`, for code
+/// One checkout for each repository zircd watches, `(scope, root)`, for code
 /// links ([`zirc_chat::chat::Chat::set_checkouts`]): its main one rather than a linked
 /// worktree ([`checkouts_where`]).
 #[must_use]
@@ -130,7 +130,7 @@ pub fn checkouts(repos: &[crate::ipc::Repo]) -> Vec<(String, String)> {
     checkouts_where(repos, &|root| root.join(".git").is_dir())
 }
 
-/// One checkout for each repository's channel in `repos`: its main one, whose `.git` is a
+/// One checkout for each repository in `repos`: its main one, whose `.git` is a
 /// directory as `is_main` says, rather than a linked worktree, which comes and goes; or else
 /// the first.
 #[must_use]
@@ -142,18 +142,15 @@ pub fn checkouts_where(
     for repo in repos {
         let main = is_main(&repo.path);
         let root = repo.path.to_string_lossy().into_owned();
-        match chosen
-            .iter_mut()
-            .find(|(channel, ..)| *channel == repo.channel)
-        {
-            Some(slot) if main && !slot.2 => *slot = (repo.channel.clone(), root, main),
+        match chosen.iter_mut().find(|(scope, ..)| *scope == repo.scope) {
+            Some(slot) if main && !slot.2 => *slot = (repo.scope.clone(), root, main),
             Some(_) => {}
-            None => chosen.push((repo.channel.clone(), root, main)),
+            None => chosen.push((repo.scope.clone(), root, main)),
         }
     }
     chosen
         .into_iter()
-        .map(|(channel, root, _)| (channel, root))
+        .map(|(scope, root, _)| (scope, root))
         .collect()
 }
 
@@ -214,9 +211,9 @@ mod tests {
 
     #[test]
     fn picks_each_repositorys_main_checkout() {
-        let repo = |path: &str, channel: &str| crate::ipc::Repo {
+        let repo = |path: &str, scope: &str| crate::ipc::Repo {
             path: path.into(),
-            channel: channel.into(),
+            scope: scope.into(),
             sessions: Vec::new(),
             org: None,
             shared: Vec::new(),

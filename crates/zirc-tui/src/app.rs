@@ -2360,7 +2360,7 @@ mod tests {
         app.zircd_answered(Ok(Response::Repos {
             repos: vec![zirc_core::ipc::Repo {
                 path: "/src/api".into(),
-                channel: "#api".into(),
+                scope: "#api".into(),
                 sessions: Vec::new(),
                 org: None,
                 shared: Vec::new(),

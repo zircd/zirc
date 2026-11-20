@@ -217,7 +217,7 @@ async fn scope_here(socket: &Path, org: bool) -> Result<(Option<ipc::Repo>, Stri
             "not in a repository zirc watches: run it in one, or say --org for the organisation's"
         );
     };
-    let scope = repo.channel.to_lowercase();
+    let scope = repo.scope.to_lowercase();
     Ok((Some(repo), scope))
 }
 

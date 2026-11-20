@@ -17,7 +17,7 @@ async fn an_intent_wakes_the_sessions_changing_what_it_names() {
     let told = fleet.alpha.intends("split the login page", &["web"]).await;
 
     // An intent is agents' news: in the agents' room, counted as the repository's.
-    assert!(matches!(told, Response::Channel { channel, .. } if channel == "#api/agents"));
+    assert!(matches!(told, Response::Channel { channel, .. } if channel == "#agents"));
     let delivery = next_intent(&mut watching).await;
     assert_eq!(
         (delivery.from.as_str(), delivery.why),
@@ -131,10 +131,9 @@ async fn a_report_waits_for_the_sessions_next_wake() {
         repo: beta_clone.path().to_owned(),
         session: "cc-9".into(),
         text: text.into(),
-        to: Target::Repo,
+        to: Target::Agents,
         app: None,
         everyone: false,
-        force: true,
         reply: None,
     };
     // It names cc-1, but needs nothing of it: no wake.
@@ -145,7 +144,7 @@ async fn a_report_waits_for_the_sessions_next_wake() {
         ("cc-1: login landed as 1a2b3c4 (build 8)".into(), None)
     );
     // A question does wake it, and the report comes first, introduced.
-    beta.request(post("cc-1: can you rebase onto it?")).await;
+    beta.request(post("can you rebase onto it, cc-1?")).await;
     let (intro, why) = next_post_why(&mut cc1).await;
     assert_eq!(
         (intro.as_str(), why),
@@ -163,7 +162,7 @@ async fn a_report_waits_for_the_sessions_next_wake() {
     );
     assert_eq!(
         next_post_why(&mut cc1).await,
-        ("cc-1: can you rebase onto it?".into(), Some(Why::Mention))
+        ("can you rebase onto it, cc-1?".into(), Some(Why::Mention))
     );
 }
 
@@ -175,10 +174,9 @@ async fn the_same_post_again_at_once_goes_out_once() {
         repo: beta_clone.path().to_owned(),
         session: "cc-9".into(),
         text: text.into(),
-        to: Target::Repo,
+        to: Target::Agents,
         app: None,
         everyone: false,
-        force: true,
         reply: None,
     };
     let first = beta.request(post("done: the login page")).await;
@@ -222,7 +220,7 @@ async fn working_sets_are_told_when_they_change_and_not_more_often() {
             loop {
                 if let Heard::Message(delivery) = heard(watching).await
                     && delivery.from == "alpha"
-                    && delivery.channel == "#api"
+                    && delivery.channel == "#agents"
                     && let Event::Working { paths, .. } = delivery.message.event
                 {
                     let at = delivery
@@ -282,7 +280,6 @@ async fn a_renewal_keeps_an_intent_listed_without_a_line_or_a_wake() {
             // The agents' room, where intents go.
             to: Target::Topic {
                 name: "agents".into(),
-                org: false,
             },
             app: None,
         })
@@ -318,13 +315,12 @@ async fn a_session_starting_to_change_files_is_told_the_gotchas_kept_about_them(
             data: serde_json::json!({ "paths": ["web"] }),
             text: "the login page only builds with pnpm".into(),
             to: Target::Topic {
-                name: zirc_core::gotchas::ROOM.into(),
-                org: false,
+                name: "gotchas".into(),
             },
             app: None,
         })
         .await;
-    assert!(matches!(kept, Response::Channel { channel, .. } if channel == "#api/gotchas"));
+    assert!(matches!(kept, Response::Channel { channel, .. } if channel == "#gotchas"));
     // Beta hears it, and it wakes nobody.
     loop {
         let delivery = next(&mut watching).await;
@@ -359,8 +355,7 @@ async fn a_retired_gotcha_is_told_to_nobody() {
         data,
         text: text.into(),
         to: Target::Topic {
-            name: zirc_core::gotchas::ROOM.into(),
-            org: false,
+            name: "gotchas".into(),
         },
         app: None,
     };
@@ -428,7 +423,7 @@ async fn the_gotchas_told_one_session_dont_wake_the_session_that_learnt_them() {
     }
     machine
         .eventually(
-            |status| status.channels.iter().any(|c| c == "#api"),
+            |status| status.channels.iter().any(|c| c == "#agents"),
             "joining",
         )
         .await;
@@ -441,8 +436,7 @@ async fn the_gotchas_told_one_session_dont_wake_the_session_that_learnt_them() {
             data: serde_json::json!({ "paths": ["web"] }),
             text: "the login page only builds with pnpm".into(),
             to: Target::Topic {
-                name: zirc_core::gotchas::ROOM.into(),
-                org: false,
+                name: "gotchas".into(),
             },
             app: None,
         })
@@ -465,7 +459,7 @@ async fn the_gotchas_told_one_session_dont_wake_the_session_that_learnt_them() {
     );
     assert_eq!(why, Some(Why::Mention));
     // It's cc-b's news, not cc-a's: nothing wakes cc-a before a line that names it.
-    post(&machine, mine.path(), "cc-b", "cc-a: marker").await;
+    post(&machine, mine.path(), "cc-b", "marker for cc-a").await;
     let heard = until_marker(&mut author, |heard| says(heard, "marker")).await;
     let woke: Vec<&str> = heard
         .iter()
@@ -515,7 +509,7 @@ async fn an_automatic_intent_said_again_for_the_same_directory_wakes_a_session_o
         .beta
         .sees_intent_of("cc-a", |paths| paths == ["web"])
         .await;
-    fleet.alpha.says("cc-b: marker").await;
+    fleet.alpha.says("marker for cc-b").await;
     let heard = until_marker(&mut watching, |heard| says(heard, "marker")).await;
     assert_eq!(intent_wakes(&heard), Vec::<String>::new());
 }
@@ -535,7 +529,7 @@ async fn on_one_machine_an_automatic_intent_said_again_wakes_another_session_onc
     }
     machine
         .eventually(
-            |status| status.channels.iter().any(|c| c == "#api"),
+            |status| status.channels.iter().any(|c| c == "#agents"),
             "joining",
         )
         .await;
@@ -570,7 +564,7 @@ async fn on_one_machine_an_automatic_intent_said_again_wakes_another_session_onc
     until_who(&machine, lists("cc-a", false), "cc-a's intent withdrawn").await;
     edit(&theirs, "web/login.ts", "export const total = 0\n");
     until_who(&machine, lists("cc-a", true), "cc-a's intent again").await;
-    post(&machine, theirs.path(), "cc-a", "cc-b: marker").await;
+    post(&machine, theirs.path(), "cc-a", "marker for cc-b").await;
     let heard = until_marker(&mut watching, |heard| says(heard, "marker")).await;
     assert_eq!(intent_wakes(&heard), Vec::<String>::new());
 }
@@ -590,7 +584,7 @@ async fn an_intent_in_other_files_waits_for_the_next_wake_and_says_how_it_meets_
     }
     machine
         .eventually(
-            |status| status.channels.iter().any(|c| c == "#api"),
+            |status| status.channels.iter().any(|c| c == "#agents"),
             "joining",
         )
         .await;
@@ -628,7 +622,7 @@ async fn an_intent_in_other_files_waits_for_the_next_wake_and_says_how_it_meets_
         "cc-a's intent",
     )
     .await;
-    post(&machine, theirs.path(), "cc-a", "cc-b: marker").await;
+    post(&machine, theirs.path(), "cc-a", "marker for cc-b").await;
     let heard = until_marker(&mut watching, |heard| says(heard, "marker")).await;
     // It came with the marker's wake, under the line saying what waited for it.
     let meanwhile = heard

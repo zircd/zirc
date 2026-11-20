@@ -1,5 +1,6 @@
-//! Gotchas' types: one-line lessons about some paths, kept in a repository's gotchas room
-//! (`#<repo>/gotchas`) as [`KIND`] events, and retired by [`RETIRED`] ones. Said here, in the
+//! Gotchas' types: one-line lessons about some paths, kept in the organisation's gotchas room
+//! ([`CHANNEL`], `#gotchas`) as [`KIND`] events, each saying its repository
+//! ([`crate::Message::repo`]), and retired by [`RETIRED`] ones. Said here, in the
 //! protocol, so zirc's core, which tells them, and the server's sidecar, which lists them for
 //! the team's Playbook page, keep the same ones ([`kept`]).
 
@@ -14,8 +15,10 @@ pub const KIND: &str = "x-zirc/gotcha";
 /// The kind of the event that retires a gotcha.
 pub const RETIRED: &str = "x-zirc/gotcha-retired";
 
-/// The standing room under a repository's channel that holds its gotchas.
-pub const ROOM: &str = "gotchas";
+/// The organisation's room that holds every repository's gotchas, each event saying which
+/// repository it's about. The rooms each repository had before, `#<repo>/gotchas`, are left
+/// as they were on 20 Nov 2026, and nothing reads them.
+pub const CHANNEL: &str = "#gotchas";
 
 /// How many of a room's newest messages are read for its gotchas: all of them, as only
 /// gotchas go there.
@@ -99,12 +102,10 @@ pub fn is_kind(kind: &str) -> bool {
     kind == KIND || kind == RETIRED
 }
 
-/// Whether `channel` is a repository's gotchas room.
+/// Whether `channel` is the gotchas room ([`CHANNEL`]).
 #[must_use]
 pub fn is_room(channel: &str) -> bool {
-    channel
-        .rsplit_once('/')
-        .is_some_and(|(parent, room)| parent.len() > 1 && room.eq_ignore_ascii_case(ROOM))
+    channel.eq_ignore_ascii_case(CHANNEL)
 }
 
 /// The paths and words of the gotcha `event` says, if it's one.
@@ -158,9 +159,10 @@ pub fn kept(said: impl IntoIterator<Item = Said>) -> Vec<Gotcha> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(rename = "GotchaListed")]
 pub struct Listed {
-    /// The gotchas room it's kept in, such as `#api/gotchas`.
+    /// The room it's kept in, [`CHANNEL`]. Kept for the dashboard, which reads a sidecar's
+    /// listing from before rooms were the organisation's.
     pub room: String,
-    /// The repository's channel, the room's parent: `#api`.
+    /// The repository it's about, by name: `api`.
     pub repository: String,
     /// The gotcha.
     pub gotcha: Gotcha,
@@ -170,20 +172,17 @@ pub struct Listed {
 }
 
 impl Listed {
-    /// `gotcha`, kept in `room`.
+    /// `gotcha`, about `repository`.
     #[must_use]
-    pub fn new(room: &str, gotcha: Gotcha) -> Self {
+    pub fn new(repository: &str, gotcha: Gotcha) -> Self {
         let short = gotcha
             .id
             .as_deref()
             .map(|id| crate::short_id(id).to_owned())
             .unwrap_or_default();
         Self {
-            room: room.to_owned(),
-            repository: room
-                .rsplit_once('/')
-                .map_or(room, |(parent, _)| parent)
-                .to_owned(),
+            room: CHANNEL.to_owned(),
+            repository: repository.to_owned(),
             gotcha,
             short,
         }

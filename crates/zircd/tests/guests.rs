@@ -236,7 +236,6 @@ async fn a_guests_terminal_talks_in_its_guests_room_alone() {
                 to: Target::Org,
                 app: None,
                 everyone: false,
-                force: false,
                 reply: None,
             },
         )
@@ -270,7 +269,6 @@ async fn refuses_all_but_its_room(machine: &Machine, somewhere: &std::path::Path
         Request::Join {
             repo: somewhere.to_owned(),
             topic: "releases".into(),
-            org: true,
             session: Some("cc-1".into()),
         },
         Request::Intend {

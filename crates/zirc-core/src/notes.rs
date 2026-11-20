@@ -6,8 +6,6 @@
 
 use std::fmt;
 
-use crate::team;
-
 /// A session zircd has heard of: one working on this machine, or one another machine's
 /// working sets and claims name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,9 +136,22 @@ pub fn resolve(to: &str, known: &[Known]) -> Result<Address, Error> {
     }
 }
 
+/// The labels that start a session's status line, which is for every session.
+pub const STATUS: [&str; 3] = ["taking:", "done:", "dropped:"];
+
+/// Whether `text` is a session's status line: one starting [`STATUS`].
+#[must_use]
+pub fn is_status(text: &str) -> bool {
+    let text = text.trim_start();
+    STATUS.iter().any(|label| {
+        text.get(..label.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(label))
+    })
+}
+
 /// Whether a post saying `text` is addressed to one agent session among `known`, as
 /// `coordinator: landed it`, and so is a note for it: where to, and what it says without
-/// the address. Never a status line ([`team::STATUS`]), which is for every session, nor one
+/// the address. Never a status line ([`STATUS`]), which is for every session, nor one
 /// to `@everyone` or one of `people`, nor one whose address could be several sessions.
 #[must_use]
 pub fn addressed<'a>(
@@ -149,7 +160,7 @@ pub fn addressed<'a>(
     known: &[Known],
 ) -> Option<(Address, &'a str)> {
     let text = text.trim();
-    if team::is_status(text) {
+    if is_status(text) {
         return None;
     }
     let (to, rest) = text.split_once(": ")?;
@@ -169,6 +180,15 @@ pub fn addressed<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_status_line_starts_with_its_label() {
+        assert!(is_status("taking: the login page"));
+        assert!(is_status("  Done: it"));
+        assert!(is_status("dropped: it"));
+        assert!(!is_status("cc-1a2b3c: done: it"));
+        assert!(!is_status("undone: it"));
+    }
 
     fn known() -> Vec<Known> {
         let known = |machine: &str, session: &str, name: Option<&str>| Known {

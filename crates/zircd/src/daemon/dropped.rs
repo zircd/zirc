@@ -75,7 +75,7 @@ impl Daemon {
                 stacked.iter().any(|(_, on)| on == branch)
                     || self
                         .built_on
-                        .contains(&(watched.channel.clone(), branch.clone()))
+                        .contains(&(watched.scope.clone(), branch.clone()))
             })
             .collect();
         if gone.is_empty() {
@@ -204,14 +204,14 @@ impl Daemon {
             let Some(watched) = self.repos.get(&root) else {
                 continue;
             };
-            let channel = watched.channel.clone();
+            let channel = watched.scope.clone();
             let default = watched.default_branch.clone();
             // Every session of the repository's on this machine, whichever clone or worktree
             // of it saw the branch go.
             let sessions: Vec<String> = self
                 .repos
                 .values()
-                .filter(|other| other.channel == channel)
+                .filter(|other| other.scope == channel)
                 .flat_map(|other| other.sessions.names().map(str::to_owned))
                 .collect();
             for session in sessions {
@@ -235,12 +235,12 @@ impl Daemon {
         }
     }
 
-    /// Says in the repository's agents' room that `branch` is gone from origin unlanded.
+    /// Says in `#agents` that `branch` is gone from origin unlanded.
     fn say_dropped(&mut self, root: &Path, branch: &str) {
         let Some(watched) = self.repos.get(root) else {
             return;
         };
-        let agents = watched.agents_channel().to_owned();
+        let agents = watched.scope.clone();
         let event = Event::Custom {
             kind: DROPPED_KIND.into(),
             data: serde_json::json!({ "branch": branch }),
@@ -256,7 +256,7 @@ impl Daemon {
         let Response::Delivery(delivery) = response else {
             return;
         };
-        let channel = self.home_channel(&delivery.channel);
+        let channel = self.scope_of(delivery);
         match &delivery.message.event {
             Event::Push { on: Some(on), .. } => {
                 self.built_on.insert((channel, on.clone()));
@@ -265,7 +265,7 @@ impl Daemon {
                 let root = self
                     .repos
                     .iter()
-                    .find(|(_, watched)| watched.channel == channel)
+                    .find(|(_, watched)| watched.scope == channel)
                     .map(|(root, _)| root.clone());
                 if let (Some(root), Some(branch)) = (root, data["branch"].as_str()) {
                     self.stacks_checked(vec![(root, branch.to_owned())]);

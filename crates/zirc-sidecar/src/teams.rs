@@ -11,8 +11,8 @@
 //! nick, can't be pretended to); everyone else needs an `INVITE`. The controller's
 //! Ergo tests check this on the release.
 //!
-//! Owners get ops in every other channel there is too, but threads (`#<repo>/<name>`, not a
-//! standing room such as `#<repo>/agents`: [`zirc_proto::is_thread`]): registering a
+//! Owners get ops in every other channel there is too, but threads (`#<parent>/<name>`, not
+//! one of the rooms repositories had before 20 Nov 2026: [`zirc_proto::is_thread`]): registering a
 //! channel keeps it however empty, and a thread is nobody's to keep, as the user chose on
 //! 5 Nov: "I want to stop creating channels for every branch, and sweep them". A team's own
 //! channels are registered whatever their name.

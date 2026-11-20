@@ -46,7 +46,6 @@ mod lease;
 mod live;
 mod moved;
 mod ops_kept;
-mod post_room;
 mod queries;
 mod replay;
 mod repos;
@@ -55,6 +54,7 @@ mod respond;
 mod same_work;
 mod say;
 mod scans;
+mod scope;
 mod sealing;
 mod sessions;
 mod tasks;
@@ -213,13 +213,9 @@ struct Watched {
     /// ([`git::common_dir`]).
     common: PathBuf,
     project: Project,
-    /// The repository's channel, `#<repo>`.
-    channel: String,
-    /// Its agent room, where its sessions' lines go ([`post_room`]): `#<repo>/agents` unless the
-    /// team's config says otherwise, `None` when that's the repository's channel.
-    room: Option<String>,
-    /// Its areas' rooms, `#<repo>/<area>`, as the team's config names them ([`post_room`]).
-    areas: Vec<String>,
+    /// What zircd keys the repository by ([`Project::scope`], `#<repo>`), as its lines go to
+    /// the organisation's `#agents` ([`scope`]).
+    scope: String,
     default_branch: String,
     snapshot: Snapshot,
     /// When the repository was first and last touched since its last scan.
@@ -412,14 +408,20 @@ impl Default for SavedTopics {
 }
 
 impl From<SavedTopics> for Topics {
+    /// The topics saved, but a repository's or a branch's (`#api/auth`), which there are no
+    /// more of since 20 Nov 2026: one saved before isn't joined again.
     fn from(saved: SavedTopics) -> Self {
-        match saved {
+        let topics: Self = match saved {
             SavedTopics::Channels(channels) => channels
                 .into_iter()
                 .map(|channel| (channel, BTreeSet::from([None])))
                 .collect(),
             SavedTopics::Joiners(topics) => topics,
-        }
+        };
+        topics
+            .into_iter()
+            .filter(|(channel, _)| !channel.contains('/'))
+            .collect()
     }
 }
 
@@ -486,29 +488,6 @@ impl Watched {
     /// The session that signs what's made here: the last added.
     fn signer(&self) -> &str {
         self.sessions.latest().unwrap_or(WATCHER_SESSION)
-    }
-
-    /// The channel of the branch checked out here, unless that's the default one.
-    ///
-    /// Only a branch that's been pushed has one: an unpushed branch, such as the one a tool
-    /// makes for each agent session, has only its own worktree on it, and a channel of its
-    /// own would hold nobody else.
-    fn branch_channel(&self) -> Option<String> {
-        self.channel_of(self.snapshot.branch.as_deref()?)
-    }
-
-    /// The channel of `branch`, if it's been pushed and isn't the default one.
-    fn channel_of(&self, branch: &str) -> Option<String> {
-        let suffix = format!("/{branch}");
-        if !self
-            .snapshot
-            .remotes
-            .keys()
-            .any(|remote| remote.ends_with(&suffix))
-        {
-            return None;
-        }
-        self.project.branch_channel(branch, &self.default_branch)
     }
 }
 
@@ -600,7 +579,7 @@ pub struct Daemon {
     /// What people and sessions last said in words, newest last, for what was said of a
     /// branch once it's dropped ([`Daemon::said_of`]): who, and what.
     said_lately: VecDeque<(String, String)>,
-    /// The branches someone said theirs is built on, by repository's channel: the ones
+    /// The branches someone said theirs is built on, by repository's scope: the ones
     /// whose going from origin this machine says to everyone ([`Daemon::stacks_checked`]).
     built_on: BTreeSet<(String, String)>,
     /// The tasks sessions here and elsewhere took on and haven't finished, to tell a session
@@ -1716,8 +1695,8 @@ fn why_of(response: &Response) -> Option<Why> {
     }
 }
 
-/// Whether `channel` is the repository channel `repo`'s, or one of its branch or topic
-/// channels (`#api/login`).
+/// Whether `channel` is the scope `repo`, or one of the channels under it CI still speaks in
+/// (`#api/landings`).
 fn in_repo(channel: &str, repo: &str) -> bool {
     channel == repo
         || channel
@@ -2306,9 +2285,12 @@ mod tests {
 
     #[test]
     fn reads_topics_saved_as_a_list_as_the_machines() {
-        let old: SavedTopics = serde_json::from_str(r##"["#login", "#ops"]"##).unwrap();
+        let old: SavedTopics =
+            serde_json::from_str(r##"["#login", "#ops", "#api/auth"]"##).unwrap();
         let topics = Topics::from(old);
         assert_eq!(topics["#ops"], BTreeSet::from([None]));
+        // A repository's topic, from before topics were the organisation's, is let go.
+        assert!(!topics.contains_key("#api/auth"));
         let saved = serde_json::to_string(&SavedTopics::Joiners(Topics::from([(
             "#ops".to_owned(),
             BTreeSet::from([None, Some("cc-1".to_owned())]),

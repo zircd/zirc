@@ -1,16 +1,10 @@
-//! Which channels a repository's work goes to. Each organisation has a server of its own,
-//! so channels need no organisation in their names, and clones of one project share a
-//! remote, so the remote's repository name names them the same on every machine:
-//!
-//! - `#general`: the whole organisation, for its people and announcements.
-//! - `#api`: the repository: working sets, overlaps, commits and pushes.
-//! - `#api/login`: a branch other than the default: the sessions on that feature.
-//! - `#api/auth` and `#auth`: topics, joined by choice, per repository or across the
-//!   organisation.
-//!
-//! Branches and repository topics share a namespace, so a topic named after a branch is the
-//! same channel, which is usually what's meant. Two repositories with the same name share a
-//! channel too; team configuration will be able to rename channels later.
+//! A repository as zirc names it. Every repository's work goes to the organisation's one
+//! [`AGENTS_CHANNEL`](zirc_proto::AGENTS_CHANNEL), each line saying its repository by
+//! [`Project::repo`]: clones of one project share a remote, so the remote's repository name
+//! names it the same on every machine. Two repositories with the same name are one to zirc.
+//! Topics people join are the organisation's, `#auth` ([`topic_channel`]). Before 20 Nov 2026
+//! each repository had channels of its own (`#api`, `#api/agents`, `#api/<branch>`…): they're
+//! left as they were, and nothing makes or reads them.
 
 /// The longest channel name we make. Ergo's default limit is 64 bytes.
 const MAX_CHANNEL_BYTES: usize = 64;
@@ -18,10 +12,11 @@ const MAX_CHANNEL_BYTES: usize = 64;
 /// The organisation-wide channel, which zirc-chat puts new people in.
 pub use zirc_chat::chat::ORG_CHANNEL;
 
-/// A repository's place in the channel hierarchy.
+/// A repository, as zirc names it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Project {
-    /// The repository's name, as channels spell it.
+    /// The repository's name, in lowercase with only what channel names allow, as each
+    /// line about it says it ([`zirc_proto::Message::repo`]).
     pub repo: String,
     /// Its web address on a forge, such as `https://github.com/acme/api`, from its remote
     /// ([`web_address`]), so apps can link its commits, branches and files.
@@ -40,29 +35,25 @@ impl Project {
         }
     }
 
-    /// `#api`.
+    /// `#api`: how hints and shared states have named the repository since it had a
+    /// channel of that name, and how zircd keys what's said about it. It's no channel now.
     #[must_use]
-    pub fn repo_channel(&self) -> String {
-        channel(&self.repo)
+    pub fn scope(&self) -> String {
+        scope(&self.repo)
     }
+}
 
-    /// `#api/login` for a branch that isn't the default one; the default branch's work is
-    /// everyone's, so it has no channel of its own.
-    #[must_use]
-    pub fn branch_channel(&self, branch: &str, default_branch: &str) -> Option<String> {
-        (branch != default_branch).then(|| channel(&format!("{}/{}", self.repo, clean(branch))))
-    }
+/// The scope ([`Project::scope`]) of the repository named `repo`, as a line about it says
+/// it ([`zirc_proto::Message::repo`]): `#api` for `api`.
+#[must_use]
+pub fn scope(repo: &str) -> String {
+    channel(&clean(repo))
+}
 
-    /// `#api/<topic>`, or across the organisation `#<topic>`.
-    #[must_use]
-    pub fn topic_channel(&self, topic: &str, org_wide: bool) -> String {
-        let topic = clean(topic);
-        if org_wide {
-            channel(&topic)
-        } else {
-            channel(&format!("{}/{topic}", self.repo))
-        }
-    }
+/// The organisation's channel for the topic `topic`, `#auth`.
+#[must_use]
+pub fn topic_channel(topic: &str) -> String {
+    channel(&clean(topic))
 }
 
 /// `#` and a name, cut to fit.
@@ -221,36 +212,24 @@ mod tests {
     }
 
     #[test]
-    fn makes_the_whole_hierarchy() {
+    fn names_the_repository_and_the_organisations_topics() {
         let project = api();
-        assert_eq!(project.repo_channel(), "#api");
-        assert_eq!(
-            project.branch_channel("Feature/Login", "main").as_deref(),
-            Some("#api/feature/login")
-        );
-        assert_eq!(project.branch_channel("main", "main"), None);
-        assert_eq!(project.topic_channel("Auth", false), "#api/auth");
-        assert_eq!(project.topic_channel("auth", true), "#auth");
+        assert_eq!(project.repo, "api");
+        assert_eq!(project.scope(), "#api");
+        assert_eq!(topic_channel("Auth"), "#auth");
     }
 
     #[test]
     fn falls_back_to_the_directory_name() {
-        assert_eq!(
-            Project::new(None, "My Project").repo_channel(),
-            "#my-project"
-        );
-        assert_eq!(Project::new(Some(""), "api").repo_channel(), "#api");
+        assert_eq!(Project::new(None, "My Project").repo, "my-project");
+        assert_eq!(Project::new(Some(""), "api").scope(), "#api");
     }
 
     #[test]
-    fn keeps_channel_names_within_limits() {
+    fn keeps_names_within_a_channels_limits() {
         let long = "x".repeat(100);
-        assert_eq!(
-            Project::new(None, &long).repo_channel().len(),
-            MAX_CHANNEL_BYTES
-        );
-        let branch = api().branch_channel(&"é".repeat(40), "main").unwrap();
-        assert!(branch.len() <= MAX_CHANNEL_BYTES);
+        assert_eq!(Project::new(None, &long).scope().len(), MAX_CHANNEL_BYTES);
+        assert!(topic_channel(&"é".repeat(40)).len() <= MAX_CHANNEL_BYTES);
     }
 
     #[test]

@@ -54,10 +54,10 @@ async fn sees_lease(peer: &Peer, what: &str) {
 /// Waits until `nicks` are all in `#api`, as a person who joins it sees.
 async fn in_api_again(ergo: &zirc_test_ergo::Ergo, nicks: &[&str]) {
     let (ada, mut ada_in) = zirc_test_irc::person(ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_in, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
     tokio::time::timeout(WAIT, async {
         loop {
-            ada.send(zirc_irc::Line::new("NAMES", ["#api"])).unwrap();
+            ada.send(zirc_irc::Line::new("NAMES", ["#agents"])).unwrap();
             let names = zirc_test_irc::next_matching(&mut ada_in, |line| line.command == "353")
                 .await
                 .params

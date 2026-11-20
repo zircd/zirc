@@ -18,10 +18,12 @@ use crate::sessions::{OWNS_HISTORY, card_named, forget_gone, name_session};
 pub(crate) struct TopicArgs {
     /// The topic, such as auth or releases.
     pub(crate) topic: String,
-    /// The organisation's topic, #<topic>, rather than the repository's, #<repo>/<topic>.
-    #[arg(long)]
+    /// Topics are the organisation's since 20 Nov 2026: taken, and nothing more, for what
+    /// was written before.
+    #[arg(long, hide = true)]
     pub(crate) org: bool,
-    /// The repository whose topic it is. Defaults to the current directory.
+    /// A repository zirc watches, which says the organisation. Defaults to the current
+    /// directory.
     #[arg(long)]
     pub(crate) repo: Option<PathBuf>,
     /// The session joining or leaving, whose `zirc watch` hears the topic's posts.
@@ -69,7 +71,7 @@ pub(crate) async fn send_dm(
     print_channel(ask_in(socket, org, request).await?, "sent to", out)
 }
 
-/// Tells the repository's channel what the session is about to change: first, for a session
+/// Tells #agents what the session is about to change: first, for a session
 /// What `session` is told of its user's other sessions on this machine
 /// ([`zirc_core::siblings::brief`]): nothing when zircd can't say.
 async fn siblings(socket: &Path, session: &str) -> String {
@@ -102,10 +104,9 @@ pub(crate) async fn intend(
             repo: cwd,
             session,
             text: summary,
-            to: Target::Default,
+            to: Target::Agents,
             app: None,
             everyone: false,
-            force: false,
             reply: None,
         };
         print_posted(ask(socket, request).await?, out)?;
@@ -189,10 +190,9 @@ async fn take_task(
         repo: cwd.to_owned(),
         session: session.to_owned(),
         text: text.clone(),
-        to: Target::Default,
+        to: Target::Agents,
         app: None,
         everyone: false,
-        force: false,
         reply: None,
     };
     let Response::Channel { channel, .. } = ask(socket, request).await? else {
@@ -238,8 +238,8 @@ pub(crate) fn hard_to_read(text: &str) -> bool {
 }
 
 /// Why `zirc post` refuses a post saying what landed, and what to say instead.
-pub(crate) const LANDING_REFUSED: &str = "not posted: CI already says what landed, and as what, in the \
-    repository's landings channel, and `zirc wait-for` wakes whoever waits on it. Post \
+pub(crate) const LANDING_REFUSED: &str = "not posted: CI already says what landed, and as what, in \
+    #agents, and `zirc wait-for` wakes whoever waits on it. Post \
     `done: <the task>` without the commit or build, or nothing; or post it as it is with --force";
 
 /// Whether `text` reports a landing as CI does: it says something landed or was queued, and
@@ -315,20 +315,23 @@ async fn clashes_found(
         .map_or(0, |since| since.as_secs());
     let Some(channel) = channels
         .iter()
-        .find(|channel| channel.channel == repo.channel)
+        .find(|channel| channel.channel == repo.scope)
     else {
         return Ok(None);
     };
     let clashes = zirc_core::clashes::clashes(channel, session, &paths, now);
     let mut text = zirc_core::clashes::text(&clashes, session);
-    // Who changed them lately, to ask: worth saying, not worth failing over.
+    // Who changed them lately, to ask: worth saying, not worth failing over. Every
+    // repository's lines are in #agents: this one's alone.
     let read = Request::Read {
-        target: channel.channel.clone(),
+        target: zirc_proto::AGENTS_CHANNEL.to_owned(),
         limit: OWNS_HISTORY,
         since: None,
         until: None,
     };
-    if let Ok(Response::Messages { messages }) = waits(socket, repo.org.as_deref(), read).await {
+    if let Ok(Response::Messages { mut messages }) = waits(socket, repo.org.as_deref(), read).await
+    {
+        messages.retain(|delivery| delivery.scope().eq_ignore_ascii_case(&repo.scope));
         let mut owners = zirc_core::owners::owners_of(channel, &messages, &paths, session, now);
         forget_gone(socket, &mut owners).await;
         text.push_str(&zirc_core::owners::ask_text(&owners));
@@ -345,7 +348,7 @@ pub(crate) async fn topic(
 ) -> Result<()> {
     let TopicArgs {
         topic,
-        org,
+        org: _,
         repo,
         session,
     } = args;
@@ -354,7 +357,6 @@ pub(crate) async fn topic(
         let request = Request::Join {
             repo,
             topic,
-            org,
             session,
         };
         (request, "joined")
@@ -362,7 +364,6 @@ pub(crate) async fn topic(
         let request = Request::Leave {
             repo,
             topic,
-            org,
             session,
         };
         (request, "left")
@@ -635,7 +636,6 @@ pub(crate) async fn post(
             to,
             app: app_named(app)?,
             everyone,
-            force,
             reply: reply_to,
         };
         ask_in(socket, org.as_deref(), request).await?
@@ -649,7 +649,6 @@ pub(crate) async fn post(
             session,
             text,
             to,
-            force,
             reply: reply_to,
         };
         // A zircd from before sealing refuses it, rather than posting the parts unsealed.

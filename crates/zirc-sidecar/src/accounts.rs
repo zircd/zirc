@@ -75,7 +75,7 @@
 //! (a name once unregistered rather than erased, which Ergo doesn't give out again), 502 `ergo`, 503 `starting`
 //! (Ergo is still starting: try again in a moment). Passphrases are never logged or echoed.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -849,8 +849,8 @@ async fn read_history(
 /// The conversations someone may read, each with its newest message's time and how many
 /// messages it had since `since`: a catch-up's overview.
 /// The team's gotchas the person may read (`GET /gotchas` on the content API): those kept in
-/// each repository's gotchas room and not retired since ([`zirc_proto::gotchas::kept`]), as
-/// a [`zirc_proto::gotchas::Listing`], newest first.
+/// the gotchas room and not retired since ([`zirc_proto::gotchas::kept`]), each
+/// repository's apart, as a [`zirc_proto::gotchas::Listing`], newest first.
 async fn list_gotchas(State(ergo): State<Arc<Ergo>>, headers: axum::http::HeaderMap) -> Response {
     use zirc_proto::gotchas::{self, Gotcha, Listed, Listing, Said};
     let Ok(_running) = ergo.searches.try_acquire() else {
@@ -888,33 +888,49 @@ async fn list_gotchas(State(ergo): State<Arc<Ergo>>, headers: axum::http::Header
                 ..history::Query::default()
             };
             let page = history::search(&path, &viewer, &query)?;
-            // Oldest first, as they were said.
-            let said = page.messages.into_iter().rev().filter_map(|message| {
-                let zirc = message.zirc?;
+            // Oldest first, as they were said, by the repository each says.
+            let mut by_repo: BTreeMap<String, Vec<Said>> = BTreeMap::new();
+            for message in page.messages.into_iter().rev() {
+                let Some(zirc) = message.zirc else { continue };
+                let Some(repo) = zirc
+                    .get("repo")
+                    .and_then(Value::as_str)
+                    .filter(|repo| !repo.is_empty())
+                    .map(str::to_owned)
+                else {
+                    continue;
+                };
                 // Who learnt it: its session, as zirc's own lines name it, or the nick.
                 let session = zirc
                     .get("session")
                     .and_then(Value::as_str)
                     .filter(|session| !session.is_empty())
                     .map(str::to_owned);
-                let event: zirc_proto::Event = serde_json::from_value(zirc).ok()?;
-                if let Some(retired) = gotchas::retiring(&event) {
-                    return Some(Said::Retired(retired));
-                }
-                let (paths, text) = gotchas::lesson(&event)?;
-                Some(Said::Kept(Gotcha {
-                    paths,
-                    text,
-                    who: session.unwrap_or(message.sender.nick),
-                    at: Some(message.time),
-                    id: Some(message.msgid),
-                }))
-            });
-            found.extend(
-                gotchas::kept(said)
-                    .into_iter()
-                    .map(|gotcha| Listed::new(&room, gotcha)),
-            );
+                let Ok(event) = serde_json::from_value::<zirc_proto::Event>(zirc) else {
+                    continue;
+                };
+                let said = if let Some(retired) = gotchas::retiring(&event) {
+                    Said::Retired(retired)
+                } else if let Some((paths, text)) = gotchas::lesson(&event) {
+                    Said::Kept(Gotcha {
+                        paths,
+                        text,
+                        who: session.unwrap_or(message.sender.nick),
+                        at: Some(message.time),
+                        id: Some(message.msgid),
+                    })
+                } else {
+                    continue;
+                };
+                by_repo.entry(repo).or_default().push(said);
+            }
+            for (repo, said) in by_repo {
+                found.extend(
+                    gotchas::kept(said)
+                        .into_iter()
+                        .map(|gotcha| Listed::new(&repo, gotcha)),
+                );
+            }
         }
         found.sort_by(|a, b| b.gotcha.at.cmp(&a.gotcha.at));
         Ok::<_, rusqlite::Error>(Listing { gotchas: found })
@@ -2009,7 +2025,7 @@ async fn tell_colleagues(ergo: &Ergo, colleagues: Colleagues) {
     if *said == Some(colleagues) {
         return;
     }
-    match say_as_zirc(ergo, zirc_proto::state::CHANNEL, colleagues.event()).await {
+    match say_as_zirc(ergo, zirc_proto::state::CHANNEL, colleagues.event(), None).await {
         Ok(()) => {
             info!(?colleagues, "said what colleagues' agents may do");
             *said = Some(colleagues);
@@ -2039,7 +2055,9 @@ async fn suggest(ergo: Arc<Ergo>) {
         match says {
             Ok(Ok(says)) => {
                 for say in says {
-                    if let Err(failure) = say_as_zirc(&ergo, &say.channel, say.event).await {
+                    if let Err(failure) =
+                        say_as_zirc(&ergo, &say.channel, say.event, say.repo).await
+                    {
                         warn!(%failure, "couldn't say a suggestion");
                     }
                 }
@@ -2052,7 +2070,12 @@ async fn suggest(ergo: Arc<Ergo>) {
 
 /// Says `event` in `channel` as zirc's own account ([`zirc_proto::names::SYSTEM`]), which no
 /// person or machine holds: what each machine's zircd takes as the server's word.
-async fn say_as_zirc(ergo: &Ergo, channel: &str, event: zirc_proto::Event) -> Result<(), String> {
+async fn say_as_zirc(
+    ergo: &Ergo,
+    channel: &str,
+    event: zirc_proto::Event,
+    repo: Option<String>,
+) -> Result<(), String> {
     let nick = zirc_proto::names::SYSTEM;
     if integration_account(ergo, nick, false).await.is_err() {
         return Err("zirc's own account couldn't be made".to_owned());
@@ -2064,7 +2087,10 @@ async fn say_as_zirc(ergo: &Ergo, channel: &str, event: zirc_proto::Event) -> Re
         &ergo.token,
         nick,
     );
-    let message = zirc_proto::Message::new("server", event);
+    let message = zirc_proto::Message {
+        repo,
+        ..zirc_proto::Message::new("server", event)
+    };
     say::post(&config, channel, &message)
         .await
         .map_err(|failure| failure.to_string())
@@ -2081,7 +2107,7 @@ async fn tell_hints_changed(ergo: Arc<Ergo>, change: zirc_proto::hints::Change) 
         change.hint.scope.as_str()
     };
     let changed = zirc_proto::hints::Changed::of_change(&change);
-    if let Err(failure) = say_as_zirc(&ergo, channel, changed.event(&change)).await {
+    if let Err(failure) = say_as_zirc(&ergo, channel, changed.event(&change), None).await {
         warn!(%failure, channel, "couldn't say the hints changed");
     }
 }

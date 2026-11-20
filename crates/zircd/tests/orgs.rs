@@ -21,7 +21,8 @@ const GLOBEX: &str = "globex";
 const ACME_REPO: &str = "git@github.com:acme/rockets.git";
 const GLOBEX_REPO: &str = "git@github.com:globex/magnets.git";
 
-/// The messages heard from `nick`, until one in `channel` that says `text`.
+/// The messages heard from `nick`, until one about `channel`, a repository's scope or a
+/// channel ([`Delivery::scope`]), that says `text`.
 async fn heard_until(
     watching: &mut Watching,
     nick: &str,
@@ -37,7 +38,7 @@ async fn heard_until(
             if delivery.from != nick {
                 continue;
             }
-            let done = delivery.channel == channel
+            let done = delivery.scope() == channel
                 && matches!(&delivery.message.event, Event::Text { body } if body == text);
             heard.push(delivery);
             if done {
@@ -63,16 +64,16 @@ async fn observer(ergo: &Ergo, nick: &str) -> (Machine, [TempDir; 2], Watching) 
             |status| {
                 status.channels
                     == [
+                        "#agents",
                         "#decisions",
                         "#general",
+                        "#gotchas",
                         "#magnets",
-                        "#magnets/agents",
-                        "#magnets/gotchas",
+                        "#magnets/ci",
                         "#magnets/landings",
                         "#ops",
                         "#rockets",
-                        "#rockets/agents",
-                        "#rockets/gotchas",
+                        "#rockets/ci",
                         "#rockets/landings",
                     ]
             },
@@ -122,26 +123,22 @@ async fn bind(machine: &Machine, rockets: &TempDir, magnets: &TempDir) -> TempDi
     machine
         .eventually(
             |status| {
-                status.orgs[0].channels
-                    == [
-                        "#decisions",
-                        "#general",
-                        "#ops",
-                        "#rockets",
-                        "#rockets/agents",
-                        "#rockets/gotchas",
-                        "#rockets/landings",
-                    ]
-                    && status.orgs[1].channels
-                        == [
-                            "#decisions",
-                            "#general",
-                            "#magnets",
-                            "#magnets/agents",
-                            "#magnets/gotchas",
-                            "#magnets/landings",
-                            "#ops",
-                        ]
+                let joined = |repo: &str| {
+                    let mut channels = vec![
+                        "#agents".to_owned(),
+                        "#decisions".to_owned(),
+                        "#general".to_owned(),
+                        "#gotchas".to_owned(),
+                        "#ops".to_owned(),
+                        format!("#{repo}"),
+                        format!("#{repo}/ci"),
+                        format!("#{repo}/landings"),
+                    ];
+                    channels.sort();
+                    channels
+                };
+                status.orgs[0].channels == joined("rockets")
+                    && status.orgs[1].channels == joined("magnets")
             },
             "joining each organisation's channels",
         )
@@ -188,10 +185,9 @@ async fn repositories_never_cross_organisations() {
         repo: repo.path().to_owned(),
         session: "cc-1".into(),
         text: text.into(),
-        to: Target::Repo,
+        to: Target::Agents,
         app: None,
         everyone: false,
-        force: true,
         reply: None,
     };
     machine
@@ -200,7 +196,7 @@ async fn repositories_never_cross_organisations() {
         .unwrap();
     let (_, _, globex_hears) = &mut observers[1];
     let heard = heard_until(globex_hears, "m", "#magnets", "magnets news").await;
-    assert!(heard.iter().all(|delivery| delivery.channel == "#magnets"));
+    assert!(heard.iter().all(|delivery| delivery.scope() == "#magnets"));
     // ...then in acme's.
     machine
         .request_in(None, post(&rockets, "rockets news"))
@@ -210,7 +206,7 @@ async fn repositories_never_cross_organisations() {
     let heard = heard_until(acme_hears, "m", "#rockets", "rockets news").await;
     // Acme's server heard nothing about globex's repository, which went first.
     assert!(
-        heard.iter().all(|delivery| delivery.channel == "#rockets"),
+        heard.iter().all(|delivery| delivery.scope() == "#rockets"),
         "{heard:?}"
     );
     // And globex's heard nothing about acme's.
@@ -221,7 +217,7 @@ async fn repositories_never_cross_organisations() {
     let (_, _, globex_hears) = &mut observers[1];
     let heard = heard_until(globex_hears, "m", "#magnets", "magnets again").await;
     assert!(
-        heard.iter().all(|delivery| delivery.channel == "#magnets"),
+        heard.iter().all(|delivery| delivery.scope() == "#magnets"),
         "{heard:?}"
     );
 

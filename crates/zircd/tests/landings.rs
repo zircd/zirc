@@ -286,7 +286,6 @@ async fn a_landing_a_session_waits_on_wakes_it() {
             .request(Request::Join {
                 repo: clone.path().to_owned(),
                 topic: "landings".into(),
-                org: false,
                 session: session.map(Into::into),
             })
             .await;
@@ -329,10 +328,9 @@ async fn a_landing_a_session_waits_on_wakes_it() {
             repo: alpha_clone.path().to_owned(),
             session: "cc-1".into(),
             text: "waiting for build 1300 before I land".into(),
-            to: Target::Default,
+            to: Target::Agents,
             app: None,
             everyone: false,
-            force: true,
             reply: None,
         })
         .await;
@@ -370,7 +368,6 @@ async fn a_landings_steps_never_wake_a_session_waiting_on_it() {
         .request(Request::Join {
             repo: alpha_clone.path().to_owned(),
             topic: "landings".into(),
-            org: false,
             session: Some("cc-1".into()),
         })
         .await;
@@ -422,8 +419,7 @@ async fn a_landings_steps_never_wake_a_session_waiting_on_it() {
 #[tokio::test]
 async fn a_landings_line_is_news_only_to_the_session_it_names() {
     let ergo = require_ergo!();
-    let [(alpha, alpha_clone), (beta, beta_clone)] = two_machines(&ergo).await;
-    // Both sessions joined the repository's landings channel, as //ops:land has them.
+    let [(alpha, alpha_clone), _] = two_machines(&ergo).await;
     for session in ["cc-1", "cc-2"] {
         alpha
             .request(Request::RepoAdd {
@@ -431,60 +427,21 @@ async fn a_landings_line_is_news_only_to_the_session_it_names() {
                 session: Some(session.into()),
             })
             .await;
-        alpha
-            .request(Request::Join {
-                repo: alpha_clone.path().to_owned(),
-                topic: "landings".into(),
-                org: false,
-                session: Some(session.into()),
-            })
-            .await;
-    }
-    beta.request(Request::Join {
-        repo: beta_clone.path().to_owned(),
-        topic: "landings".into(),
-        org: false,
-        session: None,
-    })
-    .await;
-    for machine in [&alpha, &beta] {
-        machine
-            .eventually(
-                |status| status.channels.iter().any(|c| c == "#api/landings"),
-                "joining #api/landings",
-            )
-            .await;
     }
     let mut cc1 = alpha.watch(Some("cc-1")).await;
-    let to_landings = |text: &str| Request::Post {
-        repo: beta_clone.path().to_owned(),
-        session: "ci".into(),
-        text: text.into(),
-        to: Target::Topic {
-            name: "landings".into(),
-            org: false,
-        },
-        app: None,
-        everyone: false,
-        force: true,
-        reply: None,
-    };
+    // CI, as one of zirc's own accounts, in #agents.
+    let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
     // Another session's landing, and its Apple apps passing: nothing to cc-1.
-    beta.request(to_landings("cc-2: build 7's Apple apps pass on 1a2b3c4"))
-        .await;
+    let theirs = "cc-2: build 7's Apple apps pass on 1a2b3c4";
+    ci.privmsg("#agents", theirs).unwrap();
+    assert_eq!(next_post_why(&mut cc1).await, (theirs.into(), None));
+    // Its own is (a failure: a success comes with its next wake).
+    let its = "cc-1: build 8 failed: //web:unit";
+    ci.privmsg("#agents", its).unwrap();
     assert_eq!(
         next_post_why(&mut cc1).await,
-        ("cc-2: build 7's Apple apps pass on 1a2b3c4".into(), None)
-    );
-    // Its own is.
-    beta.request(to_landings("cc-1: landed login as 5d6e7f8 (build 8)"))
-        .await;
-    assert_eq!(
-        next_post_why(&mut cc1).await,
-        (
-            "cc-1: landed login as 5d6e7f8 (build 8)".into(),
-            Some(Why::Mention)
-        )
+        (its.into(), Some(Why::Mention))
     );
 }
 
@@ -497,18 +454,7 @@ async fn a_branch_that_changed_a_sessions_files_wakes_it_once_when_it_lands() {
         session: Some("cc-b".into()),
     })
     .await;
-    for (machine, clone, session) in [
-        (&alpha, &alpha_clone, None),
-        (&beta, &beta_clone, Some("cc-b")),
-    ] {
-        machine
-            .request(Request::Join {
-                repo: clone.path().to_owned(),
-                topic: "landings".into(),
-                org: false,
-                session: session.map(Into::into),
-            })
-            .await;
+    for machine in [&alpha, &beta] {
         machine
             .eventually(
                 |status| status.channels.iter().any(|c| c == "#api/landings"),
@@ -619,7 +565,7 @@ async fn a_machines_landing_event_is_a_post_and_ends_no_wait() {
         kind: "x-zirc/landing".into(),
         data: serde_json::json!({ "branch": "login", "session": "cc-1", "state": "passed" }),
         text: landed.into(),
-        to: Target::Default,
+        to: Target::Agents,
         app: None,
     })
     .await;

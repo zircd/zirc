@@ -256,7 +256,7 @@ impl Daemon {
         self.repos
             .values()
             .filter(|watched| watched.sessions.contains(session))
-            .filter(|watched| in_repo(channel, &watched.channel))
+            .filter(|watched| in_repo(channel, &watched.scope))
             .flat_map(|watched| watched.paths_of(session))
             .collect()
     }
@@ -276,7 +276,7 @@ impl Daemon {
 
     /// Why `heard` concerns `session`, if it does, so its watcher wakes only for what needs
     /// it: overlaps with its paths, messages to it or this machine, posts that name it, its
-    /// paths, or a topic or branch channel it's in, and pushes that change its paths on the
+    /// paths, or a topic it's in, and pushes that change its paths on the
     /// branch it'll rebase onto. Its own posts come back without a reason.
     pub(super) fn why(&self, heard: &Response, session: Option<&str>) -> Option<Why> {
         let me = self.client.as_ref().map(|client| client.nick().to_owned());
@@ -341,7 +341,7 @@ impl Daemon {
         self.repos
             .values()
             .filter(|watched| session.is_none_or(|s| watched.sessions.contains(s)))
-            .filter(|watched| in_repo(channel, &watched.channel))
+            .filter(|watched| in_repo(channel, &watched.scope))
             .collect()
     }
 
@@ -372,9 +372,9 @@ impl Daemon {
                 .flatten()
                 .collect(),
         };
-        // An agent room's lines are its repository's, but only what names a session in it
-        // is news.
-        let home = self.home_channel(&delivery.channel);
+        // A line in `#agents` is its repository's, but only what names a session in it is
+        // news.
+        let home = self.scope_of(delivery);
         let channel = home.as_str();
         if delivery.from == me && session == Some(delivery.message.session.as_str()) {
             return None;
@@ -587,21 +587,11 @@ impl Daemon {
         // landings channel is, which is there for whom it names.
         let topic = self.in_topic(channel, session)
             && !routine(&delivery.from, &delivery.message)
-            && !landings(channel);
+            && !landings(&delivery.channel);
         if mentions(body, names) || self.broadcast(delivery) || self.stacked_on_named(body, session)
         {
             Some(Why::Mention)
-        } else if self.is_area_room(&delivery.channel) {
-            // An area's room: news to whom it names, to a session changing a
-            // path it names, and to one that joined the area.
-            if mine.iter().any(|path| body.contains(path)) {
-                Some(Why::Paths)
-            } else {
-                (self.in_topic(&delivery.channel, session)
-                    && !routine(&delivery.from, &delivery.message))
-                .then_some(Why::Topic)
-            }
-        } else if self.is_post_room(&delivery.channel) {
+        } else if Self::is_post_room(&delivery.channel) {
             // Agents saying what they're doing: news only to whom it names.
             None
         } else if mine.iter().any(|path| body.contains(path)) {
@@ -652,24 +642,12 @@ impl Daemon {
                 && self.in_topic(channel, Some(session)))
     }
 
-    /// Whether `channel` is a topic `session` joined, or the channel of a branch it works on.
-    /// A topic is news to the sessions that joined it, not to every session on the machine.
+    /// Whether `channel` is a topic `session` joined. A topic is news to the sessions that
+    /// joined it, not to every session on the machine.
     pub(super) fn in_topic(&self, channel: &str, session: Option<&str>) -> bool {
-        let joined = self.topics.get(channel).is_some_and(|joiners| {
+        self.topics.get(channel).is_some_and(|joiners| {
             session.is_none() || joiners.contains(&session.map(str::to_owned))
-        });
-        joined
-            || self
-                .repos
-                .values()
-                .filter(|watched| in_repo(channel, &watched.channel))
-                .any(|watched| match session {
-                    Some(session) => {
-                        watched.sessions.contains(session)
-                            && watched.branch_channel().as_deref() == Some(channel)
-                    }
-                    None => watched.branch_channel().as_deref() == Some(channel),
-                })
+        })
     }
 
     /// Whether `overlap` is news to `session` on `me`: between its work and another's, one
@@ -726,7 +704,7 @@ impl Daemon {
             if delivery.message.session == session {
                 return false;
             }
-            let home = self.home_channel(&delivery.channel);
+            let home = self.scope_of(delivery);
             return self.told.local.iter().any(|((channel, pair), paths)| {
                 // A pair whose overlap was told only as different parts never woke
                 // anyone, and its commits needn't either.
@@ -741,12 +719,12 @@ impl Daemon {
         let mine: Vec<String> = self
             .repos
             .values()
-            .filter(|watched| in_repo(&delivery.channel, &watched.channel))
+            .filter(|watched| in_repo(&delivery.scope(), &watched.scope))
             .flat_map(|watched| watched.paths_of(session))
             .collect();
         self.told
             .remote
-            .get(&(self.home_channel(&delivery.channel), delivery.from.clone()))
+            .get(&(self.scope_of(delivery), delivery.from.clone()))
             .is_some_and(|told| mine.iter().any(|path| told.contains_key(path)))
     }
 

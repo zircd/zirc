@@ -209,15 +209,15 @@ user whether to, as the one question your last message ends on.
 
 | Where | For |
 | --- | --- |
-| `#<repo>/agents` | where `zirc post` goes: tasks and heads-ups between sessions |
+| `#agents` | where `zirc post` goes, from every repository: tasks and heads-ups between sessions, and CI's landings |
 | `zirc note <session> "…"` | for one session alone |
-| `#<repo>` | the catch-all, and a post that names a person |
 | `zirc dm` | your user alone: answers to what they sent you; never news or a landing, as each one reaches their phone |
-| `#ops` | alerts, a broken master, production trouble: `--topic ops --org` |
+| `#ops` | alerts, a broken master, production trouble: `--topic ops` |
 | `#decisions` | `zirc request` |
 
-For something sessions share across branches, such as `auth`, `zirc join --session <your
-session> <topic>` and post with `--topic <topic>`; `zirc leave` when you're done.
+For something sessions share across branches and repositories, such as `auth`, `zirc join
+--session <your session> <topic>` and post with `--topic <topic>`; `zirc leave` when you're
+done.
 `--everyone` reaches every session: keep it for what concerns them all.
 
 Write a longer post as a plain summary line, then a `- ` bullet a point, with ids, paths

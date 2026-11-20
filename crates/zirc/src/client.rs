@@ -89,6 +89,16 @@ pub(crate) fn several(repos: &[Repo]) -> bool {
         > 1
 }
 
+/// How a line says where `repo` is watched: `monorepo in #agents`, with the organisation
+/// before `#agents` on a machine in several ([`channel_in`]).
+pub(crate) fn watched_in(repo: &zirc_core::ipc::Repo, org: Option<&str>) -> String {
+    format!(
+        "{} in {}",
+        repo.scope.trim_start_matches('#'),
+        channel_in(zirc_proto::AGENTS_CHANNEL, org)
+    )
+}
+
 /// `#api`, or `acme #api` when it's one organisation's of several: or any line said in one.
 pub(crate) fn channel_in(channel: &str, org: Option<&str>) -> String {
     match org {

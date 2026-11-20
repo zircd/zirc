@@ -18,10 +18,12 @@ async fn a_machine_drops_the_ops_it_gets_for_making_a_channel() {
     let mut config = zirc_irc::Config::new("127.0.0.1", ergo.port(), "looker");
     config.tls = false;
     let (client, mut incoming) = zirc_irc::connect(&config).await.unwrap();
-    client.join("#api").unwrap();
+    client.join("#agents").unwrap();
     let deadline = tokio::time::Instant::now() + WAIT;
     loop {
-        client.send(zirc_irc::Line::new("NAMES", ["#api"])).unwrap();
+        client
+            .send(zirc_irc::Line::new("NAMES", ["#agents"]))
+            .unwrap();
         let names = tokio::time::timeout(WAIT, async {
             loop {
                 let line = incoming.recv().await.unwrap();
@@ -85,14 +87,13 @@ async fn one_machine_hears_what_happens_in_anothers_clone() {
             repo: alpha_clone.path().join("src"),
             session: "cc-1".into(),
             text: "taking the login flow".into(),
-            to: Target::Repo,
+            to: Target::Agents,
             app: None,
             everyone: false,
-            force: true,
             reply: None,
         })
         .await;
-    assert_eq!(posted, Response::channel("#api"));
+    assert_eq!(posted, Response::channel("#agents"));
     let said = next(&mut beta_hears).await;
     assert_eq!(said.message.session, "cc-1");
     assert_eq!(
@@ -133,7 +134,6 @@ async fn remembers_watched_repositories_across_restarts() {
         .request(Request::Join {
             repo: project.path().to_owned(),
             topic: "auth".into(),
-            org: false,
             session: None,
         })
         .await;
@@ -148,11 +148,11 @@ async fn remembers_watched_repositories_across_restarts() {
         panic!("the repositories watched");
     };
     assert_eq!(repos.len(), 1);
-    assert_eq!(repos[0].channel, "#api");
+    assert_eq!(repos[0].scope, "#api");
     // ...and rejoins its topics.
     machine
         .eventually(
-            |status| status.channels.contains(&"#api/auth".to_owned()),
+            |status| status.channels.contains(&"#auth".to_owned()),
             "rejoining the topic",
         )
         .await;
@@ -262,7 +262,7 @@ async fn a_watch_hears_what_it_missed_since_the_last_one_ended() {
     drop(machine.watch(Some("cc-login")).await);
 
     post(&machine, &main_root, "cc-main", "chatter").await;
-    post(&machine, &main_root, "cc-main", "cc-login: rebase please").await;
+    post(&machine, &main_root, "cc-main", "rebase please, cc-login").await;
     // Once zircd has told every watch, and found cc-login's gone.
     let mut main_hears = machine.watch(Some("cc-main")).await;
     post(&machine, &main_root, "cc-main", "sent").await;
@@ -282,7 +282,7 @@ async fn a_watch_hears_what_it_missed_since_the_last_one_ended() {
                 "cc-login: while no watch of yours ran, this concerned you:".to_owned(),
                 Some(Why::Mention)
             ),
-            ("cc-login: rebase please".to_owned(), Some(Why::Mention)),
+            ("rebase please, cc-login".to_owned(), Some(Why::Mention)),
             (
                 "cc-login: that's what you missed".to_owned(),
                 Some(Why::Mention)
@@ -306,7 +306,7 @@ async fn a_watch_that_hung_up_is_noticed_at_once_and_its_news_kept() {
         )
         .await;
 
-    post(&machine, &main_root, "cc-main", "cc-login: rebase please").await;
+    post(&machine, &main_root, "cc-main", "rebase please, cc-login").await;
     let mut login_hears = machine.watch(Some("cc-login")).await;
     let said = [
         next_post_why(&mut login_hears).await.0,
@@ -316,7 +316,7 @@ async fn a_watch_that_hung_up_is_noticed_at_once_and_its_news_kept() {
         said,
         [
             "cc-login: while no watch of yours ran, this concerned you:",
-            "cc-login: rebase please"
+            "rebase please, cc-login"
         ]
     );
 }
@@ -357,8 +357,8 @@ async fn a_channel_the_server_refused_is_joined_once_it_can_be() {
     let ergo = require_ergo!();
     // Ada has #api first, and lets nobody in, as a server coming back from a restart may.
     let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_in, "#api").await;
-    ada.send(zirc_irc::Line::new("MODE", ["#api", "+i"]))
+    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
+    ada.send(zirc_irc::Line::new("MODE", ["#agents", "+i"]))
         .unwrap();
     // The server echoes the mode once it's set.
     zirc_test_irc::next_matching(&mut ada_in, |line| {
@@ -386,15 +386,15 @@ async fn a_channel_the_server_refused_is_joined_once_it_can_be() {
             .await
             .unwrap()
             .channels
-            .contains(&"#api".to_owned()),
-        "#api let alpha in"
+            .contains(&"#agents".to_owned()),
+        "#agents let alpha in"
     );
 
-    ada.send(zirc_irc::Line::new("MODE", ["#api", "-i"]))
+    ada.send(zirc_irc::Line::new("MODE", ["#agents", "-i"]))
         .unwrap();
     alpha
         .eventually(
-            |status| status.channels.iter().any(|c| c == "#api"),
+            |status| status.channels.iter().any(|c| c == "#agents"),
             "joining #api again",
         )
         .await;

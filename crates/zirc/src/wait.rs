@@ -1,6 +1,6 @@
 //! `zirc wait`: a command that ends when what it waits for happened, or failed. A wait is a
 //! process, so the tool that started it shows it, its ending is the wake, and stopping it
-//! is how to stop waiting. It reads the repository's channels back first, so one started
+//! is how to stop waiting. It reads #agents back first, so one started
 //! after the fact ends at once, then follows zircd as `zirc watch` does, across its restarts.
 
 use std::io::Write;
@@ -136,7 +136,8 @@ pub(crate) async fn wait(
     let mut place = Place {
         socket,
         org: org.as_deref(),
-        channel: &repo.channel,
+        scope: &repo.scope,
+        channel: zirc_proto::AGENTS_CHANNEL,
     };
     let ci_awaited = matches!(asked, Asked::Ci(_));
     let mut condition = match asked {
@@ -150,10 +151,10 @@ pub(crate) async fn wait(
             let want = if let Some(level) = level {
                 Want::At(level)
             } else {
-                let any = Condition::stands(Some(&repo.channel), &name, Want::Not(None));
+                let any = Condition::stands(Some(&repo.scope), &name, Want::Not(None));
                 Want::Not(place.stands(&any).await?.map(|(level, _)| level))
             };
-            Condition::stands(Some(&repo.channel), &name, want)
+            Condition::stands(Some(&repo.scope), &name, want)
         }
     };
     // Following before reading back, so nothing said in between is missed.
@@ -286,11 +287,15 @@ fn for_session(heard: &Heard, session: Option<&str>) -> bool {
     }
 }
 
-/// Where a wait listens: a repository's channel and the ones under it, such as its
-/// landings, or for a state the organisation's `#ops`, in one organisation.
+/// Where a wait listens, in one organisation: for CI's word, what's said about a
+/// repository (its scope), in `#agents` or the channels CI said its lines in before; or for a
+/// state, the organisation's `#ops`.
 struct Place<'a> {
     socket: &'a Path,
     org: Option<&'a str>,
+    /// The repository's scope ([`ipc::Repo::scope`]).
+    scope: &'a str,
+    /// Where a state is read back: `#ops` for a state, else `#agents`.
     channel: &'a str,
 }
 
@@ -354,11 +359,18 @@ enum Asked {
 }
 
 impl Place<'_> {
-    /// Whether `channel` is the repository's or one under it.
-    fn has(&self, channel: &str) -> bool {
-        channel
-            .strip_prefix(self.channel)
+    /// Whether `scope`, a line's ([`Delivery::scope`]) or a channel's, is the repository's,
+    /// or a channel CI said its lines in under it before (`#api/landings`).
+    fn has(&self, scope: &str) -> bool {
+        scope
+            .strip_prefix(self.scope)
             .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+    }
+
+    /// Whether what's said about the repository is read back from `channel`, one joined:
+    /// `#agents`, or one CI said its lines in before ([`Place::has`]).
+    fn reads(&self, channel: &str) -> bool {
+        channel == zirc_proto::AGENTS_CHANNEL || self.has(channel)
     }
 
     /// What a wait `asking` for CI's word waits for instead where no CI has ever said a
@@ -379,7 +391,7 @@ impl Place<'_> {
         if let Condition::Landed { on } = condition
             && let Some(beside) = repos
                 .iter()
-                .filter(|repo| repo.channel == self.channel)
+                .filter(|repo| repo.scope == self.scope)
                 .find(|repo| repo.sessions.iter().any(|it| it.session == *on))
         {
             return Ok(Some(Pushes {
@@ -394,16 +406,16 @@ impl Place<'_> {
             }));
         }
         bail!(
-            "no CI has said a landing in {} yet, so none would say this one and this would \
+            "no CI has said a landing for {} yet, so none would say this one and this would \
              wait for good. Don't wait on zirc for it: look where your CI shows it, and \
              carry on; or name a session working here, to wait for its push of the default \
              branch. (`zirc ci token` makes the token a CI says its landings with.)",
-            self.channel
+            self.scope.trim_start_matches('#')
         );
     }
 
     /// Whether any CI has said a landing or a deploy here, in the newest [`READ_BACK`]
-    /// messages of the repository's channels: yes when they can't be read, so a wait is
+    /// messages said about the repository: yes when #agents can't be read, so a wait is
     /// never refused on a guess.
     async fn ci_speaks(&self) -> bool {
         let Ok(Response::Status(status)) = ask(self.socket, Request::Status).await else {
@@ -417,32 +429,43 @@ impl Place<'_> {
                 .map_or(&status.channels, |it| &it.channels),
             None => &status.channels,
         };
-        for channel in joined.iter().filter(|channel| self.has(channel)) {
+        for channel in joined.iter().filter(|channel| self.reads(channel)) {
             let request = Request::Read {
                 target: channel.clone(),
                 limit: READ_BACK,
                 since: None,
                 until: None,
             };
-            let Ok(Response::Messages { messages }) = ask_in(self.socket, self.org, request).await
-            else {
-                return true;
+            let messages = match ask_in(self.socket, self.org, request).await {
+                Ok(Response::Messages { messages }) => messages,
+                // A channel CI said its lines in before may have no history to give.
+                _ if channel != zirc_proto::AGENTS_CHANNEL => continue,
+                _ => return true,
             };
-            if messages.iter().any(|delivery| {
-                matches!(&delivery.message.event, zirc_proto::Event::Custom { kind, .. }
+            if messages
+                .iter()
+                .filter(|delivery| self.has(&delivery.scope()))
+                .any(|delivery| {
+                    matches!(&delivery.message.event, zirc_proto::Event::Custom { kind, .. }
                     if kind == zirc_proto::ci::LANDING_KIND || kind == zirc_proto::ci::DEPLOY_KIND)
-            }) {
+                })
+            {
                 return true;
             }
         }
         false
     }
 
-    /// Whether `delivery` was said here: in this organisation, in the repository's channel
-    /// or one under it.
+    /// Whether `delivery` was said here: in this organisation, about the repository, or for
+    /// a state in `#ops`.
     fn says_here(&self, delivery: &Delivery) -> bool {
         let elsewhere = matches!((&delivery.org, self.org), (Some(its), Some(ours)) if its != ours);
-        !elsewhere && self.has(&delivery.channel)
+        let here = if self.channel == states::CHANNEL {
+            delivery.channel.eq_ignore_ascii_case(states::CHANNEL)
+        } else {
+            self.has(&delivery.scope())
+        };
+        !elsewhere && here
     }
 
     /// How `delivery` ends the wait for `condition`, or for `pushes` in its place, if it's
@@ -520,14 +543,21 @@ impl Place<'_> {
             None => &status.channels,
         };
         let mut said = Vec::new();
-        for channel in joined.iter().filter(|channel| self.has(channel)) {
+        for channel in joined.iter().filter(|channel| self.reads(channel)) {
             let request = Request::Read {
                 target: channel.clone(),
                 limit: READ_BACK,
                 since: Some(since),
                 until: None,
             };
-            let Response::Messages { messages } = ask_in(self.socket, self.org, request).await?
+            let read = ask_in(self.socket, self.org, request).await;
+            // A channel CI said its lines in before may have no history to give: only
+            // `#agents` must read.
+            if read.is_err() && channel != zirc_proto::AGENTS_CHANNEL {
+                continue;
+            }
+            let Response::Messages { messages } =
+                read.with_context(|| format!("reading {channel} back"))?
             else {
                 return Err(crate::client::unexpected());
             };
@@ -643,15 +673,28 @@ mod tests {
     }
 
     #[test]
-    fn listens_in_the_repositorys_channel_and_those_under_it() {
+    fn listens_for_what_is_said_about_the_repository() {
         let place = Place {
             socket: Path::new("/nowhere"),
             org: None,
-            channel: "#api",
+            scope: "#api",
+            channel: zirc_proto::AGENTS_CHANNEL,
         };
-        assert!(place.has("#api"));
-        assert!(place.has("#api/landings"));
-        assert!(!place.has("#api-docs"));
-        assert!(!place.has("#ops"));
+        let said = |channel: &str, repo: Option<&str>| Delivery {
+            org: None,
+            ..Delivery::new(
+                channel,
+                "ci",
+                zirc_proto::Message {
+                    repo: repo.map(str::to_owned),
+                    ..zirc_proto::Message::new("ci", zirc_proto::Event::Text { body: "x".into() })
+                },
+            )
+        };
+        assert!(place.says_here(&said("#agents", Some("api"))));
+        assert!(place.says_here(&said("#api/landings", None)));
+        assert!(!place.says_here(&said("#agents", Some("api-docs"))));
+        assert!(!place.says_here(&said("#agents", None)));
+        assert!(!place.says_here(&said("#ops", None)));
     }
 }

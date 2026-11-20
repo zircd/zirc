@@ -261,7 +261,7 @@ mod tests {
     fn says_where_a_session_works() {
         let repo = |path: &str, sessions: &[&str]| Repo {
             path: path.into(),
-            channel: "#api".into(),
+            scope: "#api".into(),
             sessions: sessions
                 .iter()
                 .map(|session| ipc::RepoSession {
@@ -335,7 +335,7 @@ mod tests {
         };
         let repo = Repo {
             path: "/src/api".into(),
-            channel: "#api".into(),
+            scope: "#api".into(),
             sessions: Vec::new(),
             org: None,
             shared: Vec::new(),

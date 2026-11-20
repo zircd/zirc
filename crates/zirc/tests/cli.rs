@@ -251,7 +251,7 @@ async fn catchup_with(
         .unwrap();
     }
     let tries = tries.into_inner().unwrap();
-    let times = answer_times(home, &["#web", "#ops", "#general", "#web/agents"]).await;
+    let times = answer_times(home, &["#agents", "#ops", "#general"]).await;
     panic!(
         "catchup never had {targets:?} in {WAIT:?}, {} catch-ups ended, taking {tries:?}; zircd answers took: {times}; it had: {last}{seen}",
         tries.len()
@@ -312,7 +312,7 @@ async fn watches_a_repository_and_hears_another_machine() {
     .await
     .unwrap();
     assert!(
-        added.starts_with("watching ") && added.contains(" in #web: "),
+        added.starts_with("watching ") && added.contains(" as web in #agents: "),
         "{added}"
     );
     zirc(
@@ -324,7 +324,7 @@ async fn watches_a_repository_and_hears_another_machine() {
     let listed = zirc(beta.path(), &["repo", "list", "--json"])
         .await
         .unwrap();
-    assert!(listed.contains(r##""channel":"#web""##), "{listed}");
+    assert!(listed.contains(r##""scope":"#web""##), "{listed}");
     one_organisation_says_nothing_of_it(&listed, beta.path(), ergo.port()).await;
 
     // Beta watches, as an agent's monitor would: it hears what concerns it, as posts naming it.
@@ -348,17 +348,14 @@ async fn watches_a_repository_and_hears_another_machine() {
             alpha_clone.path().to_str().unwrap(),
             "--session",
             "cc-7",
-            // To the repository's channel: a machine's isn't a person's name, so a post to
-            // one goes to the agents room by itself.
-            "--to",
-            "repo",
+            // A machine's isn't a session's name, so a post to one is no note.
             "beta: reworking the router",
         ],
     )
     .await
     .unwrap();
     let mut next = async || next_event(&mut heard).await;
-    assert!((next().await).starts_with("#web alpha/cc-7: beta: reworking the router [id "));
+    assert!((next().await).starts_with("#agents alpha/cc-7: beta: reworking the router [id "));
 
     // Alpha's edit alone is left out of a quiet watch; beta changing the same file is what
     // beta hears about.
@@ -585,7 +582,7 @@ async fn a_team_emits_its_own_events_and_a_filter_picks_them_out() {
         )
         .await
         .unwrap(),
-        "sent to #web\n"
+        "sent to #agents\n"
     );
     zirc(
         alpha.path(),
@@ -759,14 +756,7 @@ async fn a_watch_once_ends_after_the_first_thing_that_concerns_it() {
 
     zirc(
         beta.path(),
-        &[
-            "post",
-            "--repo",
-            beta_repo,
-            "--to",
-            "repo",
-            "alpha: are you there?",
-        ],
+        &["post", "--repo", beta_repo, "alpha: are you there?"],
     )
     .await
     .unwrap();
@@ -782,7 +772,7 @@ async fn a_watch_once_ends_after_the_first_thing_that_concerns_it() {
         lines[1].starts_with("  \u{21b3} hint (default): "),
         "{printed}"
     );
-    assert!(lines[0].starts_with("#web beta"), "{printed}");
+    assert!(lines[0].starts_with("#agents beta"), "{printed}");
     assert!(lines[0].contains("are you there?"), "{printed}");
 }
 
@@ -1159,8 +1149,6 @@ async fn catches_up_on_what_people_said_not_on_zircds_events() {
             "cc-b",
             "--repo",
             beta_clone.path().to_str().unwrap(),
-            "--to",
-            "repo",
             "ann-alpha: can you look at the login page?",
         ],
     )
@@ -1180,16 +1168,16 @@ async fn catches_up_on_what_people_said_not_on_zircds_events() {
     )
     .await
     .unwrap();
-    // Once the server has both: the post in #web and the question as a direct message.
+    // Once the server has both: the post in #agents and the question as a direct message.
     until_listed(alpha.path(), "ann-beta").await;
     let machines = [(alpha.path(), "ann-beta"), (beta.path(), "ann-alpha")];
-    let (printed, catchup) = catchup_with(alpha.path(), &["#web", "ann-beta"], &machines).await;
+    let (printed, catchup) = catchup_with(alpha.path(), &["#agents", "ann-beta"], &machines).await;
     let web = catchup["conversations"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|it| it["target"] == "#web")
-        .unwrap_or_else(|| panic!("no #web: {printed}"));
+        .find(|it| it["target"] == "#agents")
+        .unwrap_or_else(|| panic!("no #agents: {printed}"));
     let texts: Vec<&str> = web["messages"]
         .as_array()
         .unwrap()
@@ -1207,7 +1195,7 @@ async fn catches_up_on_what_people_said_not_on_zircds_events() {
     );
     // zirc search shows the same post, and none of zircd's working sets: from the machine's
     // own server, as it isn't signed in through zirc.dev.
-    let read = zirc(alpha.path(), &["search", "--in", "#web"])
+    let read = zirc(alpha.path(), &["search", "--in", "#agents"])
         .await
         .unwrap();
     assert!(read.contains("can you look at the login page?"), "{read}");

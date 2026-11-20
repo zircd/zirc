@@ -142,7 +142,7 @@ impl Daemon {
     pub(super) fn sets_said(&self, channel: &str) -> Vec<(Place, Said)> {
         self.repos
             .iter()
-            .filter(|(_, watched)| watched.channel == channel)
+            .filter(|(_, watched)| watched.scope == channel)
             .flat_map(|(root, watched)| {
                 watched.sets().into_iter().map(|set| {
                     let said = Said {

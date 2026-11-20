@@ -28,7 +28,9 @@ impl Daemon {
         let key = Keys::new(&store)
             .sealing(org)
             .ok_or_else(|| anyhow::anyhow!(no_key(org)))?;
-        let context = Context { target: channel };
+        // Sealed for where it's said: `#agents` for a repository's scope.
+        let target = self.wire_name(channel);
+        let context = Context { target: &target };
         // A reply's tag, and the `;` between it and this one.
         let taken = reply.map_or(0, |id| REPLY_TAG.len() + 1 + id.len() + 1);
         let room = CLIENT_TAGS_MAX.saturating_sub(taken);

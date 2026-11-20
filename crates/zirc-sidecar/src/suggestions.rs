@@ -243,6 +243,7 @@ impl Entry {
         Say {
             channel: self.repo.clone(),
             event: self.suggestion.event(),
+            repo: None,
         }
     }
 }
@@ -254,6 +255,9 @@ pub struct Say {
     pub channel: String,
     /// What.
     pub event: Event,
+    /// The repository it's about, by name ([`zirc_proto::Message::repo`]), for a line in a
+    /// room every repository shares, as a gotcha's.
+    pub repo: Option<String>,
 }
 
 /// The suggestions, and where the history was read to.
@@ -299,11 +303,13 @@ impl Kept {
         let mut says = vec![Say {
             channel: entry.repo.clone(),
             event: said.event(),
+            repo: None,
         }];
         if state == State::Kept {
             says.push(Say {
-                channel: format!("{}/{}", entry.repo, zirc_proto::gotchas::ROOM),
+                channel: zirc_proto::gotchas::CHANNEL.to_owned(),
                 event: entry.suggestion.gotcha_event(),
+                repo: Some(entry.repo.trim_start_matches('#').to_owned()),
             });
         }
         says
@@ -801,8 +807,11 @@ mod tests {
                 .says()
                 .starts_with("ada kept the gotcha for web/e2e: Run //web:e2e")
         );
-        // The gotcha, in the repository's gotchas room, as any is said.
-        assert_eq!(says[1].channel, "#api/gotchas");
+        // The gotcha, in the gotchas room saying its repository, as any is said.
+        assert_eq!(
+            (says[1].channel.as_str(), says[1].repo.as_deref()),
+            ("#gotchas", Some("api"))
+        );
         assert_eq!(
             zirc_proto::gotchas::lesson(&says[1].event),
             Some((

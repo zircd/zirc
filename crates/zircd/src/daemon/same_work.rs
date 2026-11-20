@@ -3,7 +3,7 @@
 //! posted its `taking:` (the agent evals' C5, 16 Nov 2026).
 //!
 //! zircd keeps the `taking:` of each session it hears, this machine's and other machines',
-//! by the repository's channel it went to, until that session's `done:` or `dropped:` or for
+//! by the repository's scope it went to, until that session's `done:` or `dropped:` or for
 //! [`OPEN_FOR`]. When a session here posts `taking:`, each other session's open task in the
 //! same repository that looks like the same work ([`zirc_core::same_work::alike`]) is told to
 //! it at once, in a line of zircd's own naming that session and what it took on, with how to
@@ -117,7 +117,7 @@ impl Daemon {
         let Some(me) = self.client.as_ref().map(|client| client.nick().to_owned()) else {
             return;
         };
-        let channel = self.home_channel(channel);
+        let channel = self.scope_of_channel(channel);
         let at = now();
         let found = self.open_tasks.alike(&channel, (&me, session), text, at);
         for alike in found {
@@ -149,7 +149,7 @@ impl Daemon {
             return;
         }
         if zirc_proto::says_taking(body) {
-            let channel = self.home_channel(&delivery.channel);
+            let channel = self.scope_of(delivery);
             let at = delivery
                 .time
                 .as_deref()

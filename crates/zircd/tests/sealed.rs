@@ -19,8 +19,7 @@ fn sealed_post(repo: &std::path::Path, text: &str) -> Request {
         repo: repo.to_owned(),
         session: "cc-1".into(),
         text: text.into(),
-        to: Target::Repo,
-        force: true,
+        to: Target::Agents,
         reply: None,
     }
 }
@@ -36,7 +35,7 @@ async fn a_sealed_part_opens_only_on_a_machine_holding_the_key() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), (beta, _beta_clone)] = two_machines(&ergo).await;
     let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_in, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
 
     // Without a key, nothing goes out.
     let refused = alpha

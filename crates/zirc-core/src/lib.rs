@@ -47,7 +47,6 @@ pub mod signin;
 pub mod signout;
 pub mod stacked;
 pub mod states;
-pub mod team;
 pub mod team_hints;
 pub mod telemetry;
 pub mod time;

@@ -111,7 +111,7 @@ impl Daemon {
             .repos
             .values()
             .filter(|watched| watched.sessions.contains(session))
-            .map(|watched| watched.channel.clone())
+            .map(|watched| watched.scope.clone())
             .collect();
         if channels.is_empty() {
             channels.insert(ORG_CHANNEL.to_owned());

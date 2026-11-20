@@ -18,7 +18,7 @@ use crate::git::{Change, Side};
 
 use super::{
     ANNOUNCED, Daemon, Input, MAX_WAIT, QUIET, REJOIN_EVERY, SCANS, WATCHER_SESSION, Watched,
-    events, now, post_room, wakes, warn_once,
+    events, now, wakes,
 };
 
 /// What a scan starts from: the repository as it was last read, and what saying its changes
@@ -178,7 +178,7 @@ impl Daemon {
     /// Stops watching the worktree at `root`, which has been removed, as tools do when a
     /// session ends, and leaves its channels.
     pub(super) fn gone(&mut self, root: &Path) {
-        self.warned.forget(root);
+        self.warned.ok(root);
         self.predictions.forget(root);
         let Some(watched) = self.repos.remove(root) else {
             return;
@@ -195,7 +195,7 @@ impl Daemon {
     pub(super) fn tell_gone(&mut self, root: &Path, watched: &Watched) {
         // Its changes went with it: so do the intents zircd said for them.
         let sessions: Vec<String> = watched.sessions.names().map(str::to_owned).collect();
-        self.withdraw_auto_intents(watched.agents_channel(), &sessions);
+        self.withdraw_auto_intents(&watched.scope, &sessions);
         let me = self.client.as_ref().map(|client| client.nick().to_owned());
         for session in watched.sessions.names() {
             let body = format!(
@@ -204,7 +204,7 @@ impl Daemon {
                 root.display()
             );
             self.tell_watchers(&Response::Delivery(Delivery::new(
-                watched.channel.clone(),
+                watched.scope.clone(),
                 me.clone().unwrap_or_default(),
                 Message::new(WATCHER_SESSION, Event::Text { body }),
             )));
@@ -216,7 +216,7 @@ impl Daemon {
     pub(super) fn scan_done(&mut self, root: &Path, read: Result<Scan>) {
         match read {
             Ok(scan) => {
-                self.warned.ok(warn_once::About::Scan, root);
+                self.warned.ok(root);
                 self.scanned(root, scan);
                 self.followed_branches_now();
             }
@@ -225,8 +225,7 @@ impl Daemon {
             Err(err) => {
                 let cause = format!("{err:#}");
                 let message = format!("scanning {} failed: {cause}", root.display());
-                self.warned
-                    .warn(warn_once::About::Scan, root, &cause, &message);
+                self.warned.warn(root, &cause, &message);
             }
         }
     }
@@ -291,10 +290,7 @@ impl Daemon {
         let Some(watched) = self.repos.get_mut(root) else {
             return;
         };
-        (watched.room, watched.areas) =
-            post_room::rooms_of(root, &watched.project, &mut self.warned);
-        let channel = watched.channel.clone();
-        let agents = watched.agents_channel().to_owned();
+        let channel = watched.scope.clone();
         for change in changes {
             let events = match change {
                 Changed::Working => {
@@ -319,8 +315,8 @@ impl Daemon {
                     }
                 }
                 let session = watched.signer().to_owned();
-                // What a session did is agents' news: in the room, counted as the repository's.
-                self.publish(&agents, &session, event.clone());
+                // What a session did is agents' news, in `#agents`.
+                self.publish(&channel, &session, event.clone());
                 if let Some(how) = wakes::acted_by(&event) {
                     self.session_acted(&session, how);
                 }
@@ -356,7 +352,7 @@ impl Daemon {
         let against: Vec<Against> = self
             .repos
             .iter()
-            .filter(|(_, watched)| watched.channel == channel)
+            .filter(|(_, watched)| watched.scope == channel)
             .filter_map(|(root, watched)| {
                 let settled = watched.touched.is_none() && !self.scanning.contains(root);
                 let own: Option<BTreeSet<String>> = settled.then(|| {

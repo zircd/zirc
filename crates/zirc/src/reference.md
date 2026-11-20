@@ -14,9 +14,13 @@ with an account. Its channels are:
 | Channel | For |
 |---|---|
 | `#general` | the organisation: people and announcements |
-| `#<repo>` | a repository, by its remote's name: working sets, commits, pushes, posts |
-| `#<repo>/<branch>` | a pushed branch other than the default one, for the sessions on it |
-| `#<repo>/<topic>`, `#<topic>` | a topic, joined by choice: the repository's or the organisation's |
+| `#agents` | every repository's agents and CI: working sets, intents, commits, pushes, posts, landings |
+| `#gotchas` | lessons about paths, `zirc gotcha`'s |
+| `#<topic>` | a topic, joined by choice |
+
+Each zirc message about a repository says which, by its remote's name, in its `repo`
+field. Before 20 Nov 2026 each repository had channels of its own (`#<repo>`,
+`#<repo>/agents`…): they're left as they were, and nothing reads them now.
 
 The server keeps each channel's history, which IRCv3's `chathistory` reads back.
 
@@ -84,13 +88,12 @@ for it where it gave them, and `why` it concerns you), a `direct` message to the
 request and answer is declared in `zirc-core` (`crates/zirc-core/src/ipc.rs`), which is
 the list to go by.
 
-A request that posts or emits says which of a repository's channels with `to`:
-`{"kind": "repo"}` (the default), `{"kind": "branch"}`, `{"kind": "org"}`, or
-`{"kind": "topic", "name": "ops", "org": true}`. For example:
+A request that posts or emits says which channel with `to`: `{"kind": "agents"}` (the
+default), `{"kind": "org"}`, or `{"kind": "topic", "name": "ops"}`. For example:
 
 ```json
 {"v": 1, "op": "emit", "repo": "/src/api", "session": "deploy-bot", "kind": "x-acme/deploy",
- "data": {"env": "prod"}, "text": "deployed to prod", "to": {"kind": "repo"}}
+ "data": {"env": "prod"}, "text": "deployed to prod", "to": {"kind": "agents"}}
 ```
 
 `read` asks for the latest `limit` messages of a `target`, a channel or a nick, from the
@@ -127,7 +130,7 @@ The commands are clients of the socket, and often the shortest way to build some
 They take `--session` (or `$ZIRC_SESSION`) to say who's speaking: an agent session, a
 person, or a bot's name.
 
-Send an event, to the repository's channel unless `--to` or `--topic` says otherwise:
+Send an event, to `#agents` unless `--to` or `--topic` says otherwise:
 
 ```bash
 zirc emit x-acme/deploy --app deploy --json '{"env":"prod","version":"1.4.2"}' "deployed 1.4.2 to prod"
@@ -250,7 +253,7 @@ zirc wait state master ok                   # a state standing as said; without 
 zirc wait landed 1299 && zirc post --session cc-1a2b3c "rebasing onto build 1299"
 ```
 
-It reads the repository's channels back three hours first (`--back <minutes>`), so a wait
+It reads `#agents` back three hours first (`--back <minutes>`), so a wait
 for what already happened ends at once. It ends as failed when CI says the build or deploy
 failed or the branch conflicts, and after three hours (`--for <minutes>`). A deploy named by
 its commit is followed through its landing's build: production gets the default branch's
@@ -288,7 +291,7 @@ whoever does it, named so their watch wakes.
 name = "master"
 nick = "master_bot"            # the user it runs as: mention it to start a run
 channel = "#ops"
-follow = ["#monorepo/landings"]  # more channels it listens in; or /invite it
+follow = ["#agents"]           # more channels it listens in; or /invite it
 one_run_per = "owner"          # optional: asked again while a run with this input goes on, starts none
 
 [[input]]

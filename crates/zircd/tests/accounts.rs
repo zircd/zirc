@@ -794,10 +794,9 @@ async fn a_note_reaches_the_one_session_it_names_on_its_machine() {
         repo: mbp.clone(),
         session: "cc-a".into(),
         text: "coordinator: the review is done".into(),
-        to: ipc::Target::Default,
+        to: ipc::Target::Agents,
         app: None,
         everyone: false,
-        force: true,
         reply: None,
     };
     assert_eq!(
@@ -869,7 +868,8 @@ async fn trims_its_own_message_from_the_servers_history() {
     else {
         panic!("not watching");
     };
-    let channel = repos[0].channel.clone();
+    assert_eq!(repos[0].scope, "#api");
+    let channel = "#agents".to_owned();
     tokio::time::timeout(WAIT, async {
         while !connected(home.path()).await.channels.contains(&channel) {
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -887,10 +887,9 @@ async fn trims_its_own_message_from_the_servers_history() {
         repo: repo.path().to_owned(),
         session: "cc-1".to_owned(),
         text: "the key is hunter2".to_owned(),
-        to: ipc::Target::Repo,
+        to: ipc::Target::Agents,
         app: None,
         everyone: false,
-        force: true,
         reply: None,
     };
     ask(home.path(), post).await.unwrap();
@@ -1154,7 +1153,7 @@ async fn its_own_posts_coming_back_are_not_another_machines_work() {
     })
     .await
     .unwrap();
-    twin.join("#api").unwrap();
+    twin.join("#agents").unwrap();
     let working = zirc_proto::Message::new(
         "watcher",
         zirc_proto::Event::Working {
@@ -1169,12 +1168,12 @@ async fn its_own_posts_coming_back_are_not_another_machines_work() {
     );
     tokio::time::sleep(Duration::from_millis(300)).await;
     // As zircd sends a working set: a TAGMSG, which readers take.
-    twin.send(zirc_core::presence::working_line("#api", &working).unwrap())
+    twin.send(zirc_core::presence::working_line("#agents", &working).unwrap())
         .unwrap();
     let (ada, _ada_in) = person(&ergo, "ada").await;
-    ada.join("#api").unwrap();
+    ada.join("#agents").unwrap();
     tokio::time::sleep(Duration::from_millis(300)).await;
-    ada.privmsg("#api", "after").unwrap();
+    ada.privmsg("#agents", "after").unwrap();
 
     // Nothing about it reaches the watch before what ada says next.
     tokio::time::timeout(WAIT, async {
@@ -1626,7 +1625,7 @@ impl Reacting {
                 .await
                 .channels
                 .iter()
-                .any(|c| c == "#api")
+                .any(|c| c == "#agents")
         })
         .await;
         let hears = watching(home.path(), "cc-1").await;
@@ -1642,9 +1641,9 @@ impl Reacting {
             }
         };
         // One after the other, so that mattias hears bob join.
-        owner.join("#api").unwrap();
+        owner.join("#agents").unwrap();
         next_matching(&mut owner_in, joined("mattias")).await;
-        bob.join("#api").unwrap();
+        bob.join("#agents").unwrap();
         next_matching(&mut owner_in, joined("bob")).await;
         let reacting = Self {
             _ergo: ergo,
@@ -1678,7 +1677,14 @@ impl Reacting {
 
     /// Bob says `text` in `#api`, once zircd has heard it: its id.
     async fn bob_says(&mut self, text: &str) -> String {
-        said_and_heard(&self.bob, &mut self.owner_in, &mut self.hears, "#api", text).await
+        said_and_heard(
+            &self.bob,
+            &mut self.owner_in,
+            &mut self.hears,
+            "#agents",
+            text,
+        )
+        .await
     }
 }
 
@@ -1687,9 +1693,9 @@ async fn a_reaction_a_session_waits_for_wakes_it_once_a_message_with_what_its_on
     let mut at = Reacting::start(require_ergo!()).await;
     let hangs = at.bob_says("the login hangs").await;
     // Not the owner's, or not the emoji waited for: neither wakes it.
-    react_in(&at.bob, "#api", &hangs, "👀", false);
-    react_in(&at.owner, "#api", &hangs, "👍", false);
-    react_in(&at.owner, "#api", &hangs, "👀", false);
+    react_in(&at.bob, "#agents", &hangs, "👀", false);
+    react_in(&at.owner, "#agents", &hangs, "👍", false);
+    react_in(&at.owner, "#agents", &hangs, "👀", false);
     let woke = next_awaited(&mut at.hears).await;
     assert_eq!(woke.to, hangs);
     let on = woke.on.expect("what it's on");
@@ -1699,10 +1705,10 @@ async fn a_reaction_a_session_waits_for_wakes_it_once_a_message_with_what_its_on
     );
 
     // Taken back and given again, it's the same message: no second wake. The next message's is.
-    react_in(&at.owner, "#api", &hangs, "👀", true);
-    react_in(&at.owner, "#api", &hangs, "👀", false);
+    react_in(&at.owner, "#agents", &hangs, "👀", true);
+    react_in(&at.owner, "#agents", &hangs, "👀", false);
     let logout = at.bob_says("and logout").await;
-    react_in(&at.owner, "#api", &logout, "👀", false);
+    react_in(&at.owner, "#agents", &logout, "👀", false);
     assert_eq!(next_awaited(&mut at.hears).await.to, logout);
 
     // Dropped, the wait is gone.
@@ -1760,10 +1766,9 @@ async fn a_reaction_waited_for_on_a_message_zircd_never_heard_says_what_its_on()
         repo: at.repo.path().to_owned(),
         session: "cc-1".into(),
         text: "which build, and slow since when?".into(),
-        to: ipc::Target::Default,
+        to: ipc::Target::Agents,
         app: None,
         everyone: false,
-        force: false,
         reply: Some(slow[..8].to_owned()),
     };
     let posted = ipc::request(&socket, &reply).await.unwrap();
@@ -1781,10 +1786,9 @@ async fn a_session_replies_under_a_message_by_the_start_of_its_id() {
         repo: at.repo.path().to_owned(),
         session: "cc-1".into(),
         text: "which browser, and does it hang before or after the password?".into(),
-        to: ipc::Target::Default,
+        to: ipc::Target::Agents,
         app: None,
         everyone: false,
-        force: false,
         reply: Some(hangs[..8].to_owned()),
     };
     let posted = ipc::request(&paths::socket(at.home.path()), &reply)
@@ -1792,7 +1796,7 @@ async fn a_session_replies_under_a_message_by_the_start_of_its_id() {
         .unwrap();
     // Said where the message was, not in the agents' room where posts go.
     assert!(
-        matches!(&posted, Response::Channel { channel, .. } if channel == "#api"),
+        matches!(&posted, Response::Channel { channel, .. } if channel == "#agents"),
         "{posted:?}"
     );
     let line = next_matching(&mut at.bob_in, |line| {
@@ -1806,10 +1810,9 @@ async fn a_session_replies_under_a_message_by_the_start_of_its_id() {
         repo: at.repo.path().to_owned(),
         session: "cc-1".into(),
         text: "**two things**\n- which browser\n- before or after the password".into(),
-        to: ipc::Target::Default,
+        to: ipc::Target::Agents,
         app: None,
         everyone: false,
-        force: false,
         reply: Some(hangs[..8].to_owned()),
     };
     ipc::request(&paths::socket(at.home.path()), &lines)

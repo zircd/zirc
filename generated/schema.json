@@ -23,42 +23,14 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "repo"
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "description": "The repository's channel, where every session working on it is.",
-          "title": "RepoTarget"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
               "const": "default"
             }
           },
           "required": [
             "kind"
           ],
-          "description": "Where a post goes when it doesn't say ([`crate::team`]): the repository's agents\nchannel, `#<repo>/agents`, unless the team names another room, or the repository's\nchannel for a post that's for a person. Anywhere but a post, the repository's channel.",
+          "description": "The organisation's agents channel, [`zirc_proto::AGENTS_CHANNEL`], which every\nrepository's sessions share, the post saying its repository. Said as `default`, which a\nzircd from before 20 Nov 2026, still running under a newer CLI, takes too (as its\nagents room); what such a CLI sends for the channels repositories had (`repo`,\n`branch`) goes here too.",
           "title": "DefaultTarget"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "branch"
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "description": "The channel of the branch checked out, which only a branch that's been pushed has.",
-          "title": "BranchTarget"
         },
         {
           "type": "object",
@@ -84,18 +56,13 @@
             "name": {
               "type": "string",
               "description": "The topic."
-            },
-            "org": {
-              "type": "boolean",
-              "description": "Whether it's the organisation's topic rather than the repository's."
             }
           },
           "required": [
             "kind",
-            "name",
-            "org"
+            "name"
           ],
-          "description": "A topic channel, which must have been joined.",
+          "description": "The organisation's channel for a topic, which must have been joined.",
           "title": "TopicTarget"
         }
       ],
@@ -624,7 +591,7 @@
             "string",
             "null"
           ],
-          "description": "The channel of the repository it's in, such as `#monorepo`: any repository's when\nabsent."
+          "description": "The repository it's in, as [`crate::project::Project::scope`] names it, such as\n`#monorepo`: any repository's when absent."
         },
         "level": {
           "anyOf": [
@@ -862,9 +829,9 @@
           "type": "string",
           "description": "The root of its working tree."
         },
-        "channel": {
+        "scope": {
           "type": "string",
-          "description": "The channel its work goes to."
+          "description": "How lines about it, hints and shared states name it\n([`crate::project::Project::scope`]), `#<name>`: the channel its work went to before\n20 Nov 2026. Compare a line's [`Delivery::scope`]."
         },
         "sessions": {
           "type": "array",
@@ -890,7 +857,7 @@
       },
       "required": [
         "path",
-        "channel"
+        "scope"
       ],
       "description": "A watched repository."
     },
@@ -1489,6 +1456,13 @@
             "null"
           ],
           "description": "The task its session is on, so a task's posts, intents, commits and landing can be\ntold apart from the rest: the id zircd gives a session when it posts `taking:`\n([`task_id`]), kept until it posts `done:` or `dropped:` ([`says_finished`]). Only\nan id, never what the task is."
+        },
+        "repo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The repository it's about, by name as zirc spells it (`monorepo` for\n`git@github.com:zircd/monorepo.git`): every repository's sessions and CI speak in the\norganisation's one [`AGENTS_CHANNEL`], so a reader tells them apart by this. Apps show\nit only where the organisation has more than one. Without it, it's about none, as a\nperson's line."
         }
       },
       "required": [
@@ -1558,7 +1532,7 @@
         {
           "type": "string",
           "const": "topic",
-          "description": "A post in a topic channel this machine joined, or the branch channel the session\nworks in."
+          "description": "A post in a topic channel the session joined."
         },
         {
           "type": "string",
@@ -2852,9 +2826,9 @@
             },
             "to": {
               "$ref": "#/$defs/Target",
-              "description": "Which of the repository's channels.",
+              "description": "Which channel.",
               "default": {
-                "kind": "repo"
+                "kind": "default"
               }
             },
             "app": {
@@ -2867,10 +2841,6 @@
             "everyone": {
               "type": "boolean",
               "description": "A broadcast, for every session hearing it ([`zirc_proto::Message::everyone`])."
-            },
-            "force": {
-              "type": "boolean",
-              "description": "Post it to the repository's channel even though an agent session says it and it\nisn't for a person: `zirc post --force`. Left out when false, so an older zircd\nstill understands it."
             },
             "reply": {
               "type": [
@@ -2886,7 +2856,7 @@
             "session",
             "text"
           ],
-          "description": "Say something in a channel of the repository containing `repo`.",
+          "description": "Say something about the repository containing `repo`.",
           "title": "PostRequest"
         },
         {
@@ -2910,14 +2880,10 @@
             },
             "to": {
               "$ref": "#/$defs/Target",
-              "description": "Which of the repository's channels.",
+              "description": "Which channel.",
               "default": {
-                "kind": "repo"
+                "kind": "default"
               }
-            },
-            "force": {
-              "type": "boolean",
-              "description": "As [`Request::Post`]'s."
             },
             "reply": {
               "type": [
@@ -3301,9 +3267,9 @@
             },
             "to": {
               "$ref": "#/$defs/Target",
-              "description": "Which of the repository's channels.",
+              "description": "Which channel.",
               "default": {
-                "kind": "repo"
+                "kind": "default"
               }
             },
             "app": {
@@ -3427,7 +3393,7 @@
             "paths",
             "seconds"
           ],
-          "description": "Tell the repository's channel what the session is about to touch.",
+          "description": "Tell the organisation's agents what the session is about to touch.",
           "title": "IntendRequest"
         },
         {
@@ -3530,15 +3496,11 @@
             },
             "repo": {
               "type": "string",
-              "description": "Anywhere inside a watched repository, which names the repository's topics."
+              "description": "Anywhere inside a watched repository."
             },
             "topic": {
               "type": "string",
               "description": "The topic."
-            },
-            "org": {
-              "type": "boolean",
-              "description": "Whether it's the organisation's topic rather than the repository's."
             },
             "session": {
               "type": [
@@ -3551,10 +3513,9 @@
           "required": [
             "op",
             "repo",
-            "topic",
-            "org"
+            "topic"
           ],
-          "description": "Join a topic channel: `#<repo>/<topic>`, or `#<topic>` across the organisation.",
+          "description": "Join the organisation's channel for a topic, `#<topic>`.",
           "title": "JoinRequest"
         },
         {
@@ -3683,10 +3644,6 @@
               "type": "string",
               "description": "As for [`Request::Join`]."
             },
-            "org": {
-              "type": "boolean",
-              "description": "As for [`Request::Join`]."
-            },
             "session": {
               "type": [
                 "string",
@@ -3698,8 +3655,7 @@
           "required": [
             "op",
             "repo",
-            "topic",
-            "org"
+            "topic"
           ],
           "description": "Leave a topic channel joined with [`Request::Join`].",
           "title": "LeaveRequest"

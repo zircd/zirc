@@ -26,7 +26,7 @@ impl Daemon {
             return;
         };
         let (root, default) = (root.to_owned(), watched.default_branch.clone());
-        let (channel, session) = (watched.channel.clone(), session.to_owned());
+        let (channel, session) = (watched.scope.clone(), session.to_owned());
         let inputs = self.inputs.clone();
         tokio::spawn(async move {
             let found = git::undone(&root, &default, &head).await;

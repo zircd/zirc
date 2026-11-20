@@ -8,23 +8,23 @@ use zirc_core::ipc::{ChannelPresence, Member, Response, Worktree};
 use zirc_core::presence::LocalOverlap;
 use zirc_core::project::ORG_CHANNEL;
 use zirc_irc::Line;
-use zirc_proto::Event;
 use zirc_proto::telemetry as usage;
 use zirc_proto::telemetry::Event as Usage;
+use zirc_proto::{AGENTS_CHANNEL, Event};
 
 use super::book::Field;
 use super::{Daemon, Input, PART_ROOM, WATCHER_SESSION, now, predict, worktree_name};
 
 impl Daemon {
-    /// Everyone's working sets in the repositories' channels, each of this machine's
+    /// Everyone's working sets in the repositories' scopes, each of this machine's
     /// worktrees on its own.
     pub(super) fn who(&self) -> Response {
         let nick = self.client.as_ref().map(|client| client.nick().to_owned());
-        let repo_channels: BTreeSet<&String> = self.repos.values().map(|w| &w.channel).collect();
+        let scopes = self.scopes();
         let channels = self
             .joined
             .iter()
-            .filter(|channel| repo_channels.contains(channel))
+            .filter(|channel| scopes.contains(*channel))
             .map(|channel| {
                 let mut members = self.presence.members(channel);
                 if let Some(nick) = &nick {
@@ -76,7 +76,7 @@ impl Daemon {
     pub(super) fn local(&self, channel: &str) -> Vec<(Worktree, Option<String>, BTreeSet<String>)> {
         self.repos
             .iter()
-            .filter(|(_, watched)| watched.channel == channel)
+            .filter(|(_, watched)| watched.scope == channel)
             .flat_map(|(root, watched)| {
                 watched.sets().into_iter().map(|set| {
                     let worktree = Worktree {
@@ -111,7 +111,8 @@ impl Daemon {
 
     /// Someone joined `channel`, this machine itself if `ours`: whoever it was should hear
     /// what we're working on, at once when it's us, and when the next announcement's due
-    /// when it's someone else, as the apps join and leave all the time.
+    /// when it's someone else, as the apps join and leave all the time. `#agents` is every
+    /// watched repository's: this machine in it is in each one's scope.
     pub(super) fn someone_joined(&mut self, channel: &str, ours: bool) {
         // Which sessions are live is out of history too.
         self.live.say_again(channel);
@@ -129,16 +130,24 @@ impl Daemon {
             // Lease events are out of history: one joining hears this machine's again.
             self.say_leases_again();
         }
-        // So are zircd's own intents, in agent rooms.
-        self.say_auto_intents_again(channel);
-        if self.mine(channel).is_empty() {
+        if channel != AGENTS_CHANNEL {
             return;
         }
-        if ours {
-            self.announce(channel, true, self.clock.now());
-        } else {
-            self.last_announced.remove(channel);
-            self.announce_soon(channel);
+        for scope in self.scopes() {
+            if ours {
+                self.joined.insert(scope.clone());
+            }
+            // So are zircd's own intents.
+            self.say_auto_intents_again(&scope);
+            if self.mine(&scope).is_empty() {
+                continue;
+            }
+            if ours {
+                self.announce(&scope, true, self.clock.now());
+            } else {
+                self.last_announced.remove(&scope);
+                self.announce_soon(&scope);
+            }
         }
     }
 

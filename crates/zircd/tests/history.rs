@@ -12,13 +12,13 @@ async fn a_reply_read_from_history_says_what_it_answers() {
     let ergo = require_ergo!();
     let [(alpha, _alpha_clone), _beta] = two_machines(&ergo).await;
     let (ada, _incoming) = zirc_test_irc::person(&ergo, "ada").await;
-    ada.join("#api").unwrap();
+    ada.join("#agents").unwrap();
     tokio::time::sleep(Duration::from_millis(300)).await;
-    ada.privmsg("#api", "who's on the login page?").unwrap();
+    ada.privmsg("#agents", "who's on the login page?").unwrap();
     tokio::time::sleep(Duration::from_millis(300)).await;
     let read = |alpha: &Machine| {
         let request = Request::Read {
-            target: "#api".into(),
+            target: "#agents".into(),
             limit: 50,
             since: None,
             until: None,
@@ -36,7 +36,7 @@ async fn a_reply_read_from_history_says_what_it_answers() {
         .into_iter()
         .find(|it| it.from == "ada")
         .unwrap();
-    let mut line = zirc_irc::Line::new("PRIVMSG", ["#api", "me, today"]);
+    let mut line = zirc_irc::Line::new("PRIVMSG", ["#agents", "me, today"]);
     line.tags = vec![("+draft/reply".to_owned(), asked.id.clone())];
     ada.send(line).unwrap();
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -232,7 +232,7 @@ async fn history_a_read_gave_up_on_never_wakes_anyone() {
     let beta = Peer::join(Machine::start(&ergo, "beta").await, Some("cc-b")).await;
     // A plain IRC client in #api, which tells when something's been said there.
     let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_in, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
     // Said, and on the server, before alpha's zircd ever heard #api.
     beta.says("cc-a: dry-safety conflicts with master").await;
     tokio::time::timeout(
@@ -255,7 +255,7 @@ async fn history_a_read_gave_up_on_never_wakes_anyone() {
     let mut watching = alpha.watch().await;
 
     let read = Request::Read {
-        target: "#api".into(),
+        target: "#agents".into(),
         limit: 50,
         since: None,
         until: None,

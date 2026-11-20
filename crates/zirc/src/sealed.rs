@@ -139,7 +139,6 @@ async fn tell_org(socket: &Path, org: &str, key: &Key, out: &mut impl Write) -> 
         to: zirc_core::ipc::Target::Org,
         app: None,
         everyone: false,
-        force: true,
         reply: None,
     };
     match crate::client::ask_in(socket, Some(org), request).await {

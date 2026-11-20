@@ -67,7 +67,7 @@ async fn a_watch_registers_intend_takes_the_task_and_its_landing_says_done() {
     let home = home.path();
     let clone = zirc_test_ergo::git::clone("https://github.com/acme/web.git");
     let repo = clone.path();
-    until(repo, home, &["repo", "add"], "#web").await;
+    until(repo, home, &["repo", "add"], "as web in #agents").await;
     until(repo, home, &["status"], " #web").await;
 
     // A session's watch, started in the repository, is all it needs to be registered there.
@@ -89,7 +89,7 @@ async fn a_watch_registers_intend_takes_the_task_and_its_landing_says_done() {
     ];
     let said = zirc_in(repo, home, &intend).await.unwrap();
     assert!(
-        said.starts_with("posted taking: the login form to #web/agents: "),
+        said.starts_with("posted taking: the login form to #agents: "),
         "{said}"
     );
     assert!(said.contains(zirc_core::clashes::NOBODY), "{said}");

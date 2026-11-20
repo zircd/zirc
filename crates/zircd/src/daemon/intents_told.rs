@@ -94,7 +94,7 @@ impl Daemon {
         // own intents are kept, as [`Daemon::why`] reads them: looked for in the room itself,
         // a session's intent shared nothing, so it was never noted as told, and each time
         // zircd said another's again for the same directory, it woke the session anew.
-        let home = self.home_channel(&delivery.channel);
+        let home = self.scope_of(delivery);
         let channel = home.as_str();
         for session in sessions {
             let mine = self.session_paths(channel, &session);

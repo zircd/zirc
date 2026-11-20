@@ -49,6 +49,27 @@ impl Daemon {
         }
     }
 
+    /// This machine is out of `channel`, and so, for `#agents`, out of every repository's
+    /// scope.
+    fn left_channel(&mut self, channel: &str) {
+        self.joined.remove(channel);
+        if channel == zirc_proto::AGENTS_CHANNEL {
+            for scope in self.scopes() {
+                self.joined.remove(&scope);
+            }
+        }
+    }
+
+    /// `nick` is out of `channel`, and so, for `#agents`, out of every repository's scope.
+    fn someone_left(&mut self, channel: &str, nick: &str) {
+        self.presence.left(channel, nick);
+        if channel == zirc_proto::AGENTS_CHANNEL {
+            for scope in self.scopes() {
+                self.presence.left(&scope, nick);
+            }
+        }
+    }
+
     /// A direct message to this machine: the owner's `resume`, a query or its answer, or the
     /// owner's line for the agents, told to the watchers.
     fn heard_direct(&mut self, line: &Line, from: &str, body: &str) {
@@ -146,14 +167,10 @@ impl Daemon {
         }
         match (line.command.as_str(), param(0), param(1)) {
             ("JOIN", Some(channel), _) => self.someone_joined(channel, ours),
-            ("PART", Some(channel), _) if ours => {
-                self.joined.remove(channel);
-            }
-            ("PART", Some(channel), _) => self.presence.left(channel, from),
-            ("KICK", Some(channel), Some(nick)) if nick == me => {
-                self.joined.remove(channel);
-            }
-            ("KICK", Some(channel), Some(nick)) => self.presence.left(channel, nick),
+            ("PART", Some(channel), _) if ours => self.left_channel(channel),
+            ("PART", Some(channel), _) => self.someone_left(channel, from),
+            ("KICK", Some(channel), Some(nick)) if nick == me => self.left_channel(channel),
+            ("KICK", Some(channel), Some(nick)) => self.someone_left(channel, nick),
             // Why the server didn't let us join a channel: tried again in a while.
             ("403" | "405" | "471" | "473" | "474" | "475" | "477" | "489", _, Some(channel)) => {
                 let why = line.params.last().map_or("", String::as_str);
@@ -195,8 +212,8 @@ impl Daemon {
                     return;
                 }
                 self.lease_heard(channel, from, &delivery.message.event);
-                // An agent room's lines count as its repository's.
-                let channel = self.home_channel(channel);
+                // A line in `#agents` counts as its repository's.
+                let channel = self.scope_of(&delivery);
                 let default = self.default_branch(&channel);
                 self.presence
                     .apply(&channel, from, &delivery.message, now(), default.as_deref());

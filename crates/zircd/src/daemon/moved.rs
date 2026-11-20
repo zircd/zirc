@@ -180,7 +180,7 @@ impl Daemon {
             .collect();
         self.repos
             .values()
-            .filter(|watched| in_repo(channel, &watched.channel))
+            .filter(|watched| in_repo(channel, &watched.scope))
             .flat_map(|watched| {
                 watched.sessions.names().map(|session| {
                     (
@@ -216,7 +216,7 @@ impl Daemon {
                 Event::Push { branch, head, .. } => self
                     .repos
                     .values()
-                    .any(|w| in_repo(&delivery.channel, &w.channel) && w.default_branch == *branch)
+                    .any(|w| in_repo(&delivery.channel, &w.scope) && w.default_branch == *branch)
                     .then(|| (delivery.channel.clone(), head.clone())),
                 _ => Landed::of(response)
                     .map(|(channel, landed)| (channel.to_owned(), landed.commit)),
@@ -226,8 +226,8 @@ impl Daemon {
         let Some((channel, head)) = said else {
             return;
         };
-        if let Some(repo) = self.repos.values().find(|w| in_repo(&channel, &w.channel)) {
-            self.moved.heads.insert(repo.channel.clone(), head);
+        if let Some(repo) = self.repos.values().find(|w| in_repo(&channel, &w.scope)) {
+            self.moved.heads.insert(repo.scope.clone(), head);
         }
     }
 
@@ -241,7 +241,7 @@ impl Daemon {
         let Some(watched) = self.repos.get(root) else {
             return;
         };
-        let (channel, branch) = (watched.channel.clone(), watched.default_branch.clone());
+        let (channel, branch) = (watched.scope.clone(), watched.default_branch.clone());
         if self
             .moved
             .heads

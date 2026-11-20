@@ -129,6 +129,12 @@ pub const VERSION: u32 = 1;
 /// The organisation-wide channel, which every member and machine is in.
 pub const ORG_CHANNEL: &str = "#general";
 
+/// The organisation's one channel for its agents' work, whatever repository it's in: what
+/// sessions take on and finish, their intents, working sets, commits and pushes, and CI's
+/// landings, deploys and checks. Each line says its repository ([`Message::repo`]). There are
+/// no channels per repository: those from before 20 Nov 2026 are left as they were.
+pub const AGENTS_CHANNEL: &str = "#agents";
+
 /// How many digits of a commit's id a working set says what it's built on by
 /// ([`Event::Working`]'s `base`): enough to name one commit of a repository, in a line whose
 /// sender, worktree and branch leave some 60 bytes.
@@ -597,6 +603,13 @@ pub struct Message {
     /// an id, never what the task is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<String>,
+    /// The repository it's about, by name as zirc spells it (`monorepo` for
+    /// `git@github.com:zircd/monorepo.git`): every repository's sessions and CI speak in the
+    /// organisation's one [`AGENTS_CHANNEL`], so a reader tells them apart by this. Apps show
+    /// it only where the organisation has more than one. Without it, it's about none, as a
+    /// person's line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
 }
 
 /// What a post that starts a task starts with ([`says_taking`]).
@@ -718,6 +731,7 @@ impl Message {
             everyone: false,
             level: None,
             task: None,
+            repo: None,
         }
     }
 
@@ -1284,44 +1298,35 @@ pub fn worth_reading(body: &str) -> bool {
     !matches!(decode(body), Ok(Some(Message { event: Event::Custom { ref kind, .. }, .. })) if kind == session::KIND)
 }
 
-/// The standing rooms under a repository's channel, `#<repo>/<room>`, which stay however
-/// quiet they are, unlike a thread: its agents' lines ([`AGENTS_ROOM`]), CI's landings, and
-/// the lessons sessions learnt about its paths (`zirc gotcha`).
-/// Said once, for the apps and the server's janitor of unused threads alike. There is no
-/// ops room of a repository's: the organisation's `#ops` is the one, for alerts, a broken
-/// master and what needs someone now (a tenant had two, 11 Nov 2026).
+/// The rooms each repository had under its channel before 20 Nov 2026, `#<repo>/<room>`,
+/// when its agents spoke there rather than in [`AGENTS_CHANNEL`]: no longer made or read,
+/// they're left as they were, history and all, and still never counted as threads, so the
+/// server's janitor of unused threads leaves them be.
 pub const STANDING_ROOMS: &[&str] = &[AGENTS_ROOM, "landings", "gotchas"];
 
 /// The header (IRC topic) of a room whose job is the same in every tenant, which every app
-/// shows under the room's name: a standing room under a repository's channel, or the
-/// organisation's `#ops` or `#decisions`. `None` for any other channel, which its people
-/// name. Said once, here: the tenant's sidecar sets it on a room that has no topic yet and
-/// never replaces one a person set, and the agent guide's table of rooms says the same in
-/// longer words. Plain text: a topic has no Markdown.
+/// shows under the room's name: the organisation's [`AGENTS_CHANNEL`], gotchas room, `#ops`
+/// or `#decisions`. `None` for any other channel, which its people name. Said once, here:
+/// the tenant's sidecar sets it on a room that has no topic yet and never replaces one a
+/// person set, and the agent guide's table of rooms says the same in longer words. Plain
+/// text: a topic has no Markdown.
 #[must_use]
 pub fn room_header(channel: &str) -> Option<&'static str> {
-    let lower = channel.to_ascii_lowercase();
-    match lower.split_once('/') {
-        Some((parent, AGENTS_ROOM)) if parent.len() > 1 => Some(
-            "Sessions say what they take on and finish. A line wakes only the session it names",
+    match channel.to_ascii_lowercase().as_str() {
+        AGENTS_CHANNEL => Some(
+            "Agents' work in every repository, and CI's. A line wakes only the session it names",
         ),
-        Some((parent, "landings")) if parent.len() > 1 => {
-            Some("CI: what landed, failed or deployed. Read it here, don't repeat it")
+        gotchas::CHANNEL => {
+            Some("Lessons sessions learnt about paths. zirc gotchas <path> lists them")
         }
-        Some((parent, "gotchas")) if parent.len() > 1 => {
-            Some("Lessons sessions learnt about paths here. zirc gotchas <path> lists them")
-        }
-        None if lower == state::CHANNEL => {
-            Some("Alerts and a broken master: what needs someone now")
-        }
-        None if lower == request::CHANNEL => {
-            Some("Decisions made and questions waiting for a yes or no")
-        }
+        state::CHANNEL => Some("Alerts and a broken master: what needs someone now"),
+        request::CHANNEL => Some("Decisions made and questions waiting for a yes or no"),
         _ => None,
     }
 }
 
-/// The room under a repository's channel where its agents' lines go, `#<repo>/agents`.
+/// The room each repository's agents spoke in before 20 Nov 2026, `#<repo>/agents`
+/// ([`STANDING_ROOMS`]).
 pub const AGENTS_ROOM: &str = "agents";
 
 /// Whether `channel` is a thread, `#<parent>/<name>` with text both sides of the `/`, and not
@@ -1641,19 +1646,16 @@ mod tests {
     }
 
     #[test]
-    fn standing_rooms_and_the_organisations_ops_and_decisions_have_a_header() {
-        for channel in [
-            "#monorepo/agents",
-            "#Monorepo/Landings",
-            "#acme/agents",
-            "#ops",
-            "#decisions",
-        ] {
+    fn the_organisations_agents_gotchas_ops_and_decisions_have_a_header() {
+        for channel in ["#agents", "#Agents", "#gotchas", "#ops", "#decisions"] {
             assert!(room_header(channel).is_some(), "{channel}");
         }
-        // Everything else is named by its people: a repository's channel, a thread, #general.
+        // Everything else is named by its people: a thread, #general, and the rooms
+        // repositories had before.
         for channel in [
             "#monorepo",
+            "#monorepo/agents",
+            "#monorepo/landings",
             "#general",
             "#monorepo/web-c26b2cc",
             "#monorepo/ops",
@@ -1663,7 +1665,7 @@ mod tests {
             assert_eq!(room_header(channel), None, "{channel}");
         }
         // An IRC topic is one line of plain text, kept short enough to read in a header.
-        for channel in ["#x/agents", "#x/landings", "#ops", "#decisions"] {
+        for channel in ["#agents", "#gotchas", "#ops", "#decisions"] {
             let header = room_header(channel).unwrap();
             assert!(
                 header.len() <= 100 && !header.contains(['\n', '*', '`']),

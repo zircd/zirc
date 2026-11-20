@@ -73,18 +73,31 @@ pub(crate) async fn here(socket: &Path, paths: &[PathBuf]) -> Result<(Repo, Vec<
     Ok((repo, relative))
 }
 
-/// The gotchas kept in `repo`'s room and not retired, oldest first; none when its history
-/// can't be read.
+/// The gotchas room, [`gotchas::CHANNEL`], as a post's target: the organisation's topic of
+/// its name.
+fn room() -> Target {
+    Target::Topic {
+        name: gotchas::CHANNEL.trim_start_matches('#').to_owned(),
+    }
+}
+
+/// The gotchas about `repo` kept in the gotchas room and not retired, oldest first; none when
+/// its history can't be read.
 pub(crate) async fn read(socket: &Path, repo: &Repo) -> Vec<Gotcha> {
-    let room = format!("{}/{}", repo.channel, gotchas::ROOM);
     let read = Request::Read {
-        target: room,
+        target: gotchas::CHANNEL.to_owned(),
         limit: gotchas::READ,
         since: None,
         until: None,
     };
     match waits(socket, repo.org.as_deref(), read).await {
-        Ok(Response::Messages { messages }) => gotchas::kept(&messages),
+        Ok(Response::Messages { mut messages }) => {
+            messages.retain(|delivery| {
+                delivery.message.repo.is_some()
+                    && delivery.scope().eq_ignore_ascii_case(&repo.scope)
+            });
+            gotchas::kept(&messages)
+        }
         _ => Vec::new(),
     }
 }
@@ -122,10 +135,7 @@ pub(crate) async fn gotcha(socket: &Path, args: GotchaArgs, out: &mut impl Write
         kind: gotchas::KIND.to_owned(),
         data: serde_json::to_value(Data { paths })?,
         text,
-        to: Target::Topic {
-            name: gotchas::ROOM.to_owned(),
-            org: false,
-        },
+        to: room(),
         app: None,
     };
     print_channel(ask(socket, request).await?, "kept in", out)
@@ -147,10 +157,7 @@ async fn retire_one(
         kind: gotchas::RETIRED.to_owned(),
         data: serde_json::to_value(gotchas::Retired::of(gotcha))?,
         text: gotchas::retired_text(gotcha),
-        to: Target::Topic {
-            name: gotchas::ROOM.to_owned(),
-            org: false,
-        },
+        to: room(),
         app: None,
     };
     print_channel(ask(socket, request).await?, "retired in", out)

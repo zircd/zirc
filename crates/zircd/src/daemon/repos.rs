@@ -9,13 +9,13 @@ use zirc_core::ipc::{Delivery, Repo, Response};
 use zirc_core::project::ORG_CHANNEL;
 use zirc_core::{channels, decisions, paths};
 use zirc_irc::Line;
-use zirc_proto::{Event, Message};
+use zirc_proto::{AGENTS_CHANNEL, Event, Message};
 
 use crate::git;
 
 use super::{
     Daemon, ReadRepo, SAVING, SHARED_FOR, Saved, SavedTopics, Sessions, WATCHER_SESSION, Watched,
-    now, post_room, read_repo, read_saved_repos, warn_once,
+    now, read_repo, read_saved_repos,
 };
 
 impl Daemon {
@@ -26,7 +26,7 @@ impl Daemon {
                 .iter()
                 .map(|(path, watched)| Repo {
                     path: path.clone(),
-                    channel: watched.channel.clone(),
+                    scope: watched.scope.clone(),
                     sessions: watched.sessions.0.clone(),
                     org: self.org.several.then(|| self.org.name.clone()),
                     shared: self
@@ -103,7 +103,7 @@ impl Daemon {
                         root.display(),
                         other.display()
                     );
-                    taken.push((other.clone(), watched.channel.clone()));
+                    taken.push((other.clone(), watched.scope.clone()));
                 }
             }
             for (other, channel) in taken {
@@ -116,7 +116,7 @@ impl Daemon {
                 watched.add_session(it.session);
             }
             // Who's working on what may be different now.
-            let channel = watched.channel.clone();
+            let channel = watched.scope.clone();
             if self.joined.contains(&channel) {
                 self.announce(&channel, false, self.clock.now());
                 self.check_overlaps(&channel);
@@ -125,7 +125,7 @@ impl Daemon {
         }
         let read = read_repo(root.clone(), self.inputs.clone()).await?;
         self.watch_read(read, sessions);
-        self.invite_owner_to(&root);
+        self.invite_owner_to_agents();
         Ok(())
     }
 
@@ -153,14 +153,14 @@ impl Daemon {
             .filter(|root| {
                 !self.repos.contains_key(root)
                     && !self.unwatched.contains(root)
-                    && !self.warned.said(warn_once::About::Scan, root)
+                    && !self.warned.said(root)
             })
             .collect();
         let mut found = false;
         for root in new {
             match read_repo(root.clone(), self.inputs.clone()).await {
                 Ok(read) => {
-                    self.warned.ok(warn_once::About::Scan, &root);
+                    self.warned.ok(&root);
                     tracing::info!(
                         "watching {}, a worktree of a watched checkout",
                         root.display()
@@ -172,8 +172,7 @@ impl Daemon {
                     let cause = format!("{err:#}");
                     let message =
                         format!("couldn't watch the worktree {}: {cause}", root.display());
-                    self.warned
-                        .warn(warn_once::About::Scan, &root, &cause, &message);
+                    self.warned.warn(&root, &cause, &message);
                 }
             }
         }
@@ -182,25 +181,15 @@ impl Daemon {
         }
     }
 
-    /// This machine has just started watching the repository at `root`, as `zirc repo
-    /// add` asked: its owner's apps join its channel and rooms, by invitation, once this
-    /// machine is in each. Only rooms it's new to: one it was in already, as for another
-    /// checkout of the same repository, its owner was invited to then. Never on restoring
-    /// what was watched, nor for a machine without an owner.
-    fn invite_owner_to(&mut self, root: &Path) {
-        if self.owner.is_none() {
-            return;
+    /// This machine has just started watching a repository, as `zirc repo add` asked: its
+    /// owner's apps join the organisation's `#agents`, by invitation, once this machine is in
+    /// it. Only when it's new to it: when it was in already, as for another repository, its
+    /// owner was invited then. Never on restoring what was watched, nor for a machine
+    /// without an owner.
+    fn invite_owner_to_agents(&mut self) {
+        if self.owner.is_some() && !self.joined.contains(AGENTS_CHANNEL) {
+            self.invite_owner.insert(AGENTS_CHANNEL.to_owned());
         }
-        let Some(watched) = self.repos.get(root) else {
-            return;
-        };
-        let rooms: Vec<String> = std::iter::once(&watched.channel)
-            .chain(watched.rooms())
-            .cloned()
-            .chain(watched.standing())
-            .filter(|room| !self.joined.contains(room))
-            .collect();
-        self.invite_owner.extend(rooms);
     }
 
     /// Watches a repository [`read_repo`] read, for `sessions`; or, when it's watched
@@ -220,18 +209,19 @@ impl Daemon {
             }
             return;
         }
-        let channel = project.repo_channel();
+        let channel = project.scope();
         tracing::info!("watching {} for {channel}", root.display());
-        let joined = self.joined.contains(&channel);
-        let (agents, areas) = post_room::rooms_of(&root, &project, &mut self.warned);
+        // In `#agents` already, it's in the repository's scope at once.
+        let joined = self.joined.contains(AGENTS_CHANNEL);
+        if joined {
+            self.joined.insert(channel.clone());
+        }
         self.repos.insert(
             root,
             Watched {
                 common,
-                room: agents,
-                areas,
                 project,
-                channel: channel.clone(),
+                scope: channel.clone(),
                 default_branch,
                 snapshot,
                 touched: None,
@@ -297,23 +287,15 @@ impl Daemon {
         }
     }
 
-    /// The channels to be in: the organisation's and its `#ops`, where decisions are, each
-    /// watched repository's, and the topics joined, a branch's channel among them when
-    /// joined by name.
+    /// The channels to be in: the organisation's, its `#agents` and gotchas room with a
+    /// repository watched, its `#ops`, where decisions are, and the topics joined.
     pub(super) fn desired_channels(&self) -> BTreeSet<String> {
         if let Some(guest) = &self.org.guest {
             return BTreeSet::from([guest.room.clone()]);
         }
         let mut desired: BTreeSet<String> = self.topics.keys().cloned().collect();
-        // A branch's channel only by choice, as a topic named for the branch: joining every
-        // pushed branch's, as a landing pushes each, made a channel per landing that nobody
-        // else was in.
         for watched in self.repos.values() {
-            desired.insert(watched.channel.clone());
-            // Its agent room, which every session here hears, and its areas' (post_room).
-            desired.extend(watched.rooms().cloned());
-            // Its landings and ops, which a new repository has from the first day.
-            desired.extend(watched.standing());
+            desired.extend(watched.ci_rooms());
         }
         // Only while this machine's asked its owner something, to hear their answer.
         if self.requests.any_open() {
@@ -321,6 +303,8 @@ impl Daemon {
         }
         if !self.repos.is_empty() {
             desired.insert(ORG_CHANNEL.to_owned());
+            desired.insert(AGENTS_CHANNEL.to_owned());
+            desired.insert(zirc_core::gotchas::CHANNEL.to_owned());
             // Decisions people made concern every session here, wherever they're working,
             // and so does how shared things stand, such as a broken master.
             desired.insert(decisions::CHANNEL.to_owned());
@@ -333,8 +317,12 @@ impl Daemon {
     pub(super) fn reconcile(&mut self) {
         let desired = self.desired_channels();
         let Some(client) = &self.client else { return };
+        // A repository's scope is no channel to join or leave: it's in one with `#agents`.
         let plan = channels::reconcile(
-            self.joined.iter().map(String::as_str),
+            self.joined
+                .iter()
+                .filter(|channel| desired.contains(*channel) || !self.is_scope(channel))
+                .map(String::as_str),
             desired.iter().map(String::as_str),
         );
         for channel in &plan.join {

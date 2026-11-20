@@ -1,4 +1,5 @@
-//! The gotchas zircd hears in its repositories' gotchas rooms ([`zirc_core::gotchas`]), kept
+//! The gotchas zircd hears in the organisation's gotchas room ([`zirc_core::gotchas`]), by
+//! the repository each says, kept
 //! across restarts, and told to a session once as it starts changing files under their
 //! paths without an intent of its own: the moment zircd says one for it
 //! ([`super::auto_intents`]), before it's deep in. `zirc intend` says them for a session
@@ -15,10 +16,11 @@ use zirc_proto::{Event, Message};
 
 use super::{Daemon, WATCHER_SESSION, read_saved, save_saved};
 
-/// How many of a room's gotchas zircd keeps, the newest.
+/// How many of a repository's gotchas zircd keeps, the newest.
 const KEPT: usize = 500;
 
-/// By gotchas room: what was heard there, oldest first.
+/// By the scope of the repository each is about ([`zirc_core::ipc::Delivery::scope`]), in
+/// lowercase: what was heard, oldest first.
 pub(super) type Kept = BTreeMap<String, Vec<Gotcha>>;
 
 /// Which gotchas each session was told, by session and the gotcha's text and paths.
@@ -30,15 +32,15 @@ fn key(gotcha: &Gotcha) -> String {
 }
 
 impl Daemon {
-    /// Keeps the gotcha `delivery` says, heard in a gotchas room, live or replayed, or forgets
-    /// the one it retires.
+    /// Keeps the gotcha `delivery` says, heard in the gotchas room, live or replayed, or
+    /// forgets the one it retires, for the repository it says.
     pub(super) fn remember_gotcha(&mut self, delivery: &Delivery) {
-        if !gotchas::is_room(&delivery.channel) {
+        if !gotchas::is_room(&delivery.channel) || delivery.message.repo.is_none() {
             return;
         }
         let room = self
             .gotchas
-            .entry(delivery.channel.to_ascii_lowercase())
+            .entry(delivery.scope().to_ascii_lowercase())
             .or_default();
         if let Some(retired) = gotchas::retired(delivery) {
             let before = room.len();
@@ -67,16 +69,10 @@ impl Daemon {
         self.save_gotchas();
     }
 
-    /// Tells `session`, as it starts changing `dirs` in the repository whose channel is
-    /// `channel` and gotchas room `room`, the gotchas under them it wasn't told yet.
-    pub(super) fn tell_gotchas(
-        &mut self,
-        channel: &str,
-        room: &str,
-        session: &str,
-        dirs: &[String],
-    ) {
-        let Some(kept) = self.gotchas.get(&room.to_ascii_lowercase()) else {
+    /// Tells `session`, as it starts changing `dirs` in the repository whose scope is
+    /// `channel`, the gotchas under them it wasn't told yet.
+    pub(super) fn tell_gotchas(&mut self, channel: &str, session: &str, dirs: &[String]) {
+        let Some(kept) = self.gotchas.get(&channel.to_ascii_lowercase()) else {
             return;
         };
         let told = &self.gotchas_told;

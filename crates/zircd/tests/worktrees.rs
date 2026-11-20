@@ -75,10 +75,9 @@ async fn sessions_in_worktrees_on_one_machine_hear_each_other() {
             repo: login_root.clone(),
             session: "cc-login".into(),
             text: "taking: the login flow".into(),
-            to: Target::Repo,
+            to: Target::Agents,
             app: None,
             everyone: false,
-            force: true,
             reply: None,
         })
         .await;
@@ -159,7 +158,7 @@ async fn others_see_what_a_worktrees_work_is_built_on_once_its_committed() {
     })
     .await;
     beta.eventually(
-        |status| status.channels.iter().any(|c| c == "#api"),
+        |status| status.channels.iter().any(|c| c == "#agents"),
         "joining",
     )
     .await;
@@ -228,7 +227,7 @@ async fn others_see_each_worktrees_changes_by_branch() {
     })
     .await;
     beta.eventually(
-        |status| status.channels.iter().any(|c| c == "#api"),
+        |status| status.channels.iter().any(|c| c == "#agents"),
         "joining",
     )
     .await;

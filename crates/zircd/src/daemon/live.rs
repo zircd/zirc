@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use zirc_core::paths;
 use zirc_core::project::ORG_CHANNEL;
 use zirc_proto::session::{self, LIVE_GRACE_SECS};
-use zirc_proto::{Level, Message};
+use zirc_proto::{AGENTS_CHANNEL, Level, Message};
 
 use super::{Daemon, WATCHER_SESSION, read_saved};
 
@@ -134,11 +134,12 @@ impl Daemon {
             self.live.said.clear();
             return;
         };
-        let repos: BTreeSet<&String> = self.repos.values().map(|w| &w.channel).collect();
+        // Said in the organisation's channels a machine's in: never a repository's scope, which
+        // is no channel ([`Daemon::is_scope`]).
         let channels: Vec<String> = self
             .joined
             .iter()
-            .filter(|channel| repos.contains(channel) || channel.as_str() == ORG_CHANNEL)
+            .filter(|channel| [ORG_CHANNEL, AGENTS_CHANNEL].contains(&channel.as_str()))
             .cloned()
             .collect();
         self.live

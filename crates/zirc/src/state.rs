@@ -320,7 +320,7 @@ pub(super) async fn repo_here(socket: &Path) -> Option<String> {
         .into_iter()
         .filter(|repo| cwd.starts_with(&repo.path))
         .max_by_key(|repo| repo.path.as_os_str().len())
-        .map(|repo| repo.channel)
+        .map(|repo| repo.scope)
 }
 
 /// A state in a line: `2026-11-05T12:00:00Z #monorepo master is broken: …, said by ci`, and

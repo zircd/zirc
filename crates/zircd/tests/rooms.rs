@@ -1,4 +1,4 @@
-//! Posts, channels, topics and the agents room.
+//! Posts, `#agents`, and the organisation's topics.
 
 use tempfile::TempDir;
 use zirc_core::ipc::{self, Request, Response, Target, Why};
@@ -10,13 +10,13 @@ mod common;
 use common::*;
 
 #[tokio::test]
-async fn a_watched_repository_has_its_agents_and_landings_rooms_from_the_first_day() {
+async fn a_watched_repository_has_the_organisations_agents_and_gotchas_rooms_from_the_first_day() {
     let ergo = require_ergo!();
     let [(alpha, _alpha_clone), _] = two_machines(&ergo).await;
     let joined = |channel: &'static str| {
         move |status: &ipc::Status| status.channels.iter().any(|c| c == channel)
     };
-    for channel in ["#api/agents", "#api/landings"] {
+    for channel in ["#agents", "#gotchas"] {
         alpha
             .eventually(joined(channel), &format!("joining {channel}"))
             .await;
@@ -24,79 +24,50 @@ async fn a_watched_repository_has_its_agents_and_landings_rooms_from_the_first_d
 }
 
 #[tokio::test]
-async fn branches_and_topics_have_channels_of_their_own() {
+async fn a_post_goes_to_agents_saying_its_repository_and_topics_are_the_organisations() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), (beta, beta_clone)] = two_machines(&ergo).await;
     let mut beta_hears = beta.watch(None).await;
     let joined = |channel: &'static str| {
         move |status: &ipc::Status| status.channels.iter().any(|c| c == channel)
     };
-
     let post = |text: &str, to: Target| plain_post(alpha_clone.path(), "cc-a", text, to);
-    // An unpushed branch, such as a session's own, has no channel: posting to it is refused.
+
+    // A post goes to #agents, saying its repository, whatever branch is checked out.
     git(alpha_clone.path(), &["checkout", "--quiet", "-b", "login"]);
-    let refused = ipc::request(&alpha.socket(), &post("anyone?", Target::Branch)).await;
-    assert!(refused.unwrap_err().to_string().contains("no channel"));
-
-    // Topics are joined by choice, per repository or across the organisation; a branch's
-    // channel is a topic named for the branch.
-    let topic = |repo: &TempDir, topic: &str, org: bool| Request::Join {
-        repo: repo.path().to_owned(),
-        topic: topic.into(),
-        org,
-        session: None,
-    };
-
-    // Pushed, the login branch has a channel, but nobody is in it unless they join: a
-    // landing pushes every branch it lands, and each would otherwise make a channel.
-    git(beta_clone.path(), &["checkout", "--quiet", "-b", "login"]);
-    for clone in [&alpha_clone, &beta_clone] {
-        git(
-            clone.path(),
-            &["update-ref", "refs/remotes/origin/login", "HEAD"],
-        );
-    }
-    // Once alpha has seen the push, posting to the branch says how to join its channel.
-    until_refused(
-        &alpha,
-        &post("anyone?", Target::Branch),
-        "`zirc join login`",
-    )
-    .await;
-    for (machine, clone) in [(&alpha, &alpha_clone), (&beta, &beta_clone)] {
-        machine.request(topic(clone, "login", false)).await;
-        machine
-            .eventually(joined("#api/login"), "joining #api/login")
-            .await;
-    }
-
-    // A post goes to the repository unless told otherwise.
     let posted = alpha
-        .request(post("to everyone on api", Target::Repo))
+        .request(post("to everyone on api", Target::Agents))
         .await;
-    assert_eq!(posted, Response::channel("#api"));
-    assert_eq!(next_post(&mut beta_hears).await.channel, "#api");
-    alpha.request(post("on login", Target::Branch)).await;
-    assert_eq!(next_post(&mut beta_hears).await.channel, "#api/login");
+    assert_eq!(posted, Response::channel("#agents"));
+    let said = next_post(&mut beta_hears).await;
+    assert_eq!(
+        (said.channel.as_str(), said.message.repo.as_deref()),
+        ("#agents", Some("api"))
+    );
     alpha.request(post("everyone", Target::Org)).await;
     assert_eq!(next_post(&mut beta_hears).await.channel, "#general");
 
+    // Topics are joined by choice, and are the organisation's.
+    let topic = |repo: &TempDir, topic: &str| Request::Join {
+        repo: repo.path().to_owned(),
+        topic: topic.into(),
+        session: None,
+    };
     for (machine, clone) in [(&alpha, &alpha_clone), (&beta, &beta_clone)] {
-        machine.request(topic(clone, "auth", false)).await;
-        machine
-            .eventually(joined("#api/auth"), "joining #api/auth")
-            .await;
+        assert_eq!(
+            machine.request(topic(clone, "auth")).await,
+            Response::channel("#auth")
+        );
+        machine.eventually(joined("#auth"), "joining #auth").await;
     }
     let to_auth = Target::Topic {
         name: "auth".into(),
-        org: false,
     };
     alpha.request(post("tokens rotate hourly", to_auth)).await;
     let said = next_post(&mut beta_hears).await;
-    assert_eq!(said.channel, "#api/auth");
     assert_eq!(
-        alpha.request(topic(&alpha_clone, "releases", true)).await,
-        Response::channel("#releases")
+        (said.channel.as_str(), said.message.repo.as_deref()),
+        ("#auth", Some("api"))
     );
     // A topic that isn't joined can't be posted to.
     let not_joined = ipc::request(
@@ -105,26 +76,23 @@ async fn branches_and_topics_have_channels_of_their_own() {
             "hello?",
             Target::Topic {
                 name: "billing".into(),
-                org: false,
             },
         ),
     )
     .await;
     assert!(not_joined.unwrap_err().to_string().contains("isn't joined"));
 
-    // A branch's channel is left like any topic's, and stays left whatever's checked out.
     alpha
         .request(Request::Leave {
             repo: alpha_clone.path().to_owned(),
-            topic: "login".into(),
-            org: false,
+            topic: "auth".into(),
             session: None,
         })
         .await;
     alpha
         .eventually(
-            |status| !status.channels.iter().any(|c| c == "#api/login"),
-            "leaving #api/login",
+            |status| !status.channels.iter().any(|c| c == "#auth"),
+            "leaving #auth",
         )
         .await;
 }
@@ -144,10 +112,9 @@ async fn a_post_too_long_for_a_line_arrives_whole() {
             repo: alpha_clone.path().to_owned(),
             session: "cc-1".into(),
             text: text.clone(),
-            to: Target::Repo,
+            to: Target::Agents,
             app: None,
             everyone: false,
-            force: true,
             reply: None,
         })
         .await;
@@ -157,7 +124,7 @@ async fn a_post_too_long_for_a_line_arrives_whole() {
 }
 
 #[tokio::test]
-async fn plain_posts_go_to_the_agents_thread_and_wake_only_whom_they_name() {
+async fn plain_posts_go_to_agents_and_wake_only_whom_they_name() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), (beta, beta_clone)] = two_machines(&ergo).await;
     for session in ["cc-1", "cc-2", "cc-3"] {
@@ -168,12 +135,12 @@ async fn plain_posts_go_to_the_agents_thread_and_wake_only_whom_they_name() {
             })
             .await;
     }
-    // Every machine watching the repository is in its agents channel, as in its channel.
+    // Every machine watching a repository is in #agents.
     for machine in [&alpha, &beta] {
         machine
             .eventually(
-                |status| status.channels.iter().any(|c| c == "#api/agents"),
-                "joining #api/agents",
+                |status| status.channels.iter().any(|c| c == "#agents"),
+                "joining #agents",
             )
             .await;
     }
@@ -184,17 +151,16 @@ async fn plain_posts_go_to_the_agents_thread_and_wake_only_whom_they_name() {
             repo: clone.path().to_owned(),
             session: session.into(),
             text: text.into(),
-            to: Target::Default,
+            to: Target::Agents,
             app: None,
             everyone: false,
-            force: true,
             reply: None,
         };
         machine.request(request).await
     };
-    // What a session is doing goes to the thread, and wakes no other session.
+    // What a session is doing goes to #agents, and wakes no other session.
     let said = post(&beta, &beta_clone, "cc-9", "building the release, 2 of 4").await;
-    assert_eq!(said, Response::channel("#api/agents"));
+    assert_eq!(said, Response::channel("#agents"));
     for watching in [&mut cc1, &mut cc2] {
         assert_eq!(
             next_post_why(watching).await,
@@ -202,7 +168,7 @@ async fn plain_posts_go_to_the_agents_thread_and_wake_only_whom_they_name() {
         );
     }
     // Addressed to one agent session known here, it's a note for that one alone, in no
-    // room: only a post to a person known here goes to the repository's channel.
+    // room.
     let said = post(
         &alpha,
         &alpha_clone,
@@ -236,18 +202,14 @@ async fn plain_posts_go_to_the_agents_thread_and_wake_only_whom_they_name() {
             Some(Why::Direct)
         )
     );
-    // Said in the thread naming a session, as a person might: that one alone wakes.
+    // Said naming a session, as a person might: that one alone wakes.
     let in_thread = Request::Post {
         repo: beta_clone.path().to_owned(),
         session: "cc-9".into(),
         text: "cc-2 has the green build".into(),
-        to: Target::Topic {
-            name: "agents".into(),
-            org: false,
-        },
+        to: Target::Agents,
         app: None,
         everyone: false,
-        force: true,
         reply: None,
     };
     beta.request(in_thread).await;
@@ -262,87 +224,7 @@ async fn plain_posts_go_to_the_agents_thread_and_wake_only_whom_they_name() {
 }
 
 #[tokio::test]
-async fn a_post_goes_to_the_room_of_the_area_its_worktrees_changes_are_in() {
-    let ergo = require_ergo!();
-    let [(alpha, alpha_clone), (beta, beta_clone)] = two_machines(&ergo).await;
-    // The team gives the repository areas: each machine joins their rooms.
-    let areas = "[rooms.areas]\nweb = [\"web/\"]\nplatform = [\"server/\", \"ops/\"]\n";
-    for (machine, clone) in [(&alpha, &alpha_clone), (&beta, &beta_clone)] {
-        std::fs::create_dir_all(clone.path().join(".zirc")).unwrap();
-        std::fs::write(clone.path().join(".zirc/config.toml"), areas).unwrap();
-        machine
-            .eventually(
-                |status| {
-                    status.channels
-                        == [
-                            "#api",
-                            "#api/agents",
-                            "#api/gotchas",
-                            "#api/landings",
-                            "#api/platform",
-                            "#api/web",
-                            "#decisions",
-                            "#general",
-                            "#ops",
-                        ]
-                },
-                "joining the areas' rooms",
-            )
-            .await;
-    }
-    // On beta, cc-w joined the web area as a topic; cc-x didn't.
-    for session in ["cc-w", "cc-x"] {
-        beta.request(Request::RepoAdd {
-            path: beta_clone.path().to_owned(),
-            session: Some(session.into()),
-        })
-        .await;
-    }
-    beta.request(Request::Join {
-        repo: beta_clone.path().to_owned(),
-        topic: "web".into(),
-        org: false,
-        session: Some("cc-w".into()),
-    })
-    .await;
-    let mut cc_w = beta.watch(Some("cc-w")).await;
-    let mut cc_x = beta.watch(Some("cc-x")).await;
-
-    // Alpha's worktree changes mostly web's paths.
-    std::fs::create_dir_all(alpha_clone.path().join("web")).unwrap();
-    for file in ["web/login.ts", "web/form.ts"] {
-        std::fs::write(alpha_clone.path().join(file), "export {};\n").unwrap();
-    }
-    std::fs::create_dir_all(alpha_clone.path().join("ops")).unwrap();
-    std::fs::write(alpha_clone.path().join("ops/run.sh"), "true\n").unwrap();
-    let post = |text: &str| plain_post(alpha_clone.path(), "cc-a", text, Target::Default);
-    assert_eq!(
-        alpha.request(post("the login form is wired up")).await,
-        Response::channel("#api/web")
-    );
-    // News to whom joined the area, not to every session hearing its room; an agent's post
-    // there waits for its next wake.
-    assert_eq!(
-        next_post_why(&mut cc_w).await,
-        ("the login form is wired up".into(), None)
-    );
-    let said = next_post(&mut cc_x).await;
-    assert_eq!((said.channel.as_str(), said.why), ("#api/web", None));
-    // A status line still goes to the agents room, which every session hears.
-    assert_eq!(
-        alpha.request(post("taking: the login form")).await,
-        Response::channel("#api/agents")
-    );
-    // Changes in two areas alike are in neither's: the agents room.
-    std::fs::write(alpha_clone.path().join("ops/deploy.sh"), "true\n").unwrap();
-    assert_eq!(
-        alpha.request(post("both halves are in")).await,
-        Response::channel("#api/agents")
-    );
-}
-
-#[tokio::test]
-async fn a_claim_in_the_agents_room_is_listed_as_the_repositorys() {
+async fn a_claim_in_agents_is_listed_as_its_repositorys() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), (beta, _beta_clone)] = two_machines(&ergo).await;
     let said = alpha
@@ -350,14 +232,13 @@ async fn a_claim_in_the_agents_room_is_listed_as_the_repositorys() {
             repo: alpha_clone.path().to_owned(),
             session: "cc-1".into(),
             text: "taking: the login page".into(),
-            to: Target::Default,
+            to: Target::Agents,
             app: None,
             everyone: false,
-            force: true,
             reply: None,
         })
         .await;
-    assert_eq!(said, Response::channel("#api/agents"));
+    assert_eq!(said, Response::channel("#agents"));
     // Another machine lists it under the repository, as zirc who shows it.
     until_who(
         &beta,
@@ -389,7 +270,6 @@ async fn an_agents_post_in_a_topic_comes_with_the_next_wake() {
             .request(Request::Join {
                 repo: clone.path().to_owned(),
                 topic: "deploys".into(),
-                org: true,
                 session: session.map(Into::into),
             })
             .await;
@@ -442,7 +322,6 @@ async fn a_topic_is_news_to_the_sessions_that_joined_it() {
             .request(Request::Join {
                 repo: clone.path().to_owned(),
                 topic: "deploys".into(),
-                org: true,
                 session: session.map(Into::into),
             })
             .await
@@ -517,7 +396,6 @@ async fn a_topic_is_news_to_the_sessions_that_joined_it() {
         .request(Request::Leave {
             repo: alpha_clone.path().to_owned(),
             topic: "deploys".into(),
-            org: true,
             session: Some("cc-1".into()),
         })
         .await
@@ -538,7 +416,7 @@ async fn a_post_of_several_lines_goes_as_one_message_of_lines() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), (beta, _beta_clone)] = two_machines(&ergo).await;
     let (ada, mut ada_hears) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_hears, "#api").await;
+    zirc_test_irc::joins(&ada, &mut ada_hears, "#agents").await;
     let mut beta_hears = beta.watch(None).await;
     let body = "build failed:\n```\nerror[E0382]: borrow of moved value\n```";
     alpha
@@ -546,10 +424,9 @@ async fn a_post_of_several_lines_goes_as_one_message_of_lines() {
             repo: alpha_clone.path().to_owned(),
             session: "deploy".into(),
             text: body.into(),
-            to: Target::Repo,
+            to: Target::Agents,
             app: Some("CI".into()),
             everyone: false,
-            force: true,
             reply: None,
         })
         .await;
@@ -558,7 +435,7 @@ async fn a_post_of_several_lines_goes_as_one_message_of_lines() {
     assert_eq!(said.message.event, Event::Text { body: body.into() });
     assert_eq!(said.message.app.as_deref(), Some("ci"));
 
-    let privmsg = |line: &zirc_irc::Line| line.command == "PRIVMSG" && line.params[0] == "#api";
+    let privmsg = |line: &zirc_irc::Line| line.command == "PRIVMSG" && line.params[0] == "#agents";
     let mut lines = Vec::new();
     while lines.len() < 4 {
         lines.push(zirc_test_irc::next_matching(&mut ada_hears, privmsg).await);

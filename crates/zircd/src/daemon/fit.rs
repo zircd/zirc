@@ -166,7 +166,7 @@ impl Daemon {
             .client
             .as_ref()
             .map(|client| client.nick().to_owned())?;
-        let home = self.home_channel(&delivery.channel);
+        let home = self.scope_of(delivery);
         let channel = home.as_str();
         let intended: Vec<&str> = paths.iter().map(String::as_str).collect();
         let sender = delivery.message.session.as_str();
@@ -345,7 +345,7 @@ impl Daemon {
         let jobs: Vec<Job> = self
             .repos
             .iter()
-            .filter(|(_, watched)| watched.channel == channel)
+            .filter(|(_, watched)| watched.scope == channel)
             .filter_map(|(root, watched)| {
                 let base = watched.snapshot.base.clone()?;
                 let own: BTreeSet<&String> = watched
