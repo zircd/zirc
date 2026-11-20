@@ -573,7 +573,6 @@ mod tests {
             first: true,
             state: home.to_owned(),
             several: false,
-            guest: None,
         };
         let (inputs, _received) = mpsc::unbounded_channel();
         let mut daemon = Daemon::new(home.to_owned(), org, "irc.example".into(), None, inputs);

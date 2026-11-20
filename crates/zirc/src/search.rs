@@ -84,9 +84,9 @@ pub(super) async fn one_org(
 }
 
 /// `org`'s history through zirc.dev, when this machine signed in to it there: not the public
-/// server, a guest's terminal or a server a team runs itself, which zircd reads instead.
+/// server or a server a team runs itself, which zircd reads instead.
 pub(super) fn team(org: &Organisation) -> Option<Team> {
-    if org.name() == PUBLIC_ORG || org.guest.is_some() {
+    if org.name() == PUBLIC_ORG {
         return None;
     }
     Some(Team {
@@ -121,10 +121,6 @@ pub async fn search(
     let org = one_org(home, socket, args.org.as_deref()).await?;
     let mut args = args;
     args.org = Some(org.name());
-    // A guest's terminal reads its own room, which it needn't name.
-    if let (None, Some(guest)) = (&args.conversation, &org.guest) {
-        args.conversation = Some(guest.channel.clone());
-    }
     let mut found = match team(&org) {
         Some(team) => from_team(&team, &args, &since, until.as_deref()).await?,
         // Not signed in through zirc.dev: what this machine's own server keeps.

@@ -7,10 +7,6 @@
 //!   [`IrcToken`].
 //! - `GET` [`GUEST_PATH`]`?org=&channel=`: whether a public channel takes guests,
 //!   [`PublicChannel`]; `POST` it with a [`GuestJoin`] to join as one, [`GatewayToken`].
-//! - `GET` [`TERMINAL_PATH`]`?org=&channel=&code=`: the guest's terminal waiting with that code
-//!   ([`crate::guest_terminal`]), [`WaitingTerminal`], 404 if none is; `POST`
-//!   [`TERMINAL_CONFIRM_PATH`] with a [`TerminalConfirm`] lets it in as the guest the chat is.
-//!   `POST`ing the code to `/api/cli/login/deny` turns it down.
 //!
 //! A refusal is an error status with an [`ApiError`].
 
@@ -26,32 +22,6 @@ pub const TOKEN_PATH: &str = "/api/irc/token";
 
 /// A public channel's guests: whether it takes them, and a token to join as one.
 pub const GUEST_PATH: &str = "/api/irc/guest";
-
-/// A guest's terminal waiting to be let in, and where its zircd renews its grant.
-pub const TERMINAL_PATH: &str = crate::guest_terminal::RENEW_PATH;
-
-/// Where a guest lets their terminal in.
-pub const TERMINAL_CONFIRM_PATH: &str = "/api/irc/guest/terminal/confirm";
-
-/// What `GET` [`TERMINAL_PATH`] answers: the terminal waiting with a code.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
-pub struct WaitingTerminal {
-    /// Its machine's name, as it says.
-    pub machine: String,
-    /// The client and its version, such as `zirc 0.1.31`.
-    pub client: String,
-}
-
-/// What a guest sends `POST` [`TERMINAL_CONFIRM_PATH`] to let their terminal in.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
-pub struct TerminalConfirm {
-    /// The organisation's short name.
-    pub org: String,
-    /// The public channel, `#web`.
-    pub channel: String,
-    /// The code the terminal shows.
-    pub code: String,
-}
 
 /// What [`ORGS_PATH`] answers: 401 when nobody's signed in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
@@ -203,10 +173,6 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const IRC_TOKEN_PATH = {TOKEN_PATH:?};"),
         format!("const IRC_GUEST_PATH = {GUEST_PATH:?};"),
         format!("const IRC_NAME_REPLACED_NOTE = {NAME_REPLACED_NOTE:?};"),
-        format!("const IRC_TERMINAL_PATH = {TERMINAL_PATH:?};"),
-        format!("const IRC_TERMINAL_CONFIRM_PATH = {TERMINAL_CONFIRM_PATH:?};"),
-        WaitingTerminal::decl(config),
-        TerminalConfirm::decl(config),
         Orgs::decl(config),
         Org::decl(config),
         TokenRequest::decl(config),

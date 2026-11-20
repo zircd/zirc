@@ -153,16 +153,6 @@ pub struct DesiredState {
     )]
     pub public_channels: Vec<String>,
 
-    /// Of the public channels, those whose guests may also connect a terminal of theirs
-    /// (`zirc login acme/web`, [`crate::guest_terminal`]): zircd on their computer, in as them,
-    /// so an agent there talks in their room. Off for each until its owners turn it on.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[schemars(
-        length(max = limits::PUBLIC_CHANNELS_MAX),
-        inner(regex(pattern = limits::PUBLIC_CHANNEL_PATTERN))
-    )]
-    pub terminal_channels: Vec<String>,
-
     /// The public halves (PEM) of the keys zirc.dev signs this organisation's browser logins
     /// and guests' tokens with: a JWT naming an account here, over SASL `IRCV3BEARER`. A list,
     /// so a new key can be added before the old one goes. Each organisation has its own, as
@@ -515,7 +505,6 @@ mod tests {
             },
             visibility: Visibility::Channels,
             public_channels: vec!["#help".into()],
-            terminal_channels: vec!["#help".into()],
             token_keys: vec!["-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n".into()],
             content_api: true,
         };

@@ -3,8 +3,7 @@
 //! machine tells zirc.dev it no longer holds.
 //!
 //! A machine's sign-in is `config.toml`'s organisations ([`Settings`]): its own, each with
-//! the machine's account on that server and its password, and guests' terminals, which have
-//! no account. The meaning is the apps' ([`crate::account::Removal::ends_zirc_dev`]): signing
+//! the machine's account on that server and its password. The meaning is the apps' ([`crate::account::Removal::ends_zirc_dev`]): signing
 //! out of the last of one's own organisations also signs out of zirc.dev
 //! ([`LAST_SIGN_OUT_ENDS_ZIRC_DEV`]).
 
@@ -19,9 +18,9 @@ use crate::settings::{Organisation, Settings};
 /// What to sign out of.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Scope {
-    /// Every organisation, guest terminals and zirc.dev.
+    /// Every organisation and zirc.dev.
     Everything,
-    /// One organisation, or one guest's terminal, by its name.
+    /// One organisation, by its name.
     One(String),
 }
 
@@ -30,9 +29,7 @@ pub enum Scope {
 pub struct Held {
     /// What zirc calls it.
     pub org: String,
-    /// The public channel, for a guest's terminal.
-    pub guest: Option<String>,
-    /// Whether it has no account on zirc.dev: a server of one's own, or a guest's terminal.
+    /// Whether it has no account on zirc.dev: a server of one's own.
     pub self_hosted: bool,
 }
 
@@ -40,8 +37,7 @@ impl Held {
     fn of(org: &Organisation) -> Self {
         Self {
             org: org.name(),
-            guest: org.guest.as_ref().map(|guest| guest.public.clone()),
-            self_hosted: org.web.is_none() || org.guest.is_some(),
+            self_hosted: org.web.is_none(),
         }
     }
 }
@@ -103,14 +99,9 @@ impl Plan {
     /// organisations on it goes ([`LAST_SIGN_OUT_ENDS_ZIRC_DEV`]), as in the apps.
     #[must_use]
     pub fn ends_zirc_dev(&self) -> bool {
-        let own = |held: &&Held| held.guest.is_none();
         LAST_SIGN_OUT_ENDS_ZIRC_DEV
-            && self
-                .leaving
-                .iter()
-                .filter(own)
-                .any(|held| !held.self_hosted)
-            && !self.staying.iter().any(|held| own(&held))
+            && self.leaving.iter().any(|held| !held.self_hosted)
+            && self.staying.is_empty()
     }
 
     /// The sheet it asks: the apps' words.
@@ -144,7 +135,7 @@ pub async fn revoke_key(org: &Organisation, key: &dyn DeviceKey) -> Result<bool,
     let (Some(account), Some(web)) = (&org.account, &org.web) else {
         return Ok(false);
     };
-    if !account.device_key || org.guest.is_some() {
+    if !account.device_key {
         return Ok(false);
     }
     let public = key
@@ -160,8 +151,7 @@ pub async fn revoke_key(org: &Organisation, key: &dyn DeviceKey) -> Result<bool,
 
 /// Takes what `plan` leaves out of `settings`, saved at `path`: the organisations it names,
 /// or, when it leaves nothing, `config.toml` itself and the machine's device key, as a
-/// machine never signed in has neither. `zirc logout` does it, and zircd for a guest's
-/// terminal zirc.dev forgot.
+/// machine never signed in has neither. `zirc logout` does it.
 ///
 /// # Errors
 ///

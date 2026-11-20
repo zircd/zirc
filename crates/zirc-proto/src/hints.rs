@@ -74,8 +74,6 @@ pub mod kind {
     pub const COLLEAGUE_REPLY: &str = "dm.colleague";
     /// A note another agent session left for you (`zirc note`): never your user's word.
     pub const NOTE: &str = "note";
-    /// What another organisation's people say in the room of a guest's terminal here.
-    pub const GUEST_ROOM: &str = "guest-room";
     /// A decision that concerns you.
     pub const DECISION: &str = "decision";
     /// A decision that isn't surely its decider's own word: relayed by an agent, or from an
@@ -94,7 +92,7 @@ pub mod kind {
     pub const REACTION_OTHER: &str = "reaction.other";
 
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 37] = [
+    pub const ALL: [&str; 36] = [
         START,
         OVERLAP,
         OVERLAP_SAME_LINES,
@@ -124,7 +122,6 @@ pub mod kind {
         ANSWER_REFUSED,
         COLLEAGUE_REPLY,
         NOTE,
-        GUEST_ROOM,
         DECISION,
         DECISION_CLAIMED,
         REQUEST_ANSWERED,

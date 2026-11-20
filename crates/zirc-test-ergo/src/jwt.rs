@@ -71,18 +71,6 @@ impl Issuer {
     }
 }
 
-/// A token with `claims`, a JSON object, and no signature anyone checks: for what reads a
-/// token's claims without checking it, such as zircd a guest's grant.
-#[must_use]
-pub fn unsigned(claims: &str) -> String {
-    let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"EdDSA","typ":"JWT"}"#);
-    format!(
-        "{header}.{}.{}",
-        URL_SAFE_NO_PAD.encode(claims),
-        URL_SAFE_NO_PAD.encode("unsigned")
-    )
-}
-
 /// `text` as a JSON string. Only what PEM and account names hold needs escaping.
 fn json_string(text: &str) -> String {
     format!(

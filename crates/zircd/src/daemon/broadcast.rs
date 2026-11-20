@@ -112,7 +112,6 @@ mod tests {
             first: true,
             state: home.path().to_owned(),
             several: false,
-            guest: None,
         };
         let (inputs, _received) = tokio::sync::mpsc::unbounded_channel();
         let mut daemon = Daemon::new(

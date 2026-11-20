@@ -358,15 +358,13 @@ impl Daemon {
     }
 
     /// Whether `reaction` is the machine's person's, as the server's account tag says: what
-    /// a wait for a reaction takes. Never a guest's terminal's, whose room is another
-    /// organisation's.
+    /// a wait for a reaction takes.
     fn owners(&self, reaction: &Reaction) -> bool {
-        self.org.guest.is_none()
-            && reaction.account.as_deref().is_some_and(|account| {
-                self.owner
-                    .as_deref()
-                    .is_some_and(|owner| owner.eq_ignore_ascii_case(account))
-            })
+        reaction.account.as_deref().is_some_and(|account| {
+            self.owner
+                .as_deref()
+                .is_some_and(|owner| owner.eq_ignore_ascii_case(account))
+        })
     }
 
     /// Whether `reaction` concerns `session`: it's on a message this machine sent (`me`), as
@@ -457,13 +455,11 @@ impl Daemon {
     }
 
     /// Whether a post waits for its echo, to answer with its link: when the server echoes
-    /// and the organisation has a web app to link to. A guest's terminal's room has none.
+    /// and the organisation has a web app to link to.
     pub(super) fn links_posts(&self) -> bool {
-        self.org.guest.is_none()
-            && self
-                .client
-                .as_ref()
-                .is_some_and(|client| client.has_cap("echo-message"))
+        self.client
+            .as_ref()
+            .is_some_and(|client| client.has_cap("echo-message"))
             && self.web().is_some()
     }
 
@@ -663,13 +659,6 @@ impl Daemon {
         reply: Option<&str>,
         sealed: Option<String>,
     ) {
-        // A guest's terminal says nothing anywhere but its room, which the gateway refuses.
-        if let Some(guest) = &self.org.guest
-            && !guest.room.eq_ignore_ascii_case(channel)
-        {
-            tracing::debug!("a guest's terminal, not sending to {channel}");
-            return;
-        }
         if message.name.is_none() {
             message.name = self.name_of(&message.session);
         }

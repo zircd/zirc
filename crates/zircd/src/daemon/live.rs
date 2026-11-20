@@ -126,10 +126,6 @@ impl Daemon {
         if changed || now.saturating_sub(self.live.saved_at) >= SAVE_EVERY {
             self.live.save(now);
         }
-        // A guest's terminal says nothing outside its guest's room.
-        if self.org.guest.is_some() {
-            return;
-        }
         let Some(client) = &self.client else {
             self.live.said.clear();
             return;

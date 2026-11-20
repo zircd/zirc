@@ -10,7 +10,7 @@ use zirc_proto::PROGRAM;
 
 use crate::client::{ask, shown};
 use crate::sessions::breaker_text;
-use crate::{guest, state};
+use crate::state;
 
 pub(crate) async fn status(
     socket: &Path,
@@ -26,23 +26,11 @@ pub(crate) async fn status(
     } else {
         if status.orgs.is_empty() {
             let state = state(status.connected, status.problem.as_ref());
-            match &status.guest {
-                Some(of) => writeln!(
-                    out,
-                    "{}",
-                    guest::status_line(
-                        status.connected,
-                        status.problem.is_some(),
-                        of,
-                        status.nick.as_deref()
-                    )
-                )?,
-                None => writeln!(out, "{state} {}", status.server)?,
-            }
+            writeln!(out, "{state} {}", status.server)?;
             if let Some(problem) = &status.problem {
                 writeln!(out, "{problem}")?;
             }
-            if let Some(nick) = status.nick.as_ref().filter(|_| status.guest.is_none()) {
+            if let Some(nick) = &status.nick {
                 writeln!(out, "nick {nick}")?;
             }
             writeln!(out, "channels {}", channels(&status.channels))?;
@@ -55,20 +43,7 @@ pub(crate) async fn status(
                 .as_ref()
                 .map(|nick| format!(" as {nick}"))
                 .unwrap_or_default();
-            match &org.guest {
-                Some(of) => writeln!(
-                    out,
-                    "{}: {}",
-                    org.name,
-                    guest::status_line(
-                        org.connected,
-                        org.problem.is_some(),
-                        of,
-                        org.nick.as_deref()
-                    )
-                )?,
-                None => writeln!(out, "{}: {state} {}{nick}", org.name, org.server)?,
-            }
+            writeln!(out, "{}: {state} {}{nick}", org.name, org.server)?;
             if let Some(problem) = &org.problem {
                 writeln!(out, "{}: {problem}", org.name)?;
             }
@@ -330,7 +305,6 @@ mod tests {
             version: None,
             orgs: Vec::new(),
             breaker: None,
-            guest: None,
             busy_ms: None,
         };
         let repo = Repo {

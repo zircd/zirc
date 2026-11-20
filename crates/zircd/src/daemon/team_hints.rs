@@ -2,7 +2,6 @@
 //! and again whenever zirc's own account says they changed ([`Changed`]), in the background,
 //! and kept on this machine for `zirc watch`, `zirc hints` and `zirc playbook`. Only zirc's
 //! account's word counts, as the server says who sent it: anyone else saying so is ignored.
-//! Never for a guest's terminal, which has no say in the organisation's hints.
 
 use zirc_core::ipc::Delivery;
 use zirc_proto::hints::Changed;
@@ -13,9 +12,6 @@ impl Daemon {
     /// Reads the team's hints from the server in the background and keeps them, when the
     /// server has this machine's key.
     pub(super) fn read_team_hints(&self) {
-        if self.org.guest.is_some() {
-            return;
-        }
         let (name, first) = (self.org.name.clone(), self.org.first);
         let Some(org) = self
             .config

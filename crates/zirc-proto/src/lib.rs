@@ -19,7 +19,6 @@ pub mod desired;
 pub mod device_key;
 pub mod files;
 pub mod gotchas;
-pub mod guest_terminal;
 pub mod hints;
 pub mod images;
 pub mod irc;

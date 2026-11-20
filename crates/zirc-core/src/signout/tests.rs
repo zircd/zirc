@@ -22,18 +22,14 @@ name = "m"
 password = "q"
 "#;
 
-const GUEST: &str = r##"
+const OWN_SERVER: &str = r#"
+nick = "m"
 [server]
-host = "acme.irc.zirc.dev"
-[guest]
-url = "wss://acme.irc.zirc.dev/guest"
-org = "acme"
-guest = "guest-1"
-channel = "#web/guest-1"
-public = "#web"
-grant = "g"
-expires = 9
-"##;
+host = "irc.example.com"
+[account]
+name = "m"
+password = "p"
+"#;
 
 #[test]
 fn one_of_two_keeps_the_other_and_zirc_dev() {
@@ -71,8 +67,8 @@ fn everything_names_them_and_zirc_dev() {
 }
 
 #[test]
-fn a_guests_terminal_has_no_zirc_dev_to_leave() {
-    let plan = Plan::new(&settings(GUEST), &Scope::One("acme".into())).unwrap();
+fn a_server_of_ones_own_has_no_zirc_dev_to_leave() {
+    let plan = Plan::new(&settings(OWN_SERVER), &Scope::One("irc.example.com".into())).unwrap();
     assert!(!plan.ends_zirc_dev());
     assert!(plan.leaves_nothing());
     assert!(!plan.sheet().body.contains("zirc.dev"));

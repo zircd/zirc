@@ -17,14 +17,11 @@ use zirc_proto::login::{Credentials, LoginRequest};
 use crate::client::{shown, tail};
 use crate::daemon::{stop, zircd_binary};
 use crate::repo::RepoCommand;
+use crate::service;
 use crate::skill::install_skill;
-use crate::{guest, service};
 
 #[derive(Debug, Args)]
 pub(crate) struct Login {
-    /// A public channel to connect to as its guest, such as acme/web, or its chat's address.
-    #[arg(value_name = "CHANNEL")]
-    pub(crate) target: Option<String>,
     /// Zirc's web app, where you log in.
     #[arg(long, env = "ZIRC_WEB", value_name = "URL", default_value = login::WEB)]
     pub(crate) web: String,
@@ -54,7 +51,6 @@ impl Login {
     /// `ZIRC_WEB`, as `zirc login` with no flags would be.
     pub(crate) fn first() -> Self {
         Self {
-            target: None,
             web: std::env::var("ZIRC_WEB").unwrap_or_else(|_| login::WEB.to_owned()),
             no_browser: false,
             no_daemon: false,
@@ -172,7 +168,6 @@ async fn logged_in_then(
     if let (Some(earlier), false) = (&earlier, args.force)
         && credentials.orgs.is_empty()
         && args.org.is_none()
-        && earlier.guest.is_none()
         && earlier.server.host != credentials.server.host
     {
         bail!(
@@ -222,7 +217,7 @@ async fn logged_in_then(
     let socket = paths::socket(home);
     let _ = stop(&socket, &mut std::io::sink()).await;
     service::install(home, &zircd_binary(args.zircd)?, &mut std::io::sink())?;
-    connected_to(home, None, next, out).await
+    connected_to(home, next, out).await
 }
 
 /// Starts a login for this machine at `args.web`, says where to confirm it, and waits until
@@ -234,7 +229,6 @@ async fn confirmed_in_browser(
 ) -> Result<Credentials> {
     let client = Client::new(&args.web)?;
     let request = LoginRequest {
-        guest: None,
         client: format!("{PROGRAM} {}", env!("CARGO_PKG_VERSION")),
         host: zirc_core::machine::host_name(),
         // A machine's login, the default, which zirc.dev also assumes from older CLIs.
@@ -289,7 +283,6 @@ pub(crate) fn logged_in(credentials: &Credentials, web: &str) -> Result<Vec<Orga
             account: org.credentials.account,
             owner: org.credentials.owner,
             web: Some(web.to_owned()),
-            guest: None,
         })
         .collect())
 }
@@ -319,24 +312,13 @@ pub(crate) fn login_settings(
         posthog_host: None,
         leases: std::collections::BTreeMap::new(),
         wakes: None,
-        guest: None,
         orgs: Vec::new(),
     });
     let replace = replace || earlier.is_none();
     if replace {
         settings.orgs.clear();
     }
-    // A machine that was only a guest's terminal logs in to its own organisation first: the
-    // terminal goes after it.
-    let guest_first = !replace
-        && settings.organisations()[0].guest.is_some()
-        && first.guest.is_none()
-        && settings.organisation(&first.name()).is_none();
     for (at, org) in orgs.iter().enumerate() {
-        if guest_first && at == 0 {
-            settings.put_first(org.clone());
-            continue;
-        }
         // Replacing, the first takes the place of the machine's first.
         let name = if replace && at == 0 {
             settings.organisations()[0].name()
@@ -356,28 +338,14 @@ pub(crate) fn login_settings(
 pub(crate) const CONNECT_WAIT: Duration = Duration::from_secs(20);
 
 /// Waits for the zircd just started to connect, and says how it went: connected and what
-/// to do next (unless `next` is false), or what its log says went wrong. With `guest`, its
-/// connection as that guest's terminal.
-pub(crate) async fn connected_to(
-    home: &Path,
-    guest: Option<&str>,
-    next: bool,
-    out: &mut impl Write,
-) -> Result<()> {
+/// to do next (unless `next` is false), or what its log says went wrong.
+pub(crate) async fn connected_to(home: &Path, next: bool, out: &mut impl Write) -> Result<()> {
     let socket = paths::socket(home);
     let deadline = tokio::time::Instant::now() + CONNECT_WAIT;
     loop {
         let asked = tokio::time::timeout_at(deadline, ipc::request(&socket, &Request::Status));
         let asked = asked.await;
-        if let (Some(name), Ok(Ok(status))) = (guest, &asked)
-            && let Some(lines) = guest::connected_lines(status, name)
-        {
-            for line in lines {
-                writeln!(out, "{line}")?;
-            }
-            return Ok(());
-        }
-        if let (None, Ok(Ok(Response::Status(status)))) = (guest, asked)
+        if let Ok(Ok(Response::Status(status))) = asked
             && status.connected
         {
             let nick = status.nick.unwrap_or_default();
@@ -433,7 +401,6 @@ pub(crate) fn init(home: &Path, init: Init, out: &mut impl Write) -> Result<()> 
         posthog_host: None,
         leases: std::collections::BTreeMap::new(),
         wakes: None,
-        guest: None,
         orgs: Vec::new(),
     };
     settings.save(&path)?;

@@ -18,7 +18,6 @@ pub mod filter;
 pub mod fit;
 pub mod generated;
 pub mod gotchas;
-pub mod guest;
 pub mod hints;
 pub mod history;
 pub mod hunks;

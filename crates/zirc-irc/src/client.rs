@@ -24,7 +24,7 @@ use zirc_line::registration::{self, DEFAULT_CAPS, Identity, Registration, Sasl, 
 use crate::{Line, multiline};
 
 /// IRCv3 allows 8191 bytes of tags on top of the classic 512-byte line.
-pub(crate) const MAX_LINE_BYTES: usize = 8191 + 512;
+const MAX_LINE_BYTES: usize = 8191 + 512;
 const REGISTRATION_TIMEOUT: Duration = Duration::from_secs(30);
 /// Lines received but not yet read, before the reader holds them back itself.
 const INCOMING_BUFFER: usize = 1024;
@@ -54,15 +54,6 @@ pub struct Config {
     pub realname: String,
     /// The server password, sent as `PASS`, for servers that require one.
     pub server_password: Option<String>,
-    /// Makes the server password instead, asked afresh at each connection, as a guest's
-    /// terminal's is: its grant and a token used once (`zirc_proto::guest_terminal::pass`).
-    /// It goes before [`Config::server_password`]; when it makes none, that is used.
-    pub password_maker: Option<Bearer>,
-    /// A WebSocket to connect to instead of [`Config::host`] and [`Config::port`], such as a
-    /// guest gateway's `wss://acme.irc.zirc.dev/guest`: IRC over it as IRCv3's
-    /// `text.ircv3.net` subprotocol has it, a line per text message. `wss://` is verified as
-    /// [`Config::tls`] is.
-    pub websocket: Option<String>,
     /// An account to log in to with SASL PLAIN.
     pub sasl: Option<Credentials>,
     /// Makes a token to log in with over SASL `OAUTHBEARER` instead, asked afresh at each
@@ -92,8 +83,6 @@ impl Config {
             realname: nick.clone(),
             nick,
             server_password: None,
-            password_maker: None,
-            websocket: None,
             sasl: None,
             bearer: None,
             caps: DEFAULT_CAPS.iter().map(|&cap| cap.to_owned()).collect(),
@@ -116,8 +105,6 @@ impl fmt::Debug for Config {
                 "server_password",
                 &self.server_password.as_ref().map(|_| "…"),
             )
-            .field("password_maker", &self.password_maker.as_ref().map(|_| "…"))
-            .field("websocket", &self.websocket)
             .field("sasl", &self.sasl)
             .field("bearer", &self.bearer.as_ref().map(|_| "…"))
             .field("caps", &self.caps)
@@ -127,8 +114,7 @@ impl fmt::Debug for Config {
     }
 }
 
-/// What makes a [`Config::bearer`] token or a [`Config::password_maker`] password, each time
-/// one's needed.
+/// What makes a [`Config::bearer`] token, each time one's needed.
 pub type Bearer = std::sync::Arc<dyn Fn() -> Option<String> + Send + Sync>;
 
 /// An account and its password.
@@ -156,11 +142,7 @@ impl Config {
             nick: self.nick.clone(),
             user: self.user.clone(),
             realname: self.realname.clone(),
-            server_password: self
-                .password_maker
-                .as_ref()
-                .and_then(|make| make())
-                .or_else(|| self.server_password.clone()),
+            server_password: self.server_password.clone(),
             sasl: self
                 .bearer
                 .as_ref()
@@ -403,10 +385,6 @@ pub async fn connect(config: &Config) -> Result<(Client, Incoming), Error> {
 }
 
 async fn connect_once(config: &Config) -> Result<(Client, Incoming), Error> {
-    if let Some(url) = &config.websocket {
-        // Boxed, so a connection over TCP isn't as large a future.
-        return Box::pin(crate::websocket::connect(url, config)).await;
-    }
     let tcp = TcpStream::connect((config.host.as_str(), config.port)).await?;
     tcp.set_nodelay(true)?;
     if config.tls {
@@ -422,7 +400,7 @@ async fn connect_once(config: &Config) -> Result<(Client, Incoming), Error> {
     }
 }
 
-pub(crate) fn tls_connector() -> Result<TlsConnector, Error> {
+fn tls_connector() -> Result<TlsConnector, Error> {
     let roots = RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
     };
@@ -435,11 +413,11 @@ pub(crate) fn tls_connector() -> Result<TlsConnector, Error> {
     Ok(TlsConnector::from(Arc::new(config)))
 }
 
-pub(crate) fn server_name(host: &str) -> Result<ServerName<'static>, Error> {
+fn server_name(host: &str) -> Result<ServerName<'static>, Error> {
     ServerName::try_from(host.to_owned()).map_err(|err| Error::Tls(err.to_string()))
 }
 
-pub(crate) async fn register<S>(stream: S, config: &Config) -> Result<(Client, Incoming), Error>
+async fn register<S>(stream: S, config: &Config) -> Result<(Client, Incoming), Error>
 where
     S: AsyncRead + AsyncWrite + Send + 'static,
 {
@@ -728,30 +706,6 @@ mod tests {
             Some(Sasl::Plain { account, password }) if account == "acct" && password == "pw"
         ));
         assert_eq!(identity.caps, DEFAULT_CAPS);
-    }
-
-    #[test]
-    fn a_password_maker_makes_the_password_at_each_connection() {
-        let mut config = Config::new("irc.zirc.test", 6697, "me");
-        config.server_password = Some("gate".into());
-        let made = Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let counted = Arc::clone(&made);
-        config.password_maker = Some(Arc::new(move || {
-            let n = counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            Some(format!("grant proof-{n}"))
-        }));
-        assert_eq!(
-            config.identity().server_password.as_deref(),
-            Some("grant proof-0")
-        );
-        assert_eq!(
-            config.identity().server_password.as_deref(),
-            Some("grant proof-1")
-        );
-        // One that makes none leaves the password set.
-        config.password_maker = Some(Arc::new(|| None));
-        assert_eq!(config.identity().server_password.as_deref(), Some("gate"));
-        assert!(!format!("{config:?}").contains("proof"));
     }
 
     #[test]

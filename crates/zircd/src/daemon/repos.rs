@@ -136,9 +136,6 @@ impl Daemon {
     /// ([`Daemon::unwatched`]), and one it couldn't read only once: `zirc repo add` there
     /// tries again.
     pub(super) async fn find_worktrees(&mut self) {
-        if self.org.guest.is_some() {
-            return;
-        }
         let commons: BTreeSet<PathBuf> = self
             .repos
             .iter()
@@ -290,9 +287,6 @@ impl Daemon {
     /// The channels to be in: the organisation's, its `#agents` and gotchas room with a
     /// repository watched, its `#ops`, where decisions are, and the topics joined.
     pub(super) fn desired_channels(&self) -> BTreeSet<String> {
-        if let Some(guest) = &self.org.guest {
-            return BTreeSet::from([guest.room.clone()]);
-        }
         let mut desired: BTreeSet<String> = self.topics.keys().cloned().collect();
         for watched in self.repos.values() {
             desired.extend(watched.ci_rooms());

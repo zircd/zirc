@@ -3,7 +3,6 @@
 //! which has no I/O.
 
 mod client;
-mod websocket;
 
 pub use client::{Bearer, Client, Config, Credentials, Error, Incoming, connect};
 pub use zirc_line::{Line, ParseError, multiline};

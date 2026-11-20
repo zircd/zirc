@@ -645,13 +645,6 @@
             "null"
           ],
           "description": "Why zircd isn't connecting to it, when it's stopped trying."
-        },
-        "guest": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "When it's a guest's terminal: the public channel it's a guest of, as [`Status::guest`]."
         }
       },
       "required": [
@@ -797,13 +790,6 @@
             }
           ],
           "description": "The circuit breaker on wakes, from a zircd that has one."
-        },
-        "guest": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "When the connection is a guest's terminal: the public channel it's a guest of, as\n`zirc login` names it, such as `acme/web` ([`crate::guest::of`])."
         },
         "busy_ms": {
           "type": [

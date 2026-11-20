@@ -433,11 +433,6 @@ pub(crate) struct PostArgs {
     /// now. Without it, @everyone written in the text is only text.
     #[arg(long)]
     pub(crate) everyone: bool,
-    /// Say it in your room in a public channel where this machine is your terminal, as
-    /// `zirc login` named it, such as acme/web. Needed only on a machine that's in an
-    /// organisation of its own too.
-    #[arg(long = "in", value_name = "ORG/CHANNEL", conflicts_with_all = ["to", "topic"])]
-    pub(crate) guest: Option<String>,
     /// Reply to a message, by the id zirc watch shows ([id 01jbx7ab]): it's said in the
     /// channel that message was, as a reply apps show under it, whatever --to says.
     #[arg(long, value_name = "ID", conflicts_with_all = ["to", "topic", "everyone"])]
@@ -606,7 +601,6 @@ pub(crate) async fn post(
         app,
         force,
         everyone,
-        guest,
         reply_to,
     } = args;
     let (repo, to) = to.target();
@@ -627,7 +621,6 @@ pub(crate) async fn post(
         "note: it didn't broadcast: @everyone in a post's text is only text. Post with \
          --everyone to wake every session, and only when they all need it",
     );
-    let org = guest.as_deref().map(crate::guest::org_of);
     let answer = if zirc_core::sealed::split(&text).parts.is_empty() {
         let request = Request::Post {
             repo: here(repo)?,
@@ -638,7 +631,7 @@ pub(crate) async fn post(
             everyone,
             reply: reply_to,
         };
-        ask_in(socket, org.as_deref(), request).await?
+        ask(socket, request).await?
     } else {
         ensure!(
             app.is_none() && !everyone,
@@ -652,7 +645,7 @@ pub(crate) async fn post(
             reply: reply_to,
         };
         // A zircd from before sealing refuses it, rather than posting the parts unsealed.
-        waits(socket, org.as_deref(), request).await?
+        waits(socket, None, request).await?
     };
     print_posted(answer, out)?;
     if let Some(note) = note {

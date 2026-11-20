@@ -105,14 +105,11 @@ pub fn load_in(settings: &Settings, path: &Path, org: &str, first: bool) -> Resu
     let org = find(settings, org, first)
         .with_context(|| format!("{}: this machine isn't signed in to {org}", path.display()))?;
     let home = path.parent().unwrap_or(Path::new("."));
-    connection(settings, org, &zirc_core::paths::device_key(home))
-}
-
-/// What the organisation `org` in `path` (the `first` or not) connects with, when it's a
-/// guest's terminal.
-pub fn guest(path: &Path, org: &str, first: bool) -> Option<settings::GuestCredentials> {
-    let settings = read(path).ok()?;
-    find(&settings, org, first)?.guest
+    Ok(connection(
+        settings,
+        org,
+        &zirc_core::paths::device_key(home),
+    ))
 }
 
 /// The organisation `org` in `settings`: when `first`, the first, even if its name changed
@@ -187,21 +184,7 @@ pub fn request_hold(settings: &Settings) -> std::time::Duration {
     )
 }
 
-fn connection(settings: &Settings, org: Organisation, device_key: &Path) -> Result<Config> {
-    // A guest's terminal, to its gateway with its grant and the machine's key's token.
-    if let Some(guest) = &org.guest {
-        let key = std::sync::Arc::new(zirc_core::device_key::Software::in_file(
-            device_key.to_owned(),
-        ));
-        let mut config = zirc_core::guest::connection(guest, key)
-            .map_err(|why| anyhow::anyhow!("{}: {why}", org.name()))?;
-        config.caps.push("echo-message".to_owned());
-        if let Some(seconds) = settings.keepalive {
-            config.keepalive = std::time::Duration::from_secs(seconds);
-            config.answer_within = config.keepalive / 2;
-        }
-        return Ok(config);
-    }
+fn connection(settings: &Settings, org: Organisation, device_key: &Path) -> Config {
     let nick = org.nick.unwrap_or_else(default_nick);
     let mut config = settings::connection(&org.server, nick);
     // A machine says whose it is in its real name; one without an owner gives its nick.
@@ -233,7 +216,7 @@ fn connection(settings: &Settings, org: Organisation, device_key: &Path) -> Resu
         account: account.name,
         password: account.password,
     });
-    Ok(config)
+    config
 }
 
 /// `<user>-<host>`, so each machine has a nick of its own.
@@ -254,7 +237,11 @@ mod tests {
     fn parse(text: &str, org: &str) -> Result<Config> {
         let settings = Settings::from_toml(text)?;
         let org = find(&settings, org, false).context("not signed in to it")?;
-        connection(&settings, org, Path::new("/nonexistent/device-key"))
+        Ok(connection(
+            &settings,
+            org,
+            Path::new("/nonexistent/device-key"),
+        ))
     }
 
     #[test]
@@ -295,7 +282,7 @@ mod tests {
             "#;
         let settings = Settings::from_toml(text).unwrap();
         let org = find(&settings, "acme", true).unwrap();
-        let config = connection(&settings, org, &dir.path().join("device-key")).unwrap();
+        let config = connection(&settings, org, &dir.path().join("device-key"));
         let token = (config.bearer.unwrap())().unwrap();
         let claims = zirc_proto::device_key::parse(&token).unwrap().claims;
         assert_eq!(
@@ -346,56 +333,6 @@ mod tests {
         );
         assert_eq!(globex.sasl.unwrap().account, "m-globex");
         assert!(parse(text, "initech").is_err());
-    }
-
-    #[test]
-    fn a_guests_terminal_connects_to_its_gateway_with_its_grant() {
-        let dir = tempfile::tempdir().unwrap();
-        let grant = zirc_test_ergo::jwt::unsigned(
-            r##"{"sub":"guest-21042","room":"#web/guest-21042","machine":"mbp","key":"k","gid":"g-1","exp":9}"##,
-        );
-        let text = format!(
-            r##"
-            [server]
-            host = "globex.irc.zirc.dev"
-            [[org]]
-            name = "acme"
-            web = "https://zirc.dev"
-            [org.server]
-            host = "acme.irc.zirc.dev"
-            [org.guest]
-            url = "wss://acme.irc.zirc.dev/guest"
-            org = "acme"
-            guest = "guest-21042"
-            channel = "#web/guest-21042"
-            public = "#web"
-            grant = "{grant}"
-            expires = 9
-            "##
-        );
-        let path = dir.path().join("config.toml");
-        std::fs::write(&path, &text).unwrap();
-        assert_eq!(
-            organisations(&read(&path).unwrap(), &path).unwrap(),
-            ["globex", "acme"]
-        );
-        let config = load(&path, "acme", false).unwrap();
-        assert_eq!(
-            config.websocket.as_deref(),
-            Some("wss://acme.irc.zirc.dev/guest")
-        );
-        assert!(config.sasl.is_none() && config.bearer.is_none());
-        assert!(config.caps.iter().any(|cap| cap == "echo-message"));
-        let pass = (config.password_maker.unwrap())().unwrap();
-        let (sent, proof) = zirc_proto::guest_terminal::split_pass(&pass).unwrap();
-        assert_eq!(sent, grant);
-        let claims = zirc_proto::device_key::parse(proof).unwrap().claims;
-        assert_eq!(claims.aud, "g-1");
-        assert_eq!(
-            guest(&path, "acme", false).map(|guest| guest.channel),
-            Some("#web/guest-21042".into())
-        );
-        assert!(guest(&path, "globex", true).is_none());
     }
 
     #[test]

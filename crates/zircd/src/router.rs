@@ -34,9 +34,6 @@ pub enum Call {
     Watch(mpsc::Sender<Response>, Option<String>),
     /// The binaries were updated to this release, so it's time to restart.
     Updated(Version),
-    /// A guest's terminal zirc.dev lets in no more is gone from `config.toml`, for this
-    /// reason: it's time to restart without it.
-    Forgotten(String),
 }
 
 /// One organisation's daemon.
@@ -46,9 +43,6 @@ struct Org {
     inputs: mpsc::UnboundedSender<Input>,
     /// Whether it's zirc.dev's public server, which watches no repositories.
     public: bool,
-    /// Whether it's a guest's terminal, which watches none either, and which a request
-    /// reaches only by naming it.
-    guest: bool,
 }
 
 pub struct Router {
@@ -88,18 +82,11 @@ impl Router {
     }
 
     /// Adds the organisation `name`, whose daemon takes `inputs`.
-    pub fn add(
-        &mut self,
-        name: String,
-        public: bool,
-        guest: bool,
-        inputs: mpsc::UnboundedSender<Input>,
-    ) {
+    pub fn add(&mut self, name: String, public: bool, inputs: mpsc::UnboundedSender<Input>) {
         Arc::make_mut(&mut self.orgs.0).push(Org {
             name,
             inputs,
             public,
-            guest,
         });
     }
 
@@ -109,11 +96,6 @@ impl Router {
             Call::Updated(version) => {
                 tracing::info!("updated to {PROGRAM} {version}: restarting");
                 self.updated = Some(version);
-                self.stopping = true;
-                self.restarting = true;
-            }
-            Call::Forgotten(why) => {
-                tracing::info!("{why}: restarting");
                 self.stopping = true;
                 self.restarting = true;
             }
@@ -181,14 +163,14 @@ impl Orgs {
         self.0.len() > 1
     }
 
-    /// Every organisation as [`zirc_core::which_org`] picks among them: a guest's terminal and the
-    /// public server aren't the machine's own.
+    /// Every organisation as [`zirc_core::which_org`] picks among them: the public server isn't
+    /// the machine's own.
     fn choices(&self) -> Vec<Choice<'_>> {
         self.0
             .iter()
             .map(|org| Choice {
                 name: &org.name,
-                own: !org.guest && !org.public,
+                own: !org.public,
             })
             .collect()
     }
@@ -236,13 +218,6 @@ impl Orgs {
                         self.0[at].name
                     );
                 }
-                if matches!(request, Request::RepoAdd { .. }) && self.0[at].guest {
-                    bail!(
-                        "{} is a guest's terminal, where repositories aren't watched: it's in \
-                         its guest's room alone",
-                        self.0[at].name
-                    );
-                }
                 Ok(at)
             }) {
                 Ok(at) => {
@@ -281,11 +256,6 @@ impl Orgs {
             .map(|name| which_org::pick(&choices, Some(name), None))
             .transpose()?;
         let repo = repo_of(request);
-        // A guest's terminal takes what names it wherever it's asked: its posts go to its
-        // guest's room, whatever repository they're asked in.
-        if let Some(at) = named.filter(|&at| repo.is_none() || self.0[at].guest) {
-            return Ok(at);
-        }
         let holder = match repo {
             Some(path) => self.holder(path).await,
             None => None,
@@ -412,7 +382,6 @@ impl Orgs {
                     nick: status.nick.clone(),
                     channels: status.channels.clone(),
                     problem: status.problem.clone(),
-                    guest: status.guest.clone(),
                 })
                 .collect()
         } else {
@@ -563,8 +532,8 @@ mod tests {
     #[tokio::test]
     async fn a_request_waiting_on_a_busy_daemon_holds_up_no_other() {
         let mut router = Router::new();
-        router.add("zirc".into(), false, false, busy_daemon());
-        router.add("acme".into(), false, false, busy_daemon());
+        router.add("zirc".into(), false, busy_daemon());
+        router.add("acme".into(), false, busy_daemon());
         // Asked of every organisation, and held by both.
         let mut who = ask(
             &mut router,

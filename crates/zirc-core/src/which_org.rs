@@ -1,9 +1,8 @@
 //! Which organisation a command acts on, one rule for zircd's router and the CLI's own reads
 //! from zirc.dev alike. `zirc status`, `zirc orgs` and `zirc watch` cover every organisation;
 //! every other command acts on one: the one `--org` names, else the one the repository it's
-//! run in belongs to, else the machine's only own organisation. A guest's terminal and
-//! zirc.dev's public server are never taken for one the command didn't name, unless the
-//! machine has no own organisation. Otherwise it fails, asking for `--org`.
+//! run in belongs to, else the machine's only own organisation. zirc.dev's public server is
+//! never taken for one the command didn't name, unless the machine has no own organisation. Otherwise it fails, asking for `--org`.
 
 use std::fmt;
 
@@ -12,8 +11,7 @@ use std::fmt;
 pub struct Choice<'a> {
     /// Its name, as `--org` takes it.
     pub name: &'a str,
-    /// Whether it's the machine's own, rather than a guest's terminal or the public server:
-    /// only those are taken without being named, unless there are none.
+    /// Whether it's the machine's own, rather than the public server: only those are taken without being named, unless there are none.
     pub own: bool,
 }
 
@@ -119,10 +117,6 @@ mod tests {
         name: "globex",
         own: true,
     };
-    const GUEST: Choice<'static> = Choice {
-        name: "demo",
-        own: false,
-    };
     const PUBLIC: Choice<'static> = Choice {
         name: "public",
         own: false,
@@ -132,7 +126,7 @@ mod tests {
     type Picked = Result<usize, Unpicked>;
 
     /// What `pick` makes of each machine, with no --org and no repository, with acme's
-    /// repository, and with --org demo.
+    /// repository.
     #[test]
     fn every_kind_of_machine_picks_as_the_rule_says() {
         let both = Unpicked::Several(vec!["acme".into(), "globex".into()]);
@@ -147,10 +141,10 @@ mod tests {
                 Err(Unpicked::Several(vec!["globex".into(), "acme".into()])),
                 Ok(1),
             ),
-            // A guest's terminal alone, or the public server alone: that one.
-            (&[GUEST], Ok(0), Ok(0)),
-            // An own organisation beside a guest's terminal or the public server: the own.
-            (&[GUEST, ACME], Ok(1), Ok(1)),
+            // The public server alone: that one.
+            (&[PUBLIC], Ok(0), Ok(0)),
+            // An own organisation beside the public server: the own.
+            (&[PUBLIC, ACME], Ok(1), Ok(1)),
             (&[ACME, PUBLIC], Ok(0), Ok(0)),
         ];
         for (orgs, alone, in_repo) in cases {
@@ -161,8 +155,8 @@ mod tests {
                 "{orgs:?} in acme's repository"
             );
         }
-        // --org wins over the repository, and names a guest's terminal as well as any.
-        assert_eq!(pick(&[ACME, GUEST], Some("demo"), Some("acme")), Ok(1));
+        // --org wins over the repository, and names the public server as well as any.
+        assert_eq!(pick(&[ACME, PUBLIC], Some("public"), Some("acme")), Ok(1));
         assert_eq!(
             pick(&[ACME, GLOBEX], Some("initech"), None)
                 .unwrap_err()
@@ -174,11 +168,11 @@ mod tests {
             "this machine is in acme and globex: say which with --org"
         );
         assert_eq!(pick(&[], None, None), Err(Unpicked::None));
-        // Two guests' terminals and nothing of its own: both are implied, so it asks.
+        // Two not its own and nothing of its own: both are implied, so it asks.
         assert!(matches!(
             pick(
                 &[
-                    GUEST,
+                    PUBLIC,
                     Choice {
                         name: "other",
                         own: false

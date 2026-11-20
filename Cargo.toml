@@ -90,8 +90,6 @@ tokio = { version = "1.54", features = ["fs", "io-util", "macros", "net", "proce
 # ring rather than aws-lc: it builds without CMake, under Cargo and Bazel alike.
 tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "ring", "tls12"] }
 tokio-util = { version = "0.7", features = ["codec"] }
-# A guest's terminal reaches its gateway over a WebSocket (zirc-irc); TLS is tokio-rustls's.
-tokio-tungstenite = "0.29"
 toml = "1"
 # The TypeScript types the web app and the SDKs use, generated from zirc-proto and zirc-core.
 ts-rs = { version = "12", features = ["serde-json-impl"] }

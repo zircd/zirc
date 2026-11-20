@@ -178,8 +178,7 @@ impl Daemon {
             }
             // Joining a channel nobody's in makes us its maker, and Ergo gives a maker ops. A
             // machine shouldn't have them: the organisation's owners get them instead.
-            // A guest's terminal can't, nor needs to: the gateway lets it say nothing else.
-            ("353", _, _) if self.org.guest.is_none() && names_us_as_op(&line.params, &me) => {
+            ("353", _, _) if names_us_as_op(&line.params, &me) => {
                 if let Some(channel) = param(2) {
                     let _ = client.send(Line::new("MODE", [channel, "-o", me.as_str()]));
                 }

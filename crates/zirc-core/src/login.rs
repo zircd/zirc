@@ -107,7 +107,6 @@ pub fn each_org(credentials: &Credentials, web: &str) -> Result<Vec<OrgLogin>, E
         .map(|org| OrgLogin {
             name: Some(org.name.clone()),
             credentials: Credentials {
-                guest: None,
                 server: org.server.clone(),
                 account: org.account.clone(),
                 nick: org.nick.clone(),
@@ -282,26 +281,6 @@ impl Client {
             .send()
             .await?;
         if response.status() == StatusCode::UNAUTHORIZED {
-            return Ok(None);
-        }
-        Ok(Some(self.checked(response).await?.json().await?))
-    }
-
-    /// A guest's terminal's grant renewed ([`zirc_proto::guest_terminal::RENEW_PATH`]): the
-    /// credentials it connects with now, or `None` once the web app lets it in no more, as
-    /// when its guest was banned or forgotten, or the channel takes terminals no more.
-    ///
-    /// # Errors
-    ///
-    /// When the web app can't be reached or answers anything else, such as that the token
-    /// isn't good.
-    pub async fn renew_guest(
-        &self,
-        request: &zirc_proto::guest_terminal::RenewRequest,
-    ) -> Result<Option<zirc_proto::guest_terminal::GuestCredentials>, Error> {
-        let url = format!("{}{}", self.web, zirc_proto::guest_terminal::RENEW_PATH);
-        let response = self.http.post(url).json(request).send().await?;
-        if response.status() == StatusCode::FORBIDDEN {
             return Ok(None);
         }
         Ok(Some(self.checked(response).await?.json().await?))
@@ -988,33 +967,6 @@ mod tests {
         let asked = asked.join().unwrap();
         assert!(asked[0].to_lowercase().contains("bearer old"));
         assert!(asked[1].to_lowercase().contains("bearer new"));
-    }
-
-    #[tokio::test]
-    async fn renews_a_guests_grant_until_the_web_app_lets_it_in_no_more() {
-        use zirc_proto::guest_terminal::RenewRequest;
-        let renewed = r##"{"url":"wss://acme.irc.zirc.dev/guest","org":"acme","guest":"guest-21042","channel":"#web/guest-21042","public":"#web","grant":"g2","expires":99}"##;
-        let (web, served) = zirc_test_ergo::web::serve(vec![
-            (200, renewed.into()),
-            (403, r#"{"error":"gone"}"#.into()),
-            (401, r#"{"error":"bad token"}"#.into()),
-        ]);
-        let client = Client::new(&web).unwrap();
-        let request = RenewRequest {
-            grant: "g1".into(),
-            proof: "p".into(),
-        };
-        let new = client.renew_guest(&request).await.unwrap().unwrap();
-        assert_eq!((new.grant.as_str(), new.expires), ("g2", 99));
-        assert_eq!(client.renew_guest(&request).await.unwrap(), None);
-        assert!(client.renew_guest(&request).await.is_err());
-        let requests = served.join().unwrap();
-        assert!(
-            requests[0].starts_with(&format!("POST {}", zirc_proto::guest_terminal::RENEW_PATH)),
-            "{}",
-            requests[0]
-        );
-        assert!(requests[0].contains(r#""proof":"p""#), "{}", requests[0]);
     }
 
     #[test]

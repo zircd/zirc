@@ -420,7 +420,6 @@ pub async fn sign_in(
     started: impl FnOnce(&LoginStarted),
 ) -> Result<Credentials, Error> {
     let request = LoginRequest {
-        guest: None,
         client: client.to_owned(),
         host: host.to_owned(),
         kind: Some(LoginKind::Person),
@@ -454,7 +453,6 @@ pub async fn sign_in_adding(
     started: impl FnOnce(&LoginStarted),
 ) -> Result<Credentials, Error> {
     let request = LoginRequest {
-        guest: None,
         client: client.to_owned(),
         host: host.to_owned(),
         kind: Some(LoginKind::Person),
@@ -477,7 +475,6 @@ mod tests {
 
     fn credentials(account: bool, nick: Option<&str>) -> Credentials {
         Credentials {
-            guest: None,
             server: Server {
                 host: "acme.irc.zirc.dev".into(),
                 port: None,

@@ -333,10 +333,9 @@ impl Daemon {
     }
 
     /// Sends `event`, an activity record of `session`'s, to the tenant's recorder alone, as a
-    /// debug `TAGMSG`: best effort, as it isn't there on every server. Never from a guest's
-    /// terminal, which sends nothing outside its guest's room (the gateway refuses it).
+    /// debug `TAGMSG`: best effort, as it isn't there on every server.
     pub(super) fn record(&self, session: &str, event: Event) {
-        let Some(client) = self.client.as_ref().filter(|_| self.org.guest.is_none()) else {
+        let Some(client) = self.client.as_ref() else {
             return;
         };
         let mut message = self.signed(session, event);

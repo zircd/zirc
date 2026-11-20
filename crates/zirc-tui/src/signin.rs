@@ -210,7 +210,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = File(dir.path().join("secrets.toml"));
         let credentials = Credentials {
-            guest: None,
             server: Server {
                 host: "acme.irc.zirc.dev".into(),
                 port: None,
@@ -289,7 +288,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = Refusing(File(dir.path().join("secrets.toml")));
         let credentials = Credentials {
-            guest: None,
             server: Server {
                 host: "acme.irc.zirc.dev".into(),
                 port: None,
@@ -331,7 +329,6 @@ mod tests {
         let secrets = File(dir.path().join("secrets.toml"));
         let signin = |host: &str| {
             let credentials = Credentials {
-                guest: None,
                 server: Server {
                     host: host.into(),
                     port: None,

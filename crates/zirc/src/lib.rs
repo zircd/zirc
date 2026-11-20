@@ -8,7 +8,6 @@ mod client;
 mod daemon;
 mod decide;
 mod gotchas;
-mod guest;
 mod hints;
 mod lease;
 mod lines;
@@ -55,7 +54,7 @@ use crate::queries::AgentsCommand;
 use crate::repo::RepoCommand;
 use crate::sessions::{avatar_named, avatars_text, name_session, tool_here};
 use crate::setup::{Init, Login};
-use crate::skill::{REFERENCE, SkillCommand, refresh_skill, skills_dir};
+use crate::skill::{AGENT_GUIDE, REFERENCE, SkillCommand, refresh_skill, skills_dir};
 use crate::status::status;
 use crate::updates::say_update;
 
@@ -86,7 +85,7 @@ How your session shows in apps (also $ZIRC_SESSION_NAME, _ROLE and _TOOL):
 /// where a description says what a command does and an example says how. Each is a whole
 /// command line that runs as written, which a test holds them to, so none goes stale.
 const EXAMPLES: &[(&str, &[&str])] = &[
-    ("login", &["zirc login", "zirc login acme/web"]),
+    ("login", &["zirc login"]),
     ("repo", &["zirc repo add", "zirc repo list"]),
     (
         "watch",
@@ -427,10 +426,6 @@ enum Command {
     /// Shows a code and opens the browser, where you sign in and confirm it. zirc then
     /// writes the team's server to ~/.zirc/config.toml, installs the zirc skill for Claude
     /// Code, and runs zircd at login, restarting it if it's running.
-    ///
-    /// Given a public channel where you're a guest, such as acme/web, it connects this
-    /// machine there as you instead: you let it in from that channel's chat, and the agents
-    /// here talk in your room there.
     #[command(after_long_help = examples("login", ""))]
     Login(Login),
     /// Sign this machine out, of everything or of one organisation.
@@ -440,8 +435,7 @@ enum Command {
     /// Asks first (`--yes` doesn't), tells zirc.dev this machine's key is gone, forgets the
     /// sign-in in ~/.zirc/config.toml and stops zircd. Offline it signs out here all the same
     /// and says the key wasn't revoked. Given an organisation, such as acme, it takes that
-    /// one off this machine and leaves the others; given a public channel where you're a
-    /// guest, such as acme/web, it ends this machine's terminal there only.
+    /// one off this machine and leaves the others.
     #[command(after_long_help = examples("logout", ""))]
     Logout(logout::Logout),
     /// List the organisations this machine is signed in to, or take one off it.
@@ -983,10 +977,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
     let name = (cli.name.as_deref(), tool.as_deref(), avatar);
     before(&cli.command, &home, own_home);
     match cli.command {
-        Command::Login(args) => match args.target.as_deref().map(guest::target).transpose()? {
-            Some(target) => guest::login(&home, args, target, out).await,
-            None => setup::login(&home, args, out).await,
-        },
+        Command::Login(args) => setup::login(&home, args, out).await,
         Command::Logout(args) => logout::logout(&home, args, out).await,
         Command::Orgs { command } => logout::orgs(&home, command, out).await,
         Command::Init(init) => setup::init(&home, init, out),
@@ -1063,7 +1054,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Thinking(args) => post::thinking(&socket, args, out).await,
         Command::Log(args) => log::log(&home, &socket, args, out).await,
         Command::Ci(command) => ci::ci(&home, &socket, command, out).await,
-        Command::AgentGuide => Ok(write!(out, "{}", skill::agent_guide(&home))?),
+        Command::AgentGuide => Ok(write!(out, "{AGENT_GUIDE}")?),
         Command::Reference => Ok(write!(out, "{REFERENCE}")?),
         Command::Roles => Ok(write!(out, "{}", avatars_text())?),
         Command::Skill(command) => skill::install_or_remove(command, out),

@@ -8,18 +8,12 @@
 //!
 //! The waits are zirc-core's [`Backoff`], as every app's are. zircd keeps a loop of its own
 //! rather than zirc-core's `Supervisor`, which keeps one config and never stops trying:
-//! zircd reads its config afresh for each attempt, renews credentials and guests' grants
-//! between them, and stops altogether while the web app refuses the machine.
+//! zircd reads its config afresh for each attempt, renews credentials between them, and stops altogether while the web app refuses the machine.
 //!
 //! When the server refuses the machine's account, as after its owner's handle changed, zircd
 //! asks the web app the machine logged in at for its current credentials (see
 //! [`zirc_proto::login`]), saves them, and tries again at once.
-//!
-//! A guest's terminal renews its grant there instead ([`zirc_proto::guest_terminal`]): hours
-//! before it ends, and when the gateway refuses it. Once the web app lets it in no more, as
-//! when its guest was banned or forgotten, it stops trying until `config.toml` changes.
 
-use crate::clock::unix as now;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -34,7 +28,6 @@ use zirc_proto::telemetry::Failure;
 
 use crate::config;
 use crate::daemon::Input;
-use crate::router::Call;
 
 /// How it backs off, and how long an attempt may take: a TCP connect to a vanished host can
 /// hang for minutes. The rest of a [`Policy`] is the `Supervisor`'s, which zircd doesn't use.
@@ -59,14 +52,8 @@ fn failed(failing: &mut bool, reason: Failure) {
 
 /// Runs until the daemon goes away, connecting to the organisation `org`, the machine's
 /// `first` or not, as `config.toml` at `path` says.
-pub async fn supervise(
-    path: PathBuf,
-    org: String,
-    first: bool,
-    inputs: UnboundedSender<Input>,
-    calls: UnboundedSender<Call>,
-) {
-    supervise_with(policy(), path, org, first, inputs, calls).await;
+pub async fn supervise(path: PathBuf, org: String, first: bool, inputs: UnboundedSender<Input>) {
+    supervise_with(policy(), path, org, first, inputs).await;
 }
 
 /// As [`supervise`], backing off as `policy` says.
@@ -76,29 +63,13 @@ async fn supervise_with(
     org: String,
     first: bool,
     inputs: UnboundedSender<Input>,
-    calls: UnboundedSender<Call>,
 ) {
     let started = Instant::now();
     let clock = || started.elapsed();
     let mut backoff = Backoff::default();
     // Whether the last attempt failed too: only the first failure in a row is counted.
     let mut failing = false;
-    // Whether a guest's terminal's grant was renewed since it last connected: a refusal
-    // then isn't the grant's, so it isn't renewed again for it.
-    let mut renewed = false;
     loop {
-        if let Some(guest) = config::guest(&path, &org, first)
-            && zirc_core::guest::renew_due(&guest, now())
-        {
-            match renew(&path, &org, first).await {
-                Renewal::New => renewed = true,
-                Renewal::Gone => {
-                    stop_guest(&path, &org, &guest, &inputs, &calls).await;
-                    continue;
-                }
-                Renewal::Not => {}
-            }
-        }
         let config = match config::load(&path, &org, first) {
             Ok(config) => config,
             Err(err) => {
@@ -112,7 +83,6 @@ async fn supervise_with(
                 tracing::info!(nick = client.nick(), "connected to {}", config.host);
                 backoff.connected(clock());
                 failing = false;
-                renewed = false;
                 if inputs.send(Input::Connected(client)).is_err() {
                     return;
                 }
@@ -143,23 +113,6 @@ async fn supervise_with(
                         continue;
                     }
                     Refreshed::Not => failed(&mut failing, Failure::Sasl),
-                }
-            }
-            // The gateway refused a guest's terminal: maybe its grant, which is renewed.
-            Ok(Err(zirc_irc::Error::Closed(reason))) if config.websocket.is_some() && !renewed => {
-                tracing::warn!("{} refused this guest's terminal: {reason}", config.host);
-                match renew(&path, &org, first).await {
-                    Renewal::New => {
-                        renewed = true;
-                        continue;
-                    }
-                    Renewal::Gone => {
-                        if let Some(guest) = config::guest(&path, &org, first) {
-                            stop_guest(&path, &org, &guest, &inputs, &calls).await;
-                        }
-                        continue;
-                    }
-                    Renewal::Not => failed(&mut failing, Failure::Closed),
                 }
             }
             Ok(Err(err)) => {
@@ -195,114 +148,6 @@ async fn pass_on(incoming: &mut zirc_irc::Incoming, inputs: &UnboundedSender<Inp
         }
     }
     true
-}
-
-/// What renewing a guest's terminal's grant came to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Renewal {
-    /// A new grant, now saved.
-    New,
-    /// The web app lets it in no more.
-    Gone,
-    /// Nothing changed, for a reason that's logged, such as the web app away.
-    Not,
-}
-
-/// What a guest's terminal the web app lets in no more says: that it's gone from this machine.
-pub fn gone(org: &str, guest: &settings::GuestCredentials) -> String {
-    format!(
-        "{org}: the web app lets this guest's terminal into {} no more ({} was banned or \
-         forgotten, or the channel takes terminals no more), so it's gone from this machine",
-        guest.public, guest.guest
-    )
-}
-
-/// The guest is gone: takes their terminal off this machine, as `zirc logout` would, and
-/// has zircd start again without it, or stop once nothing's left. Should
-/// `config.toml` not change, it waits until it does, as when `zirc login` gives it a new grant.
-async fn stop_guest(
-    path: &Path,
-    org: &str,
-    guest: &settings::GuestCredentials,
-    inputs: &UnboundedSender<Input>,
-    calls: &UnboundedSender<Call>,
-) {
-    let message = gone(org, guest);
-    tracing::warn!("{message}");
-    match forget(path, org) {
-        Ok(()) => {
-            let _ = calls.send(Call::Forgotten(message));
-        }
-        Err(err) => {
-            tracing::warn!("{org}: couldn't take the guest's terminal off this machine: {err:#}");
-            let _ = inputs.send(Input::Refused(message));
-        }
-    }
-    config_changed(path).await;
-}
-
-/// Takes the organisation `org` out of `config.toml` at `path`, as `zirc logout` does.
-fn forget(path: &Path, org: &str) -> anyhow::Result<()> {
-    let home = path.parent().unwrap_or(path);
-    let mut settings =
-        settings(path).ok_or_else(|| anyhow::anyhow!("reading {}", path.display()))?;
-    let plan =
-        zirc_core::signout::Plan::new(&settings, &zirc_core::signout::Scope::One(org.to_owned()))?;
-    zirc_core::signout::forget(home, path, &mut settings, &plan)?;
-    Ok(())
-}
-
-/// Renews the grant of the guest's terminal `org` (the `first` or not) at its web app, and
-/// saves the new one.
-async fn renew(path: &Path, org: &str, first: bool) -> Renewal {
-    let _refreshing = REFRESHING.lock().await;
-    let Some(organisation) = settings(path).and_then(|it| config::find(&it, org, first)) else {
-        return Renewal::Not;
-    };
-    let (Some(guest), Some(web)) = (organisation.guest.clone(), organisation.web.clone()) else {
-        return Renewal::Not;
-    };
-    let home = path.parent().unwrap_or(Path::new("."));
-    let key = zirc_core::device_key::Software::machine(home);
-    let Some(request) = zirc_core::guest::renew_request(&key, &guest) else {
-        tracing::warn!("{org}: this machine's key can't sign, or the grant isn't one");
-        return Renewal::Not;
-    };
-    let answer = match Client::new(&web) {
-        Ok(client) => client.renew_guest(&request).await,
-        Err(err) => Err(err),
-    };
-    let renewed = match answer {
-        Ok(Some(renewed)) => renewed,
-        Ok(None) => return Renewal::Gone,
-        Err(err) => {
-            tracing::warn!("{org}: renewing the guest's grant at {web}: {err:#}");
-            return Renewal::Not;
-        }
-    };
-    // As the file is now, which `zirc login` or `logout` may have changed meanwhile.
-    let Some(mut settings) = settings(path) else {
-        return Renewal::Not;
-    };
-    let Some(mut organisation) = config::find(&settings, org, first) else {
-        return Renewal::Not;
-    };
-    if organisation.guest.as_ref().map(|it| &it.grant) != Some(&guest.grant) {
-        return Renewal::Not;
-    }
-    let name = organisation.name();
-    organisation.guest = Some(renewed);
-    settings.set_organisation(&name, organisation);
-    match settings.save(path) {
-        Ok(()) => {
-            tracing::info!("{org}: renewed the guest's grant");
-            Renewal::New
-        }
-        Err(err) => {
-            tracing::warn!("saving {org}'s renewed grant to {}: {err}", path.display());
-            Renewal::Not
-        }
-    }
 }
 
 /// What asking the web app for new credentials came to.
@@ -460,15 +305,7 @@ mod tests {
             format!("nick = \"me\"\n[server]\nhost = \"127.0.0.1\"\nport = {port}\ntls = false\n");
         std::fs::write(&path, config).unwrap();
         let (inputs, mut received) = mpsc::unbounded_channel();
-        let (calls, _called) = mpsc::unbounded_channel();
-        let supervisor = tokio::spawn(supervise_with(
-            policy,
-            path,
-            "test".into(),
-            true,
-            inputs,
-            calls,
-        ));
+        let supervisor = tokio::spawn(supervise_with(policy, path, "test".into(), true, inputs));
         let mut connected = Vec::new();
         while connected.len() < count {
             let input = tokio::time::timeout(Duration::from_secs(20), received.recv()).await;

@@ -809,10 +809,6 @@ pub struct Status {
     /// The circuit breaker on wakes, from a zircd that has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub breaker: Option<BreakerState>,
-    /// When the connection is a guest's terminal: the public channel it's a guest of, as
-    /// `zirc login` names it, such as `acme/web` ([`crate::guest::of`]).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub guest: Option<String>,
     /// The longest zircd was busy with one thing in the last minute or two, in milliseconds:
     /// how long a command can have waited for it. From a zircd that measures it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -835,9 +831,6 @@ pub struct OrgStatus {
     /// Why zircd isn't connecting to it, when it's stopped trying.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
-    /// When it's a guest's terminal: the public channel it's a guest of, as [`Status::guest`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub guest: Option<String>,
 }
 
 /// What zircd says when the web app no longer takes this machine's account: it's stopped

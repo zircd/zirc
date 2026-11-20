@@ -25,13 +25,6 @@
 //! write to them while they're away, and their conversations, for them to come back to; and
 //! a guest whose account is suspended (banned) can't log in, so isn't let in.
 //!
-//! In a public channel that takes terminals (`spec.terminalChannels`), a guest may also connect
-//! a terminal of theirs ([`zirc_proto::guest_terminal`]): zircd, with a grant zirc.dev signed
-//! that names the guest, their channel and the device's key, and a fresh token from that key
-//! each time. It comes in beside the guest's browser as `<guest>-<machine>` ([`terminal_nick`]),
-//! a guest's nick too, into the same channel, under the same rules and at the same pace, and
-//! answers whoever the guest may. It logs in to no account, theirs or its own.
-//!
 //! Apps tell a guest by their nick and account (`guest-…`, a handle no member can have, as
 //! zirc.dev reserves `guest` and handles have no `-`, and which only the gateway makes) and
 //! their real name, which the gateway sets.
@@ -268,9 +261,6 @@ pub struct Public {
     /// when `keys` is empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
-    /// Of `channels`, those whose guests may connect a terminal.
-    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub terminals: BTreeSet<String>,
     #[serde(default = "Public::default_cap")]
     /// How many guests may be on at once.
     pub cap: usize,
@@ -305,7 +295,6 @@ impl Default for Public {
     fn default() -> Self {
         Self {
             channels: BTreeSet::new(),
-            terminals: BTreeSet::new(),
             keys: Vec::new(),
             key: None,
             cap: Self::CAP,
@@ -329,8 +318,6 @@ pub struct Token {
     /// The name they typed, if it's one zirc takes ([`zirc_proto::profile::name`]): their real
     /// name, in place of [`REALNAME`]. Their nick stays theirs, `guest-…`.
     pub name: Option<String>,
-    /// For a guest's terminal: its machine's name, from its grant.
-    pub machine: Option<String>,
 }
 
 /// The METADATA key on a guest that says whether they're signed in to zirc.dev, "1" or "0".
@@ -387,7 +374,6 @@ pub fn verify(token: &str, key: &[u8], now: u64) -> Result<Token, &'static str> 
             .as_deref()
             .and_then(zirc_proto::profile::name)
             .map(str::to_owned),
-        machine: None,
     })
 }
 
@@ -415,71 +401,6 @@ fn signed(token: &str, key: &[u8]) -> Result<Vec<u8>, &'static str> {
         .verify(signed.as_bytes(), &signature)
         .map_err(|_| "not signed for this server")?;
     URL_SAFE_NO_PAD.decode(claims).map_err(|_| "not a token")
-}
-
-/// A terminal, as its first line's password ([`zirc_proto::guest_terminal::pass`]) says: its
-/// grant, if one of `keys` signed it and it's in date at `now`, and the connection's token,
-/// if the key the grant names made it, for this grant, for its guest. Also what keeps that
-/// token from being used again: its key and `jti`, and until when.
-///
-/// # Errors
-///
-/// Why it isn't one.
-pub fn verify_terminal(
-    pass: &str,
-    keys: &[Vec<u8>],
-    now: u64,
-) -> Result<(Token, String, u64), &'static str> {
-    use zirc_proto::{device_key, guest_terminal};
-    let (grant, proof) = guest_terminal::split_pass(pass).ok_or("not a terminal's grant")?;
-    let mut why = "this server has no public channels";
-    let mut claims = None;
-    for (i, key) in keys.iter().enumerate() {
-        match signed(grant, key) {
-            Ok(bytes) => {
-                claims = Some(bytes);
-                break;
-            }
-            Err(reason) if i == 0 => why = reason,
-            Err(_) => {}
-        }
-    }
-    let claims = claims.ok_or(why)?;
-    let raw: serde_json::Value = serde_json::from_slice(&claims).map_err(|_| "not a grant")?;
-    if raw.get("account").is_some() {
-        return Err("not a guest's grant");
-    }
-    let grant: guest_terminal::Grant = serde_json::from_value(raw).map_err(|_| "not a grant")?;
-    if grant.exp <= now {
-        return Err("expired");
-    }
-    if !zirc_proto::names::is_guest_account(&grant.sub) {
-        return Err("not a guest's name");
-    }
-    if grant.machine.is_empty() || grant.machine != guest_terminal::machine_name(&grant.machine) {
-        return Err("not a machine's name");
-    }
-    let parsed = device_key::parse(proof)?;
-    if parsed.kid != grant.key || parsed.claims.sub != grant.sub {
-        return Err("not this terminal's key");
-    }
-    parsed.claims.check(&grant.gid, now)?;
-    let point = device_key::point(&parsed.kid).ok_or("not a key")?;
-    ring::signature::UnparsedPublicKey::new(&ring::signature::ECDSA_P256_SHA256_FIXED, point)
-        .verify(parsed.signing_input.as_bytes(), &parsed.signature)
-        .map_err(|_| "not signed by that key")?;
-    let once = format!("{} {}", parsed.kid, parsed.claims.jti);
-    Ok((
-        Token {
-            guest: grant.sub,
-            channel: grant.room.to_lowercase(),
-            signed_in: None,
-            name: None,
-            machine: Some(grant.machine),
-        },
-        once,
-        parsed.claims.exp,
-    ))
 }
 
 /// [`verify`] with whichever of `keys` signed it.
@@ -564,8 +485,7 @@ pub fn without_staff_tags(line: &mut Line) {
 /// The guests on now, by name and by address.
 #[derive(Default)]
 struct Guests {
-    /// Each guest's connection, to end when the same guest connects again: by their name, or
-    /// for a terminal of theirs by [`connection`].
+    /// Each guest's connection, to end when the same guest connects again.
     by_name: HashMap<String, (u64, tokio::sync::watch::Sender<bool>)>,
     by_address: HashMap<IpAddr, Address>,
     next: u64,
@@ -600,28 +520,6 @@ pub struct Gateway {
     visitors: Mutex<crate::visitors::Visitors>,
     /// Held while pushes are sent, which all come from one nick.
     pushing: tokio::sync::Mutex<()>,
-    /// Terminals' tokens used, by key and `jti`, until they expire: each is good once.
-    proofs: Mutex<HashMap<String, u64>>,
-}
-
-/// What a guest's connection is known by: their name, or for a terminal, their name and its
-/// machine's, so a terminal comes in beside the browser and each ends only its own older one.
-fn connection(guest: &str, machine: Option<&str>) -> String {
-    machine.map_or_else(|| guest.to_owned(), |m| format!("{guest} {m}"))
-}
-
-/// The guest a [`connection`] is.
-fn guest_of(connection: &str) -> &str {
-    connection.split(' ').next().unwrap_or(connection)
-}
-
-/// A guest's terminal's nick: theirs and its machine's, `guest-21042-mbp`, within a nick's
-/// length ([`zirc_proto::names::NICK_MAX`]).
-#[must_use]
-pub fn terminal_nick(guest: &str, machine: &str) -> String {
-    let room = zirc_proto::names::NICK_MAX.saturating_sub(guest.len() + 1);
-    let machine: String = machine.chars().take(room).collect();
-    format!("{guest}-{}", machine.trim_end_matches('-'))
 }
 
 /// A guest's passphrase: derived from the sidecar's secret, so it's never stored, and the same
@@ -633,7 +531,6 @@ fn passphrase(secret: &str, guest: &str) -> String {
 /// A guest let in, until they leave.
 struct Admitted {
     gateway: Arc<Gateway>,
-    /// Their [`connection`].
     guest: String,
     address: IpAddr,
     id: u64,
@@ -695,7 +592,6 @@ impl Gateway {
             owners: Mutex::new(Vec::new()),
             visitors: Mutex::new(crate::visitors::Visitors::new()),
             pushing: tokio::sync::Mutex::new(()),
-            proofs: Mutex::new(HashMap::new()),
         })
     }
 
@@ -776,21 +672,15 @@ impl Gateway {
     /// The guests connected now, and when each guest was last there, with their channel, as
     /// far as this sidecar has seen.
     pub fn presence(&self) -> (BTreeSet<String>, HashMap<String, (jiff::Timestamp, String)>) {
-        let connected = lock(&self.guests)
-            .by_name
-            .keys()
-            .map(|c| guest_of(c).to_owned())
-            .collect();
+        let connected = lock(&self.guests).by_name.keys().cloned().collect();
         (connected, lock(&self.seen).clone())
     }
 
     /// Forgets `guest`: ends their connection, if they're on, and drops what the gateway
     /// remembers of them.
     pub fn forget(&self, guest: &str) {
-        for (connection, (_, end)) in &lock(&self.guests).by_name {
-            if guest_of(connection) == guest {
-                let _ = end.send(true);
-            }
+        if let Some((_, end)) = lock(&self.guests).by_name.get(guest) {
+            let _ = end.send(true);
         }
         lock(&self.seen).remove(guest);
         lock(&self.repliers).remove(guest);
@@ -952,32 +842,22 @@ impl Gateway {
         });
     }
 
-    /// Whether a terminal's token, `once` (its key and `jti`), good until `exp`, is new at
-    /// `now`: it's then used.
-    fn first_use(&self, once: String, exp: u64, now: u64) -> bool {
-        let mut used = lock(&self.proofs);
-        used.retain(|_, until| *until > now);
-        used.insert(once, exp).is_none()
-    }
-
     /// Whether the organisation has guests: public channels they may come into.
     pub fn has_guests(&self) -> bool {
         !lock(&self.public).channels.is_empty()
     }
 
-    /// Lets `guest` in from `address` at `now`, ending their connection elsewhere (from
-    /// `machine`, for a terminal's: its own older one); or why not.
+    /// Lets `guest` in from `address` at `now`, ending their connection elsewhere; or why not.
     fn admit(
         self: &Arc<Self>,
         guest: &str,
-        machine: Option<&str>,
         address: IpAddr,
         now: Instant,
     ) -> Result<Admitted, &'static str> {
         let cap = lock(&self.public).cap;
         let mut guests = lock(&self.guests);
-        let on: HashSet<&str> = guests.by_name.keys().map(|c| guest_of(c)).collect();
-        if !on.contains(guest) && on.len() >= cap {
+        let again = guests.by_name.contains_key(guest);
+        if !again && guests.by_name.len() >= cap {
             return Err("this room is full; try again shortly");
         }
         let at = guests.by_address.entry(address).or_default();
@@ -996,13 +876,12 @@ impl Gateway {
         guests.next += 1;
         let id = guests.next;
         let (end, ended) = tokio::sync::watch::channel(false);
-        let known_as = connection(guest, machine);
-        if let Some((_, older)) = guests.by_name.insert(known_as.clone(), (id, end)) {
+        if let Some((_, older)) = guests.by_name.insert(guest.to_owned(), (id, end)) {
             let _ = older.send(true);
         }
         Ok(Admitted {
             gateway: self.clone(),
-            guest: known_as,
+            guest: guest.to_owned(),
             address,
             id,
             ended,
@@ -1129,36 +1008,15 @@ impl Early {
     }
 }
 
-/// Who `token` says they are, where `public` lets them in at `now`: a terminal's grant and
-/// token, used once, or a browser's token. Why not, otherwise.
-fn token_guest(
-    gateway: &Gateway,
-    public: &Public,
-    token: &str,
-    now: u64,
-) -> Result<Token, &'static str> {
+/// Who `token` says they are, where `public` lets them in at `now`. Why not, otherwise.
+fn token_guest(public: &Public, token: &str, now: u64) -> Result<Token, &'static str> {
     let listed = if public.keys.is_empty() {
         public.key.iter().cloned().collect()
     } else {
         public.keys.clone()
     };
     let keys: Vec<Vec<u8>> = listed.iter().filter_map(|k| public_key(k)).collect();
-    if zirc_proto::guest_terminal::split_pass(token).is_some() {
-        verify_terminal(token, &keys, now).and_then(|(t, once, exp)| {
-            let public_channel = zirc_proto::guest_room_of(&t.channel)
-                .map_or(t.channel.as_str(), |(parent, _)| parent);
-            if !public.terminals.contains(public_channel) {
-                Err("this channel doesn't take terminals")
-            } else if !gateway.first_use(once, exp, now) {
-                Err("used before")
-            } else {
-                Ok(t)
-            }
-        })
-    } else {
-        verify_any(token, &keys, now)
-    }
-    .and_then(|t| {
+    verify_any(token, &keys, now).and_then(|t| {
         if admits(&public.channels, &t.guest, &t.channel) {
             Ok(t)
         } else {
@@ -1243,8 +1101,6 @@ struct Passing {
     channel: String,
     /// Their nick here, lowercased.
     me: String,
-    /// The guest they are, lowercased: the same but for a terminal.
-    who: String,
     /// Whether the gateway logged in to their account.
     logs_in: bool,
     /// Whom they may answer.
@@ -1256,9 +1112,7 @@ struct Passing {
     registered: bool,
     /// For a room of their own, its public channel.
     room: Option<String>,
-    /// Until their room is set up, whether anyone else is there (by its NAMES). None from the
-    /// first for a terminal, which comes in beside its guest, who has been: the team isn't told
-    /// again.
+    /// Until their room is set up, whether anyone else is there (by its NAMES).
     arriving: Option<bool>,
     multiline: Multiline,
 }
@@ -1273,12 +1127,11 @@ impl Passing {
         repliers: HashSet<String>,
     ) -> Self {
         let room = zirc_proto::guest_room_of(&guest.channel).map(|(parent, _)| parent.to_owned());
-        let set_up = room.is_none() || guest.machine.is_some();
+        let set_up = room.is_none();
         Self {
             gateway: Arc::clone(gateway),
             channel: guest.channel.clone(),
             me: nick.to_lowercase(),
-            who: guest.guest.to_lowercase(),
             logs_in,
             repliers,
             own_caps: Some(own_caps(logs_in)),
@@ -1436,10 +1289,10 @@ impl Passing {
                 let name = self.guest.name.as_deref();
                 if let Some(parent) = &self.room {
                     self.gateway
-                        .set_up_room(channel, parent, &self.who, name, others_here);
+                        .set_up_room(channel, parent, &self.me, name, others_here);
                 }
                 let room = self.room.as_deref().unwrap_or(channel);
-                self.gateway.visitor_arrived(&self.who, name, room, channel);
+                self.gateway.visitor_arrived(&self.me, name, room, channel);
             }
             // A person on staff who writes to them may be answered, from now on.
             "PRIVMSG" | "NOTICE" | "TAGMSG"
@@ -1451,7 +1304,7 @@ impl Passing {
                 if let Some(account) = line.tag("account").map(str::to_lowercase)
                     && person(&account)
                 {
-                    self.gateway.may_answer(&self.who, &account);
+                    self.gateway.may_answer(&self.me, &account);
                     self.repliers.insert(account);
                 }
             }
@@ -1487,21 +1340,11 @@ async fn session(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let checked = token_guest(&gateway, &public, &token, now);
+    let checked = token_guest(&public, &token, now);
     let guest = or_refuse(&mut socket, checked).await?;
-    let admitted = gateway.admit(
-        &guest.guest,
-        guest.machine.as_deref(),
-        address,
-        Instant::now(),
-    );
+    let admitted = gateway.admit(&guest.guest, address, Instant::now());
     let mut admitted = or_refuse(&mut socket, admitted).await?;
-    // A terminal logs in to no account: its guest's would make it them, not beside them.
-    let account = if guest.machine.is_some() {
-        Ok(None)
-    } else {
-        gateway.account(&guest.guest.to_lowercase()).await
-    };
+    let account = gateway.account(&guest.guest.to_lowercase()).await;
     let login = or_refuse(&mut socket, account).await?;
 
     let ergo = tokio::net::TcpStream::connect(gateway.ergo)
@@ -1509,22 +1352,14 @@ async fn session(
         .map_err(|e| e.to_string())?;
     let (from_ergo, mut to_ergo) = ergo.into_split();
     let mut from_ergo = BufReader::new(from_ergo).lines();
-    let nick = guest
-        .machine
-        .as_deref()
-        .map_or_else(|| guest.guest.clone(), |m| terminal_nick(&guest.guest, m));
+    let nick = guest.guest.clone();
     for line in &opening(&gateway, &guest, login.as_deref(), early, &nick) {
         to_ergo
             .write_all(format!("{line}\r\n").as_bytes())
             .await
             .map_err(|e| e.to_string())?;
     }
-    // Never which channel: logs go to Google.
-    if let Some(machine) = &guest.machine {
-        info!(guest = guest.guest, machine, "a guest's terminal came in");
-    } else {
-        info!(guest = guest.guest, "a guest came in");
-    }
+    info!(guest = guest.guest, "a guest came in"); // never which channel: logs go to Google
 
     let (channel, who) = (guest.channel.clone(), guest.guest.to_lowercase());
     gateway.note(&who, &channel);
@@ -1645,7 +1480,6 @@ mod tests {
                 channel: "#support".into(),
                 signed_in: None,
                 name: None,
-                machine: None,
             })
         );
         let signed_in = serde_json::json!({"guest": "guest-7k2q", "channel": "#support", "exp": 2000, "signedIn": true});
@@ -1679,149 +1513,17 @@ mod tests {
         assert_eq!(verify("a.b", &key, 1000), Err("not a token"));
     }
 
-    /// A device's key, as zircd's, and a token from it.
-    struct Device(ring::signature::EcdsaKeyPair);
-
-    impl Device {
-        fn new() -> Self {
-            use ring::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair};
-            let rng = ring::rand::SystemRandom::new();
-            let pkcs8 =
-                EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng).unwrap();
-            Self(
-                EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref(), &rng)
-                    .unwrap(),
-            )
-        }
-
-        fn key(&self) -> String {
-            zirc_proto::device_key::key_text(self.0.public_key().as_ref())
-        }
-
-        fn proof(&self, guest: &str, gid: &str, now: u64, jti: &str) -> String {
-            use zirc_proto::device_key;
-            let claims = device_key::Claims::new(guest, gid, now, jti.into());
-            let input = device_key::signing_input(&self.key(), &claims);
-            let rng = ring::rand::SystemRandom::new();
-            let signature = self.0.sign(&rng, input.as_bytes()).unwrap();
-            device_key::token(&input, signature.as_ref())
-        }
-    }
-
-    fn grant(web: &Ed25519KeyPair, device: &Device, exp: u64) -> String {
-        token(
-            web,
-            &serde_json::json!({"sub": "guest-21042", "room": "#Web/guest-21042", "machine": "mbp",
-                "key": device.key(), "gid": "g1", "exp": exp}),
-        )
-    }
-
     #[test]
-    fn a_terminal_brings_its_grant_and_a_token_from_the_key_it_names() {
-        use zirc_proto::guest_terminal::pass;
-        let (web, stranger) = (pair(), pair());
-        let keys = [web.public_key().as_ref().to_vec()];
-        let (device, thief) = (Device::new(), Device::new());
-        let good = grant(&web, &device, 5000);
-        let (token, once, exp) = verify_terminal(
-            &pass(&good, &device.proof("guest-21042", "g1", 1000, "j1")),
-            &keys,
-            1000,
-        )
-        .unwrap();
-        assert_eq!(
-            token,
-            Token {
-                guest: "guest-21042".into(),
-                channel: "#web/guest-21042".into(),
-                signed_in: None,
-                name: None,
-                machine: Some("mbp".into()),
-            }
-        );
-        assert_eq!((once, exp), (format!("{} j1", device.key()), 1120));
-        let refused = |pass: String, now: u64| verify_terminal(&pass, &keys, now).map(|_| ());
-        // Another key's token, for another grant, for another guest, out of date.
-        assert_eq!(
-            refused(
-                pass(&good, &thief.proof("guest-21042", "g1", 1000, "j")),
-                1000
-            ),
-            Err("not this terminal's key")
-        );
-        assert_eq!(
-            refused(
-                pass(&good, &device.proof("guest-21042", "g2", 1000, "j")),
-                1000
-            ),
-            Err("for another server")
-        );
-        assert_eq!(
-            refused(
-                pass(&good, &device.proof("guest-99999", "g1", 1000, "j")),
-                1000
-            ),
-            Err("not this terminal's key")
-        );
-        assert_eq!(
-            refused(
-                pass(&good, &device.proof("guest-21042", "g1", 1000, "j")),
-                1200
-            ),
-            Err("expired")
-        );
-        // A grant that's expired, or not zirc.dev's.
-        let old = grant(&web, &device, 900);
-        assert_eq!(
-            refused(
-                pass(&old, &device.proof("guest-21042", "g1", 1000, "j")),
-                1000
-            ),
-            Err("expired")
-        );
-        let forged = grant(&stranger, &device, 5000);
-        assert_eq!(
-            refused(
-                pass(&forged, &device.proof("guest-21042", "g1", 1000, "j")),
-                1000
-            ),
-            Err("not signed for this server")
-        );
-        // A grant alone is no guest's token, on this gateway or one from before terminals.
-        assert_eq!(verify_any(&good, &keys, 1000), Err("not a token"));
-        // Each token once.
-        let gateway = Gateway::new(([127, 0, 0, 1], 1).into(), None, None, None);
-        assert!(gateway.first_use("k j1".into(), 1120, 1000));
-        assert!(!gateway.first_use("k j1".into(), 1120, 1001));
-        assert!(gateway.first_use("k j1".into(), 1300, 1200));
-    }
-
-    #[test]
-    fn a_terminals_nick_is_its_guests_and_its_machines() {
-        assert_eq!(terminal_nick("guest-21042", "mbp"), "guest-21042-mbp");
-        let long = terminal_nick("guest-21042", &"m".repeat(40));
-        assert_eq!(long.len(), zirc_proto::names::NICK_MAX);
-        assert!(zirc_proto::named_as_guest(&long));
-        assert_eq!(
-            terminal_nick("guest-21042", &format!("{}-x", "m".repeat(19))),
-            format!("guest-21042-{}", "m".repeat(19))
-        );
-    }
-
-    #[test]
-    fn a_terminal_comes_in_beside_its_guest_and_ends_only_its_own_older_connection() {
+    fn a_guest_connecting_again_ends_their_older_connection() {
         let gateway = Gateway::new(([127, 0, 0, 1], 1).into(), None, None, None);
         let at: IpAddr = [10, 0, 0, 1].into();
         let now = Instant::now();
-        let browser = gateway.admit("guest-21042", None, at, now).unwrap();
-        let terminal = gateway.admit("guest-21042", Some("mbp"), at, now).unwrap();
-        assert!(!*browser.ended.borrow());
-        let again = gateway.admit("guest-21042", Some("mbp"), at, now).unwrap();
-        assert!(*terminal.ended.borrow());
-        assert!(!*browser.ended.borrow());
+        let older = gateway.admit("guest-21042", at, now).unwrap();
+        let again = gateway.admit("guest-21042", at, now).unwrap();
+        assert!(*older.ended.borrow());
+        assert!(!*again.ended.borrow());
         assert_eq!(gateway.presence().0, ["guest-21042".to_owned()].into());
         gateway.forget("guest-21042");
-        assert!(*browser.ended.borrow());
         assert!(*again.ended.borrow());
     }
 
@@ -2076,32 +1778,29 @@ mod tests {
         });
         let now = Instant::now();
         let (one, two) = ("10.0.0.1".parse().unwrap(), "10.0.0.2".parse().unwrap());
-        let a = gateway.admit("guest-aaaa", None, one, now).unwrap();
-        let _b = gateway.admit("guest-bbbb", None, one, now).unwrap();
-        let _c = gateway.admit("guest-cccc", None, one, now).unwrap();
+        let a = gateway.admit("guest-aaaa", one, now).unwrap();
+        let _b = gateway.admit("guest-bbbb", one, now).unwrap();
+        let _c = gateway.admit("guest-cccc", one, now).unwrap();
         // A fourth from the same address waits.
-        assert!(gateway.admit("guest-dddd", None, one, now).is_err());
+        assert!(gateway.admit("guest-dddd", one, now).is_err());
         // Another address may, up to the cap.
-        let _d = gateway.admit("guest-dddd", None, two, now).unwrap();
+        let _d = gateway.admit("guest-dddd", two, now).unwrap();
         assert_eq!(
-            gateway.admit("guest-eeee", None, two, now).err(),
+            gateway.admit("guest-eeee", two, now).err(),
             Some("this room is full; try again shortly")
         );
         // The same guest again ends their older connection.
         drop(a);
-        let _again = gateway.admit("guest-bbbb", None, two, now).unwrap();
+        let _again = gateway.admit("guest-bbbb", two, now).unwrap();
         // Six opened from one address in a minute, and no more until it's passed.
         let three: IpAddr = "10.0.0.3".parse().unwrap();
         let busy = Gateway::new("127.0.0.1:6668".parse().unwrap(), None, None, None);
         for i in 0..6 {
-            drop(
-                busy.admit(&format!("guest-x{i:03}"), None, three, now)
-                    .unwrap(),
-            );
+            drop(busy.admit(&format!("guest-x{i:03}"), three, now).unwrap());
         }
-        assert!(busy.admit("guest-y000", None, three, now).is_err());
+        assert!(busy.admit("guest-y000", three, now).is_err());
         assert!(
-            busy.admit("guest-y000", None, three, now + Duration::from_secs(61))
+            busy.admit("guest-y000", three, now + Duration::from_secs(61))
                 .is_ok()
         );
     }

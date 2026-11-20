@@ -36,25 +36,6 @@
 //! The first organisation stays where a machine signed in to one keeps it, so its config
 //! is unchanged and zirc releases from before several organisations still read it.
 //!
-//! A guest's terminal (`zirc login acme/web`, [`zirc_proto::guest_terminal`]) is an
-//! organisation too, named by the organisation's slug, that connects to its gateway with its
-//! `[org.guest]` rather than to its server with an account:
-//!
-//! ```toml
-//! [[org]]
-//! name = "acme"
-//! web = "https://zirc.dev"
-//! [org.server]
-//! host = "acme.irc.zirc.dev"
-//! [org.guest]
-//! url = "wss://acme.irc.zirc.dev/guest"
-//! org = "acme"
-//! guest = "guest-21042"
-//! channel = "#web/guest-21042"
-//! public = "#web"
-//! grant = "…"
-//! expires = 1794000000
-//! ```
 
 use std::path::{Path, PathBuf};
 
@@ -63,9 +44,6 @@ use serde::{Deserialize, Serialize};
 /// The server and account types are the `zirc login` handshake's too, so they're declared
 /// once, in zirc-proto.
 pub use zirc_proto::login::{Account, Server};
-
-/// What a guest's terminal connects with ([`Organisation::guest`]).
-pub use zirc_proto::guest_terminal::GuestCredentials;
 
 /// The port used when none is set: IRC over TLS.
 pub const DEFAULT_PORT: u16 = 6697;
@@ -97,6 +75,26 @@ pub const PUBLIC_SERVER: &str = "irc.zirc.dev";
 /// its own has it.
 pub const PUBLIC_ORG: &str = "public";
 
+/// Settings zirc once wrote and reads no more, at the top and in each `[[org]]`: left out
+/// before the rest is read, so a `config.toml` from before still reads, and gone from it once
+/// it's next saved. `guest` was a guest's terminal's, which zirc no longer has (20 Nov 2026).
+const RETIRED: [&str; 1] = ["guest"];
+
+/// `table` without its [`RETIRED`] settings.
+fn without_retired(mut table: toml::Table) -> toml::Table {
+    for key in RETIRED {
+        table.remove(key);
+    }
+    if let Some(toml::Value::Array(orgs)) = table.get_mut("org") {
+        for org in orgs.iter_mut().filter_map(toml::Value::as_table_mut) {
+            for key in RETIRED {
+                org.remove(key);
+            }
+        }
+    }
+    table
+}
+
 /// One organisation this machine is signed in to: its server and the account there.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -118,21 +116,13 @@ pub struct Organisation {
     /// The web app the machine signed in to it at.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub web: Option<String>,
-    /// For a guest's terminal: its gateway, its guest and their room, and its grant, which
-    /// zircd renews at [`Organisation::web`]. Its `Debug` leaves the grant out.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub guest: Option<GuestCredentials>,
 }
 
 impl Organisation {
-    /// Its name: as set, or else a guest's terminal's organisation, or else [`org_name`] of
-    /// its server.
+    /// Its name: as set, or else [`org_name`] of its server.
     #[must_use]
     pub fn name(&self) -> String {
-        self.name
-            .clone()
-            .or_else(|| self.guest.as_ref().map(|guest| guest.org.clone()))
-            .unwrap_or_else(|| org_name(&self.server))
+        self.name.clone().unwrap_or_else(|| org_name(&self.server))
     }
 }
 
@@ -248,10 +238,6 @@ pub struct Settings {
     /// The limits of the circuit breaker on wakes ([`WakeLimits`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wakes: Option<WakeLimits>,
-    /// When the first organisation is a guest's terminal ([`Organisation::guest`]), what it
-    /// connects with.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub guest: Option<GuestCredentials>,
     /// The organisations besides the first, whose server, account, nick, owner and web app
     /// are the ones above.
     #[serde(default, rename = "org", skip_serializing_if = "Vec::is_empty")]
@@ -273,7 +259,7 @@ impl Settings {
     ///
     /// When the text isn't valid TOML or has settings zirc doesn't know.
     pub fn from_toml(text: &str) -> Result<Self, toml::de::Error> {
-        toml::from_str(text)
+        without_retired(toml::from_str(text)?).try_into()
     }
 
     /// Settings read from the text of `config.toml` by a program that only reads it, an app:
@@ -287,7 +273,7 @@ impl Settings {
     ///
     /// When the text isn't valid TOML, or a setting this version knows doesn't read.
     pub fn from_toml_skipping_unknown(text: &str) -> Result<(Self, Vec<String>), toml::de::Error> {
-        let mut table: toml::Table = toml::from_str(text)?;
+        let mut table = without_retired(toml::from_str(text)?);
         let mut skipped = Vec::new();
         loop {
             let err = match table.clone().try_into::<Self>() {
@@ -316,7 +302,6 @@ impl Settings {
             account: self.account.clone(),
             owner: self.owner.clone(),
             web: self.web.clone(),
-            guest: self.guest.clone(),
         };
         std::iter::once(first).chain(self.orgs.clone()).collect()
     }
@@ -342,27 +327,15 @@ impl Settings {
     ) -> Result<Organisation, crate::which_org::Unpicked> {
         let orgs = self.organisations();
         let listed: Vec<String> = orgs.iter().map(Organisation::name).collect();
-        let choices: Vec<crate::which_org::Choice<'_>> = orgs
+        let choices: Vec<crate::which_org::Choice<'_>> = listed
             .iter()
-            .zip(&listed)
-            .map(|(org, name)| crate::which_org::Choice {
+            .map(|name| crate::which_org::Choice {
                 name,
-                own: org.guest.is_none() && name != PUBLIC_ORG,
+                own: name != PUBLIC_ORG,
             })
             .collect();
         let at = crate::which_org::pick(&choices, named, repo)?;
         Ok(orgs[at].clone())
-    }
-
-    /// The guest's terminal of a machine that's that alone: the first, when every
-    /// organisation it's in is a guest's terminal.
-    #[must_use]
-    pub fn guest_terminal(&self) -> Option<Organisation> {
-        let orgs = self.organisations();
-        orgs.iter()
-            .all(|org| org.guest.is_some())
-            .then(|| orgs.into_iter().next())
-            .flatten()
     }
 
     /// Sets the organisation named `name`'s settings to `org`, adding it after the others
@@ -375,28 +348,11 @@ impl Settings {
             self.account = org.account;
             self.owner = org.owner;
             self.web = org.web;
-            self.guest = org.guest;
         } else if let Some(it) = self.orgs.iter_mut().find(|it| it.name() == name) {
             *it = org;
         } else {
             self.orgs.push(org);
         }
-    }
-
-    /// Puts `org` first, where the first was: that one, as it was named, goes after the
-    /// others. As a machine whose only organisation was a guest's terminal does when it
-    /// logs in to its own: the first is the one repositories saved before several
-    /// organisations belong to.
-    pub fn put_first(&mut self, org: Organisation) {
-        let mut was = self.organisations().swap_remove(0);
-        was.name = Some(was.name());
-        self.nick = org.nick;
-        self.server = org.server;
-        self.account = org.account;
-        self.owner = org.owner;
-        self.web = org.web;
-        self.guest = org.guest;
-        self.orgs.push(was);
     }
 
     /// Takes the organisation named `name` out, if it's one besides the first, which has
@@ -424,7 +380,6 @@ impl Settings {
         self.account = next.account;
         self.owner = next.owner;
         self.web = next.web;
-        self.guest = next.guest;
         true
     }
 
@@ -485,7 +440,6 @@ mod tests {
             posthog_host: None,
             leases: std::collections::BTreeMap::new(),
             wakes: None,
-            guest: None,
             orgs: Vec::new(),
         };
         let text = settings.to_toml();
@@ -573,7 +527,6 @@ mod tests {
             }),
             owner: Some("mattias".into()),
             web: None,
-            guest: None,
         };
         settings.set_organisation("globex", globex.clone());
         let text = settings.to_toml();
@@ -597,6 +550,34 @@ mod tests {
         assert_eq!(settings.duplicate_organisation(), None);
         settings.orgs.push(settings.orgs[0].clone());
         assert_eq!(settings.duplicate_organisation().as_deref(), Some("globex"));
+
+        // Out again, as `zirc logout globex` takes it; the first stays.
+        let mut out = read.clone();
+        assert!(out.remove_organisation("globex"));
+        assert!(!out.remove_organisation("globex"));
+        assert!(!out.remove_organisation("acme"), "the first stays");
+        assert_eq!(out.organisations().len(), 1);
+    }
+
+    #[test]
+    fn a_guests_terminal_from_before_is_left_out() {
+        let text = "[server]\nhost = \"acme.irc.zirc.dev\"\n[guest]\ngrant = \"g\"\n\
+                    [[org]]\nname = \"globex\"\n[org.server]\nhost = \"globex.irc.zirc.dev\"\n\
+                    [org.guest]\ngrant = \"g\"\n";
+        let read = Settings::from_toml(text).unwrap();
+        let names: Vec<String> = read
+            .organisations()
+            .iter()
+            .map(Organisation::name)
+            .collect();
+        assert_eq!(names, ["acme", "globex"]);
+        assert!(!read.to_toml().contains("guest"), "{}", read.to_toml());
+        assert!(
+            Settings::from_toml_skipping_unknown(text)
+                .unwrap()
+                .1
+                .is_empty()
+        );
     }
 
     #[test]
@@ -613,7 +594,6 @@ mod tests {
             account: None,
             owner: None,
             web: None,
-            guest: None,
         };
         assert_eq!(org("acme.irc.zirc.dev", None).name(), "acme");
         assert_eq!(org("irc.example.com", None).name(), "irc.example.com");
@@ -627,86 +607,6 @@ mod tests {
         for name in ["", ".", "..", "../x", "a/b", "a\\b", ".hidden"] {
             assert!(!valid_org_name(name), "{name}");
         }
-    }
-
-    fn guest(org: &str) -> Organisation {
-        Organisation {
-            name: Some(org.into()),
-            nick: None,
-            server: Server {
-                host: format!("{org}.irc.zirc.dev"),
-                port: None,
-                tls: None,
-                password: None,
-            },
-            account: None,
-            owner: None,
-            web: Some("https://zirc.dev".into()),
-            guest: Some(GuestCredentials {
-                url: format!("wss://{org}.irc.zirc.dev/guest"),
-                org: org.into(),
-                guest: "guest-21042".into(),
-                channel: "#web/guest-21042".into(),
-                public: "#web".into(),
-                grant: "grant-secret".into(),
-                expires: 1_794_000_000,
-            }),
-        }
-    }
-
-    #[test]
-    fn a_guests_terminal_round_trips_without_saying_its_grant_in_debug() {
-        let mut settings =
-            Settings::from_toml("[server]\nhost = \"globex.irc.zirc.dev\"\n").unwrap();
-        settings.set_organisation("acme", guest("acme"));
-        let text = settings.to_toml();
-        assert!(text.contains("[org.guest]"), "{text}");
-        let read = Settings::from_toml(&text).unwrap();
-        assert_eq!(read, settings);
-        assert_eq!(read.organisation("acme"), Some(guest("acme")));
-        assert!(!format!("{read:?}").contains("grant-secret"));
-
-        // Out again, as `zirc logout acme` takes it.
-        let mut out = read.clone();
-        assert!(out.remove_organisation("acme"));
-        assert!(!out.remove_organisation("acme"));
-        assert!(!out.remove_organisation("globex"), "the first stays");
-        assert_eq!(out.organisations().len(), 1);
-    }
-
-    #[test]
-    fn a_guests_terminal_first_is_named_by_its_organisation_and_steps_aside() {
-        let mut only = Settings::from_toml("[server]\nhost = \"x\"\n").unwrap();
-        only.set_organisation(
-            "x",
-            Organisation {
-                name: None,
-                ..guest("acme")
-            },
-        );
-        let text = only.to_toml();
-        let read = Settings::from_toml(&text).unwrap();
-        assert_eq!(read.organisations()[0].name(), "acme");
-        assert!(read.organisations()[0].guest.is_some());
-
-        // Logging in to the machine's own organisation puts it first, the terminal after.
-        let mut both = read;
-        let mut globex = guest("globex");
-        globex.name = None;
-        globex.guest = None;
-        both.put_first(globex);
-        let names: Vec<String> = both
-            .organisations()
-            .iter()
-            .map(Organisation::name)
-            .collect();
-        assert_eq!(names, ["globex", "acme"]);
-        assert!(both.guest.is_none());
-        assert_eq!(
-            both.organisation("acme").unwrap().guest,
-            guest("acme").guest
-        );
-        assert_eq!(Settings::from_toml(&both.to_toml()).unwrap(), both);
     }
 
     #[test]

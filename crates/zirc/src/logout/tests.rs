@@ -16,8 +16,6 @@ fn config(web: &str, orgs: &[&str]) -> String {
     text
 }
 
-const GUEST: &str = "[server]\nhost = \"acme.irc.zirc.dev\"\n[guest]\nurl = \"wss://acme.irc.zirc.dev/guest\"\norg = \"acme\"\nguest = \"guest-1\"\nchannel = \"#web/guest-1\"\npublic = \"#web\"\ngrant = \"g\"\nexpires = 9\n";
-
 fn how(local: bool) -> How {
     How {
         yes: true,
@@ -155,12 +153,12 @@ async fn it_asks_and_a_no_changes_nothing() {
 }
 
 #[tokio::test]
-async fn logout_takes_an_organisation_off_or_ends_a_guests_terminal_by_its_name() {
+async fn logout_takes_an_organisation_off_by_its_name() {
     // One of the machine's own: taken off, as `zirc orgs remove` does, and the other stays.
     let (path, _home, out) = run(
         &config("http://127.0.0.1:1", &["acme", "globex"]),
         Scope::One("acme".into()),
-        Kind::One,
+        Kind::Own,
         &how(true),
         "",
     )
@@ -169,18 +167,6 @@ async fn logout_takes_an_organisation_off_or_ends_a_guests_terminal_by_its_name(
     assert!(out.contains("Signed out of Acme."), "{out}");
     assert!(out.contains("You stay signed in to Globex."), "{out}");
     assert!(path.exists());
-
-    let (_, _home, out) = run(GUEST, Scope::One("acme".into()), Kind::Own, &how(true), "").await;
-    assert!(out.unwrap_err().contains("`zirc logout acme`"));
-
-    let (path, _home, out) = run(GUEST, Scope::One("acme".into()), Kind::One, &how(true), "").await;
-    let out = out.unwrap();
-    assert!(
-        out.contains("Logged out: this machine is no longer your terminal in #web."),
-        "{out}"
-    );
-    assert!(!out.contains("zirc.dev"), "{out}");
-    assert!(!path.exists());
 }
 
 #[tokio::test]

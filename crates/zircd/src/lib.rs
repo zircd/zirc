@@ -22,7 +22,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use tokio::sync::mpsc;
-use zirc_core::settings::Settings;
 use zirc_core::telemetry::{self, Telemetry};
 use zirc_core::{paths, settings};
 use zirc_proto::telemetry::{AppOpened, Client, Event};
@@ -65,22 +64,8 @@ pub enum Ended {
     Restart,
 }
 
-/// For each of `orgs` in `config.toml`'s `settings`, the guest's terminal it is, if it is one.
-fn guests_of(settings: &Settings, orgs: &[String]) -> Vec<Option<daemon::Guest>> {
-    orgs.iter()
-        .enumerate()
-        .map(|(at, org)| {
-            let guest = config::find(settings, org, at == 0).and_then(|org| org.guest);
-            guest.map(|guest| daemon::Guest {
-                room: guest.channel.clone(),
-                of: zirc_core::guest::of(&guest),
-            })
-        })
-        .collect()
-}
-
-/// Whether the machine is signed out of everything, `config.toml` gone, as when the last of
-/// its organisations was a guest's terminal zirc.dev forgot. zircd then stops, so a service
+/// Whether the machine is signed out of everything, `config.toml` gone, as after `zirc
+/// logout`. zircd then stops, so a service
 /// manager that runs it at login leaves it stopped rather than starting it again and again.
 fn nothing_to_connect_to(config: &Path) -> bool {
     let gone = !config.exists();
@@ -166,21 +151,18 @@ pub async fn run_with(
     let announce_every = config::announce_every(&settings);
     let request_hold = config::request_hold(&settings);
     let wake_limits = config::wake_limits(&settings);
-    // Guests' terminals aside: a machine's repositories say whose they are only when it's in
-    // several organisations of its own.
-    let guests = guests_of(&settings, &orgs);
-    let several = guests.iter().filter(|guest| guest.is_none()).count() > 1;
+    // A machine's repositories say whose they are only when it's in several organisations.
+    let several = orgs.len() > 1;
     let book = daemon::book::Shared::load(&home, daemon::now());
     let mut router = Router::new();
     let mut daemons = tokio::task::JoinSet::new();
-    for (at, ((name, config), guest)) in orgs.into_iter().zip(configs).zip(guests).enumerate() {
+    for (at, (name, config)) in orgs.into_iter().zip(configs).enumerate() {
         let (inputs, received) = mpsc::unbounded_channel::<Input>();
         tasks.spawn(irc::supervise(
             config_path.clone(),
             name.clone(),
             at == 0,
             inputs.clone(),
-            calls.clone(),
         ));
         let org = Org {
             first: at == 0,
@@ -191,7 +173,6 @@ pub async fn run_with(
                 paths::org(&home, &name)
             },
             name: name.clone(),
-            guest: guest.clone(),
         };
         std::fs::create_dir_all(&org.state)?;
         let server = format!("{}:{}", config.host, config.port);
@@ -210,7 +191,7 @@ pub async fn run_with(
         daemons.spawn(daemon::run(daemon, received));
         // zirc.dev's public server, by the name every client gives it, watches no repositories.
         let public = name == settings::PUBLIC_ORG;
-        router.add(name, public, guest.is_some(), inputs);
+        router.add(name, public, inputs);
     }
 
     tokio::pin!(shutdown);

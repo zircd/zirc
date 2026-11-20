@@ -485,7 +485,6 @@ impl Leaving {
 /// The credential for `listed` as a sign-in would take it, from `credentials`.
 fn credentials_of(org: &OrgCredentials, account_id: &str) -> Credentials {
     Credentials {
-        guest: None,
         server: org.server.clone(),
         account: org.account.clone(),
         nick: org.nick.clone(),

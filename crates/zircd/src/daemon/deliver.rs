@@ -25,10 +25,8 @@ impl Daemon {
         self.keep_said(response);
         // Agents don't hear guests: a guest's line wakes no session and is no session's
         // watch line, even with `--all`. Only a watch with no session, a person's, sees it.
-        // (A guest's message to this machine never gets here: guests have no account.) A
-        // guest's terminal is the guest's, though: what's said in their room is its sessions'
-        // conversation, the guest's own lines among them.
-        if self.org.guest.is_none() && from_guest(response) {
+        // (A guest's message to this machine never gets here: guests have no account.)
+        if from_guest(response) {
             self.watchers.retain(|watcher| {
                 watcher.session.is_some()
                     || !matches!(
@@ -283,19 +281,6 @@ impl Daemon {
         let me = me.as_deref().unwrap_or_default();
         let anyone = session.is_none();
         match heard {
-            // In a guest's room, what anyone else says is for every session here.
-            Response::Delivery(delivery) if self.org.guest.is_some() => {
-                let in_room = self
-                    .org
-                    .guest
-                    .as_ref()
-                    .is_some_and(|guest| guest.room.eq_ignore_ascii_case(&delivery.channel));
-                let said = matches!(
-                    delivery.message.event,
-                    Event::Text { .. } | Event::Custom { .. }
-                );
-                (in_room && said && !delivery.from.eq_ignore_ascii_case(me)).then_some(Why::Direct)
-            }
             Response::Delivery(delivery) => self.why_delivered(delivery, me, session),
             Response::Direct(direct) => direct_concerns(direct, session),
             Response::Reaction(reaction) => self.reacted_to(reaction, me, session).or_else(|| {

@@ -1,7 +1,5 @@
-//! `zirc logout`: signing this machine out, of everything, of one organisation (`zirc
-//! logout acme`, which `zirc orgs remove acme` still does too) or of one guest's terminal
-//! (`zirc logout acme/web`). What
-//! is asked, and what leaves, is zirc-core's ([`zirc_core::signout`]), in the apps' words
+//! `zirc logout`: signing this machine out, of everything or of one organisation (`zirc
+//! logout acme`, which `zirc orgs remove acme` still does too). What is asked, and what leaves, is zirc-core's ([`zirc_core::signout`]), in the apps' words
 //! ([`zirc_core::account_text`]), so every app and the CLI mean the same by it.
 
 use std::io::{BufRead, Write};
@@ -17,15 +15,14 @@ use zirc_core::signout::{Plan, Scope, revoke_key};
 
 use crate::client::{ask, shown};
 use crate::daemon::stop;
+use crate::service;
 use crate::setup::earlier_setup;
-use crate::{guest, service};
 
 /// `zirc logout`'s arguments.
 #[derive(Debug, Args)]
 pub struct Logout {
     /// The one organisation to take off this machine, as `zirc orgs` names it, such as
-    /// acme; or the guest's terminal to end, such as acme/web. Without one, signs this
-    /// machine out of everything.
+    /// acme. Without one, signs this machine out of everything.
     #[arg(conflicts_with = "all", value_name = "ORG")]
     target: Option<String>,
     /// Sign out of everything: what plain `zirc logout` does.
@@ -76,8 +73,7 @@ pub async fn logout(home: &Path, args: Logout, out: &mut (impl Write + Send)) ->
     let input = &mut std::io::BufReader::new(std::io::stdin());
     match args.target {
         Some(target) if !args.all => {
-            let name = guest::org_of(&target);
-            sign_out(home, &Scope::One(name), Kind::One, &args.how, input, out).await
+            sign_out(home, &Scope::One(target), Kind::Own, &args.how, input, out).await
         }
         _ => {
             sign_out(
@@ -110,10 +106,7 @@ fn list(home: &Path, json: bool, out: &mut impl Write) -> Result<()> {
         let orgs: Vec<serde_json::Value> = settings
             .iter()
             .flat_map(Settings::organisations)
-            .map(|org| {
-                let guest = org.guest.as_ref().map(zirc_core::guest::of);
-                serde_json::json!({ "name": org.name(), "server": org.server.host, "guest": guest })
-            })
+            .map(|org| serde_json::json!({ "name": org.name(), "server": org.server.host }))
             .collect();
         writeln!(out, "{}", serde_json::Value::Array(orgs))?;
         return Ok(());
@@ -126,15 +119,7 @@ fn list(home: &Path, json: bool, out: &mut impl Write) -> Result<()> {
         return Ok(());
     };
     for org in settings.organisations() {
-        match &org.guest {
-            Some(guest) => writeln!(
-                out,
-                "{}  guest in {}",
-                org.name(),
-                zirc_core::guest::of(guest)
-            )?,
-            None => writeln!(out, "{}  {}", org.name(), org.server.host)?,
-        }
+        writeln!(out, "{}  {}", org.name(), org.server.host)?;
     }
     Ok(())
 }
@@ -143,12 +128,7 @@ fn list(home: &Path, json: bool, out: &mut impl Write) -> Result<()> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Everything,
-    /// One organisation, its own or a guest's terminal, whichever the name is: by `zirc
-    /// logout <org>`.
-    One,
-    /// A guest's terminal: what [`Kind::One`] turns out to be when the name is one's.
-    Guest,
-    /// An organisation of one's own, by `zirc orgs remove`.
+    /// One organisation, by `zirc logout <org>` or `zirc orgs remove`.
     Own,
 }
 
@@ -158,7 +138,7 @@ fn yes(answer: &str) -> bool {
 }
 
 /// Signs out of `scope`: says what leaves and who loses their connection, asks (unless
-/// `how.yes`, or `kind` is a guest's terminal, which never asked), tells zirc.dev this
+/// `how.yes`), tells zirc.dev this
 /// machine's key is gone (unless `how.local`, or it can't be told: then says so), forgets
 /// the sign-in and restarts zircd without it, or stops it when nothing is left.
 async fn sign_out(
@@ -182,40 +162,26 @@ async fn sign_out(
     };
     let plan = Plan::new(&settings, scope)?;
     let socket = paths::socket(home);
-    let mut kind = kind;
-    if let Scope::One(name) = scope {
-        let guest = plan.leaving[0].guest.is_some();
-        kind = match (kind, guest) {
-            (Kind::Own, true) => {
-                bail!("{name} is a guest's terminal here: `zirc logout {name}` ends it")
-            }
-            (Kind::One, true) => Kind::Guest,
-            (Kind::One, false) => Kind::Own,
-            (kind, _) => kind,
-        };
-    }
 
     let sheet = plan.sheet();
-    if kind != Kind::Guest {
-        writeln!(out, "{}", sheet.title)?;
-        writeln!(out, "{}", sheet.body)?;
-        let agents = running_agents(&socket).await;
-        if !agents.is_empty() {
-            writeln!(
-                out,
-                "Agent sessions here lose their connection: {}.",
-                agents.join(", ")
-            )?;
-        }
-        if !how.yes {
-            write!(out, "{}? [y/N] ", sheet.confirm)?;
-            out.flush()?;
-            let mut answer = String::new();
-            input.read_line(&mut answer)?;
-            if !yes(&answer) {
-                writeln!(out, "Nothing changed.")?;
-                return Ok(());
-            }
+    writeln!(out, "{}", sheet.title)?;
+    writeln!(out, "{}", sheet.body)?;
+    let agents = running_agents(&socket).await;
+    if !agents.is_empty() {
+        writeln!(
+            out,
+            "Agent sessions here lose their connection: {}.",
+            agents.join(", ")
+        )?;
+    }
+    if !how.yes {
+        write!(out, "{}? [y/N] ", sheet.confirm)?;
+        out.flush()?;
+        let mut answer = String::new();
+        input.read_line(&mut answer)?;
+        if !yes(&answer) {
+            writeln!(out, "Nothing changed.")?;
+            return Ok(());
         }
     }
 
@@ -229,13 +195,7 @@ async fn sign_out(
     zirc_core::signout::forget(home, &path, &mut settings, &plan)
         .with_context(|| format!("changing {}", shown(&path)))?;
     for held in &plan.leaving {
-        match &held.guest {
-            Some(public) => writeln!(
-                out,
-                "Logged out: this machine is no longer your terminal in {public}."
-            )?,
-            None => writeln!(out, "{}", zirc_core::account_text::signed_out(&held.org))?,
-        }
+        writeln!(out, "{}", zirc_core::account_text::signed_out(&held.org))?;
     }
     if plan.ends_zirc_dev() {
         writeln!(out, "Signed out of zirc.dev.")?;

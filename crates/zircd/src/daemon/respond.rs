@@ -14,7 +14,7 @@ use zirc_proto::{Event, Message};
 use crate::git;
 
 use super::book::Field;
-use super::{Daemon, Guest, Watched, Which, wakes};
+use super::{Daemon, Watched, Which, wakes};
 
 impl Daemon {
     #[expect(
@@ -26,14 +26,6 @@ impl Daemon {
             let session = session.to_owned();
             self.book.seen(&session, super::now());
             self.session_acted(&session, how);
-        }
-        if let Some(guest) = &self.org.guest {
-            anyhow::ensure!(
-                Guest::takes(&request),
-                "{} is a guest's terminal, in {} alone: it posts there, and nothing else",
-                self.org.name,
-                guest.room
-            );
         }
         Ok(match request {
             Request::Status => self.status(),
@@ -319,7 +311,6 @@ impl Daemon {
             version: Some(env!("CARGO_PKG_VERSION").to_owned()),
             orgs: Vec::new(),
             breaker: Some(self.breaker.state(self.clock.now())),
-            guest: self.org.guest.as_ref().map(|guest| guest.of.clone()),
             busy_ms: Some(self.busy.longest_ms(Instant::now())),
         })
     }
@@ -349,8 +340,7 @@ impl Daemon {
         Ok(self.repo_list())
     }
 
-    /// Says `text` as `session` ([`Request::Post`]): in a guest's terminal's room; as a note
-    /// when it's addressed to one agent session; else in the channel `to` names, or the one
+    /// Says `text` as `session` ([`Request::Post`]): as a note when it's addressed to one agent session; else in the channel `to` names, or the one
     /// such a post goes to.
     async fn say(
         &mut self,
@@ -362,22 +352,6 @@ impl Daemon {
         everyone: bool,
     ) -> Result<Response> {
         self.awaits_said(&session, &text);
-        // A guest's terminal says everything in its room.
-        if let Some(guest) = &self.org.guest {
-            let channel = guest.room.clone();
-            self.connected()?;
-            anyhow::ensure!(
-                self.joined.contains(&channel),
-                "{channel} isn't joined yet: zircd is joining it"
-            );
-            let sealed = self.seal_for(&channel, &sealed, None)?;
-            let message = Message {
-                app: app.as_deref().and_then(zirc_proto::app_label),
-                ..Message::new(session, Event::Text { body: text })
-            };
-            self.publish_sealed(&channel, message, None, sealed);
-            return Ok(Response::channel(channel));
-        }
         // Addressed to one agent session, it's a note for it alone.
         if matches!(to, Target::Agents)
             && !everyone
@@ -426,13 +400,6 @@ impl Daemon {
             said.id
         );
         self.connected()?;
-        if let Some(guest) = &self.org.guest {
-            anyhow::ensure!(
-                guest.room.eq_ignore_ascii_case(&said.target),
-                "a guest's terminal says nothing outside {}",
-                guest.room
-            );
-        }
         let sealed = self.seal_for(&said.target, sealed, Some(&said.id))?;
         self.awaits_said(session, text);
         self.task_said(session, text, &said.target);

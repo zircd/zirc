@@ -181,12 +181,6 @@ pub struct LoginRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub connected: Option<Vec<String>>,
-    /// For a guest's terminal (`zirc login acme/web`, [`crate::guest_terminal`]): the public
-    /// channel it joins as the guest who confirms it, in that channel's chat rather than by
-    /// signing in. It must send [`Self::device_key`] too.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub guest: Option<crate::guest_terminal::GuestTarget>,
 }
 
 /// The most organisations one app is signed in to at once. zirc.dev enforces it
@@ -290,11 +284,6 @@ pub struct Credentials {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<OrgCredentials>>", optional)]
     pub orgs: Vec<OrgCredentials>,
-    /// For a guest's terminal ([`LoginRequest::guest`]): what it connects with, in place of
-    /// the server above, which then names the gateway's host.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub guest: Option<crate::guest_terminal::GuestCredentials>,
 }
 
 /// What a person's app sends, as its own account, to end the zirc.dev browser session that
@@ -517,7 +506,6 @@ pub fn typescript() -> String {
     .chain(crate::frame_typescript(&config))
     .chain(crate::irc::typescript(&config))
     .chain(crate::desired::typescript(&config))
-    .chain(crate::guest_terminal::typescript(&config))
     {
         out.push_str("\nexport ");
         out.push_str(&decl);
@@ -605,7 +593,6 @@ mod tests {
         assert_eq!(
             done,
             LoginStatus::Done(Credentials {
-                guest: None,
                 server: Server {
                     host: "acme.irc.zirc.dev".into(),
                     port: None,
@@ -628,7 +615,6 @@ mod tests {
             serde_json::from_str(r#"{"client":"zirc 0.1.3","host":"mbp"}"#).unwrap();
         assert_eq!(older.kind, None);
         let person = LoginRequest {
-            guest: None,
             client: "zirc-desktop 0.1.0".into(),
             host: "mbp".into(),
             kind: Some(LoginKind::Person),
@@ -672,7 +658,6 @@ mod tests {
         assert_eq!(credentials.orgs[1].owner.as_deref(), Some("matt"));
         // A client that takes several says so, and one that doesn't sends what it did.
         let several = LoginRequest {
-            guest: None,
             client: "zirc 0.1.17".into(),
             host: "mbp".into(),
             kind: None,
@@ -714,7 +699,6 @@ mod tests {
     #[test]
     fn keeps_passwords_out_of_debug_output() {
         let credentials = Credentials {
-            guest: None,
             server: Server {
                 host: "acme.irc.zirc.dev".into(),
                 port: None,

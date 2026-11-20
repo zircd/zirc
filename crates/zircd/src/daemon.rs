@@ -90,9 +90,6 @@ pub enum Input {
     Disconnected,
     /// The web app no longer takes this machine's account, so it's stopped connecting.
     Revoked,
-    /// It's stopped connecting for this reason, until `config.toml` changes: as a guest's
-    /// terminal the web app lets in no more, which couldn't be taken off the machine.
-    Refused(String),
     /// The binaries were updated to this release, so it's time to restart.
     Updated(zirc_core::update::Version),
     /// A line from the IRC server.
@@ -306,47 +303,6 @@ pub struct Org {
     /// Whether the machine is signed in to other organisations too. Only then do its
     /// repositories say whose they are: someone in one organisation sees no change.
     pub several: bool,
-    /// When it's a guest's terminal rather than the machine's own: its guest's room.
-    pub guest: Option<Guest>,
-}
-
-/// A guest's terminal ([`zirc_proto::guest_terminal`]): in its guest's room alone, where
-/// its sessions' posts go and whatever anyone else says wakes them, as their conversation.
-/// Nothing else is sent there, no repository, topic, intent, decision or state: the gateway
-/// refuses all but the room.
-#[derive(Debug, Clone)]
-pub struct Guest {
-    /// The guest's room, such as `#web/guest-21042`: the one channel it's in.
-    pub room: String,
-    /// The public channel it's a guest of, as `zirc login` names it, such as `acme/#web`.
-    pub of: String,
-}
-
-impl Guest {
-    /// Whether a guest's terminal answers `request` itself: what it posts and reacts in its
-    /// room, and what's about this machine alone. The rest is refused, as the gateway would.
-    fn takes(request: &Request) -> bool {
-        matches!(
-            request,
-            Request::Status
-                | Request::RepoList
-                | Request::Post { .. }
-                | Request::SealedPost { .. }
-                | Request::Unseal { .. }
-                | Request::React { .. }
-                | Request::Typing { .. }
-                | Request::Name { .. }
-                | Request::Queries { .. }
-                | Request::Who
-                | Request::LocalSessions
-                | Request::Wakes { .. }
-                | Request::WakesResume
-                | Request::WaitFor { .. }
-                | Request::Stack { .. }
-                | Request::Stop
-                | Request::Restart
-        )
-    }
 }
 
 /// The sessions working in one checkout, the last one added last.
@@ -876,7 +832,7 @@ impl Daemon {
         let (unwatched, saved): (Vec<Saved>, Vec<Saved>) = saved
             .unwrap_or_default()
             .into_iter()
-            .filter(|saved| self.org.guest.is_none() && saved.is_of(&self.org))
+            .filter(|saved| saved.is_of(&self.org))
             .partition(|saved| saved.unwatched);
         self.unwatched = unwatched.into_iter().map(|saved| saved.path).collect();
         let saved: Vec<(PathBuf, Vec<RepoSession>)> = saved
@@ -984,10 +940,6 @@ impl Daemon {
 
     pub async fn handle(&mut self, input: Input) {
         match input {
-            // A guest's terminal reads its room's history and nothing else's, and trims none.
-            Input::Request(request, answer) if self.guest_refuses(&request) => {
-                let _ = answer.send(self.guest_refusal());
-            }
             Input::Request(Request::Trim { target, id, reason }, answer) => {
                 self.trim(target, id, reason.as_deref(), answer);
             }
@@ -1016,7 +968,6 @@ impl Daemon {
             }
             Input::Watch(heard, session) => self.watch(heard, session),
             Input::Revoked => self.stopped(zirc_core::ipc::REVOKED.to_owned()),
-            Input::Refused(message) => self.stopped(message),
             Input::Connected(client) => {
                 self.problem = None;
                 self.client = Some(client);
@@ -1088,34 +1039,6 @@ impl Daemon {
         self.problem = Some(message.clone());
         self.tell_watchers(&Response::Error { message });
         self.watchers.clear();
-    }
-
-    /// What a guest's terminal answers a request it refuses ([`Daemon::guest_refuses`]).
-    fn guest_refusal(&self) -> Response {
-        let room = self
-            .org
-            .guest
-            .as_ref()
-            .map_or("", |guest| guest.room.as_str());
-        Response::Error {
-            message: format!(
-                "{} is a guest's terminal: it reads {room}'s history alone",
-                self.org.name
-            ),
-        }
-    }
-
-    /// Whether a guest's terminal refuses `request`, which waits on the server: anything but
-    /// reading its own room.
-    fn guest_refuses(&self, request: &Request) -> bool {
-        let Some(guest) = &self.org.guest else {
-            return false;
-        };
-        match request {
-            Request::Read { target, .. } => !guest.room.eq_ignore_ascii_case(target),
-            Request::Trim { .. } | Request::Conversations { .. } => true,
-            _ => false,
-        }
     }
 
     /// Stops, to start again from its binary: watches hear so, and watch again once it's
@@ -1996,7 +1919,6 @@ mod tests {
             first: true,
             state: home.path().to_owned(),
             several: false,
-            guest: None,
         };
         let (inputs, mut received) = mpsc::unbounded_channel();
         let mut daemon = Daemon::new(
@@ -2028,7 +1950,6 @@ mod tests {
             first: true,
             state: home.path().to_owned(),
             several: false,
-            guest: None,
         };
         let (inputs, mut received) = mpsc::unbounded_channel();
         let mut daemon = Daemon::new(
@@ -2072,7 +1993,6 @@ mod tests {
             first: true,
             state: home.path().to_owned(),
             several: false,
-            guest: None,
         };
         let (inputs, _received) = mpsc::unbounded_channel();
         let mut daemon = Daemon::new(
