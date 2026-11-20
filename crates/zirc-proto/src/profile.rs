@@ -27,6 +27,10 @@ pub const ME_PATH: &str = "/api/me";
 /// picture and handles are set, and it's deleted. Every app's Settings opens it from Profile.
 pub const ACCOUNT_PAGE_PATH: &str = "/account";
 
+/// The signed-in person's organisations on the web app, under its address: where one is made
+/// or joined. Web chat's Add organisation and Create or join one open it.
+pub const ORGANISATIONS_PAGE_PATH: &str = "/orgs";
+
 /// Where the signed-in person's account picture is, under the web app's address.
 pub const ME_AVATAR_PATH: &str = "/api/me/avatar";
 
