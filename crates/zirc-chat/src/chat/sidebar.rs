@@ -109,6 +109,10 @@ pub struct ListRow {
     /// its guests' rooms folded out of sight ([`Chat::is_unread`]). Its rooms, and any guest's
     /// room still listed, are rows of their own, bold for themselves.
     pub unread: bool,
+    /// Whether it shows the unread pip beside its name: a channel's, a room's or a guest's
+    /// room's while unread and not muted, never a direct message's, which shows unread by its
+    /// bold name and badge alone (the user's choice, 20 Nov 2026).
+    pub pip: bool,
     /// The count it shows ([`Chat::badge`]), a channel's by the same rule as `unread`, a
     /// fold's what's under it.
     pub badge: u32,
@@ -178,6 +182,7 @@ impl ListRow {
             starred: false,
             muted: false,
             unread: false,
+            pip: false,
             badge: 0,
             badge_label: None,
             direct_kind: None,
@@ -315,6 +320,13 @@ impl Chat {
         }
         for row in &mut list {
             row.settle_names();
+            row.pip = row.unread
+                && !row.muted
+                && !row.direct
+                && matches!(
+                    row.kind,
+                    ListKind::Conversation | ListKind::Room | ListKind::GuestRoom
+                );
             if self.says_no_messages(row) {
                 row.preview = Some(NO_MESSAGES.to_owned());
                 row.placeholder = true;

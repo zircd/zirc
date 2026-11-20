@@ -940,7 +940,7 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
         label,
         target,
         depth,
-        pinned,
+        pip,
         agent,
         muted,
         preview,
@@ -997,11 +997,9 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
         0 => String::new(),
         badge => format!(" {} ", zirc_core::chat::badge_label(badge as usize)),
     };
-    let mark = if pinned { "*" } else { "" };
-    let name = fit(
-        &format!("{label}{mark}"),
-        width.saturating_sub(lead_width + count.width() + 1),
-    );
+    // A starred row isn't marked, as in every app: it's under Starred (the user's choice,
+    // 20 Nov 2026).
+    let name = fit(&label, width.saturating_sub(lead_width + count.width() + 1));
     // What was said last, dimmed after the name, and when, at the right, where there's room.
     let room = width.saturating_sub(lead_width + name.width() + count.width() + 1);
     // The pill pads itself, so the time needs no space before it.
@@ -1019,7 +1017,7 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
         fg(theme.muted)
     };
     let count_style = fg(theme.on_badge).bg(colour(theme.badge));
-    if unread {
+    if pip {
         spans[0] = Span::styled("▎", fg(theme.text));
     }
     spans.push(Span::styled(indent, name_style));
@@ -3468,11 +3466,12 @@ mod tests {
             side(&rows, 4),
             [
                 direct.as_str(),
-                // What a person last said, dimmed, and when; their presence in front.
-                "▎● bob hi       now 1",
+                // What a person last said, dimmed, and when; their presence in front. Unread,
+                // with no pip: a direct message never has one (the user's choice, 20 Nov 2026).
+                " ● bob hi       now 1",
                 // A session by what it goes by, its tool's mark in front in its colour; the
                 // list too narrow here for its preview.
-                "▎⚙ cc-77aa01        1",
+                " ⚙ cc-77aa01        1",
                 " alice",
             ]
         );
@@ -3962,7 +3961,8 @@ mod tests {
             side(&app),
             [
                 starred.as_str(),
-                " #web* bob: dep… 57m",
+                // Not marked: it's under Starred.
+                " #web bob: depl… 57m",
                 channels.as_str(),
                 "▎#api cc-12:… 58m 1"
             ]
@@ -3979,7 +3979,8 @@ mod tests {
             pins: vec!["#web".into()],
             ..crate::prefs::Prefs::default()
         });
-        assert!(side(&app)[1].starts_with(" #web*"));
+        assert_eq!(side(&app)[0], starred);
+        assert!(side(&app)[1].starts_with(" #web "));
         // The channel's header counts its threads, in the core's line.
         let _ = app.select(app.chat.position("#api").unwrap());
         assert!(

@@ -331,8 +331,8 @@ pub enum Side {
         /// How far in it's nested: a branch room under its channel, a machine under its
         /// person, an agent session under its machine.
         depth: usize,
-        /// Whether it's pinned.
-        pinned: bool,
+        /// Whether it shows the unread pip at the edge: zirc-chat's `ListRow::pip`.
+        pip: bool,
         /// For an agent session, its tool's mark and its hue in degrees, drawn in front.
         agent: Option<(&'static str, u16)>,
         /// Whether its conversation is muted: drawn muted, never bold.
@@ -535,7 +535,7 @@ impl App {
             label,
             target,
             depth: usize::from(row.depth),
-            pinned: row.starred,
+            pip: row.pip,
             agent,
             muted: row.muted,
             preview,
