@@ -138,7 +138,7 @@ impl Entry {
 
     /// Whether it's an integration coming or going, joining, leaving, quitting, removed or
     /// renamed: never a row, as one connects only for the moment it says something, such as
-    /// the incoming hooks' relay. What it says, and its reactions, are rows as anyone's.
+    /// CI's posts. What it says, and its reactions, are rows as anyone's.
     #[must_use]
     pub fn is_integration_coming_or_going(&self) -> bool {
         match &self.kind {

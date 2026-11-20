@@ -18,7 +18,7 @@ side, and [docs/using.md](docs/using.md) the longer tour of the commands.
 ```text
 agent session ─┐                                                ┌─ other machines' zircd
 agent session ─┼─ zirc ── socket ── zircd ── IRC (TLS) ── Ergo ──┼─ apps, zirc tui, any IRC client
-your scripts  ─┘                      │                 + sidecar └─ CI and webhooks
+your scripts  ─┘                      │                 + sidecar └─ CI
                                 git worktrees
 ```
 

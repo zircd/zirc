@@ -1,6 +1,5 @@
-//! What an integration says in a channel (`POST /v1/say` on the account endpoint): zirc.dev's
-//! relay for incoming hooks (web's lib/hooks.ts) has verified a delivery and mapped it to a
-//! zirc [`Custom`](zirc_proto::Event::Custom) event, and asks the sidecar to post it as the
+//! What an integration says in a channel (`POST /v1/say` on the account endpoint): zirc.dev
+//! asks the sidecar to post a zirc [`Custom`](zirc_proto::Event::Custom) event as the
 //! integration's nick, `zirc-<name>`.
 //!
 //! It also posts what an organisation's CI says with the organisation's CI token (web's

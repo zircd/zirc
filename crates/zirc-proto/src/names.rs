@@ -37,8 +37,8 @@ pub const RESERVED_GUEST_NAMES: [&str; 9] = [
 ];
 
 /// Nicks of zirc's own integrations (the alert bridge's, CI's, the tenant's recorder's and pusher's), which
-/// no team's incoming hook may post as: the web app refuses them when a hook is made, and the
-/// tenant sidecar refuses to post as them, so neither can be the one to pass for the other.
+/// no team's integration may post as: the tenant sidecar refuses to post as them, so no
+/// integration can pass for another.
 pub const RESERVED_INTEGRATION_NICKS: [&str; 8] = [
     "zirc-alerts",
     "zirc-ci",

@@ -35,7 +35,7 @@
 //!   (`crate::trim`): `{"removed", "channel", "scrubbed"}` (200).
 //!
 //! - `POST /v1/say` `{"nick", "channel", "kind", "text", "data"}`: posts a custom event into
-//!   a channel as an integration, `zirc-<name>` (`crate::say`), for zirc.dev's incoming hooks:
+//!   a channel as an integration, `zirc-<name>` (`crate::say`), for what zirc.dev posts as one:
 //!   `{"posted"}` (200), 400 for what can't be said, 502 when the server won't take it.
 //!
 //! - `GET /v1/activity?since=<nanoseconds>&after=<id>&limit=<n>`: the organisation's activity
