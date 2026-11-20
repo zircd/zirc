@@ -51,9 +51,6 @@ pub const MORE_RESULTS: &str = "More results";
 /// Why searching everywhere can't be chosen offline.
 pub const OFFLINE_EVERYWHERE: &str = "Offline: only what this device has loaded";
 
-/// Why oldest first can't be chosen yet.
-const OLDEST_NOT_YET: &str = "The server can't list oldest first yet";
-
 /// A search of the organisation's history: its pages so far, and how many matches each
 /// conversation has.
 #[derive(Debug, Clone)]
@@ -222,8 +219,6 @@ pub struct SortChoice {
     pub label: String,
     /// Whether it's the order the results are in.
     pub chosen: bool,
-    /// Why it can't be chosen, if it can't.
-    pub unavailable: Option<String>,
 }
 
 /// A conversation's matches, in a search everywhere sorted best first: ready to draw and
@@ -244,6 +239,8 @@ pub struct SearchGroup {
     /// What a screen reader says of that count, which narrows the search to it: `23 in
     /// #api: search only there`.
     pub count_a11y: String,
+    /// What a screen reader calls its list of hits: `Results in #api`.
+    pub hits_a11y: String,
     /// Its best few, newest first.
     pub hits: Vec<SearchHit>,
     /// The token that narrows the search to it: `in:#api`.
@@ -320,7 +317,8 @@ pub struct SearchScreen {
     pub more_groups: Option<String>,
     /// The hits in one list, otherwise.
     pub hits: Vec<SearchHit>,
-    /// Whether each hit in the list says its conversation: everywhere, by time.
+    /// Whether each hit in the list says its conversation, in its [`SearchHit::aside`]:
+    /// everywhere, by time.
     pub rooms: bool,
     /// The widening row, in one conversation.
     pub elsewhere: Option<Elsewhere>,
@@ -629,7 +627,14 @@ impl Chat {
             let (groups, more) = self.search_groups(&found, counts, all_groups);
             (groups, more, Vec::new())
         } else {
-            (Vec::new(), None, listed(sort, found))
+            let mut hits = listed(sort, found);
+            // Every conversation's hits in one list: each says where it was, before when.
+            if everywhere {
+                for hit in &mut hits {
+                    hit.aside = format!("{} · {}", hit.place, hit.when);
+                }
+            }
+            (Vec::new(), None, hits)
         };
 
         let searching = typed && server.is_some_and(ServerSearch::is_asking);
@@ -668,13 +673,15 @@ impl Chat {
         } else {
             Vec::new()
         };
+        // Only the orders that can be given, as every app lists them: the server can't list
+        // oldest first yet, so that one shows offline, or once typed (`sort:old`).
         let sorts = [Sort::Best, Sort::New, Sort::Old]
             .into_iter()
+            .filter(|&choice| choice != Sort::Old || !online || sort == Sort::Old)
             .map(|choice| SortChoice {
                 sort: choice,
                 label: sort_name(choice).to_owned(),
                 chosen: choice == sort,
-                unavailable: (choice == Sort::Old && online).then(|| OLDEST_NOT_YET.to_owned()),
             })
             .collect();
         let a11y = match (&header, &empty) {
@@ -815,6 +822,7 @@ impl Chat {
             let title = self.title(&name);
             groups.push(SearchGroup {
                 count_a11y: format!("{count} in {title}: search only there"),
+                hits_a11y: format!("{} in {title}", super::RESULTS),
                 title,
                 face: self
                     .conversation_face(&name)

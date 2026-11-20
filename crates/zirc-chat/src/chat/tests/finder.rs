@@ -155,6 +155,8 @@ fn in_one_conversation_it_is_flat_newest_first_and_says_how_many_elsewhere() {
     );
     assert_eq!(screen.sort_label, "Sort: Newest");
     assert!(screen.groups.is_empty() && !screen.rooms);
+    // In one conversation a hit's aside is only when.
+    assert!(screen.hits.iter().all(|hit| hit.aside == hit.when));
     assert_eq!(screen.a11y, "23 results in #api, newest");
 
     // Offline: no row, and the limits line says why.
@@ -287,6 +289,9 @@ fn everywhere_by_best_match_groups_by_conversation_and_by_time_is_one_list() {
     // A direct message's place doesn't name the person again.
     let places: Vec<_> = screen.hits.iter().map(|h| h.place.as_str()).collect();
     assert_eq!(places, ["DM", "#web", "#api"]);
+    // Every app draws where it was before when, as one aside.
+    let hit = &screen.hits[1];
+    assert_eq!(hit.aside, format!("#web · {}", hit.when));
     assert_eq!(
         chat.hit_place("leo", "me"),
         format!("to {}", chat.title("leo"))
@@ -294,19 +299,16 @@ fn everywhere_by_best_match_groups_by_conversation_and_by_time_is_one_list() {
 }
 
 #[test]
-fn the_sort_menu_offers_oldest_disabled_with_a_reason_while_online() {
+fn the_sort_menu_leaves_out_oldest_while_online() {
     let chat = scene();
     let query = SearchQuery::parse("timeout", Some("#api")).unwrap();
     let screen = chat.search_screen(&query, None, true, false, wall);
-    let sorts: Vec<_> = screen
-        .sorts
-        .iter()
-        .map(|s| (s.label.as_str(), s.unavailable.is_some()))
-        .collect();
-    assert_eq!(
-        sorts,
-        [("Best match", false), ("Newest", false), ("Oldest", true)]
-    );
+    let sorts: Vec<_> = screen.sorts.iter().map(|s| s.label.as_str()).collect();
+    assert_eq!(sorts, ["Best match", "Newest"]);
+    // Offline, this device's own messages can be listed oldest first.
+    let screen = chat.search_screen(&query, None, false, false, wall);
+    let sorts: Vec<_> = screen.sorts.iter().map(|s| s.label.as_str()).collect();
+    assert_eq!(sorts, ["Best match", "Newest", "Oldest"]);
     // Typed, it orders what's found, and says so.
     let old = SearchQuery::parse("sort:old timeout", Some("#web")).unwrap();
     let screen = chat.search_screen(&old, None, true, false, wall);

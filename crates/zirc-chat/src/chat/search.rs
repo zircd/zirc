@@ -237,6 +237,9 @@ pub struct SearchHit {
     /// Its day and time, as every list says it: `15:48` today, `Sat 08:00` within the
     /// week, `2 Nov`, `2 Nov 2025` ([`super::list_when`]).
     pub when: String,
+    /// What every app draws beside the name, muted: its [`Self::when`], and in a list of
+    /// every conversation's hits where it was before it, `#api · Sat 08:00`.
+    pub aside: String,
     /// What a screen reader says of it: "Leo Okafor in #api, 9:14: the gateway's upstream
     /// timeout is 30s".
     pub a11y: String,
@@ -282,6 +285,7 @@ impl Chat {
             loaded: hit.loaded,
             face: self.face(&self.sender_avatar(&hit.from)),
             place: self.hit_place(name, &hit.from),
+            aside: when.clone(),
             when,
         }
     }
