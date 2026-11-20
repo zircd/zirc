@@ -23,5 +23,5 @@ async fn main() -> std::io::Result<()> {
         .with_ansi(std::io::stderr().is_terminal())
         .with_writer(std::io::stderr)
         .init();
-    zirc_sidecar::run(cli.options).await
+    zirc_sidecar::run_until_stopped(cli.options).await
 }

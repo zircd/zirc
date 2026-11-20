@@ -61,6 +61,38 @@ pub async fn run(options: Options) -> std::io::Result<()> {
     Ok(())
 }
 
+/// [`run`] until the process is asked to stop ([`stopped`]), then ends, `Ok`: as PID 1 in its
+/// container nothing else answers SIGTERM, so Kubernetes waited out the grace period and
+/// killed it, and every deploy's restart read as an Error, exit 137.
+///
+/// # Errors
+///
+/// As [`run`]'s.
+pub async fn run_until_stopped(options: Options) -> std::io::Result<()> {
+    tokio::select! {
+        ran = run(options) => ran,
+        () = stopped() => {
+            tracing::info!("asked to stop: stopping");
+            Ok(())
+        }
+    }
+}
+
+/// Ends when the process is asked to stop: Ctrl-C, or SIGTERM, as Kubernetes and `docker
+/// stop` send.
+///
+/// # Panics
+///
+/// If SIGTERM's handler can't be set, which only fails outside Unix.
+pub async fn stopped() {
+    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("SIGTERM handler");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {}
+        _ = term.recv() => {}
+    }
+}
+
 /// The HMAC-SHA256 of `body` under `secret`, in lowercase hex: what the sidecar signs with
 /// and derives passphrases by.
 #[must_use]

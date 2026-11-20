@@ -342,7 +342,7 @@ pub async fn run(options: Options) -> anyhow::Result<()> {
                 None => std::future::pending().await,
             }
         } => Err(anyhow::anyhow!("the side for imgproxy and the media worker stopped: {:?}", ended?)),
-        () = stopped() => Ok(()),
+        () = zirc_sidecar::stopped() => Ok(()),
     };
     if let Some(renewing) = renewing {
         renewing.abort();
@@ -547,16 +547,6 @@ async fn quietly(mut command: Command) -> anyhow::Result<()> {
         );
     }
     Ok(())
-}
-
-/// Ends when the process is asked to stop: Ctrl-C, or SIGTERM, as `docker stop` sends.
-async fn stopped() {
-    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .expect("SIGTERM handler");
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {}
-        _ = term.recv() => {}
-    }
 }
 
 /// `path` from the working directory, as Ergo runs in the data directory instead.
