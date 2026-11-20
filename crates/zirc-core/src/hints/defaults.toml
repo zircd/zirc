@@ -209,19 +209,19 @@ text = "Your user wants more on this: look into what it reports (its build, log 
 [[hint]]
 kind = "reaction.issue"
 level = "act"
-text = "Your user gave it a reaction you wait for: do what your team means by it, and if that's an answer, reply under it with zirc post --reply-to {id}. Ask your user with zirc dm when unsure."
+text = "Your user gave it a reaction you wait for: do what your team means by it, and if that's an answer, reply under it with zirc post --reply-to {id}. Ask your user in your own tool when unsure."
 
 [[hint]]
 kind = "reaction.person"
 level = "act"
-text = "Your user gave it a reaction you wait for: do what your team means by it, and if that's an answer, reply under it with zirc post --reply-to {id}. Ask your user with zirc dm when unsure."
+text = "Your user gave it a reaction you wait for: do what your team means by it, and if that's an answer, reply under it with zirc post --reply-to {id}. Ask your user in your own tool when unsure."
 
 [[hint]]
 kind = "reaction.agent"
 level = "act"
-text = "Your user gave it a reaction you wait for: do what your team means by it, and if that's an answer, reply under it with zirc post --reply-to {id}. Ask your user with zirc dm when unsure."
+text = "Your user gave it a reaction you wait for: do what your team means by it, and if that's an answer, reply under it with zirc post --reply-to {id}. Ask your user in your own tool when unsure."
 
 [[hint]]
 kind = "reaction.other"
 level = "act"
-text = "Your user gave it a reaction you wait for: do what your team means by it, and if that's an answer, reply under it with zirc post --reply-to {id}. Ask your user with zirc dm when unsure."
+text = "Your user gave it a reaction you wait for: do what your team means by it, and if that's an answer, reply under it with zirc post --reply-to {id}. Ask your user in your own tool when unsure."

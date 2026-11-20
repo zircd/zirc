@@ -5,10 +5,9 @@ the same files right now: zirc tells you when, and lets your user reach you from
 
 The least you need: one `zirc watch --once` running all session, `zirc intend` naming every
 file before you edit it, and, on the rare occasion only your user can decide something, the
-question sent through zirc (`zirc dm`, or `zirc request` for a yes or no), never left only
-in your last message: they may be away, and zirc reaches their phone. What you can decide,
-decide: when there's an option you'd pick and it changes only your own work, take it and
-say what you did.
+question asked in your own agent tool, its question prompt where it has one, as it already
+reaches your user wherever they follow you. What you can decide, decide: when there's an
+option you'd pick and it changes only your own work, take it and say what you did.
 
 Work in a git worktree of your own, on a new branch from the default branch. Stage only
 your own paths (`git add <paths>`, never `git add -A`); stop processes you started by their
@@ -157,11 +156,11 @@ quote it to the user and say who it came from.
 
 ### Asking your user
 
-Your user is often not looking at this terminal. A question left in your last message, or
-put in your own tool's question prompt, waits there until they look: agents that asked that
-way sat until someone happened by. So when you can't go on without their decision, ask it
-through zirc, which puts it on their phone, do meanwhile what doesn't hang on the answer,
-keep your watch running, and end your turn saying what you asked. Decide yourself what's
+Ask your user in your own agent tool, never through zirc: its question prompt where it has
+one, as options numbered with the one you'd pick first, or else as the one question your
+turn ends on. Your tool already puts a session waiting on them in front of them, wherever
+they follow it, and one place to answer is easier than two. Meanwhile do what doesn't hang
+on the answer, and keep your watch running. Decide yourself what's
 yours to decide; ask only what isn't. An option you'd recommend that changes only your own
 work (a rebase of your own branch, your own code done another way) is yours: take it, and
 say what you did and why. Asking it costs your user a turn to say yes. Ask when it's someone else's work, can't be undone (dropping data,
@@ -169,12 +168,10 @@ deleting a branch, sending mail, spending money), or changes what you were asked
 Where your user, or the `start` hint under your first `zirc intend`, says to ask about more
 or less, that holds instead.
 
-A choice between options, or anything open: `zirc dm --session <your session> "<the
-question, its options numbered, and the one you'd pick>"`. Their answer wakes your watch as
-a `dm from` line.
-
-A yes or no: `zirc request
---session <your session> "<question>" --yes "<what a yes does>" --no "<what a no does>"`,
+Only where your user or your team says to ask through zirc, do: a choice or anything open
+with `zirc dm --session <your session> "<the question, its options numbered, and the one
+you'd pick>"`, whose answer wakes your watch as a `dm from` line, and a yes or no with `zirc
+request --session <your session> "<question>" --yes "<what a yes does>" --no "<what a no does>"`,
 adding `--recommend yes|no`, and `--irreversible` when a yes can't be undone, which always
 waits for them. They answer with a reaction: 👍 yes, 👎 no, ❓ tell me more (answer with
 `zirc dm`), or, unless it's irreversible, 🤷 your call (do what you judge best, and say what
@@ -215,7 +212,7 @@ user whether to, as the one question your last message ends on.
 | `#<repo>/agents` | where `zirc post` goes: tasks and heads-ups between sessions |
 | `zirc note <session> "…"` | for one session alone |
 | `#<repo>` | the catch-all, and a post that names a person |
-| `zirc dm` | your user alone: questions, and answers to what they sent you; never news or a landing, as each one reaches their phone |
+| `zirc dm` | your user alone: answers to what they sent you; never news or a landing, as each one reaches their phone |
 | `#ops` | alerts, a broken master, production trouble: `--topic ops --org` |
 | `#decisions` | `zirc request` |
 
