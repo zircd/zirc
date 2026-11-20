@@ -90,6 +90,29 @@ impl Chat {
 
     /// The lines that say `text` to `target`, as [`Chat::say`] sends them.
     pub(super) fn said(&mut self, target: &str, text: &str, action: bool) -> Vec<Line> {
+        let lines = self.said_now(target, text, action);
+        if self.is_connected() {
+            return lines;
+        }
+        // Offline: it waits, and goes once the conversation's joined again.
+        self.held.push((target.to_owned(), lines));
+        Vec::new()
+    }
+
+    /// What was said to `target` while not connected, now that it can go: a channel's once
+    /// joined again, a direct message's (`channel` false) once connected.
+    pub(super) fn release(&mut self, target: Option<&str>) -> Vec<Line> {
+        let (going, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut self.held)
+            .into_iter()
+            .partition(|(to, _)| match target {
+                Some(channel) => to.eq_ignore_ascii_case(channel),
+                None => !super::is_channel(to),
+            });
+        self.held = waiting;
+        going.into_iter().flat_map(|(_, lines)| lines).collect()
+    }
+
+    fn said_now(&mut self, target: &str, text: &str, action: bool) -> Vec<Line> {
         let limits = self.link.as_ref().and_then(|link| link.multiline);
         let mut lines = Vec::new();
         for message in self.outgoing(text, action) {

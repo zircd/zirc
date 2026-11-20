@@ -24,6 +24,9 @@ pub struct Session {
     /// What's shown.
     pub app: App,
     supervisor: Supervisor,
+    /// What was said while not connected: it goes once the connection's up, as zirc-app's
+    /// connection holds lines for the other apps (the user's choice, 20 Nov 2026).
+    outbox: Vec<Line>,
     /// This machine's zircd's socket, which settings such as who may query its agents are
     /// changed through, if there's one to ask.
     pub zircd: Option<PathBuf>,
@@ -135,6 +138,7 @@ impl Session {
         let mut session = Self {
             app,
             supervisor,
+            outbox: Vec::new(),
             zircd: None,
             answers: mpsc::unbounded_channel(),
             sessions: mpsc::unbounded_channel(),
@@ -274,8 +278,10 @@ impl Session {
     }
 
     fn up(&mut self, client: &zirc_irc::Client) {
-        let lines = self.app.connected(connection::link(client));
+        let mut lines = self.app.connected(connection::link(client));
         self.app.connection = self.supervisor.status().clone();
+        // What waited while offline goes after registering again.
+        lines.append(&mut self.outbox);
         self.send(lines);
         self.setname(client.has_cap(zirc_core::chat::SETNAME_CAP));
     }
@@ -499,9 +505,8 @@ impl Session {
 
     fn send(&mut self, lines: Vec<Line>) {
         let Some(client) = self.supervisor.client() else {
-            if !lines.is_empty() {
-                self.app.unsent("you're offline");
-            }
+            // Offline: it waits, and goes once the connection's up again.
+            self.outbox.extend(lines);
             return;
         };
         let mut failed = Vec::new();

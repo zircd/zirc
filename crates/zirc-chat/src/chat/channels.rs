@@ -441,6 +441,8 @@ impl Chat {
         if self.link.as_ref().is_some_and(|l| l.chathistory) {
             lines.push(self.catch_up(channel));
         }
+        // What was said here while offline goes now we're back in.
+        lines.extend(self.release(Some(channel)));
         lines
     }
 

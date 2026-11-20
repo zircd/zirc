@@ -495,6 +495,10 @@ pub struct Chat {
     raw_until: Option<DateTime<Utc>>,
     /// Channels to join besides the server's own.
     joins: Vec<String>,
+    /// What was said while not connected, by where to, oldest first: it goes once that
+    /// conversation is joined again, a direct message's once connected, so what's typed
+    /// offline waits rather than being refused, in every app (the user's choice, 20 Nov 2026).
+    held: Vec<(String, Vec<Line>)>,
     /// The server's channels and how many are in each, from the last complete `LIST`, and
     /// the one coming in.
     listed: Vec<(String, usize)>,
@@ -678,6 +682,7 @@ impl Chat {
             server_shown: false,
             raw_until: None,
             joins,
+            held: Vec::new(),
             listed: Vec::new(),
             listing: Vec::new(),
             listed_once: false,

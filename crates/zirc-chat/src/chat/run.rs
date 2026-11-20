@@ -110,7 +110,11 @@ impl Chat {
         let name = here.name;
         let shown = self.conversation(name);
         let server = shown.is_none_or(|c| c.kind == Kind::Server);
-        let joined = shown.is_some_and(|c| c.joined || c.kind == Kind::Query);
+        // A channel we were in, to join again once connected, takes what's said too: it waits
+        // and goes then ([`Chat::release`]).
+        let joined = shown.is_some_and(|c| {
+            c.joined || c.kind == Kind::Query || c.standing == super::Attendance::Rejoin
+        });
         match command {
             Command::Say(text) if server && self.server_shown => self.send_raw(text),
             Command::Say(_) | Command::Me(_) if server => note(said::NOT_A_CONVERSATION),

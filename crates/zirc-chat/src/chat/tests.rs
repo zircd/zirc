@@ -411,6 +411,35 @@ fn opened_at_a_message_it_never_finds_it_stops_at_the_beginning() {
 }
 
 #[test]
+fn what_is_said_offline_waits_and_goes_once_its_channel_is_joined_again() {
+    let mut chat = chat_with(Options::default());
+    connected(&mut chat);
+    feed(&mut chat, &[":me!u@h JOIN #api"]);
+    chat.disconnected("gone");
+    // Offline: nothing goes yet, and nothing is refused.
+    assert!(chat.say("#api", "said while offline", false).is_empty());
+    assert!(chat.say("bob", "and to bob", false).is_empty());
+    // Connected, the direct message goes; the channel's waits till it's joined again.
+    let up = texts(&chat.connected(link(true)));
+    assert!(
+        up.iter()
+            .any(|line| line.ends_with("PRIVMSG bob :and to bob")),
+        "{up:?}"
+    );
+    assert!(
+        !up.iter().any(|line| line.contains("said while offline")),
+        "{up:?}"
+    );
+    let joined = feed(&mut chat, &[":me!u@h JOIN #api"]);
+    assert!(
+        joined
+            .iter()
+            .any(|line| line.ends_with("PRIVMSG #api :said while offline")),
+        "{joined:?}"
+    );
+}
+
+#[test]
 fn a_short_page_closes_the_gap() {
     let mut chat = chat_with(Options {
         history: 3,

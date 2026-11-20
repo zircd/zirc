@@ -113,6 +113,8 @@ impl Chat {
                 lines.extend(self.ask_read(&conversation.name));
             }
         }
+        // Direct messages said while offline go now; a channel's once it's joined again.
+        lines.extend(self.release(None));
         lines
     }
 
