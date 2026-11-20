@@ -1297,11 +1297,32 @@ pub fn worth_reading(body: &str) -> bool {
     !matches!(decode(body), Ok(Some(Message { event: Event::Custom { ref kind, .. }, .. })) if kind == session::KIND)
 }
 
-/// The rooms each repository had under its channel before 20 Nov 2026, `#<repo>/<room>`,
-/// when its agents spoke there rather than in [`AGENTS_CHANNEL`]: no longer made or read,
-/// they're left as they were, history and all, and still never counted as threads, so the
-/// server's janitor of unused threads leaves them be.
-pub const STANDING_ROOMS: &[&str] = &[AGENTS_ROOM, "landings", "gotchas"];
+/// Every room a repository had under its channel before 20 Nov 2026, `#<repo>/<room>`, when
+/// its agents spoke there rather than in [`AGENTS_CHANNEL`]: no longer made or read. The
+/// first three are the [`STANDING_ROOMS`]; the rest were threads like any other.
+pub const REPOSITORY_ROOMS: &[&str] = &[
+    AGENTS_ROOM,
+    "landings",
+    "gotchas",
+    "ci",
+    "apps",
+    "flakes",
+    "ops",
+];
+
+/// The [`REPOSITORY_ROOMS`] still never counted as threads, left as they were, history and
+/// all, so the server's janitor of unused threads leaves them be.
+pub const STANDING_ROOMS: &[&str] = REPOSITORY_ROOMS.split_at(3).0;
+
+/// The organisation's feeds, where systems post rather than people talk: its
+/// [`AGENTS_CHANNEL`], gotchas room, `#ops` and `#decisions`. Every app draws them as feeds
+/// (zirc-chat's `is_feed`), and the server never purges them.
+pub const FEEDS: &[&str] = &[
+    AGENTS_CHANNEL,
+    gotchas::CHANNEL,
+    state::CHANNEL,
+    request::CHANNEL,
+];
 
 /// The header (IRC topic) of a room whose job is the same in every tenant, which every app
 /// shows under the room's name: the organisation's [`AGENTS_CHANNEL`], gotchas room, `#ops`

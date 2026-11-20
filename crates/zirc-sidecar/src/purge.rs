@@ -6,31 +6,48 @@
 //! A channel goes in two steps, as the server's operator: every message Ergo's history keeps
 //! under it is deleted (`HistServ DELETE`), then `ChanServ PURGE` takes the channel itself,
 //! putting out whoever's in it and keeping it from being made again. The organisation's own
-//! rooms are never purged ([`KEPT`]).
+//! rooms are never purged ([`kept`]).
 
 use crate::ergo::{Operator, OperatorError};
 use crate::janitor::{confirmation_of, plain};
 
-/// The organisation's own rooms, which every server has and nothing purges.
-pub const KEPT: &[&str] = &[
-    zirc_proto::ORG_CHANNEL,
-    zirc_proto::AGENTS_CHANNEL,
-    zirc_proto::gotchas::CHANNEL,
-    zirc_proto::state::CHANNEL,
-    zirc_proto::request::CHANNEL,
-    zirc_proto::workflow::CHANNEL,
-];
+/// Whether `channel` is one of the organisation's own rooms, which every server has and
+/// nothing purges: its feeds ([`zirc_proto::FEEDS`]), `#general` and `#workflows`.
+#[must_use]
+pub fn kept(channel: &str) -> bool {
+    zirc_proto::FEEDS
+        .iter()
+        .chain(&[zirc_proto::ORG_CHANNEL, zirc_proto::workflow::CHANNEL])
+        .any(|kept| kept.eq_ignore_ascii_case(channel))
+}
+
+/// Which of the server's `channels` look like a repository's from before 20 Nov 2026: each
+/// `#<repo>/<room>` of the rooms repositories had ([`zirc_proto::REPOSITORY_ROOMS`]), and the
+/// `#<repo>` above it. What `GET /v1/channels/purge` offers to purge, sorted; never a kept room.
+#[must_use]
+pub fn old_rooms<'a>(channels: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut found = std::collections::BTreeSet::new();
+    for channel in channels {
+        if let Some((repo, room)) = channel.split_once('/')
+            && zirc_proto::REPOSITORY_ROOMS
+                .iter()
+                .any(|r| r.eq_ignore_ascii_case(room))
+        {
+            found.insert(channel.to_owned());
+            found.insert(repo.to_owned());
+        }
+    }
+    found.into_iter().filter(|c| !kept(c)).collect()
+}
 
 /// Why `channel` can't be purged, if it can't: it isn't a channel's name, or it's one of the
-/// organisation's own rooms ([`KEPT`]).
+/// organisation's own rooms ([`kept`]).
 #[must_use]
 pub fn refused(channel: &str) -> Option<String> {
     if !channel.starts_with('#') || channel.len() < 2 || channel.contains([' ', ',', '\x07']) {
         return Some(format!("{channel:?} isn't a channel's name"));
     }
-    KEPT.iter()
-        .any(|kept| kept.eq_ignore_ascii_case(channel))
-        .then(|| format!("{channel} is the organisation's own room: it's never purged"))
+    kept(channel).then(|| format!("{channel} is the organisation's own room: it's never purged"))
 }
 
 /// What purging one channel did.
@@ -120,6 +137,24 @@ mod tests {
         ] {
             assert_eq!(refused(old), None, "{old}");
         }
+    }
+
+    #[test]
+    fn offers_a_repositorys_rooms_and_the_channel_above_them() {
+        let channels = [
+            "#general",
+            "#agents",
+            "#monorepo",
+            "#monorepo/landings",
+            "#monorepo/ci",
+            "#zirc",
+            "#web/login-form",
+            "#app",
+        ];
+        assert_eq!(
+            old_rooms(channels),
+            ["#monorepo", "#monorepo/ci", "#monorepo/landings"]
+        );
     }
 
     #[test]

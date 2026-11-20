@@ -1201,14 +1201,9 @@ impl Chat {
     /// traffic never shows bold, in every app's sidebar.
     #[must_use]
     pub fn is_feed(&self, name: &str) -> bool {
-        [
-            zirc_proto::AGENTS_CHANNEL,
-            zirc_proto::gotchas::CHANNEL,
-            zirc_proto::state::CHANNEL,
-            zirc_proto::request::CHANNEL,
-        ]
-        .iter()
-        .any(|channel| name.eq_ignore_ascii_case(channel))
+        zirc_proto::FEEDS
+            .iter()
+            .any(|channel| name.eq_ignore_ascii_case(channel))
     }
 
     /// The parts of the sidebar folded away, sorted.

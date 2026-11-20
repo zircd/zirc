@@ -93,14 +93,15 @@ pub enum OperatorError {
 }
 
 impl Operator {
-    /// Runs a `NickServ` command as the operator and returns all `NickServ` says to it.
+    /// Runs a `NickServ` command as the operator and returns the last thing `NickServ` says to
+    /// it, its verdict.
     ///
     /// # Errors
     ///
     /// When it can't connect, isn't let in as an operator, or `NickServ` doesn't answer.
     pub async fn nickserv(&self, command: &str) -> Result<String, OperatorError> {
         let mut answers = self.service("NickServ", &[command.to_owned()]).await?;
-        Ok(answers.pop().unwrap_or_default())
+        Ok(verdict(answers.pop().unwrap_or_default()))
     }
 
     /// Runs `ChanServ` commands as the operator, one after another in one login, and returns
@@ -110,48 +111,45 @@ impl Operator {
     ///
     /// When it can't connect, isn't let in as an operator, or `ChanServ` doesn't answer.
     pub async fn chanserv(&self, commands: &[String]) -> Result<Vec<String>, OperatorError> {
-        self.service("ChanServ", commands).await
+        let answers = self.service("ChanServ", commands).await?;
+        Ok(answers.into_iter().map(|said| said.join("\n")).collect())
     }
 
     /// Runs `HostServ` commands as the operator, one after another in one login, and returns
-    /// all `HostServ` says to each.
+    /// the last thing `HostServ` says to each, its verdict.
     ///
     /// # Errors
     ///
     /// When it can't connect, isn't let in as an operator, or `HostServ` doesn't answer.
     pub async fn hostserv(&self, commands: &[String]) -> Result<Vec<String>, OperatorError> {
-        self.service("HostServ", commands).await
+        let answers = self.service("HostServ", commands).await?;
+        Ok(answers.into_iter().map(verdict).collect())
     }
 
     /// Runs commands of Ergo's `service` as the operator and returns all it says to each, a
-    /// notice a line.
+    /// notice an item.
     async fn service(
         &self,
         service: &str,
         commands: &[String],
-    ) -> Result<Vec<String>, OperatorError> {
+    ) -> Result<Vec<Vec<String>>, OperatorError> {
         let (client, mut incoming) = self.logged_in().await?;
         let prefix = format!("{service}!");
         let mut answers = Vec::with_capacity(commands.len());
         for command in commands {
             let answer = async {
                 client.privmsg(service, command)?;
-                // Answered once the service is done with the command, which may take more than
-                // one notice: ChanServ gives the code to confirm a purge in its second.
-                client.send(Line::new("TIME", [] as [&str; 0]))?;
+                // A service may answer in more than one notice: ChanServ gives the code to
+                // confirm a purge in its second.
                 let mut said = Vec::new();
-                loop {
-                    let line = incoming.recv().await.ok_or(OperatorError::Closed)?;
-                    let from_service = line
-                        .source
-                        .as_deref()
-                        .is_some_and(|s| s.starts_with(&prefix));
-                    if from_service && line.command == "NOTICE" {
+                until_done(&client, &mut incoming, |line| {
+                    if line.command == "NOTICE" && from(line, &prefix) {
                         said.push(line.params.last().cloned().unwrap_or_default());
-                    } else if line.command == "391" {
-                        return Ok(said.join("\n"));
                     }
-                }
+                    Ok(())
+                })
+                .await?;
+                Ok(said)
             };
             match within(answer).await {
                 Ok(answer) => answers.push(answer),
@@ -174,14 +172,7 @@ impl Operator {
         let (client, mut incoming) = self.logged_in().await?;
         let set = async {
             client.send(Line::new("SAMODE", [channel, modes]))?;
-            // Answered once what came before it is done.
-            client.send(Line::new("TIME", [] as [&str; 0]))?;
-            loop {
-                let line = incoming.recv().await.ok_or(OperatorError::Closed)?;
-                if line.command == "391" {
-                    return Ok(());
-                }
-            }
+            until_done(&client, &mut incoming, |_| Ok(())).await
         };
         let result = within(set).await;
         let _ = client.quit("done");
@@ -221,14 +212,7 @@ impl Operator {
         let said = async {
             client.send(Line::new("JOIN", [channel]))?;
             client.send(Line::new("NOTICE", [channel, text]))?;
-            // Answered once what came before it is done.
-            client.send(Line::new("TIME", [] as [&str; 0]))?;
-            loop {
-                let line = incoming.recv().await.ok_or(OperatorError::Closed)?;
-                if line.command == "391" {
-                    return Ok(());
-                }
-            }
+            until_done(&client, &mut incoming, |_| Ok(())).await
         };
         let result = within(said).await;
         let _ = client.send(Line::new("PART", [channel]));
@@ -254,14 +238,7 @@ impl Operator {
             for account in accounts {
                 client.privmsg(account, text)?;
             }
-            // Answered once what came before it is done.
-            client.send(Line::new("TIME", [] as [&str; 0]))?;
-            loop {
-                let line = incoming.recv().await.ok_or(OperatorError::Closed)?;
-                if line.command == "391" {
-                    return Ok(());
-                }
-            }
+            until_done(&client, &mut incoming, |_| Ok(())).await
         };
         let result = within(said).await;
         let _ = client.quit("done");
@@ -280,21 +257,17 @@ impl Operator {
         let answer = async {
             client.send(Line::new("REDACT", [channel, msgid]))?;
             // Ergo answers a REDACT only when it fails, and the operator isn't in the channel
-            // to see it go by; the TIME behind it is answered once it's done.
-            client.send(Line::new("TIME", [] as [&str; 0]))?;
-            loop {
-                let line = incoming.recv().await.ok_or(OperatorError::Closed)?;
-                match line.command.as_str() {
-                    "FAIL" if line.params.first().is_some_and(|c| c == "REDACT") => {
-                        return Err(OperatorError::Failed {
-                            code: line.params.get(1).cloned().unwrap_or_default(),
-                            message: line.params.last().cloned().unwrap_or_default(),
-                        });
-                    }
-                    "391" => return Ok(()),
-                    _ => {}
+            // to see it go by.
+            until_done(&client, &mut incoming, |line| {
+                if line.command == "FAIL" && line.params.first().is_some_and(|c| c == "REDACT") {
+                    return Err(OperatorError::Failed {
+                        code: line.params.get(1).cloned().unwrap_or_default(),
+                        message: line.params.last().cloned().unwrap_or_default(),
+                    });
                 }
-            }
+                Ok(())
+            })
+            .await
         };
         let result = within(answer).await;
         let _ = client.quit("done");
@@ -340,26 +313,18 @@ impl Operator {
     /// or doesn't confirm.
     pub async fn erase(&self, account: &str) -> Result<(), OperatorError> {
         let (client, mut incoming) = self.logged_in().await?;
-        let notices = async |incoming: &mut zirc_irc::Incoming| -> Result<String, OperatorError> {
-            // NickServ answers in several notices; the TIME behind the command ends them.
-            client.send(Line::new("TIME", [] as [&str; 0]))?;
+        let notices = async |incoming: &mut Incoming| -> Result<String, OperatorError> {
+            // NickServ answers in several notices.
             let mut said = String::new();
-            loop {
-                let line = incoming.recv().await.ok_or(OperatorError::Closed)?;
-                match line.command.as_str() {
-                    "NOTICE"
-                        if line
-                            .source
-                            .as_deref()
-                            .is_some_and(|s| s.starts_with("NickServ!")) =>
-                    {
-                        said.push_str(line.params.last().map_or("", String::as_str));
-                        said.push('\n');
-                    }
-                    "391" => return Ok(said),
-                    _ => {}
+            until_done(&client, incoming, |line| {
+                if line.command == "NOTICE" && from(line, "NickServ!") {
+                    said.push_str(line.params.last().map_or("", String::as_str));
+                    said.push('\n');
                 }
-            }
+                Ok(())
+            })
+            .await?;
+            Ok(said)
         };
         let done = async {
             client.privmsg("NickServ", &format!("ERASE {account}"))?;
@@ -408,28 +373,21 @@ impl Operator {
             for (target, msgid) in messages {
                 client.privmsg("HistServ", &format!("DELETE {target} {msgid}"))?;
             }
-            // Answered once what came before it is done.
-            client.send(Line::new("TIME", [] as [&str; 0]))?;
             let mut deleted = 0;
-            loop {
-                let line = incoming.recv().await.ok_or(OperatorError::Closed)?;
-                match line.command.as_str() {
-                    "NOTICE"
-                        if line
-                            .source
-                            .as_deref()
-                            .is_some_and(|s| s.starts_with("HistServ!"))
-                            && line
-                                .params
-                                .last()
-                                .is_some_and(|t| t.starts_with("Successfully")) =>
-                    {
-                        deleted += 1;
-                    }
-                    "391" => return Ok(deleted),
-                    _ => {}
+            until_done(&client, &mut incoming, |line| {
+                if line.command == "NOTICE"
+                    && from(line, "HistServ!")
+                    && line
+                        .params
+                        .last()
+                        .is_some_and(|t| t.starts_with("Successfully"))
+                {
+                    deleted += 1;
                 }
-            }
+                Ok(())
+            })
+            .await?;
+            Ok(deleted)
         };
         // A long list takes a while: ten seconds for every thousand.
         let allowed =
@@ -464,30 +422,26 @@ impl Operator {
                     client.send(Line::new("METADATA", params))?;
                 }
             }
-            // Answered once what came before it is done.
-            client.send(Line::new("TIME", [] as [&str; 0]))?;
             let mut set: std::collections::BTreeSet<String> =
                 accounts.iter().map(|(a, _)| a.clone()).collect();
-            loop {
-                let line = incoming.recv().await.ok_or(OperatorError::Closed)?;
-                match line.command.as_str() {
-                    "FAIL" if line.params.first().is_some_and(|c| c == "METADATA") => {
-                        let code = line.params.get(1).cloned().unwrap_or_default();
-                        if code == "INVALID_TARGET" {
-                            if let Some(target) = line.params.get(2) {
-                                set.remove(&target.to_lowercase());
-                            }
-                        } else {
-                            return Err(OperatorError::Failed {
-                                code,
-                                message: line.params.last().cloned().unwrap_or_default(),
-                            });
-                        }
-                    }
-                    "391" => return Ok(set),
-                    _ => {}
+            until_done(&client, &mut incoming, |line| {
+                if line.command != "FAIL" || line.params.first().is_none_or(|c| c != "METADATA") {
+                    return Ok(());
                 }
-            }
+                let code = line.params.get(1).cloned().unwrap_or_default();
+                if code != "INVALID_TARGET" {
+                    return Err(OperatorError::Failed {
+                        code,
+                        message: line.params.last().cloned().unwrap_or_default(),
+                    });
+                }
+                if let Some(target) = line.params.get(2) {
+                    set.remove(&target.to_lowercase());
+                }
+                Ok(())
+            })
+            .await?;
+            Ok(set)
         };
         let result = within(set).await;
         let _ = client.quit("done");
@@ -567,6 +521,39 @@ impl Operator {
 }
 
 /// `work`, or [`OperatorError::Timeout`] if Ergo takes more than ten seconds.
+/// The server's answer to `TIME` (`RPL_TIME`).
+const RPL_TIME: &str = "391";
+
+/// Sends `TIME` behind what `client` sent, and hands `each` every line that comes before the
+/// server answers it, by when it has done all that came before. `each` may end it with an error.
+async fn until_done(
+    client: &zirc_irc::Client,
+    incoming: &mut Incoming,
+    mut each: impl FnMut(&Line) -> Result<(), OperatorError>,
+) -> Result<(), OperatorError> {
+    client.send(Line::new("TIME", [] as [&str; 0]))?;
+    loop {
+        let line = incoming.recv().await.ok_or(OperatorError::Closed)?;
+        if line.command == RPL_TIME {
+            return Ok(());
+        }
+        each(&line)?;
+    }
+}
+
+/// Whether `line` comes from the nick `prefix` starts with (`NickServ!`).
+fn from(line: &Line, prefix: &str) -> bool {
+    line.source
+        .as_deref()
+        .is_some_and(|s| s.starts_with(prefix))
+}
+
+/// A service's verdict on a command: the last thing it said to it. Anything before, such as a
+/// warning, may hold the words its outcome is read by.
+fn verdict(mut said: Vec<String>) -> String {
+    said.pop().unwrap_or_default()
+}
+
 async fn within<T>(
     work: impl Future<Output = Result<T, OperatorError>>,
 ) -> Result<T, OperatorError> {

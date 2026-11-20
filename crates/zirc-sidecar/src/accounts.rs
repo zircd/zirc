@@ -66,6 +66,10 @@
 //!   `{"channels": [{"name", "users", "messagesLastHour"}]}` (`crate::exporter::channels`).
 //!   Read-only. Channels' names are served from here, never put in metrics: nothing about a
 //!   conversation goes to Google.
+//! - `GET /v1/channels/purge`: the channels that look like a repository's from before 20 Nov
+//!   2026, which `//ops:purge-channels` offers to purge: `{"channels": ["#monorepo", …]}`
+//!   (`crate::purge::old_rooms`). `POST` with `{"channels": […]}` purges those, history and
+//!   all, never the organisation's own rooms (`crate::purge`).
 //!
 //! The same content routes, with people's own tokens rather than this endpoint's, are served at
 //! the server's host name beside the guest gateway, where the server's desired state turns
@@ -452,7 +456,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         )
         .route(zirc_proto::workflow::RUNS_PATH, get(workflow_runs))
         .route("/v1/channels", get(list_channels))
-        .route("/v1/channels/purge", post(purge_channels))
+        .route("/v1/channels/purge", get(old_channels).post(purge_channels))
         .route("/v1/guests", get(list_guests))
         .route("/v1/guests/unread", get(unread_for_guests))
         .route("/v1/guests/mailed", post(mailed_to_guests))
@@ -1302,6 +1306,18 @@ async fn remove_message(State(ergo): State<Arc<Ergo>>, Path(msgid): Path<String>
         }
     };
     Json(json!({"removed": msgid, "channel": channel, "scrubbed": scrubbed})).into_response()
+}
+
+/// The server's channels that look like a repository's from before 20 Nov 2026
+/// (`GET /v1/channels/purge`).
+async fn old_channels(State(ergo): State<Arc<Ergo>>) -> Response {
+    match crate::exporter::channels(&ergo.api, ergo.history.clone()).await {
+        Ok(channels) => {
+            let old = crate::purge::old_rooms(channels.iter().map(|c| c.name.as_str()));
+            Json(json!({"channels": old})).into_response()
+        }
+        Err(failure) => api_failed(failure),
+    }
 }
 
 /// What `POST /v1/channels/purge` asks: the channels to purge, by name.
