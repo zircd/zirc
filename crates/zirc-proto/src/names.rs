@@ -78,41 +78,6 @@ pub fn is_handle(name: &str) -> bool {
     handle_problem(name).is_none()
 }
 
-/// What every app says of a change of nickname, the person's handle, `from` one `to`
-/// another: zirc.dev renames the account, the person's other apps and machines follow by
-/// themselves, and the old nick is free for anyone to take.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NicknameWords {
-    /// The question's title.
-    pub title: String,
-    /// What a change does, said before it's made.
-    pub warning: String,
-    /// The button that changes it.
-    pub change: String,
-    /// The button that keeps the old one.
-    pub keep: String,
-    /// What to say once it's changed.
-    pub changed: String,
-}
-
-/// The words for changing the nickname `from` one handle `to` another.
-#[must_use]
-pub fn nickname_words(from: &str, to: &str) -> NicknameWords {
-    NicknameWords {
-        title: "Change your nickname".to_owned(),
-        warning: format!(
-            "After this, @{from} is free for anyone to take. Your old messages stay under \
-             @{from}, and your other apps and computers follow by themselves."
-        ),
-        change: format!("Change to @{to}"),
-        keep: format!("Keep @{from}"),
-        changed: format!(
-            "Changed to @{to}. The old nick is free for anyone to take, and your other apps \
-             and computers follow by themselves."
-        ),
-    }
-}
-
 /// What's wrong with `name` as a handle, as people are told, if anything.
 #[must_use]
 pub fn handle_problem(name: &str) -> Option<String> {

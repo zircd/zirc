@@ -54,8 +54,6 @@ enum Web {
     Done(Result<String, String>),
     /// A card's button was pressed, and what the integration said, or why it couldn't be.
     Pressed(zirc_proto::card::Press, Result<Option<String>, String>),
-    /// Our nickname was changed to this, or why it wasn't.
-    Nickname(String, Result<(), String>),
     /// Our account is this handle now: changed elsewhere, as zirc.dev said once the server
     /// refused the old one.
     Renamed(String),
@@ -186,10 +184,6 @@ impl Session {
                 self.press(press);
                 Step::Carry
             }
-            Action::Nickname(handle) => {
-                self.change_nickname(handle);
-                Step::Carry
-            }
         }
     }
 
@@ -202,7 +196,6 @@ impl Session {
             Action::Guests { request, done } => self.ask_web(request, done),
             Action::Open(url) => self.open(&url),
             Action::Press(press) => self.press(press),
-            Action::Nickname(handle) => self.change_nickname(handle),
             Action::Org(_) => {}
         }
     }
@@ -227,12 +220,6 @@ impl Session {
                     Web::Kept(guests) => self.app.chat.set_kept_guests(guests),
                     Web::Done(answer) => self.app.guests_answered(answer),
                     Web::Pressed(press, answer) => self.app.press_answered(&press, answer),
-                    Web::Nickname(handle, answer) => {
-                        if answer.is_ok() {
-                            self.follow(&handle);
-                        }
-                        self.app.nickname_answered(&handle, answer);
-                    }
                     Web::Renamed(handle) => {
                         self.follow(&handle);
                         self.app.renamed_elsewhere(&handle);
@@ -471,36 +458,6 @@ impl Session {
             handle.clone_into(&mut account.name);
         }
         self.supervisor.set_config(config);
-    }
-
-    /// Changes our nickname at zirc.dev without waiting, and then in the sign-in kept here:
-    /// [`Session::network`] hands the app what came of it.
-    fn change_nickname(&mut self, handle: String) {
-        let (Some((client, account)), Some(site)) = (self.web.clone(), self.app.site.clone())
-        else {
-            self.app.nickname_answered(
-                &handle,
-                Err("there's no zirc.dev account to change it as".into()),
-            );
-            return;
-        };
-        let answers = self.web_answers.0.clone();
-        tokio::spawn(async move {
-            let answer = async {
-                client
-                    .set_handle(&account, &site.slug, &handle)
-                    .await
-                    .map_err(|err| err.to_string())?;
-                if let Some(home) = &site.home {
-                    let secrets = zirc_core::secrets::system(home);
-                    crate::signin::rename(home, secrets.as_ref(), &site.slug, &handle)
-                        .map_err(|err| format!("{err:#}"))?;
-                }
-                Ok(())
-            }
-            .await;
-            let _ = answers.send(Web::Nickname(handle, answer));
-        });
     }
 
     fn ask_web(&mut self, request: GuestRequest, done: String) {

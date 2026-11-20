@@ -1,21 +1,19 @@
 //! People's profiles at zirc.dev: the name and picture a person shows as. A person's zirc.dev
-//! account holds one profile, which every organisation they're in sees; in an organisation
-//! they may set a name or picture for it alone, which only it sees. Where neither is set,
+//! account holds one name and one picture, which every organisation they're in shows (the
+//! user's choice, 20 Nov 2026), set on zirc.dev's account page alone. Where neither is set,
 //! the name is their handle and the picture their initials.
 //!
-//! - `GET /api/me` answers the signed-in person's own [`Me`], their overrides included.
+//! - `GET /api/me` answers the signed-in person's own [`Me`].
 //! - `PATCH /api/me` with a [`NameChange`] sets the account's name.
-//! - `PATCH /api/organisations/<slug>/members/<handle>` with a [`NameChange`], by the person
-//!   themself, sets their name there alone.
 //! - `POST /api/organisations/<slug>/handle` with a [`HandleChange`] changes the caller's own
 //!   handle, their nick there.
 //! - `GET /api/me/avatar?w=<width>` is the account's picture: 404 when there's none.
 //! - `GET /api/profiles?nick=<nick>&nick=…` answers [`Profiles`]: how each nick, a person's
 //!   or a machine's, shows in the caller's organisation.
 //!
-//! Pictures are uploaded as [`crate::media`] says: [`crate::media::Purpose::AccountAvatar`]
-//! for the account's, [`crate::media::Purpose::Avatar`] for one organisation's. Each is
-//! authenticated as [`crate::media`]'s are.
+//! The picture is uploaded as [`crate::media`] says, [`crate::media::Purpose::AccountAvatar`]
+//! (an app from before 20 Nov 2026 may send [`crate::media::Purpose::Avatar`], which zirc.dev
+//! takes as the account's too), and authenticated as [`crate::media`]'s are.
 
 use std::collections::BTreeMap;
 
@@ -58,20 +56,8 @@ pub struct Me {
     pub name: Option<String>,
     /// The account picture's version, `None` when there's none.
     pub avatar: Option<String>,
-    /// Whether a new organisation they join shows the account picture: [`MeOrg::share_picture`]
-    /// starts as this. A zirc.dev older than the setting says yes.
-    #[serde(default = "yes")]
-    pub share_picture_default: bool,
-    /// Whether a new organisation they join shows the account name: [`MeOrg::share_name`]
-    /// starts as this.
-    #[serde(default = "yes")]
-    pub share_name_default: bool,
-    /// Their organisations, and what they've set for each alone.
+    /// Their organisations, with their handle in each.
     pub orgs: Vec<MeOrg>,
-}
-
-fn yes() -> bool {
-    true
 }
 
 /// One of [`Me::orgs`].
@@ -88,35 +74,9 @@ pub struct MeOrg {
     #[serde(default, with = "crate::role::lenient")]
     #[ts(as = "crate::role::Role")]
     pub role: crate::role::Role,
-    /// The name they set for it alone, `None` when it shows the account's.
-    pub name_override: Option<String>,
-    /// The version of the picture they set for it alone, `None` when it shows the account's.
-    pub avatar_override: Option<String>,
-    /// Whether this organisation shows the account picture when they've set none for it.
-    /// Off, it shows their initials: the choice is theirs, per organisation.
-    #[serde(default = "yes")]
-    pub share_picture: bool,
-    /// Whether this organisation shows the account name when they've set none for it. Off,
-    /// it shows their handle.
-    #[serde(default = "yes")]
-    pub share_name: bool,
 }
 
-/// A change of what an organisation (`PATCH /api/organisations/<slug>/members/<handle>`) or
-/// new ones (`PATCH /api/me`, the `_default` keys) may show of the account's profile; a key
-/// left out stays as it is.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
-pub struct ShareChange {
-    /// Show the account picture here.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub share_picture: Option<bool>,
-    /// Show the account name here.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub share_name: Option<bool>,
-}
-
-/// A change of name: `None` clears it, so the account's shows (in an organisation) or the
-/// handle does (for the account).
+/// A change of the account's name: `None` clears it, so the handle shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct NameChange {
     /// The new name.
@@ -137,7 +97,7 @@ pub struct HandleChange {
 /// How a nick shows in an organisation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct Profile {
-    /// The name to show: the organisation's override, the account's, or the handle. A
+    /// The name to show: the account's, or the handle. A
     /// machine's is its owner's with the machine's: "Ada's mbp".
     pub name: String,
     /// The picture's version, `None` for initials. Draw it from
@@ -156,7 +116,6 @@ pub(crate) fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Me::decl(config),
         MeOrg::decl(config),
         NameChange::decl(config),
-        ShareChange::decl(config),
         HandleChange::decl(config),
         Profile::decl(config),
         "type Profiles = { [nick in string]?: Profile };".to_owned(),

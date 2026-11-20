@@ -2,15 +2,15 @@
 //! in each organisation from `/api/me`, for [`crate::chat::Chat::set_role`]; making the
 //! Guests API's requests that [`crate::chat::Chat`] gives an organisation's owners and
 //! admins ([`GuestRequest`]), such as banning a guest; listing the guests it keeps, whose rooms
-//! the channels list for them ([`Client::kept_guests`]); and reading and setting their name
-//! ([`zirc_proto::profile`]). All as the app's own account, which zirc.dev takes by HTTP
-//! Basic.
+//! the channels list for them ([`Client::kept_guests`]); and reading how people show
+//! ([`zirc_proto::profile`]). The account itself is edited on zirc.dev's own page (20 Nov
+//! 2026). All as the app's own account, which zirc.dev takes by HTTP Basic.
 
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
 use zirc_proto::card;
 use zirc_proto::login::Account;
-use zirc_proto::profile::{self, HandleChange, NameChange, ShareChange};
+use zirc_proto::profile;
 
 use crate::chat::{GuestRequest, KeptGuest};
 use crate::login::{Client, Error};
@@ -20,9 +20,6 @@ pub const ME_PATH: &str = "/api/me";
 
 /// The browser's session at zirc.dev, which a person's app ends with `DELETE`.
 pub const SESSION_PATH: &str = "/api/session";
-
-/// The signed-in person's account, which `DELETE` deletes.
-pub const ACCOUNT_PATH: &str = "/api/account";
 
 /// Someone's role in one of their organisations, as `/api/me` says it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -107,159 +104,6 @@ impl Client {
         Ok(self.checked(response).await?.json().await?)
     }
 
-    /// Sets `account`'s owner's name, which every organisation they're in sees unless
-    /// they've set one for it alone: `None` clears it, so their handle shows.
-    ///
-    /// # Errors
-    ///
-    /// When the web app can't be reached or refuses, saying why, as for a name it doesn't
-    /// take ([`zirc_proto::profile::name`]).
-    pub async fn set_name(&self, account: &Account, name: Option<&str>) -> Result<(), Error> {
-        self.rename(account, ME_PATH.to_owned(), name).await
-    }
-
-    /// Sets `account`'s owner's name in the organisation `org`, where they're `handle`,
-    /// for it alone: `None` clears it, so the account's shows there.
-    ///
-    /// # Errors
-    ///
-    /// As [`Client::set_name`].
-    pub async fn set_org_name(
-        &self,
-        account: &Account,
-        org: &str,
-        handle: &str,
-        name: Option<&str>,
-    ) -> Result<(), Error> {
-        let path = zirc_proto::irc::member_path(org, handle);
-        self.rename(account, path, name).await
-    }
-
-    /// Turns showing `account`'s owner's account picture or name in the organisation `org`,
-    /// where they're `handle`, on or off (a key of `change` left `None` stays): off, the
-    /// organisation shows their initials or handle unless they set one for it
-    /// ([`zirc_chat::chat::picture_shown`] is the rule). zirc.dev tells the organisation's
-    /// server at once.
-    ///
-    /// # Errors
-    ///
-    /// When zirc.dev can't be reached or refuses, saying why.
-    pub async fn set_sharing(
-        &self,
-        account: &Account,
-        org: &str,
-        handle: &str,
-        change: &ShareChange,
-    ) -> Result<(), Error> {
-        let path = zirc_proto::irc::member_path(org, handle);
-        let mut body = serde_json::Map::new();
-        if let Some(on) = change.share_picture {
-            body.insert("share_picture".into(), on.into());
-        }
-        if let Some(on) = change.share_name {
-            body.insert("share_name".into(), on.into());
-        }
-        self.patch_json(account, path, body.into()).await
-    }
-
-    /// What organisations `account`'s owner joins from now on start with: showing their
-    /// account picture and name, or not. Those they're in keep theirs.
-    ///
-    /// # Errors
-    ///
-    /// As [`Client::set_sharing`].
-    pub async fn set_sharing_default(
-        &self,
-        account: &Account,
-        change: &ShareChange,
-    ) -> Result<(), Error> {
-        let mut body = serde_json::Map::new();
-        if let Some(on) = change.share_picture {
-            body.insert("share_picture_default".into(), on.into());
-        }
-        if let Some(on) = change.share_name {
-            body.insert("share_name_default".into(), on.into());
-        }
-        self.patch_json(account, ME_PATH.to_owned(), body.into())
-            .await
-    }
-
-    async fn patch_json(
-        &self,
-        account: &Account,
-        path: String,
-        body: serde_json::Value,
-    ) -> Result<(), Error> {
-        let response = self
-            .http
-            .patch(format!("{}{path}", self.web))
-            .basic_auth(&account.name, Some(&account.password))
-            .json(&body)
-            .send()
-            .await?;
-        self.checked(response).await?;
-        Ok(())
-    }
-
-    /// Changes `account`'s owner's handle, their nick, in the organisation `org` to `handle`
-    /// (`zirc_proto::names::handle_problem` says what it may be). zirc.dev makes the new
-    /// account with the same passphrase, so the account to sign in as now is the one
-    /// answered; the old one is erased, its name free for anyone, and the person's machines
-    /// follow by themselves (zircd trades their old name for the new one).
-    ///
-    /// # Errors
-    ///
-    /// When `handle` won't do or someone has it, saying why; or zirc.dev can't be reached.
-    pub async fn set_handle(
-        &self,
-        account: &Account,
-        org: &str,
-        handle: &str,
-    ) -> Result<Account, Error> {
-        if let Some(reason) = zirc_proto::names::handle_problem(handle) {
-            return Err(Error::Status {
-                web: self.web.clone(),
-                status: StatusCode::BAD_REQUEST,
-                message: reason,
-            });
-        }
-        let response = self
-            .http
-            .post(format!("{}{}", self.web, zirc_proto::irc::handle_path(org)))
-            .basic_auth(&account.name, Some(&account.password))
-            .json(&HandleChange {
-                handle: handle.to_owned(),
-            })
-            .send()
-            .await?;
-        self.checked(response).await?;
-        Ok(Account {
-            name: handle.to_owned(),
-            password: account.password.clone(),
-            device_key: false,
-        })
-    }
-
-    /// Deletes `account`'s owner's account at zirc.dev, `confirm` being their email address
-    /// typed out to say they mean it: they leave each of their organisations, and the account
-    /// and every app's sign-in go. Only the person's own account may, never a machine's.
-    ///
-    /// # Errors
-    ///
-    /// When the address isn't theirs, they're an organisation's only owner, or zirc.dev
-    /// can't be reached or refuses, saying why.
-    pub async fn delete_account(&self, account: &Account, confirm: &str) -> Result<(), Error> {
-        let response = self
-            .http
-            .delete(format!("{}{ACCOUNT_PATH}", self.web))
-            .basic_auth(&account.name, Some(&account.password))
-            .json(&serde_json::json!({ "confirm": confirm }))
-            .send()
-            .await?;
-        self.checked(response).await?;
-        Ok(())
-    }
-
     /// Ends the zirc.dev browser session that let `account`'s app in, by the hash its login
     /// gave ([`zirc_proto::login::Credentials::web_session`]): signing out of the app signs out
     /// of zirc.dev on the device too. Only the person's own account may, never a machine's.
@@ -275,26 +119,6 @@ impl Client {
             .json(&zirc_proto::login::WebSessionEnd {
                 session: session.to_owned(),
             })
-            .send()
-            .await?;
-        self.checked(response).await?;
-        Ok(())
-    }
-
-    async fn rename(
-        &self,
-        account: &Account,
-        path: String,
-        name: Option<&str>,
-    ) -> Result<(), Error> {
-        let change = NameChange {
-            name: name.map(str::to_owned),
-        };
-        let response = self
-            .http
-            .patch(format!("{}{path}", self.web))
-            .basic_auth(&account.name, Some(&account.password))
-            .json(&change)
             .send()
             .await?;
         self.checked(response).await?;
@@ -456,128 +280,6 @@ mod tests {
             asked[0].ends_with(
                 r##"{"channel":"#monorepo","sender":"zirc-alerts","card":"monorepo/889","action":"retry"}"##
             ),
-            "{}",
-            asked[0]
-        );
-    }
-
-    #[tokio::test]
-    async fn reads_and_sets_the_persons_name_for_the_account_or_one_organisation() {
-        let me = r#"{"email":"a@b.c","name":"Mattias","avatar":null,"orgs":[
-            {"slug":"acme","name":"Acme","handle":"mattias","role":"owner",
-             "name_override":"Matt","avatar_override":null}]}"#;
-        let (web, served) = zirc_test_ergo::web::serve(vec![
-            (200, me.into()),
-            (200, "{}".into()),
-            (200, "{}".into()),
-        ]);
-        let client = Client::new(&web).unwrap();
-        let me = client.me(&account()).await.unwrap().unwrap();
-        assert_eq!(me.name.as_deref(), Some("Mattias"));
-        assert_eq!(me.orgs[0].name_override.as_deref(), Some("Matt"));
-        client
-            .set_name(&account(), Some("Mattias G"))
-            .await
-            .unwrap();
-        client
-            .set_org_name(&account(), "acme", "mattias", None)
-            .await
-            .unwrap();
-        let asked = served.join().unwrap();
-        assert!(asked[1].starts_with("PATCH /api/me "), "{}", asked[1]);
-        assert!(
-            asked[1].ends_with(r#"{"name":"Mattias G"}"#),
-            "{}",
-            asked[1]
-        );
-        assert!(
-            asked[2].starts_with("PATCH /api/organisations/acme/members/mattias "),
-            "{}",
-            asked[2]
-        );
-        assert!(asked[2].ends_with(r#"{"name":null}"#), "{}", asked[2]);
-    }
-
-    #[tokio::test]
-    async fn sets_what_an_organisation_or_new_ones_show_of_the_account() {
-        let (web, served) =
-            zirc_test_ergo::web::serve(vec![(200, "{}".into()), (200, "{}".into())]);
-        let client = Client::new(&web).unwrap();
-        let off = ShareChange {
-            share_picture: Some(false),
-            share_name: None,
-        };
-        client
-            .set_sharing(&account(), "acme", "mattias", &off)
-            .await
-            .unwrap();
-        client.set_sharing_default(&account(), &off).await.unwrap();
-        let asked = served.join().unwrap();
-        assert!(
-            asked[0].starts_with("PATCH /api/organisations/acme/members/mattias "),
-            "{}",
-            asked[0]
-        );
-        assert!(
-            asked[0].ends_with(r#"{"share_picture":false}"#),
-            "{}",
-            asked[0]
-        );
-        assert!(asked[1].starts_with("PATCH /api/me "), "{}", asked[1]);
-        assert!(
-            asked[1].ends_with(r#"{"share_picture_default":false}"#),
-            "{}",
-            asked[1]
-        );
-    }
-
-    #[tokio::test]
-    async fn changes_the_handle_and_signs_in_as_the_new_one_with_the_same_passphrase() {
-        let (web, served) = zirc_test_ergo::web::serve(vec![
-            (200, r#"{"handle":"lovelace"}"#.into()),
-            (
-                429,
-                r#"{"error":"You changed your nickname recently: wait 23 more hours."}"#.into(),
-            ),
-        ]);
-        let client = Client::new(&web).unwrap();
-        let account = Account {
-            name: "ada".into(),
-            password: "secret".into(),
-            device_key: false,
-        };
-        let now = client
-            .set_handle(&account, "acme", "lovelace")
-            .await
-            .unwrap();
-        assert_eq!(
-            now,
-            Account {
-                name: "lovelace".into(),
-                password: "secret".into(),
-                device_key: false,
-            }
-        );
-        let refused = client
-            .set_handle(&now, "acme", "countess")
-            .await
-            .unwrap_err();
-        assert!(
-            refused.to_string().contains("wait 23 more hours"),
-            "{refused}"
-        );
-        // A handle zirc.dev would refuse isn't asked.
-        let bad = client.set_handle(&now, "acme", "Not-OK").await.unwrap_err();
-        assert!(bad.to_string().contains("lowercase"), "{bad}");
-        let asked = served.join().unwrap();
-        assert_eq!(asked.len(), 2);
-        assert!(
-            asked[0].starts_with("POST /api/organisations/acme/handle "),
-            "{}",
-            asked[0]
-        );
-        assert!(
-            asked[0].ends_with(r#"{"handle":"lovelace"}"#),
             "{}",
             asked[0]
         );

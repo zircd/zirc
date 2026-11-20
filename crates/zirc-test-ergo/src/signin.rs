@@ -28,7 +28,7 @@ use serde_json::{Value, json};
 use zirc_proto::login::{
     Account, Credentials, LoginKind, LoginRequest, LoginStarted, LoginStatus, START_PATH, Server,
 };
-use zirc_proto::profile::{ME_PATH, Me, MeOrg, ShareChange};
+use zirc_proto::profile::{ME_PATH, Me, MeOrg};
 
 use crate::http::{self, Answer};
 
@@ -63,16 +63,6 @@ fn loopback() -> String {
 
 fn two() -> u32 {
     2
-}
-
-/// What `PATCH /api/me` changes: whether a new organisation shows the account's picture and
-/// name ([`Me::share_picture_default`], [`Me::share_name_default`]).
-#[derive(Debug, Default, Deserialize)]
-struct Defaults {
-    #[serde(default)]
-    share_picture_default: Option<bool>,
-    #[serde(default)]
-    share_name_default: Option<bool>,
 }
 
 /// What the stand-in keeps between requests.
@@ -153,17 +143,11 @@ fn profile(options: &Options) -> Me {
         email: format!("{}@acme.example", options.handle),
         name: Some("Dana Reyes".to_owned()),
         avatar: None,
-        share_picture_default: true,
-        share_name_default: true,
         orgs: vec![MeOrg {
             slug: options.host.clone(),
             name: "Acme".to_owned(),
             handle: options.handle.clone(),
             role: zirc_proto::role::Role::Owner,
-            name_override: None,
-            avatar_override: None,
-            share_picture: true,
-            share_name: true,
         }],
     }
 }
@@ -197,7 +181,6 @@ impl State {
         let (path, query) = target.split_once('?').unwrap_or((target, ""));
         match method {
             "POST" if path == START_PATH => self.start_login(body),
-            "PATCH" => self.share(path, body),
             "GET" if path == ME_PATH => Answer::json(200, &*lock(&self.me)),
             // Nobody here has a picture: the organisation shows their initials.
             "GET" if path.starts_with("/api/media/avatar/") => Answer::error(404, "no picture"),
@@ -279,37 +262,6 @@ impl State {
             Ok(credentials) => Answer::json(200, &LoginStatus::Done(credentials)),
             Err(error) => Answer::error(500, &error.to_string()),
         }
-    }
-
-    /// Keeps what the person turned on or off, for the next `GET /api/me`, as zirc.dev does:
-    /// for new organisations at `/api/me`, for the one organisation anywhere else.
-    fn share(&self, path: &str, body: &str) -> Answer {
-        let body = if body.trim().is_empty() { "{}" } else { body };
-        let mut me = lock(&self.me);
-        if path == ME_PATH {
-            let Ok(change) = serde_json::from_str::<Defaults>(body) else {
-                return Answer::error(400, "not a change of what new organisations show");
-            };
-            if let Some(share) = change.share_picture_default {
-                me.share_picture_default = share;
-            }
-            if let Some(share) = change.share_name_default {
-                me.share_name_default = share;
-            }
-        } else {
-            let Ok(change) = serde_json::from_str::<ShareChange>(body) else {
-                return Answer::error(400, "not a change of what the organisation shows");
-            };
-            for org in &mut me.orgs {
-                if let Some(share) = change.share_picture {
-                    org.share_picture = share;
-                }
-                if let Some(share) = change.share_name {
-                    org.share_name = share;
-                }
-            }
-        }
-        Answer::json(200, &json!({}))
     }
 
     /// A shared file, as zirc.dev serves one.

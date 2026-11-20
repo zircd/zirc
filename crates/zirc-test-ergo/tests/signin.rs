@@ -115,33 +115,11 @@ fn a_login_registers_the_account_the_server_then_takes() {
 }
 
 #[test]
-fn a_profile_keeps_what_the_person_shares() {
+fn a_profile_is_the_accounts_with_its_handle() {
     let web = signin::start(options(None), 0).expect("the stand-in");
-    let me = || {
-        let (_, _, body) = ask(&web, "GET", ME_PATH, "", false);
-        serde_json::from_slice::<Me>(&body).expect("a profile")
-    };
-    assert_eq!(me().orgs[0].handle, "dana");
-    assert!(me().orgs[0].share_picture && me().share_name_default);
-    let org = "/api/organisations/acme/members/dana";
-    assert_eq!(
-        ask(&web, "PATCH", org, r#"{"share_picture":false}"#, false).0,
-        200
-    );
-    assert_eq!(
-        ask(
-            &web,
-            "PATCH",
-            ME_PATH,
-            r#"{"share_name_default":false}"#,
-            false
-        )
-        .0,
-        200
-    );
-    let me = me();
-    assert!(!me.orgs[0].share_picture && me.orgs[0].share_name);
-    assert!(!me.share_name_default && me.share_picture_default);
+    let (_, _, body) = ask(&web, "GET", ME_PATH, "", false);
+    let me = serde_json::from_slice::<Me>(&body).expect("a profile");
+    assert_eq!(me.orgs[0].handle, "dana");
     assert_eq!(ask(&web, "GET", "/api/media/avatar/dana", "", false).0, 404);
 }
 

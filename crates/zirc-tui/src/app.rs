@@ -115,9 +115,6 @@ pub enum Action {
     /// Press a card's button through zirc.dev, and hand [`App::press_answered`] what came
     /// of it.
     Press(zirc_proto::card::Press),
-    /// Change our handle, our nick, to this at zirc.dev, and hand
-    /// [`App::nickname_answered`] what came of it.
-    Nickname(String),
 }
 
 /// A card's button about to be pressed, once the person says so.
@@ -734,7 +731,7 @@ impl App {
         Vec::new()
     }
 
-    /// Opens our account's page on zirc.dev, where our name and picture are set.
+    /// Opens our account's page on zirc.dev, where our name, picture and nickname are set.
     fn profile_page(&mut self) -> Action {
         let Some(site) = &self.site else {
             self.note("this server isn't zirc.dev's: there's no account page to open".into());
@@ -836,31 +833,12 @@ impl App {
             .insert((fold(&press.sender), press.card.clone()), (said, then));
     }
 
-    /// `/nick`: checks the handle asked for and has the nickname changed at zirc.dev.
-    fn nickname(&mut self, handle: &str) -> Action {
-        let handle = handle.to_lowercase();
-        if let Some(problem) = zirc_proto::names::handle_problem(&handle) {
-            self.note(problem);
-            return Action::Send(Vec::new());
-        }
-        self.note(format!("changing your nickname to {handle}…"));
-        Action::Nickname(handle)
-    }
-
     /// The account was renamed to `handle` on another device or at zirc.dev: what to say of
     /// it, as the connection follows.
     pub fn renamed_elsewhere(&mut self, handle: &str) {
         self.note(format!(
             "Your nickname was changed to {handle} elsewhere: reconnecting as it."
         ));
-    }
-
-    /// What zirc.dev answered a change of nickname to `handle`: what to say of it.
-    pub fn nickname_answered(&mut self, handle: &str, answer: Result<(), String>) {
-        self.note(match answer {
-            Ok(()) => zirc_proto::names::nickname_words(self.chat.me(), handle).changed,
-            Err(why) => format!("couldn't change it: {why}"),
-        });
     }
 
     /// What zirc.dev answered a request of its Guests API: what it did, or why it didn't.
@@ -2092,9 +2070,9 @@ impl App {
                 lines
             }
             Ran::Card(nick) => self.show_profile(&nick),
-            // Signed in with zirc.dev, a nick is the account's name there; the server takes
-            // no other.
-            Ran::Nick(nick) if self.site.is_some() => return self.nickname(&nick),
+            // Signed in with zirc.dev, a nick is the account's handle there, changed on its
+            // account page alone, which opens as /profile does (20 Nov 2026), in every app.
+            Ran::Nick(_) if self.site.is_some() => return self.profile_page(),
             Ran::Nick(nick) => vec![Line::new("NICK", [nick])],
             // A direct message stays closed when history brings it back, until something new
             // is said in it.
@@ -2647,12 +2625,11 @@ mod tests {
             Action::Guests { request, .. } => panic!("asked zirc.dev {request:?}"),
             Action::Open(url) => panic!("opened {url}"),
             Action::Press(press) => panic!("pressed {press:?}"),
-            Action::Nickname(handle) => panic!("changed the nickname to {handle}"),
         }
     }
 
     #[test]
-    fn nick_changes_the_nickname_at_zirc_dev_when_signed_in_there() {
+    fn nick_points_to_zirc_dev_when_signed_in_there() {
         let mut app = app();
         app.connected(link(true));
         // Without zirc.dev, the plain IRC command.
@@ -2662,15 +2639,10 @@ mod tests {
             slug: "acme".into(),
             home: None,
         });
-        assert!(matches!(
+        // Signed in there, it's the account's, changed on its page, which opens.
+        assert_eq!(
             typed(&mut app, "/nick Lovelace"),
-            Action::Nickname(handle) if handle == "lovelace"
-        ));
-        // A handle zirc.dev would refuse isn't asked.
-        assert!(sent(typed(&mut app, "/nick no-way")).is_empty());
-        app.nickname_answered(
-            "lovelace",
-            Err("lovelace is taken in this organisation.".into()),
+            Action::Open("https://zirc.dev/account".into())
         );
     }
 

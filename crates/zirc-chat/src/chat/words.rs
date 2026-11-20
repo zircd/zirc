@@ -63,9 +63,6 @@ pub const BACK_TO_RESULTS: &str = "Back to search results";
 /// What turns a question down, and stops what waits.
 pub const CANCEL: &str = "Cancel";
 
-/// What asks before changing something, such as a nickname.
-pub const CHANGE: &str = "Change…";
-
 /// What empties a field, for a screen reader.
 pub const CLEAR: &str = "Clear";
 
@@ -101,9 +98,6 @@ pub const COPY_TEXT: &str = "Copy text";
 /// A message's menu: deletes it.
 pub const DELETE: &str = "Delete";
 
-/// The button that deletes the account, once what that does is read.
-pub const DELETE_MY_ACCOUNT: &str = "Delete my account";
-
 /// What puts away an error once it's read, such as a send's that failed.
 pub const DISMISS: &str = "Dismiss";
 
@@ -127,10 +121,6 @@ pub const GUEST_ACTIONS: &str = "Guest actions";
 /// The first tab on a phone, and its page's title.
 pub const HOME: &str = "Home";
 
-/// What opens zirc.dev's page for inviting people: its row in Settings, an owner's or an
-/// admin's alone.
-pub const INVITE_PEOPLE: &str = "Invite people";
-
 /// The quick switcher's name, for a screen reader.
 pub const JUMP_TO: &str = "Jump to";
 
@@ -143,13 +133,6 @@ pub const MORE: &str = "More";
 /// What a screen reader says of a header's [`MORE`] while [`PEOPLE_ONLY`] is on.
 pub const MORE_PEOPLE_ONLY: &str = "More, showing people only";
 
-/// The label of the name the person shows as.
-pub const NAME: &str = "Name";
-
-/// Under the account's name field: who sees it, and what shows without one.
-pub const NAME_NOTE: &str =
-    "What people see, in every organisation you're in. Leave it empty and your nickname shows.";
-
 /// What marks the first message unread when a conversation was opened.
 pub const NEW_DIVIDER: &str = "New";
 
@@ -157,17 +140,8 @@ pub const NEW_DIVIDER: &str = "New";
 /// sheet's title.
 pub const NEW_MESSAGE: &str = "New message";
 
-/// The heading over what an organisation joined from now on shows of the person.
-pub const NEW_ORGANISATIONS: &str = "New organisations";
-
 /// [`NEW_DIVIDER`] where a tag is drawn in capitals without a style to raise it.
 pub const NEW_TAG: &str = "NEW";
-
-/// The label of the person's nickname, the handle after the @.
-pub const NICKNAME: &str = "Nickname";
-
-/// Under the nickname's field: what a nickname is.
-pub const NICKNAME_NOTE: &str = "Your name on the server, which people @.";
 
 /// What puts a question off, such as the offer to turn notifications on.
 pub const NOT_NOW: &str = "Not now";
@@ -186,9 +160,6 @@ pub const NO_DIRECTS: &str = "No direct messages yet";
 
 /// A header's menu: shows only what people said.
 pub const PEOPLE_ONLY: &str = "People only";
-
-/// The heading over the person's picture.
-pub const PICTURE: &str = "Picture";
 
 /// The title of the person's name and picture, while it loads too.
 pub const PROFILE: &str = "Profile";
@@ -278,16 +249,8 @@ pub const PICK_A_CONVERSATION: &str = "Pick a conversation";
 /// Where a conversation shows on a desktop with no server set yet.
 pub const CHOOSE_A_SERVER: &str = "Choose a server in Settings to start.";
 
-/// What saves what's typed, such as the profile's name.
+/// What saves what's typed, such as a server's fields.
 pub const SAVE: &str = "Save";
-
-/// What [`SAVE`] says once it's saved, until something changes (the user's choice, 17 Nov
-/// 2026); [`couldnt_save`] when it wasn't.
-pub const SAVED: &str = "Saved";
-
-/// What picks the person's picture while they have none; [`CHANGE_PICTURE`](super::settings_list::CHANGE_PICTURE)
-/// once they have one ([`picture_button`]).
-pub const ADD_PICTURE: &str = "Add a picture";
 
 /// What the system calls the phones' notifications of messages, one channel per
 /// organisation grouped under its name (the user's choice, 17 Nov 2026).
@@ -387,23 +350,6 @@ pub fn nothing_called(query: &str) -> String {
 #[must_use]
 pub fn signin_failed(why: &str) -> String {
     format!("{COULDNT_SIGN_IN}: {why}")
-}
-
-/// What a save that failed says: `Couldn't save it: timed out`.
-#[must_use]
-pub fn couldnt_save(why: &str) -> String {
-    format!("Couldn't save it: {why}")
-}
-
-/// The button that picks the person's picture: [`ADD_PICTURE`] while they have none,
-/// `Change picture…` once they have one.
-#[must_use]
-pub fn picture_button(has_picture: bool) -> &'static str {
-    if has_picture {
-        settings_list::CHANGE_PICTURE
-    } else {
-        ADD_PICTURE
-    }
 }
 
 /// What a reaction's button says for a screen reader: `React with 👍`.
@@ -560,9 +506,6 @@ mod tests {
         assert_eq!(version_label("0.1.2", None), "0.1.2");
         assert_eq!(version_label("0.1.2", Some("")), "0.1.2");
         assert_eq!(signin_failed("timed out"), "Couldn't sign in: timed out");
-        assert_eq!(couldnt_save("timed out"), "Couldn't save it: timed out");
-        assert_eq!(picture_button(false), "Add a picture");
-        assert_eq!(picture_button(true), "Change picture…");
         assert_eq!(
             activity_empty(),
             "Nothing yet. When someone mentions you, replies to you or reacts to what you said, it shows here."
@@ -611,10 +554,6 @@ mod tests {
         assert_eq!(
             settings_list::ADD_ORGANISATION,
             format!("{}…", settings_list::ADD_ORGANISATION_NAME)
-        );
-        assert_eq!(
-            settings_list::CHANGE_PICTURE,
-            format!("{}…", settings_list::CHANGE_PICTURE_NAME)
         );
         assert!(MORE_PEOPLE_ONLY.starts_with(MORE));
         assert!(EARLIER_REPLY.ends_with(EARLIER_MESSAGE));
@@ -698,10 +637,6 @@ pub struct Words {
     pub back_to_results: String,
     /// What turns a question down, and stops what waits: `Cancel`.
     pub cancel: String,
-    /// What asks before changing something, such as a nickname: `Change…`.
-    pub change: String,
-    /// The button that picks another picture, in the profile: `Change picture`.
-    pub change_picture: String,
     /// What empties a field: `Clear`.
     pub clear: String,
     /// What shuts search: `Close search`.
@@ -727,11 +662,6 @@ pub struct Words {
     pub message_details: String,
     /// A message's menu, deleting it: `Delete`.
     pub delete: String,
-    /// Settings' section for deleting the account, and that page's title: `Delete
-    /// account`.
-    pub delete_account: String,
-    /// The button that deletes the account: `Delete my account`.
-    pub delete_my_account: String,
     /// What puts away an error once it's read: `Dismiss`.
     pub dismiss: String,
     /// What shuts a page once it's finished with: `Done`.
@@ -761,10 +691,6 @@ pub struct Words {
     pub choose_a_server: String,
     /// What saves what's typed: `Save`.
     pub save: String,
-    /// What `save` says once saved: `Saved`.
-    pub saved: String,
-    /// What picks a picture while there's none: `Add a picture`.
-    pub add_picture: String,
     /// What the system calls the phones' notifications of messages: `Messages`.
     pub notification_channel: String,
     /// The menu bar's menu of conversations: `Conversation`.
@@ -787,8 +713,6 @@ pub struct Words {
     pub guest_actions: String,
     /// The first tab on a phone, and its page's title: `Home`.
     pub home: String,
-    /// What opens the page for inviting people: `Invite people`.
-    pub invite_people: String,
     /// The quick switcher's name: `Jump to`.
     pub jump_to: String,
     /// What the quick switcher's empty field says, and what opens it: `Jump to…`.
@@ -808,23 +732,12 @@ pub struct Words {
     /// A header's `more` for a screen reader while `people_only` is on: `More, showing
     /// people only`.
     pub more_people_only: String,
-    /// The label of the name the person shows as: `Name`.
-    pub name: String,
-    /// Under the account's name field: `What people see, in every organisation you're in.
-    /// Leave it empty and your nickname shows.`
-    pub name_note: String,
     /// What marks the first message unread when a conversation was opened: `New`.
     pub new_divider: String,
     /// What starts a direct message to someone not picked yet: `New message`.
     pub new_message: String,
-    /// The heading over what organisations joined from now on show: `New organisations`.
-    pub new_organisations: String,
     /// `new_divider` where a tag is drawn in capitals: `NEW`.
     pub new_tag: String,
-    /// The label of the person's nickname: `Nickname`.
-    pub nickname: String,
-    /// Under the nickname's field: `Your name on the server, which people @.`
-    pub nickname_note: String,
     /// The channel list's empty line: `No channels yet.`.
     pub no_channels: String,
     /// Direct messages' empty line: `No direct messages yet`.
@@ -839,8 +752,6 @@ pub struct Words {
     pub organisations: String,
     /// A header's menu, showing only what people said: `People only`.
     pub people_only: String,
-    /// The heading over the person's picture: `Picture`.
-    pub picture: String,
     /// The title of the person's name and picture: `Profile`.
     pub profile: String,
     /// What opens the emoji to react to a message with: `React`.
@@ -929,8 +840,6 @@ pub fn words() -> Words {
         back: BACK.to_owned(),
         back_to_results: BACK_TO_RESULTS.to_owned(),
         cancel: CANCEL.to_owned(),
-        change: CHANGE.to_owned(),
-        change_picture: settings_list::CHANGE_PICTURE_NAME.to_owned(),
         clear: CLEAR.to_owned(),
         close_search: CLOSE_SEARCH.to_owned(),
         connection: CONNECTION.to_owned(),
@@ -943,8 +852,6 @@ pub fn words() -> Words {
         copy_text: COPY_TEXT.to_owned(),
         message_details: super::MESSAGE_DETAILS.to_owned(),
         delete: DELETE.to_owned(),
-        delete_account: settings_list::DELETE_ACCOUNT.to_owned(),
-        delete_my_account: DELETE_MY_ACCOUNT.to_owned(),
         dismiss: DISMISS.to_owned(),
         done: DONE.to_owned(),
         check_the_code: CHECK_THE_CODE.to_owned(),
@@ -958,8 +865,6 @@ pub fn words() -> Words {
         pick_a_conversation: PICK_A_CONVERSATION.to_owned(),
         choose_a_server: CHOOSE_A_SERVER.to_owned(),
         save: SAVE.to_owned(),
-        saved: SAVED.to_owned(),
-        add_picture: ADD_PICTURE.to_owned(),
         notification_channel: NOTIFICATION_CHANNEL.to_owned(),
         menu_conversation: menu_bar::CONVERSATION.to_owned(),
         away_note: settings_list::AWAY_NOTE.to_owned(),
@@ -971,7 +876,6 @@ pub fn words() -> Words {
         go_to_newest: GO_TO_NEWEST.to_owned(),
         guest_actions: GUEST_ACTIONS.to_owned(),
         home: HOME.to_owned(),
-        invite_people: INVITE_PEOPLE.to_owned(),
         jump_to: JUMP_TO.to_owned(),
         jump_to_prompt: JUMP_TO_PROMPT.to_owned(),
         machines: MACHINES.to_owned(),
@@ -981,14 +885,9 @@ pub fn words() -> Words {
         menu_previous_conversation: menu_bar::PREVIOUS_CONVERSATION.to_owned(),
         more: MORE.to_owned(),
         more_people_only: MORE_PEOPLE_ONLY.to_owned(),
-        name: NAME.to_owned(),
-        name_note: NAME_NOTE.to_owned(),
         new_divider: NEW_DIVIDER.to_owned(),
         new_message: NEW_MESSAGE.to_owned(),
-        new_organisations: NEW_ORGANISATIONS.to_owned(),
         new_tag: NEW_TAG.to_owned(),
-        nickname: NICKNAME.to_owned(),
-        nickname_note: NICKNAME_NOTE.to_owned(),
         no_channels: NO_CHANNELS.to_owned(),
         no_directs: NO_DIRECTS.to_owned(),
         no_emoji: crate::emoji::NO_MATCH.to_owned(),
@@ -996,7 +895,6 @@ pub fn words() -> Words {
         nothing_yet: NOTHING_YET.to_owned(),
         organisations: settings_list::ORGANISATIONS.to_owned(),
         people_only: PEOPLE_ONLY.to_owned(),
-        picture: PICTURE.to_owned(),
         profile: PROFILE.to_owned(),
         react: REACT_LABEL.to_owned(),
         reply: REPLY_LABEL.to_owned(),

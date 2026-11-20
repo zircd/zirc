@@ -55,21 +55,6 @@ pub fn save(signin: &SignIn, path: &Path) -> Result<()> {
         .with_context(|| format!("writing {}", path.display()))
 }
 
-/// Puts the sign-in to the organisation `org` under its new handle, after the person changed
-/// it at zirc.dev ([`Client::set_handle`]): the same passphrase, kept under the new account.
-///
-/// # Errors
-///
-/// When there's no sign-in to `org`, or the file or the passphrase can't be written.
-pub fn rename(home: &Path, secrets: &dyn Secrets, org: &str, handle: &str) -> Result<()> {
-    let path = path(home);
-    let signins = load_all(&path)?;
-    let signin = signins
-        .get(org)
-        .with_context(|| format!("not signed in to {org}"))?;
-    save(&signin.renamed(handle, secrets)?, &path)
-}
-
 /// Signs in at `web` through the browser, telling the person what to do on `out`, and
 /// keeps the sign-in in zirc's directory `home` and `secrets`.
 ///
