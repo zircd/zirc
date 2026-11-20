@@ -233,16 +233,17 @@ async fn lease_events_stay_out_of_history_and_reach_a_machine_that_joins_later()
     ada.join("#general").unwrap();
     let alpha = Member::start(&ergo, "alpha").await;
     alpha.lease("emulator", "cc-1", 600).await;
-    // A person in the channel gets it as a TAGMSG, which no history keeps.
+    // A person in the channel gets it as a TAGMSG, which no history keeps. Other events come
+    // as TAGMSGs too (the sessions zircd says are live), in no set order: wait for the lease's.
     let line = zirc_test_irc::next_matching(&mut heard, |line| {
-        line.command == "TAGMSG" && line.tag(zirc_proto::EVENT_TAG).is_some()
+        line.tag(zirc_proto::EVENT_TAG)
+            .and_then(|payload| zirc_proto::from_payload(payload).ok())
+            .is_some_and(|message| {
+                matches!(&message.event, Event::Custom { kind, .. } if kind == zirc_core::leases::LEASE_KIND)
+            })
     })
     .await;
-    let message = zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG).unwrap()).unwrap();
-    assert!(
-        matches!(&message.event, Event::Custom { kind, .. } if kind == zirc_core::leases::LEASE_KIND),
-        "{message:?}"
-    );
+    assert_eq!(line.command, "TAGMSG", "{line:?}");
     alpha
         .sees("emulator", "alpha holding it", |lease| {
             whose(lease).0.as_deref() == Some("alpha/cc-1")
