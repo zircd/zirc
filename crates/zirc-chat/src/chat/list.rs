@@ -1039,8 +1039,10 @@ impl Chat {
         })
     }
 
-    /// The conversation called `name` as its direct-message row shows it.
-    pub(super) fn direct_row(&self, name: String) -> DirectRow {
+    /// The conversation called `name` as its direct-message row shows it: one row, for an
+    /// app that needs only that one's, such as the open conversation's faces.
+    #[must_use]
+    pub fn direct_row(&self, name: String) -> DirectRow {
         self.direct_row_heard(name, &|nick, session| self.heard(nick, session))
     }
 
