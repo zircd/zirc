@@ -71,19 +71,6 @@ impl Chat {
         first
     }
 
-    /// What Jump to says for `query` when it has nothing to offer: no conversation
-    /// ([`Chat::switcher`]), no channel to join ([`Chat::browse_matching`]) and no Join or
-    /// Create row ([`Chat::join_offer`]), `Nothing called “x”.` ([`super::nothing_called`]).
-    /// None while something shows, or nothing's typed (the user's choice, 17 Nov 2026).
-    #[must_use]
-    pub fn jump_nothing(&self, query: &str) -> Option<String> {
-        let nothing = !query.trim().is_empty()
-            && self.switcher(query).is_empty()
-            && self.browse_matching(query).is_empty()
-            && self.join_offer(query).is_none();
-        nothing.then(|| super::nothing_called(query))
-    }
-
     /// What Enter in Jump to opens for `query`: its first row, as every app lists them, a
     /// conversation the switcher finds ([`Chat::switcher`]), else a channel to browse
     /// ([`Chat::browse_matching`]), else the last row's Join or Create #name
@@ -136,9 +123,36 @@ impl Chat {
             } else {
                 create_label(&name)
             },
+            mark: if listed { JOIN_MARK } else { CREATE_MARK }.to_owned(),
             create: !listed,
             name,
         })
+    }
+
+    /// Jump to for what's typed, `query`, as every app lays it out, top to bottom (the
+    /// user's choice, 20 Nov 2026): `Nothing called “x”.` alone when it offers nothing (and
+    /// something's typed, the user's choice, 17 Nov 2026), the
+    /// conversations it finds ([`Chat::switcher`]), Browse channels' heading only over
+    /// channels to join, those that `query` names ([`Chat::browse_matching`]) so that the
+    /// list holds at most [`super::JUMP_ROWS`] rows, then Join or Create #name
+    /// ([`Chat::join_offer`]).
+    #[must_use]
+    pub fn jump_to(&self, query: &str) -> JumpTo {
+        let conversations = self.switcher(query);
+        let room = super::JUMP_ROWS.saturating_sub(conversations.len());
+        let browse = browse_rows(self.browse_matching(query).into_iter().take(room).collect());
+        let offer = self.join_offer(query);
+        let nothing = !query.trim().is_empty()
+            && conversations.is_empty()
+            && browse.is_empty()
+            && offer.is_none();
+        JumpTo {
+            nothing: nothing.then(|| super::nothing_called(query)),
+            browse_heading: (!browse.is_empty()).then(|| super::BROWSE_CHANNELS.to_owned()),
+            conversations,
+            browse,
+            offer,
+        }
     }
 
     /// Shows the channel or private conversation called `name`, making it if there isn't
@@ -514,6 +528,8 @@ pub struct JoinOffer {
     pub name: String,
     /// What the row says: `Join #name` or `Create #name`.
     pub label: String,
+    /// What's drawn before the label: [`CREATE_MARK`] or [`JOIN_MARK`].
+    pub mark: String,
     /// Whether the server doesn't list it, so joining makes it.
     pub create: bool,
 }
@@ -528,4 +544,29 @@ pub fn join_label(name: &str) -> String {
 #[must_use]
 pub fn create_label(name: &str) -> String {
     format!("Create {name}")
+}
+
+/// The mark before Jump to's `Create #name`.
+pub const CREATE_MARK: &str = "+";
+
+/// The mark before Jump to's `Join #name`.
+pub const JOIN_MARK: &str = "→";
+
+/// Jump to for what's typed, as every app lays it out top to bottom ([`Chat::jump_to`]):
+/// the phones read it through their core, the web chat as JSON.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct JumpTo {
+    /// `Nothing called “x”.`, when it offers nothing at all; none while anything shows or
+    /// nothing's typed.
+    pub nothing: Option<String>,
+    /// The conversations it finds, by name, best first ([`Chat::switcher`]).
+    pub conversations: Vec<String>,
+    /// `Browse channels`, over [`Self::browse`]; none when there's no channel to join.
+    pub browse_heading: Option<String>,
+    /// The channels to join that what's typed names.
+    pub browse: Vec<BrowseRow>,
+    /// The last row: Join or Create #name for what's typed.
+    pub offer: Option<JoinOffer>,
 }

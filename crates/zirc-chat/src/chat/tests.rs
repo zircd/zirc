@@ -3272,14 +3272,15 @@ fn jump_to_says_nothing_is_called_that_only_when_it_offers_nothing() {
         &mut chat,
         &[":s 322 me #design 9 :", ":s 323 me :End of /LIST"],
     );
+    let nothing = |query: &str| chat.jump_to(query).nothing;
     // Typed nothing yet, or a conversation of ours, a channel to join or one to make.
-    assert_eq!(chat.jump_nothing(""), None);
-    assert_eq!(chat.jump_nothing("api"), None);
-    assert_eq!(chat.jump_nothing("desi"), None);
-    assert_eq!(chat.jump_nothing("launch"), None);
+    assert_eq!(nothing(""), None);
+    assert_eq!(nothing("api"), None);
+    assert_eq!(nothing("desi"), None);
+    assert_eq!(nothing("launch"), None);
     // No channel's name, so no Create row: nothing at all.
     assert_eq!(
-        chat.jump_nothing(" two words "),
+        nothing(" two words "),
         Some(crate::chat::nothing_called("two words"))
     );
 }
@@ -3302,6 +3303,28 @@ fn a_title_opens_its_people_or_someones_card_in_every_app() {
             nick: "maya-mbp".into(),
             session: Some("cc-1".into())
         }
+    );
+}
+
+#[test]
+fn jump_to_heads_browse_channels_only_over_channels_to_join() {
+    let mut chat = Scene::in_api();
+    // Nothing to join: no heading.
+    let jump = chat.jump_to("");
+    assert_eq!(jump.conversations, ["#api"]);
+    assert!(jump.browse.is_empty() && jump.browse_heading.is_none());
+    feed(
+        &mut chat,
+        &[":s 322 me #design 9 :", ":s 323 me :End of /LIST"],
+    );
+    let jump = chat.jump_to("des");
+    assert_eq!(jump.browse_heading.as_deref(), Some(BROWSE_CHANNELS));
+    assert_eq!(jump.browse[0].name, "#design");
+    // What it offers to make is marked so, the same in every app.
+    let make = chat.jump_to("launch").offer.unwrap();
+    assert_eq!(
+        (make.label.as_str(), make.mark.as_str()),
+        ("Create #launch", "+")
     );
 }
 
