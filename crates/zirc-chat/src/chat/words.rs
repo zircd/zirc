@@ -929,6 +929,8 @@ pub struct Words {
     pub jump_key: String,
     /// Search everywhere's key, beside its row: `⌘⇧F`.
     pub search_everywhere_key: String,
+    /// A phone's message menu's item after Copy text: `Select text`.
+    pub select_text: String,
     /// The composer's attach menu, picking a photo: `Photo`.
     pub photo: String,
     /// The composer's attach menu, picking a file: `File`.
@@ -1120,6 +1122,7 @@ pub fn words() -> Words {
         connecting: crate::connection::CONNECTING.to_owned(),
         jump_key: labels::keys::JUMP_TO.to_owned(),
         search_everywhere_key: labels::keys::SEARCH_EVERYWHERE.to_owned(),
+        select_text: labels::SELECT_TEXT.to_owned(),
         photo: labels::PHOTO.to_owned(),
         file: labels::FILE.to_owned(),
         card: labels::CARD.to_owned(),

@@ -266,6 +266,9 @@ pub fn file_size_download(size: &str) -> String {
 /// What a screen reader says of a conversation's muted mark.
 pub const MUTED: &str = "muted";
 
+/// A phone's message menu's item after Copy text, which selects its words to copy a part.
+pub const SELECT_TEXT: &str = "Select text";
+
 /// The composer's attach menu, picking a photo.
 pub const PHOTO: &str = "Photo";
 

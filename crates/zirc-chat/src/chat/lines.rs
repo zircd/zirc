@@ -181,7 +181,8 @@ pub struct Line {
     /// event with [`Icon::Post`] and words), whose words these are, `→ zirc-chat` first when
     /// it's to an agent session ([`SystemBody::Blocks`]).
     pub rich: Vec<RichBlock>,
-    /// The first web address it has, for Copy link: a landing's page, else its build's.
+    /// The first web address it has, for Copy link: a landing's page, else its build's; a
+    /// shared file's own.
     pub link: Option<String>,
     /// Whether it names us, so it stands out: never in a one-to-one conversation, where
     /// every line is for us.
@@ -232,6 +233,143 @@ pub struct LineActions {
     pub delete: bool,
     /// Showing what's attached to it ([`Chat::details`]): any line with the server's id.
     pub details: bool,
+}
+
+/// One item of a message's menu ([`Chat::message_menu`]), in the order every app lists them (the user's choice, 20 Nov
+/// 2026): Reply, Edit, Copy text, its sealed parts, Copy code, Copy link, Copy link to message,
+/// Details, React…, Delete…, Report….
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum MenuItem {
+    /// Replying to it.
+    Reply,
+    /// Correcting it.
+    Edit,
+    /// Copying its words.
+    CopyText,
+    /// Copying each sealed part this device can open, which the app knows: none, one or more,
+    /// each as [`super::copy_sealed_label`] says.
+    CopySealed,
+    /// Copying one of its code blocks, [`MenuEntry::code`].
+    CopyCode,
+    /// Copying the link in it, [`Line::link`].
+    CopyLink,
+    /// Copying its own link, where the app has the web address to make one.
+    CopyMessageLink,
+    /// What's attached to it ([`super::MESSAGE_DETAILS`]).
+    Details,
+    /// The emoji to give it.
+    React,
+    /// Deleting it for everyone, after asking.
+    Delete,
+    /// Reporting it, signed in to zirc.dev.
+    Report,
+}
+
+/// An item of a message's menu as every app lists it ([`Chat::message_menu`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct MenuEntry {
+    /// What it does.
+    pub item: MenuItem,
+    /// What it says: `Copy code 2`, `Delete…`; empty for [`MenuItem::CopySealed`], whose parts
+    /// say their own.
+    pub label: String,
+    /// For [`MenuItem::CopyCode`], the code it copies.
+    pub code: Option<String>,
+}
+
+impl Chat {
+    /// `line`'s menu, in the order and words every app lists it, as its [`LineActions`] allow,
+    /// with Report where it may be reported ([`Chat::can_report`]): made when a menu opens, as
+    /// one line's at a time, never for every line laid out.
+    #[must_use]
+    pub fn message_menu(&self, line: &Line) -> Vec<MenuEntry> {
+        let reportable = line.id.as_deref().is_some_and(|id| self.can_report(id));
+        menu(line, reportable)
+    }
+}
+
+/// `line`'s menu, in order, as its [`LineActions`] allow, with Report where it may be
+/// `reportable`.
+fn menu(line: &Line, reportable: bool) -> Vec<MenuEntry> {
+    let entry = |item, label: &str| MenuEntry {
+        item,
+        label: label.to_owned(),
+        code: None,
+    };
+    let actions = &line.actions;
+    let named = line.id.is_some();
+    let mut menu = Vec::new();
+    if actions.reply {
+        menu.push(entry(MenuItem::Reply, super::REPLY_LABEL));
+    }
+    if actions.edit {
+        menu.push(entry(MenuItem::Edit, super::EDIT_LABEL));
+    }
+    menu.push(entry(MenuItem::CopyText, super::COPY_TEXT));
+    if named {
+        menu.push(entry(MenuItem::CopySealed, ""));
+    }
+    let mut codes = Vec::new();
+    codes_in(&line.rich, &mut codes);
+    let of = codes.len();
+    menu.extend(codes.into_iter().enumerate().map(|(at, code)| MenuEntry {
+        item: MenuItem::CopyCode,
+        label: copy_code_label(at + 1, of),
+        code: Some(code),
+    }));
+    if line.link.is_some() {
+        menu.push(entry(MenuItem::CopyLink, super::COPY_LINK));
+    }
+    if actions.copy_link {
+        menu.push(entry(MenuItem::CopyMessageLink, super::COPY_MESSAGE_LINK));
+    }
+    if actions.details {
+        menu.push(entry(MenuItem::Details, super::MESSAGE_DETAILS));
+    }
+    if actions.react {
+        menu.push(entry(MenuItem::React, super::labels::REACT_PROMPT));
+    }
+    if actions.delete {
+        menu.push(entry(MenuItem::Delete, &format!("{}…", super::DELETE)));
+    }
+    if reportable {
+        menu.push(entry(
+            MenuItem::Report,
+            &format!("{}…", zirc_proto::report::words().report_message),
+        ));
+    }
+    menu
+}
+
+/// Copy code's label for the `n`th of `of` code blocks in a message: `Copy code` for its only
+/// one, `Copy code 2` for the second of several.
+#[must_use]
+pub fn copy_code_label(n: usize, of: usize) -> String {
+    if of > 1 {
+        format!("{} {n}", super::COPY_CODE)
+    } else {
+        super::COPY_CODE.to_owned()
+    }
+}
+
+/// The code blocks in `blocks`, in order, those in quotes and lists included.
+fn codes_in(blocks: &[RichBlock], out: &mut Vec<String>) {
+    for block in blocks {
+        match block {
+            RichBlock::Code { text, .. } => out.push(text.clone()),
+            RichBlock::Quote { blocks } => codes_in(blocks, out),
+            RichBlock::Items { items, .. } => {
+                for item in items {
+                    codes_in(&item.blocks, out);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 impl LineActions {
@@ -995,7 +1133,8 @@ impl<'a> Layout<'a> {
             return line;
         };
         let mut line = self.said(entry, LineKind::File, &file.name, continues);
-        line.link = None;
+        // Its address, for every app's Copy link: its name isn't one.
+        line.link = Some(file.url.clone());
         line.file = Some(drawn);
         line
     }
