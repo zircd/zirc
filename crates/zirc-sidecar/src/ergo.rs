@@ -93,7 +93,7 @@ pub enum OperatorError {
 }
 
 impl Operator {
-    /// Runs a `NickServ` command as the operator and returns `NickServ`'s first reply.
+    /// Runs a `NickServ` command as the operator and returns all `NickServ` says to it.
     ///
     /// # Errors
     ///
@@ -104,7 +104,7 @@ impl Operator {
     }
 
     /// Runs `ChanServ` commands as the operator, one after another in one login, and returns
-    /// `ChanServ`'s first reply to each.
+    /// all `ChanServ` says to each, a notice a line.
     ///
     /// # Errors
     ///
@@ -114,7 +114,7 @@ impl Operator {
     }
 
     /// Runs `HostServ` commands as the operator, one after another in one login, and returns
-    /// `HostServ`'s first reply to each.
+    /// all `HostServ` says to each.
     ///
     /// # Errors
     ///
@@ -123,7 +123,8 @@ impl Operator {
         self.service("HostServ", commands).await
     }
 
-    /// Runs commands of Ergo's `service` as the operator and returns its first reply to each.
+    /// Runs commands of Ergo's `service` as the operator and returns all it says to each, a
+    /// notice a line.
     async fn service(
         &self,
         service: &str,
@@ -135,6 +136,10 @@ impl Operator {
         for command in commands {
             let answer = async {
                 client.privmsg(service, command)?;
+                // Answered once the service is done with the command, which may take more than
+                // one notice: ChanServ gives the code to confirm a purge in its second.
+                client.send(Line::new("TIME", [] as [&str; 0]))?;
+                let mut said = Vec::new();
                 loop {
                     let line = incoming.recv().await.ok_or(OperatorError::Closed)?;
                     let from_service = line
@@ -142,7 +147,9 @@ impl Operator {
                         .as_deref()
                         .is_some_and(|s| s.starts_with(&prefix));
                     if from_service && line.command == "NOTICE" {
-                        return Ok(line.params.last().cloned().unwrap_or_default());
+                        said.push(line.params.last().cloned().unwrap_or_default());
+                    } else if line.command == "391" {
+                        return Ok(said.join("\n"));
                     }
                 }
             };

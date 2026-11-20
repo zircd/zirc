@@ -67,7 +67,8 @@ pub async fn purge(
             .await?
             .concat(),
     );
-    // ChanServ asks to confirm with a code it gives: `/CS PURGE ADD <channel> <code>`.
+    // ChanServ asks to confirm with a code it gives, in its second notice:
+    // `To confirm, run this command: /CS PURGE ADD <channel> <code>`.
     if let Some(code) = confirmation_of(&answer, "purge add", channel) {
         answer = plain(
             &operator
@@ -123,8 +124,10 @@ mod tests {
 
     #[test]
     fn reads_the_code_chanserv_asks_to_confirm_a_purge_with() {
-        let asked = "Please be careful: purging is permanent. To confirm, run this command: \
-                     /CS PURGE ADD #monorepo/agents xY7kQ2 [reason]";
+        // Ergo 2.19.1's two notices (irc/chanserv.go, csPurgeAddHandler), as ChanServ's
+        // answer reads them.
+        let asked = "Warning: you are about to empty this channel and remove it from the server.\n\
+                     To confirm, run this command: /CS PURGE ADD #monorepo/agents xY7kQ2";
         assert_eq!(
             confirmation_of(asked, "purge add", "#monorepo/agents").as_deref(),
             Some("xY7kQ2")
