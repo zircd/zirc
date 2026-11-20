@@ -317,9 +317,6 @@ pub struct SearchScreen {
     pub more_groups: Option<String>,
     /// The hits in one list, otherwise.
     pub hits: Vec<SearchHit>,
-    /// Whether each hit in the list says its conversation, in its [`SearchHit::aside`]:
-    /// everywhere, by time.
-    pub rooms: bool,
     /// The widening row, in one conversation.
     pub elsewhere: Option<Elsewhere>,
     /// What the search couldn't cover.
@@ -627,14 +624,7 @@ impl Chat {
             let (groups, more) = self.search_groups(&found, counts, all_groups);
             (groups, more, Vec::new())
         } else {
-            let mut hits = listed(sort, found);
-            // Every conversation's hits in one list: each says where it was, before when.
-            if everywhere {
-                for hit in &mut hits {
-                    hit.aside = format!("{} · {}", hit.place, hit.when);
-                }
-            }
-            (Vec::new(), None, hits)
+            (Vec::new(), None, listed(sort, found))
         };
 
         let searching = typed && server.is_some_and(ServerSearch::is_asking);
@@ -699,7 +689,6 @@ impl Chat {
             sorts,
             groups,
             more_groups,
-            rooms: everywhere && !grouped,
             hits,
             elsewhere,
             limits,
@@ -740,9 +729,11 @@ impl Chat {
                 .collect(),
         };
         let now = wall((self.clock)());
+        // Everywhere by time, every conversation's hits are one list, each saying where.
+        let listed = scope.is_none() && query.sort() != Sort::Best;
         let found = |name: &str, hit: &Hit, loaded: bool| SearchHit {
             loaded,
-            ..self.search_hit(name, self.title(name), hit, &words, wall, now)
+            ..self.search_hit(name, self.title(name), hit, &words, (wall, now), listed)
         };
         let mut loaded: Vec<SearchHit> = Vec::new();
         let mut loaded_ids: HashSet<String> = HashSet::new();
@@ -1104,7 +1095,10 @@ fn screen_chips(query: &SearchQuery, scope_title: Option<&str>) -> Vec<ScreenChi
 }
 
 impl Chat {
-    /// Where a hit in the conversation `name`, said by `from`, was, as [`SearchHit::place`] says.
+    /// Where a hit in the conversation `name`, said by `from`, was, as a [`SearchHit::aside`]
+    /// in one list of every conversation's hits says it: the conversation as shown for a
+    /// channel or an agent's; for direct messages, `DM` when the other person said it and
+    /// `to Leo Okafor` when you did, so the name isn't said twice.
     pub(super) fn hit_place(&self, name: &str, from: &str) -> String {
         let title = self.title(name);
         if is_channel(name) || agent(name).is_some() {
@@ -1161,5 +1155,16 @@ impl RecentSearches {
             .iter()
             .filter_map(|text| SearchQuery::parse(text, None).ok())
             .collect()
+    }
+}
+
+impl SearchScreen {
+    /// The hit Return in the search box opens, in every app: the first listed, or the
+    /// first conversation's first.
+    #[must_use]
+    pub fn first(&self) -> Option<&SearchHit> {
+        self.hits
+            .first()
+            .or_else(|| self.groups.first().and_then(|group| group.hits.first()))
     }
 }

@@ -216,8 +216,6 @@ pub struct SearchHit {
     pub id: Option<String>,
     /// When it was said, in milliseconds since 1970.
     pub time_ms: i64,
-    /// That on the app's clock: [`super::clock`], `15:48`.
-    pub clock: String,
     /// Who said it: their nick.
     pub from: String,
     /// What the match's head calls them, as a message's does: [`Chat::sender_name`], an
@@ -230,15 +228,12 @@ pub struct SearchHit {
     pub loaded: bool,
     /// Who said it as a row's avatar shows them, beside the name: [`Chat::sender_avatar`].
     pub face: Face,
-    /// Where it was, as a hit in a list of every conversation says it: the conversation as
-    /// shown for a channel or an agent's; for direct messages, `DM` when the other person
-    /// said it and `to Leo Okafor` when you did, so the name isn't said twice.
-    pub place: String,
     /// Its day and time, as every list says it: `15:48` today, `Sat 08:00` within the
     /// week, `2 Nov`, `2 Nov 2025` ([`super::list_when`]).
     pub when: String,
-    /// What every app draws beside the name, muted: its [`Self::when`], and in a list of
-    /// every conversation's hits where it was before it, `#api · Sat 08:00`.
+    /// What every app draws beside the name, muted: its [`Self::when`], and in one list of
+    /// every conversation's hits where it was before it ([`Chat::hit_place`]),
+    /// `#api · Sat 08:00`.
     pub aside: String,
     /// What a screen reader says of it: "Leo Okafor in #api, 9:14: the gateway's upstream
     /// timeout is 30s".
@@ -258,34 +253,38 @@ pub struct HitPart {
 
 impl Chat {
     /// `hit`, in the conversation `name` shown as `title`, as a search shows it: `words`
-    /// marked, times on the clock `wall` with `now` its present.
+    /// marked, times on the clock `wall` with `now` its present, and where it was said too
+    /// when it's `listed` among every conversation's hits.
     pub(super) fn search_hit(
         &self,
         name: &str,
         title: String,
         hit: &Hit,
         words: &str,
-        wall: impl Fn(DateTime<Utc>) -> NaiveDateTime,
-        now: NaiveDateTime,
+        (wall, now): (impl Fn(DateTime<Utc>) -> NaiveDateTime, NaiveDateTime),
+        listed: bool,
     ) -> SearchHit {
         let parts = parts(&hit.text, &highlights(&hit.text, words));
         let said: String = parts.iter().map(|part| part.text.as_str()).collect();
         let speaker = self.sender_name(&hit.from, hit.session.as_deref());
         let when = super::list_when(wall(hit.time), now);
+        let aside = if listed {
+            format!("{} · {when}", self.hit_place(name, &hit.from))
+        } else {
+            when.clone()
+        };
         SearchHit {
             a11y: format!("{speaker} in {title}, {when}: {said}"),
             conversation: name.to_owned(),
             title,
             id: hit.id.clone(),
             time_ms: hit.time.timestamp_millis(),
-            clock: super::clock(wall(hit.time)),
             from: hit.from.clone(),
             name: speaker,
             parts,
             loaded: hit.loaded,
             face: self.face(&self.sender_avatar(&hit.from)),
-            place: self.hit_place(name, &hit.from),
-            aside: when.clone(),
+            aside,
             when,
         }
     }
@@ -394,8 +393,8 @@ impl Chat {
                 title.to_owned(),
                 hit,
                 &needle(query, name).0,
-                &wall,
-                now,
+                (&wall, now),
+                scope.is_none(),
             )
         };
         let mut hits: Vec<SearchHit> = Vec::new();

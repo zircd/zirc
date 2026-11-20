@@ -154,7 +154,7 @@ fn in_one_conversation_it_is_flat_newest_first_and_says_how_many_elsewhere() {
         Some("Also 14 in 3 other conversations")
     );
     assert_eq!(screen.sort_label, "Sort: Newest");
-    assert!(screen.groups.is_empty() && !screen.rooms);
+    assert!(screen.groups.is_empty());
     // In one conversation a hit's aside is only when.
     assert!(screen.hits.iter().all(|hit| hit.aside == hit.when));
     assert_eq!(screen.a11y, "23 results in #api, newest");
@@ -186,6 +186,15 @@ fn in_one_conversation_it_is_flat_newest_first_and_says_how_many_elsewhere() {
         Finding::limits(Some(limits.clone()), segments.as_ref()),
         Some(limits)
     );
+}
+
+/// Where each hit in one list says it was, before its time.
+fn places(screen: &SearchScreen) -> Vec<&str> {
+    screen
+        .hits
+        .iter()
+        .filter_map(|hit| hit.aside.split(" · ").next())
+        .collect()
 }
 
 #[test]
@@ -283,15 +292,13 @@ fn everywhere_by_best_match_groups_by_conversation_and_by_time_is_one_list() {
     );
     server.take_page(&page(Vec::new(), None));
     let screen = chat.search_screen(&newest, Some(&server), true, false, wall);
-    assert!(screen.groups.is_empty() && screen.rooms);
+    assert!(screen.groups.is_empty());
     let ids: Vec<_> = screen.hits.iter().map(|h| h.id.as_deref()).collect();
     assert_eq!(ids, [Some("d1"), Some("w1"), Some("a1")]);
-    // A direct message's place doesn't name the person again.
-    let places: Vec<_> = screen.hits.iter().map(|h| h.place.as_str()).collect();
-    assert_eq!(places, ["DM", "#web", "#api"]);
-    // Every app draws where it was before when, as one aside.
-    let hit = &screen.hits[1];
-    assert_eq!(hit.aside, format!("#web · {}", hit.when));
+    // Each says where it was before when, a direct message's not naming the person again.
+    assert_eq!(places(&screen), ["DM", "#web", "#api"]);
+    // Return opens the first.
+    assert_eq!(screen.first().and_then(|h| h.id.as_deref()), Some("d1"));
     assert_eq!(
         chat.hit_place("leo", "me"),
         format!("to {}", chat.title("leo"))
@@ -463,7 +470,6 @@ fn a_hit_s_day_is_the_person_s_own_around_midnight() {
     ));
     let utc = chat.search_screen(&query, Some(&server), true, false, wall);
     assert_eq!(utc.hits[0].when, "Fri 23:30");
-    assert_eq!(utc.hits[0].clock, "23:30");
     let east = |t: DateTime<Utc>| t.naive_utc() + chrono::Duration::hours(1);
     let paris = chat.search_screen(&query, Some(&server), true, false, east);
     assert_eq!(paris.hits[0].when, "00:30");

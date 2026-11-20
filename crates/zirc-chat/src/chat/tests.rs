@@ -5383,7 +5383,7 @@ fn a_search_view_is_everywhere_or_one_conversation_with_the_history_merged() {
         .map(|hit| {
             (
                 hit.conversation.as_str(),
-                hit.clock.as_str(),
+                hit.when.as_str(),
                 hit.name.as_str(),
             )
         })
