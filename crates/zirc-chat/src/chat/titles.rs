@@ -4,9 +4,30 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::{
-    Chat, Kind, Line, SenderKind, agent, agent_name, fold, group, is_channel, is_group,
+    Chat, DirectKind, Kind, Line, SenderKind, agent, agent_name, fold, group, is_channel, is_group,
     machine_label, sender_kind,
 };
+
+/// What a press on a conversation's header title opens, in every app (the user's choice, 20
+/// Nov 2026): its people, someone's card, or nothing ([`Chat::title_opens`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+#[ts(rename_all = "camelCase", tag = "kind")]
+pub enum TitleOpens {
+    /// The people in it: a channel's, a group's.
+    People,
+    /// `nick`'s card: a person's in a direct message, or with `session` an agent session's
+    /// on that machine.
+    Card {
+        /// Whose card: the person, or the agent's machine.
+        nick: String,
+        /// The agent session's id, for its own card.
+        session: Option<String>,
+    },
+    /// Nothing: the server's conversation, or our machine's thread, whose sessions are at its
+    /// top.
+    Nothing,
+}
 
 /// What fills the window while nothing's joined and only the server's own conversation is
 /// there: no conversation's header and no composer, which would say the server's host.
@@ -168,6 +189,29 @@ impl Chat {
     #[must_use]
     pub fn shows_agent_tag(&self, name: &str) -> bool {
         agent(name).is_some()
+    }
+
+    /// What a press on the conversation `name`'s header title opens: a channel's or a group's
+    /// people, a person's card, an agent session's card, or for the server's conversation and
+    /// a machine's thread nothing. Every app reads it, none deciding by the conversation's
+    /// kind.
+    #[must_use]
+    pub fn title_opens(&self, name: &str) -> TitleOpens {
+        match self.direct_kind(name) {
+            None if self.is_server(name) => TitleOpens::Nothing,
+            None | Some(DirectKind::Group) => TitleOpens::People,
+            Some(DirectKind::Agent) => {
+                agent(name).map_or(TitleOpens::Nothing, |(nick, session)| TitleOpens::Card {
+                    nick: nick.to_owned(),
+                    session: Some(session.to_owned()),
+                })
+            }
+            Some(DirectKind::Machine) => TitleOpens::Nothing,
+            Some(DirectKind::Person) => TitleOpens::Card {
+                nick: name.to_owned(),
+                session: None,
+            },
+        }
     }
 
     /// What every app's header calls the conversation called `name`: a guest's room, to staff,

@@ -220,7 +220,7 @@ pub use speaker::{
 pub use split::split_message;
 pub use status::{Connection, Logged, Notice, Status};
 pub use thread::{ThreadLink, thread_name};
-pub use titles::{NOTHING_JOINED, NothingJoined, SERVER_TITLE};
+pub use titles::{NOTHING_JOINED, NothingJoined, SERVER_TITLE, TitleOpens};
 pub use typing::{EVERY as TYPING_EVERY, SESSION_TAG, TYPING_TAG, Typist, typing_words};
 pub use view::{
     EVENT_MARK, Icon, Item, LANDING_KIND, Landing, Membership, Outcome, Parts, Pointer,

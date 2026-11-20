@@ -3256,6 +3256,27 @@ fn jump_to_says_nothing_is_called_that_only_when_it_offers_nothing() {
 }
 
 #[test]
+fn a_title_opens_its_people_or_someones_card_in_every_app() {
+    use crate::chat::TitleOpens;
+    let chat = Scene::in_api();
+    assert_eq!(chat.title_opens("#api"), TitleOpens::People);
+    assert_eq!(
+        chat.title_opens("bob"),
+        TitleOpens::Card {
+            nick: "bob".into(),
+            session: None
+        }
+    );
+    assert_eq!(
+        chat.title_opens("maya-mbp/cc-1"),
+        TitleOpens::Card {
+            nick: "maya-mbp".into(),
+            session: Some("cc-1".into())
+        }
+    );
+}
+
+#[test]
 fn a_badge_says_its_count_up_to_ninety_nine() {
     assert_eq!(badge_label(7), "7");
     assert_eq!(badge_label(99), "99");
