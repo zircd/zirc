@@ -4,7 +4,9 @@
 use zirc_proto::login::{ConversationCount, HistoryMessage, HistoryPage, HistorySender};
 
 use super::*;
-use crate::chat::{RecentSearches, SearchQuery, SearchScope, SearchSort, absorb_search};
+use crate::chat::{
+    Finding, RecentSearches, SearchLimits, SearchQuery, SearchScope, SearchSort, absorb_search,
+};
 
 /// A chat in `#api` and `#web`, with Leo's direct messages, some of it about timeouts.
 fn scene() -> Chat {
@@ -148,7 +150,7 @@ fn in_one_conversation_it_is_flat_newest_first_and_says_how_many_elsewhere() {
     );
     assert_eq!(screen.header.as_deref(), Some("23 results in #api"));
     assert_eq!(
-        screen.elsewhere.unwrap().text.as_deref(),
+        screen.elsewhere.as_ref().unwrap().text.as_deref(),
         Some("Also 14 in 3 other conversations")
     );
     assert_eq!(screen.sort_label, "Sort: Newest");
@@ -161,8 +163,26 @@ fn in_one_conversation_it_is_flat_newest_first_and_says_how_many_elsewhere() {
     assert!(offline.everywhere_unavailable.is_some());
     assert!(screen.everywhere_unavailable.is_none());
     assert_eq!(
-        offline.limits.unwrap().text,
+        offline.limits.as_ref().unwrap().text,
         "Offline: searching only what this device has loaded."
+    );
+
+    // Opened in #api, the control's greyed Everywhere says it's offline, and the limits line
+    // doesn't say it again; opened everywhere, with no control, the limits line says it.
+    let opened = Finding::new(query.clone(), Some("#api".to_owned()));
+    let segments = opened.segments(&offline, Some("#api".to_owned()));
+    assert!(segments.as_ref().unwrap().everywhere_unavailable.is_some());
+    assert!(Finding::limits(offline.limits.clone(), segments.as_ref()).is_none());
+    assert!(Finding::limits(offline.limits.clone(), None).is_some());
+    // Online, the control says nothing, and the limits line says what it would.
+    let segments = opened.segments(&screen, Some("#api".to_owned()));
+    let limits = SearchLimits {
+        text: "Still indexing: some older messages may be missing.".to_owned(),
+        warning: true,
+    };
+    assert_eq!(
+        Finding::limits(Some(limits.clone()), segments.as_ref()),
+        Some(limits)
     );
 }
 

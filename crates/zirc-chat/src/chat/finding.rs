@@ -5,8 +5,8 @@
 //! chosen) is the app's.
 
 use super::{
-    Chat, ScreenChip, SearchQuery, SearchScope, SearchScreen, SearchSegments, SearchSort,
-    ServerSearch, absorb_search, compose_search, search_segments, segment_scope,
+    Chat, ScreenChip, SearchLimits, SearchQuery, SearchScope, SearchScreen, SearchSegments,
+    SearchSort, ServerSearch, absorb_search, compose_search, search_segments, segment_scope,
 };
 
 /// How long typing settles before the history is asked, in milliseconds, in every app.
@@ -198,6 +198,17 @@ impl Finding {
     #[must_use]
     pub fn segments(&self, screen: &SearchScreen, here: Option<String>) -> Option<SearchSegments> {
         search_segments(screen, self.opened_in.as_deref(), here)
+    }
+
+    /// What the search couldn't cover, of `limits` ([`SearchScreen::limits`]), said once:
+    /// when the segmented control greys Everywhere out (`segments`), it says why beneath it,
+    /// offline, so the limits line doesn't say so again.
+    #[must_use]
+    pub fn limits(
+        limits: Option<SearchLimits>,
+        segments: Option<&SearchSegments>,
+    ) -> Option<SearchLimits> {
+        limits.filter(|_| segments.is_none_or(|segments| segments.everywhere_unavailable.is_none()))
     }
 
     /// The chips in the box, of `chips` ([`SearchScreen::chips`]): not the scope's when the
