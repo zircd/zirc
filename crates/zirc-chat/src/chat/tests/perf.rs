@@ -157,7 +157,6 @@ fn web(chat: &Chat, zone: FixedOffset) -> usize {
         + chat
             .sidebar_list(&ListOptions {
                 tab: Some(chat.tab()),
-                ..ListOptions::default()
             })
             .len()
         + chat.tabs().len()
@@ -206,13 +205,7 @@ fn phone(chat: &Chat, zone: FixedOffset) -> usize {
         Some(SidebarSection::Channels),
         Some(SidebarSection::Direct),
     ]
-    .map(|tab| {
-        chat.sidebar_list(&ListOptions {
-            tab,
-            ..ListOptions::default()
-        })
-        .len()
-    })
+    .map(|tab| chat.sidebar_list(&ListOptions { tab }).len())
     .iter()
     .sum::<usize>();
     rows + sidebar
@@ -238,7 +231,6 @@ fn desktop(chat: &Chat, zone: FixedOffset) -> usize {
         + chat
             .sidebar_list(&ListOptions {
                 tab: Some(chat.tab()),
-                ..ListOptions::default()
             })
             .len()
         + chat.tabs().len()
@@ -257,13 +249,7 @@ fn tui(chat: &Chat, zone: FixedOffset) -> usize {
     chat.items(conversation, |time| time.with_timezone(&zone).date_naive())
         .len()
         + [Some(chat.tab()), None]
-            .map(|tab| {
-                chat.sidebar_list(&ListOptions {
-                    tab,
-                    ..ListOptions::default()
-                })
-                .len()
-            })
+            .map(|tab| chat.sidebar_list(&ListOptions { tab }).len())
             .iter()
             .sum::<usize>()
         + chat.tabs().len()

@@ -2,7 +2,7 @@
 //! nests under a channel, the folds and the rows that end a part.
 
 use super::*;
-use crate::chat::{ALL_MESSAGES, KeptGuest, ListKind, ListOptions, ListRow, SidebarSection};
+use crate::chat::{KeptGuest, ListKind, ListOptions, ListRow, SidebarSection};
 
 fn all() -> ListOptions {
     ListOptions::default()
@@ -494,52 +494,6 @@ fn at_heading(rows: &[ListRow], shelf: Shelf) -> usize {
 }
 
 #[test]
-fn a_direct_limit_lists_that_many_then_all_messages() {
-    let mut chat = busy();
-    feed(
-        &mut chat,
-        &[
-            "@time=2026-10-30T11:06:00.000Z :dave!u@h PRIVMSG me :yo",
-            "@time=2026-10-30T11:07:00.000Z :erin!u@h PRIVMSG me :hey",
-        ],
-    );
-    quiet_agent(&mut chat, "me-mini", "cc-2");
-    let limited = ListOptions {
-        direct_limit: Some(2),
-        ..ListOptions::default()
-    };
-    let rows = chat.sidebar_list(&limited);
-    let direct: Vec<_> = rows
-        .iter()
-        .filter(|r| r.shelf == Shelf::Direct)
-        .map(|r| (r.kind, r.title.as_str()))
-        .collect();
-    assert_eq!(
-        direct,
-        [
-            (ListKind::Heading, "Direct messages"),
-            (ListKind::Conversation, "erin"),
-            (ListKind::Conversation, "dave"),
-            (ListKind::AllDirect, ALL_MESSAGES),
-        ]
-    );
-    // It counts what it hides: carol's and bob's unread.
-    let all_direct = rows.iter().find(|r| r.kind == ListKind::AllDirect).unwrap();
-    assert!(all_direct.unread && all_direct.name.is_empty() && all_direct.open.is_none());
-    assert_eq!(all_direct.badge, 2);
-    // The quiet agent session isn't counted under it: it isn't listed at all.
-
-    // When they all fit, no All messages.
-    let mut chat = Scene::in_api();
-    feed(&mut chat, &[":bob!u@h PRIVMSG me :hi"]);
-    let rows = chat.sidebar_list(&ListOptions {
-        direct_limit: Some(3),
-        ..ListOptions::default()
-    });
-    assert!(!rows.iter().any(|r| r.kind == ListKind::AllDirect));
-}
-
-#[test]
 fn an_agent_at_work_that_wrote_to_us_has_its_direct_row_with_its_task() {
     let mut chat = busy();
     feed(
@@ -587,16 +541,11 @@ fn a_row_serialises_for_the_web_in_camel_case() {
     assert_eq!(json["shelf"], "direct");
     assert_eq!(json["directKind"], "person");
     assert_eq!(json["badgeLabel"], "1");
-    let options: ListOptions = serde_json::from_str(r#"{"directLimit": 3}"#).unwrap();
-    assert_eq!(options.direct_limit, Some(3));
 }
 
 /// The sidebar as the switch shows `tab`.
 fn tab(tab: SidebarSection) -> ListOptions {
-    ListOptions {
-        tab: Some(tab),
-        ..ListOptions::default()
-    }
+    ListOptions { tab: Some(tab) }
 }
 
 #[test]
@@ -789,7 +738,6 @@ fn messages_counts(chat: &Chat) -> (u32, u32) {
         .unwrap();
     let rows = chat.sidebar_list(&ListOptions {
         tab: Some(SidebarSection::Direct),
-        ..all()
     });
     (tab.badge, rows.iter().map(|row| row.badge).sum())
 }

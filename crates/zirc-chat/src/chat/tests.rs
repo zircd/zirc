@@ -6422,7 +6422,7 @@ fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
                         .1
                         .push(format!("{indent}{}", row.name));
                 }
-                _ => {}
+                ListKind::GuestRoom => {}
             }
         }
         shelves

@@ -481,27 +481,22 @@ impl App {
     /// The list's rows for `tab`, or for both halves.
     pub(crate) fn sides(&self, tab: Option<zirc_core::chat::SidebarSection>) -> Vec<Side> {
         self.chat
-            .sidebar_list(&ListOptions {
-                tab,
-                ..ListOptions::default()
-            })
+            .sidebar_list(&ListOptions { tab })
             .into_iter()
-            .filter_map(|row| self.side_of(row))
+            .map(|row| self.side_of(row))
             .collect()
     }
 
-    /// The row zirc-chat lists as `row`, as the list down the left draws it; `None` for All
-    /// messages, which only a list of the first few direct messages has.
-    fn side_of(&self, row: ListRow) -> Option<Side> {
+    /// The row zirc-chat lists as `row`, as the list down the left draws it.
+    fn side_of(&self, row: ListRow) -> Side {
         let target = match row.kind {
             ListKind::Heading => {
-                return Some(Side::Heading {
+                return Side::Heading {
                     label: row.shelf.label(),
                     shelf: row.shelf,
                     open: row.open != Some(false),
-                });
+                };
             }
-            ListKind::AllDirect => return None,
             ListKind::Conversation | ListKind::Room | ListKind::GuestRoom => {
                 self.side_target(&row.name)
             }
@@ -531,7 +526,7 @@ impl App {
         let when = row.when.or_else(|| row.placeholder.then(String::new));
         let preview = row.preview.zip(when);
         let note = row.note.filter(|_| private);
-        Some(Side::Row {
+        Side::Row {
             label,
             target,
             depth: usize::from(row.depth),
@@ -548,7 +543,7 @@ impl App {
                 .open
                 .filter(|_| row.kind == ListKind::Conversation)
                 .map(|open| (row.name.clone(), open)),
-        })
+        }
     }
 
     /// Carries out what an admin does with a guest through zirc.dev, when

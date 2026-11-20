@@ -1,6 +1,6 @@
 //! The sidebar as one flat list of rows, in the order every app draws them
 //! ([`Chat::sidebar_list`]): each part's heading, its conversations, a channel's rooms and
-//! guests' rooms under it, the folds (a channel's `12 guests`) and All messages are all
+//! guests' rooms under it, and the folds (a channel's `12 guests`) are all
 //! rows. An app draws them as they come and works
 //! out nothing of its own: what's folded away isn't in the list, so moving to the next or
 //! previous row walks the list as it is.
@@ -23,10 +23,6 @@ use super::face::Face;
 use super::list::{ChannelGroup, DirectKind, DirectRow, Shelf, SidebarSection};
 use super::{Attendance, Avatar, Chat, Presence, ago_short, badge_label, room_label};
 
-/// What the row after the first few direct messages says, where an app lists only those
-/// ([`ListOptions::direct_limit`]): it shows them all.
-pub const ALL_MESSAGES: &str = "All messages";
-
 /// What a channel's, a thread's or a direct message's row says under its name, faint, while
 /// nothing's been said in it ([`ListRow::placeholder`]).
 pub const NO_MESSAGES: &str = "No messages yet";
@@ -46,8 +42,6 @@ pub enum ListKind {
     Room,
     /// A guest's room under its channel, by the guest's name: opening it joins it.
     GuestRoom,
-    /// All messages, after the first few direct messages where an app lists only those.
-    AllDirect,
 }
 
 /// What an app asks of the sidebar's list.
@@ -55,9 +49,6 @@ pub enum ListKind {
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub struct ListOptions {
-    /// How many direct messages to list before an All messages row, as the iPhone's Home
-    /// lists 3; `None` lists them all.
-    pub direct_limit: Option<u32>,
     /// The section to list, as the sidebar's switch shows one at a time ([`Chat::tab`]);
     /// `None` lists both, one after the other.
     pub tab: Option<SidebarSection>,
@@ -77,12 +68,11 @@ pub struct ListRow {
     /// The part it's in.
     pub shelf: Shelf,
     /// The conversation it opens ([`Chat::open`]); for a channel's guests' fold, the
-    /// channel, and for a machine's `N earlier`, the machine; empty for a heading, the other
-    /// folds and All messages.
+    /// channel, and for a machine's `N earlier`, the machine; empty for a heading and the other
+    /// folds.
     pub name: String,
     /// What it says: a heading's part, a room by its own name under its channel, a direct
-    /// message as [`DirectRow::label`] says it, a guest by their name, a fold's words,
-    /// `All messages`.
+    /// message as [`DirectRow::label`] says it, a guest by their name, a fold's words.
     pub title: String,
     /// How far it's indented: 1 for a room, a guest's room or the guests' fold under their
     /// channel, and for an agent session or its `N earlier` under its machine, else 0.
@@ -229,25 +219,11 @@ impl ListRow {
             ListKind::Conversation | ListKind::Room | ListKind::GuestRoom
         )
     }
-
-    /// A fold's row over `under`: what's unread and counted under it.
-    fn fold_over(kind: ListKind, shelf: Shelf, title: String, open: bool, under: &[Self]) -> Self {
-        let badge: usize = under
-            .iter()
-            .map(|row| usize::try_from(row.badge).unwrap_or(usize::MAX))
-            .sum();
-        Self {
-            open: Some(open),
-            unread: under.iter().any(|row| row.unread),
-            ..Self::new(kind, shelf, title)
-        }
-        .counting(badge)
-    }
 }
 
 impl Chat {
-    /// The sidebar, as every app draws it: one flat list of rows in order, headings, folds and
-    /// All messages among them (see the module's doc). What's starred
+    /// The sidebar, as every app draws it: one flat list of rows in order, headings and folds
+    /// among them (see the module's doc). What's starred
     /// is under Starred alone, a starred repository channel with its rooms. A folded part
     /// keeps only its heading and the rows unread, counted or shown; a shut fold, nothing
     /// under it; a fold holding the conversation shown is open.
@@ -312,7 +288,7 @@ impl Chat {
             .collect();
         list.extend(self.sidebar_part(Shelf::Channels, channels, &shown));
 
-        let direct = self.direct_part(&directs, &working, *options);
+        let direct = self.direct_part(&directs, &working);
         list.extend(self.sidebar_part(Shelf::Direct, direct, &shown));
 
         if let Some(tab) = options.tab {
@@ -582,36 +558,17 @@ impl Chat {
         .counting(row.badge)
     }
 
-    /// The direct messages' rows, what's starred left out: all of them, or, with a limit,
-    /// the first that many, then All messages when there are more.
+    /// The direct messages' rows, what's starred left out.
     fn direct_part(
         &self,
         directs: &[DirectRow],
         working: &HashMap<String, (String, String)>,
-        options: ListOptions,
     ) -> Vec<ListRow> {
-        let mut rows: Vec<ListRow> = directs
+        directs
             .iter()
             .filter(|row| !self.is_starred(&row.name))
             .map(|row| self.direct_list_row(row, Shelf::Direct, working))
-            .collect();
-        if let Some(limit) = options.direct_limit {
-            let limit = usize::try_from(limit).unwrap_or(usize::MAX);
-            let hidden = rows.split_off(limit.min(rows.len()));
-            if !hidden.is_empty() {
-                rows.push(ListRow {
-                    open: None,
-                    ..ListRow::fold_over(
-                        ListKind::AllDirect,
-                        Shelf::Direct,
-                        ALL_MESSAGES.to_owned(),
-                        false,
-                        &hidden,
-                    )
-                });
-            }
-        }
-        rows
+            .collect()
     }
 
     /// Whether we're in the conversation called `name`: a channel we joined, or were in

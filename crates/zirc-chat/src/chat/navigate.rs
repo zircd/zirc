@@ -9,9 +9,9 @@ use super::{Chat, ListKind, ListOptions, fold};
 impl Chat {
     /// The conversations the sidebar listed with `options` shows, top to bottom, each once:
     /// its rows that open a conversation we're in, the Server channel's among them.
-    fn stepping_order(&self, options: &ListOptions) -> Vec<String> {
+    fn stepping_order(&self, options: ListOptions) -> Vec<String> {
         let mut seen = HashSet::new();
-        self.sidebar_list(options)
+        self.sidebar_list(&options)
             .into_iter()
             .filter(|row| {
                 matches!(
@@ -39,7 +39,7 @@ impl Chat {
     /// first or the last when the one shown isn't listed. None when nothing is.
     #[must_use]
     pub fn next_conversation(&self, options: &ListOptions, by: isize) -> Option<String> {
-        let order = self.stepping_order(options);
+        let order = self.stepping_order(*options);
         let len = order.len().cast_signed();
         if len == 0 {
             return None;
@@ -57,7 +57,7 @@ impl Chat {
     /// keeps what's unread. None when nothing else is unread.
     #[must_use]
     pub fn next_unread(&self, by: isize) -> Option<String> {
-        let order = self.stepping_order(&ListOptions::default());
+        let order = self.stepping_order(ListOptions::default());
         let len = order.len().cast_signed();
         let from = self
             .shown_in(&order)

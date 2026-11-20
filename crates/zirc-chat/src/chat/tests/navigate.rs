@@ -72,7 +72,6 @@ fn next_and_previous_conversation_go_round_the_ends() {
     let mut chat = three();
     let channels = ListOptions {
         tab: Some(SidebarSection::Channels),
-        ..ListOptions::default()
     };
     let next = |chat: &Chat, by| chat.next_conversation(&channels, by).unwrap();
     // Down the sidebar: the channels A–Z, the Server channel not among them.
