@@ -52,13 +52,27 @@ pub fn enter(pressed: KeyPressed) -> EnterDoes {
     }
 }
 
+/// What the composer holds as Up is pressed: whether it's empty, and whether it's already
+/// correcting a message.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(rename_all = "camelCase")]
+pub struct Composing {
+    /// Nothing written in it.
+    pub empty: bool,
+    /// It's correcting a message already.
+    pub editing: bool,
+}
+
 /// Whether Up, pressed in the composer with `pressed`, corrects our last message in the
-/// conversation ([`crate::chat::Chat::last_editable`]): while the composer is `empty`, with no
-/// modifier and no input method composing, as Slack does (the user's choice, 20 Nov 2026).
-/// Otherwise it's the field's own, moving the caret.
+/// conversation ([`crate::chat::Chat::last_editable`]): while the composer is empty and not
+/// correcting one already, with no modifier and no input method composing, as Slack does
+/// (the user's choice, 20 Nov 2026). Otherwise it's the field's own, moving the caret.
 #[must_use]
-pub fn up_edits_last(empty: bool, pressed: KeyPressed) -> bool {
-    empty && !(pressed.composing || pressed.shift || pressed.alt || pressed.ctrl || pressed.meta)
+pub fn up_edits_last(composer: Composing, pressed: KeyPressed) -> bool {
+    composer.empty
+        && !composer.editing
+        && !(pressed.composing || pressed.shift || pressed.alt || pressed.ctrl || pressed.meta)
 }
 
 /// Whether `key`, typed while nothing that takes text has the focus, goes into the composer
@@ -88,8 +102,18 @@ mod tests {
     #[test]
     fn up_edits_the_last_message_only_from_an_empty_composer_with_no_modifier() {
         let plain = KeyPressed::default();
-        assert!(up_edits_last(true, plain));
-        assert!(!up_edits_last(false, plain));
+        let empty = Composing {
+            empty: true,
+            editing: false,
+        };
+        assert!(up_edits_last(empty, plain));
+        assert!(!up_edits_last(Composing::default(), plain));
+        // Correcting one already, Up is the field's.
+        let editing = Composing {
+            editing: true,
+            ..empty
+        };
+        assert!(!up_edits_last(editing, plain));
         for held in [
             KeyPressed {
                 shift: true,
@@ -101,7 +125,7 @@ mod tests {
                 ..plain
             },
         ] {
-            assert!(!up_edits_last(true, held));
+            assert!(!up_edits_last(empty, held));
         }
     }
 

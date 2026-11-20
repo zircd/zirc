@@ -1283,7 +1283,11 @@ impl App {
 
     /// Up, with `held`: in an empty input, corrects our last message here, as in every app.
     fn up(&mut self, held: KeyModifiers) {
-        if !self.editing() && keys::up_edits_last(self.input.text().is_empty(), pressed(held)) {
+        let composer = keys::Composing {
+            empty: self.input.text().is_empty(),
+            editing: self.editing(),
+        };
+        if keys::up_edits_last(composer, pressed(held)) {
             self.edit_last();
         }
     }
