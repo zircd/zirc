@@ -406,6 +406,8 @@ pub mod menu_bar {
     pub const MARK_ALL_READ: &str = "Mark All Read";
     /// Search, in the conversation open.
     pub const SEARCH: &str = "Search…";
+    /// Signs out of every organisation, after asking.
+    pub const SIGN_OUT_EVERYTHING: &str = "Sign Out of Everything…";
 
     /// Which app's menu bar: each draws the items it can do.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -907,6 +909,23 @@ pub struct Words {
     pub assign_to_label: String,
     /// A message's menu item that opens the emoji to react with: `React…`.
     pub react_prompt: String,
+    /// The menu bar's: `Sign Out of Everything…`.
+    pub menu_sign_out_everything: String,
+    /// What a screen reader says of a conversation's muted mark: `muted`.
+    pub muted: String,
+    /// The composer's attach menu, picking a photo: `Photo`.
+    pub photo: String,
+    /// The composer's attach menu, picking a file: `File`.
+    pub file: String,
+    /// What opens an agent session's card from its row's menu: `Card`.
+    pub card: String,
+    /// What forgets the server a sign-in was set to: `Stop using this server`.
+    pub stop_using_server: String,
+    /// What the organisation's tile does when pressed: `Switch organisation`.
+    pub switch_organisation: String,
+    /// What a screen reader says of the tile while another organisation mentions the
+    /// person: `Mentions in another organisation`.
+    pub mentions_elsewhere: String,
 }
 
 /// The core's fixed words ([`Words`]).
@@ -1077,5 +1096,13 @@ pub fn words() -> Words {
         sign_in_with_zirc_dev: labels::SIGN_IN_WITH_ZIRC_DEV.to_owned(),
         assign_to_label: labels::ASSIGN_TO_LABEL.to_owned(),
         react_prompt: labels::REACT_PROMPT.to_owned(),
+        menu_sign_out_everything: menu_bar::SIGN_OUT_EVERYTHING.to_owned(),
+        muted: labels::MUTED.to_owned(),
+        photo: labels::PHOTO.to_owned(),
+        file: labels::FILE.to_owned(),
+        card: labels::CARD.to_owned(),
+        stop_using_server: labels::STOP_USING_SERVER.to_owned(),
+        switch_organisation: labels::SWITCH_ORGANISATION.to_owned(),
+        mentions_elsewhere: labels::MENTIONS_ELSEWHERE.to_owned(),
     }
 }

@@ -215,6 +215,145 @@ pub fn nick_taken(wanted: &str, me: &str, signed_in: bool) -> String {
     }
 }
 
+/// A label with the keys that do it too, as a tooltip says it: `Jump to (⌘K)` (the
+/// user's choice, 20 Nov 2026: the core's label, then the shortcut).
+#[must_use]
+pub fn with_shortcut(label: &str, keys: &str) -> String {
+    format!("{label} ({keys})")
+}
+
+/// The list of the app's shortcuts, its title and what opens it.
+pub const KEYBOARD_SHORTCUTS: &str = "Keyboard shortcuts";
+
+/// What a screen reader calls the panel of who works on what.
+pub const WHO_IS_WORKING: &str = "Who is working on what";
+
+/// The heading over an agent session's details.
+pub const AGENT_HEADING: &str = "Agent";
+
+/// Where an agent session runs, under its name: `on m3-mac`.
+#[must_use]
+pub fn agent_on(machine: &str) -> String {
+    format!("on {machine}")
+}
+
+/// What an agent session is taking on: `taking on: the login bug`.
+#[must_use]
+pub fn agent_taking_on(task: &str) -> String {
+    format!("taking on: {task}")
+}
+
+/// When someone was last active, `since` as the core says how long ago: `last active 3m
+/// ago`.
+#[must_use]
+pub fn last_active(since: &str) -> String {
+    format!("last active {since}")
+}
+
+/// What a screen reader calls the bar back to what a search found: `Back to 3 results for
+/// "timeout"`.
+#[must_use]
+pub fn back_to(what: &str) -> String {
+    format!("Back to {what}")
+}
+
+/// A file's line under its name: `2 MB · Download`.
+#[must_use]
+pub fn file_size_download(size: &str) -> String {
+    format!("{size} · {}", super::DOWNLOAD)
+}
+
+/// What a screen reader says of a conversation's muted mark.
+pub const MUTED: &str = "muted";
+
+/// The composer's attach menu, picking a photo.
+pub const PHOTO: &str = "Photo";
+
+/// The composer's attach menu, picking a file.
+pub const FILE: &str = "File";
+
+/// What opens an agent session's card from its row's menu.
+pub const CARD: &str = "Card";
+
+/// What forgets the server a sign-in was set to.
+pub const STOP_USING_SERVER: &str = "Stop using this server";
+
+/// What the organisation's tile does when pressed.
+pub const SWITCH_ORGANISATION: &str = "Switch organisation";
+
+/// What a screen reader says of the tile while another organisation mentions the person.
+pub const MENTIONS_ELSEWHERE: &str = "Mentions in another organisation";
+
+/// The menu bar's item that shows the `number`th organisation: `Show organisation 2`.
+#[must_use]
+pub fn show_organisation(number: u32) -> String {
+    format!("Show organisation {number}")
+}
+
+/// What a screen reader calls what shows `name`'s machines: `Dana's machines`.
+#[must_use]
+pub fn machines_of(name: &str) -> String {
+    format!("{name}'s machines")
+}
+
+/// What a screen reader says of a badge of `count`: `3 unread`.
+#[must_use]
+pub fn unread_label(count: u32) -> String {
+    format!("{count} {}", super::super::UNREAD)
+}
+
+/// What the terminal app says where the others draw buttons: its cards' titles and its
+/// status line's hints, each with the key or command that does it.
+pub mod tui {
+    /// The heading over what an agent session is doing now.
+    pub const NOW: &str = "Now";
+    /// While zircd is asked for the sessions.
+    pub const ASKING_ZIRCD: &str = "asking zircd…";
+    /// What zircd answered when it couldn't list them: `zircd: refused`.
+    #[must_use]
+    pub fn zircd_said(why: &str) -> String {
+        format!("zircd: {why}")
+    }
+    /// The sessions card's title.
+    pub const SESSIONS: &str = "sessions";
+    /// The trim card's title.
+    pub const TRIM_THIS: &str = "trim this message?";
+    /// The emoji picker's search, before what's typed.
+    pub const SEARCH: &str = "search";
+    /// The emoji picker's title.
+    pub const REACT: &str = "react";
+    /// After the away note on the status line.
+    pub const AWAY_BACK: &str = "/away to come back";
+    /// On the status line while only people's words show.
+    pub const PEOPLE_ONLY: &str = "people only, /people shows all";
+    /// After a reply's or a correction's quote on the status line.
+    pub const ESC_CANCELS: &str = "Esc cancels";
+    /// On the status line while scrolled back.
+    pub const SCROLLED_BACK: &str = "scrolled back, PgDn for newer";
+}
+
+/// What the desktop's shortcuts do, as its ⌘/ list says them.
+pub mod shortcuts {
+    /// ⌘K.
+    pub const JUMP_TO_CONVERSATION: &str = "Jump to a conversation";
+    /// ⌘F.
+    pub const SEARCH_CONVERSATION: &str = "Search this conversation";
+    /// ⌥↑.
+    pub const PREVIOUS_CONVERSATION: &str = "Previous conversation";
+    /// ⌥↓.
+    pub const NEXT_CONVERSATION: &str = "Next conversation";
+    /// ⌥⇧↑.
+    pub const PREVIOUS_UNREAD: &str = "Previous unread conversation";
+    /// ⌥⇧↓.
+    pub const NEXT_UNREAD: &str = "Next unread conversation";
+    /// Esc.
+    pub const MARK_READ: &str = "Mark this conversation read";
+    /// ⇧Esc.
+    pub const MARK_ALL_READ: &str = "Mark everything read";
+    /// ⌘⇧I.
+    pub const TOGGLE_DETAILS: &str = "Show or hide details";
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,6 +363,8 @@ mod tests {
         assert_eq!(open_in_label("#web"), "Open in #web");
         assert_eq!(your_name_optional(), "Your name (optional)");
         assert_eq!(sign_in_to_zirc(), "Sign in to Zirc");
+        assert_eq!(with_shortcut(super::super::JUMP_TO, "⌘K"), "Jump to (⌘K)");
+        assert_eq!(file_size_download("2 MB"), "2 MB · Download");
         assert_eq!(ASSIGN_TO_LABEL, format!("{ASSIGN_TO}…"));
         assert_eq!(
             sign_in_to_block(false),

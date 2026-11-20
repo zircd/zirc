@@ -103,7 +103,8 @@ pub use agent_activity::{
 pub use agent_card::{AgentCard, MESSAGE, OPEN_SESSION};
 pub use avatar::{initials, nick_degrees};
 pub use block::{
-    REPORT_EXPLAINED, REPORT_GONE, REPORT_NO_REASON, REPORT_NOT_REPORTABLE, REPORT_SELF, Reported,
+    BLOCKING_EXPLAINED, REPORT_EXPLAINED, REPORT_GONE, REPORT_NO_REASON, REPORT_NOT_REPORTABLE,
+    REPORT_SELF, Reported,
 };
 pub use body::{Body, formatted, keep_formatting, read, split_for_line, strip_formatting};
 pub use both::{

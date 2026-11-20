@@ -305,7 +305,10 @@ fn agent_card(frame: &mut Frame<'_>, app: &App, nick: &str, session: &str, area:
     );
     if let Some(now) = card.now {
         lines.push(Line::default());
-        lines.push(Line::styled(Type::get().label("Now"), muted));
+        lines.push(Line::styled(
+            Type::get().label(zirc_core::chat::labels::tui::NOW),
+            muted,
+        ));
         lines.extend(
             wrap(&now, text)
                 .into_iter()
@@ -367,8 +370,14 @@ fn sessions_card(frame: &mut Frame<'_>, app: &App, panel: &SessionsPanel, area: 
     let width = area.width.clamp(30, 100).min(area.width);
     let text = usize::from(width).saturating_sub(4);
     let mut lines: Vec<Line<'static>> = match &panel.listed {
-        None => vec![Line::styled("asking zircd…", fg(theme.muted))],
-        Some(Err(why)) => vec![Line::styled(format!("zircd: {why}"), fg(theme.error))],
+        None => vec![Line::styled(
+            zirc_core::chat::labels::tui::ASKING_ZIRCD,
+            fg(theme.muted),
+        )],
+        Some(Err(why)) => vec![Line::styled(
+            zirc_core::chat::labels::tui::zircd_said(why),
+            fg(theme.error),
+        )],
         Some(Ok(listed)) if listed.is_empty() => vec![empty_hint(
             theme,
             &fit(
@@ -413,7 +422,7 @@ fn sessions_card(frame: &mut Frame<'_>, app: &App, panel: &SessionsPanel, area: 
     frame.render_widget(
         Paragraph::new(lines).block(
             panel_block(theme)
-                .title(" sessions ")
+                .title(format!(" {} ", zirc_core::chat::labels::tui::SESSIONS))
                 .padding(ratatui::widgets::Padding::horizontal(1)),
         ),
         card,
@@ -1156,7 +1165,7 @@ fn trim_card(frame: &mut Frame<'_>, app: &App, trimming: &Trimming, area: Rect) 
         Paragraph::new(lines).block(
             panel(Block::new().borders(Borders::ALL), theme)
                 .border_style(fg(theme.warning))
-                .title(" trim this message? ")
+                .title(format!(" {} ", zirc_core::chat::labels::tui::TRIM_THIS))
                 .padding(ratatui::widgets::Padding::horizontal(1)),
         ),
         card,
@@ -1199,7 +1208,10 @@ fn picker_card(frame: &mut Frame<'_>, app: &App, picker: &Picker, area: Rect) {
         .saturating_sub(grid - 1)
         .min(rows.len().saturating_sub(grid));
     let mut lines = vec![Line::from(vec![
-        Span::styled("search ", fg(theme.muted)),
+        Span::styled(
+            format!("{} ", zirc_core::chat::labels::tui::SEARCH),
+            fg(theme.muted),
+        ),
         Span::styled(picker.query.clone(), fg(theme.text)),
         Span::styled("▏", fg(theme.signal)),
     ])];
@@ -1255,7 +1267,7 @@ fn picker_card(frame: &mut Frame<'_>, app: &App, picker: &Picker, area: Rect) {
         Paragraph::new(lines).block(
             panel(Block::new().borders(Borders::ALL), theme)
                 .border_style(fg(theme.signal))
-                .title(" react ")
+                .title(format!(" {} ", zirc_core::chat::labels::tui::REACT))
                 .padding(ratatui::widgets::Padding::horizontal(1)),
         ),
         card,
@@ -1746,7 +1758,10 @@ fn status_left(app: &App) -> Line<'static> {
             format!("  · {}", away_label(why)),
             fg(theme.warning),
         ));
-        spans.push(Span::styled(", /away to come back", hint));
+        spans.push(Span::styled(
+            format!(", {}", zirc_core::chat::labels::tui::AWAY_BACK),
+            hint,
+        ));
     }
     // A card's button waits on y or n.
     if let Some(pressing) = app.pressing() {
@@ -1756,7 +1771,10 @@ fn status_left(app: &App) -> Line<'static> {
         ));
     }
     if app.people_only() {
-        spans.push(Span::styled("  · people only, /people shows all", hint));
+        spans.push(Span::styled(
+            format!("  · {}", zirc_core::chat::labels::tui::PEOPLE_ONLY),
+            hint,
+        ));
     }
     if let Some(showing) = app.showing() {
         spans.push(Span::styled(
@@ -1781,14 +1799,20 @@ fn status_left(app: &App) -> Line<'static> {
             format!("  · {}{after}", zirc_core::chat::EDITING),
             fg(theme.signal),
         ));
-        spans.push(Span::styled(", Esc cancels", hint));
+        spans.push(Span::styled(
+            format!(", {}", zirc_core::chat::labels::tui::ESC_CANCELS),
+            hint,
+        ));
     }
     if let Some(quote) = app.replying() {
         spans.push(Span::styled(
             format!("  · {}", quote.line()),
             fg(theme.signal),
         ));
-        spans.push(Span::styled(", Esc cancels", hint));
+        spans.push(Span::styled(
+            format!(", {}", zirc_core::chat::labels::tui::ESC_CANCELS),
+            hint,
+        ));
     }
     if let Some(copied) = app.flash() {
         spans.push(Span::styled(format!("  · {copied}"), fg(theme.ok)));
@@ -1799,7 +1823,10 @@ fn status_left(app: &App) -> Line<'static> {
         ));
     }
     if app.scrolled_back() {
-        spans.push(Span::styled("  · scrolled back, PgDn for newer", hint));
+        spans.push(Span::styled(
+            format!("  · {}", zirc_core::chat::labels::tui::SCROLLED_BACK),
+            hint,
+        ));
     }
     Line::from(spans)
 }
@@ -1825,6 +1852,7 @@ fn status_right(app: &App) -> Line<'static> {
                 .bg(colour(theme.badge))
                 .add_modifier(Modifier::BOLD),
         ));
+        // words-guard: a key's name, which jumps to the next mention
         spans.push(Span::styled(" Alt-A ", hint));
     }
     if let Some(elsewhere) = elsewhere(app) {

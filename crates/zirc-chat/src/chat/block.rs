@@ -20,6 +20,11 @@ pub enum Reported {
 pub const REPORT_EXPLAINED: &str = "The organisation's owners and zirc are told who and why, \
     and act on it within 24 hours. They aren't told it was you.";
 
+/// What the list of people blocked says over it: what blocking does.
+pub const BLOCKING_EXPLAINED: &str = "You don't see what they say, in channels or direct \
+    messages, nor hear about it. They aren't told. Block someone from their card, where you \
+    can also report them.";
+
 /// Why a report can't be filed, as every app says it.
 pub const REPORT_NO_REASON: &str = "Pick a reason for the report.";
 /// The message to report is no longer here.
