@@ -6,6 +6,43 @@ use zirc_proto::File;
 /// The widths images are resized to, smallest first, and the one to ask for.
 pub use zirc_proto::uploads::{WIDTHS, size_text, width_for};
 
+/// How many lines of a text file its card shows, in every app, as Slack's snippet does.
+pub const PREVIEW_LINES: usize = 8;
+
+/// What a text file's card shows after its lines when there's more: `…`.
+pub const PREVIEW_MORE: &str = "…";
+
+/// What a text file's card shows of `text`, the start zirc.dev previewed (`truncated` when it
+/// cut it short itself): its first [`PREVIEW_LINES`] lines, blank lines at its end dropped,
+/// and whether [`PREVIEW_MORE`] follows them. The one rule every app draws.
+#[must_use]
+pub fn preview_lines(text: &str, truncated: bool) -> (Vec<String>, bool) {
+    let mut lines: Vec<&str> = text.lines().collect();
+    while lines.last().is_some_and(|line| line.trim().is_empty()) {
+        lines.pop();
+    }
+    let more = truncated || lines.len() > PREVIEW_LINES;
+    let shown = lines
+        .into_iter()
+        .take(PREVIEW_LINES)
+        .map(str::to_owned)
+        .collect();
+    (shown, more)
+}
+
+/// [`preview_lines`] as one text, as the phones draw it: its lines, then [`PREVIEW_MORE`] on
+/// a line of its own when there's more.
+#[must_use]
+pub fn preview_text(text: &str, truncated: bool) -> String {
+    let (lines, more) = preview_lines(text, truncated);
+    let mut shown = lines.join("\n");
+    if more {
+        shown.push('\n');
+        shown.push_str(PREVIEW_MORE);
+    }
+    shown
+}
+
 /// How a file is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
@@ -123,6 +160,23 @@ pub fn fit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_text_files_card_shows_its_first_lines_and_says_when_there_is_more() {
+        let ten = (1..=10)
+            .map(|n| format!("line {n}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (lines, more) = preview_lines(&ten, false);
+        assert_eq!((lines.len(), more), (PREVIEW_LINES, true));
+        // Blank lines at its end aren't more.
+        assert_eq!(
+            preview_lines("a\nb\n\n  \n", false),
+            (vec!["a".into(), "b".into()], false)
+        );
+        assert_eq!(preview_text("a\nb", true), format!("a\nb\n{PREVIEW_MORE}"));
+        assert_eq!(preview_text("a", false), "a");
+    }
 
     fn file(mime: &str) -> File {
         File {
