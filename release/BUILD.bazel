@@ -61,6 +61,10 @@ sh_test(
         ":dist",
         "install.sh",
     ],
+    # Tagged e2e, as update_test: they ran in nearly every landing, for a change to anything
+    # the release is built from. A landing runs them when it changes this package's files
+    # (ops/land.sh's drop_e2e), and the end-to-end run on master six times a day.
+    tags = ["e2e"],
 )
 
 # zirc update and zircd updating themselves, from a release made from this checkout to
@@ -78,6 +82,7 @@ sh_test(
         "//crates/zirc-core:release_sign",
         "install.sh",
     ],
+    tags = ["e2e"],
 )
 
 # package.sh's archives carry no extended attributes (macOS's tar adds them), which GNU tar
