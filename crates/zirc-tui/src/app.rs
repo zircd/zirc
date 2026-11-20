@@ -2033,7 +2033,7 @@ impl App {
 
     fn submit(&mut self) -> Action {
         let typed = self.input.take();
-        if typed.trim().is_empty() {
+        if !zirc_core::compose::sendable(&typed) {
             return Action::Send(Vec::new());
         }
         self.browsing = None;

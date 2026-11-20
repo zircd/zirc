@@ -4,6 +4,19 @@
 
 use crate::{chat, emoji};
 
+/// Whether `text`, written in the composer, is something to send: anything but spaces, line
+/// breaks and invisible marks. What shows Send in every app, and what sending refuses
+/// otherwise, so no app's own idea of blank (each language's differs) decides it.
+#[must_use]
+pub fn sendable(text: &str) -> bool {
+    text.chars()
+        .any(|c| !c.is_whitespace() && !INVISIBLE.contains(&c))
+}
+
+/// Marks that take no room, which a message of nothing else doesn't say anything: zero-width
+/// space, non-joiner and joiner, word joiner, and the byte-order mark.
+const INVISIBLE: [char; 5] = ['\u{200B}', '\u{200C}', '\u{200D}', '\u{2060}', '\u{FEFF}'];
+
 /// What's being typed at the cursor that the composer offers to complete.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Completing<'a> {
@@ -26,6 +39,14 @@ pub fn completing(text: &str, cursor: usize) -> Option<Completing<'_>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_words_are_sendable() {
+        assert!(sendable(" hi "));
+        assert!(!sendable(""));
+        assert!(!sendable(" \n\t\u{00A0}"));
+        assert!(!sendable("\u{200B}\u{FEFF}"));
+    }
 
     #[test]
     fn completes_a_mention_before_a_shortcode() {
