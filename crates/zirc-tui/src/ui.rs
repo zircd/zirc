@@ -1761,9 +1761,9 @@ fn status_left(app: &App) -> Line<'static> {
             fg(theme.muted),
         ));
     }
-    if app.editing() {
+    if let Some(after) = app.editing_after() {
         spans.push(Span::styled(
-            format!("  · {}", zirc_core::chat::EDITING),
+            format!("  · {}{after}", zirc_core::chat::EDITING),
             fg(theme.signal),
         ));
         spans.push(Span::styled(", Esc cancels", hint));

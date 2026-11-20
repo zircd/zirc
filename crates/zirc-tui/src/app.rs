@@ -261,8 +261,9 @@ pub struct App {
     /// The message the next line sent answers: its conversation, folded, and its id.
     replying: Option<(String, String)>,
     /// Our message the next line sent corrects, by the server's id, in the conversation
-    /// (folded name) it's in: `e` on a message picked starts it.
-    editing: Option<(String, String)>,
+    /// (folded name) it's in, with what it said when it was picked: `e` on a message starts
+    /// it.
+    editing: Option<(String, String, String)>,
     /// What to put on the clipboard, until it's taken.
     clipboard: Option<String>,
     /// What the last key did, as copying or pinning, to say so until the next.
@@ -1282,8 +1283,16 @@ impl App {
 
     /// The message of ours the next line sent corrects, in the conversation shown.
     fn editing_id(&self) -> Option<&str> {
-        let (name, id) = self.editing.as_ref()?;
+        let (name, id, _) = self.editing.as_ref()?;
         (*name == fold(&self.current().name)).then_some(id.as_str())
+    }
+
+    /// What follows Editing while a message of ours in the conversation shown is being
+    /// corrected: `: ` and its first line, as every app says it ([`zirc_core::chat::editing_after`]).
+    #[must_use]
+    pub fn editing_after(&self) -> Option<String> {
+        let (name, _, said) = self.editing.as_ref()?;
+        (*name == fold(&self.current().name)).then(|| zirc_core::chat::editing_after(said))
     }
 
     /// Puts our message `id` in the conversation shown in the input to correct it, while
@@ -1297,8 +1306,8 @@ impl App {
         self.replying = None;
         self.let_go();
         let end = text.len();
+        self.editing = Some((fold(&name), id, text.clone()));
         self.input.replace(text, end);
-        self.editing = Some((fold(&name), id));
     }
 
     /// Stops correcting a message or writing a reply, which Esc lets go of first.
@@ -3356,6 +3365,11 @@ mod tests {
         press(&mut app, KeyCode::Char('e'), KeyModifiers::NONE);
         assert!(app.editing());
         assert_eq!(app.input.text(), "teh fix");
+        // The status line names it, as every app's Editing bar does.
+        assert_eq!(
+            app.editing_after(),
+            Some(zirc_core::chat::editing_after("teh fix"))
+        );
         press(&mut app, KeyCode::Esc, KeyModifiers::NONE);
         assert_eq!((app.editing(), app.input.text()), (false, ""));
         // Sent, it carries what it corrects.
