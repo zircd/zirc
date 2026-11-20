@@ -60,7 +60,9 @@ pub async fn purge(
         .map(|msgid| (channel.to_owned(), msgid))
         .collect();
     let deleted = operator.delete_messages(&messages).await?;
-    let asked = format!("PURGE ADD {channel} unused since the repository channels went");
+    // No reason after the code: Ergo splits PURGE into at most three words and the rest, so a
+    // reason would be read as part of the code (irc/chanserv.go, "purge"'s maxParams).
+    let asked = format!("PURGE ADD {channel}");
     let mut answer = plain(
         &operator
             .chanserv(std::slice::from_ref(&asked))
@@ -72,9 +74,7 @@ pub async fn purge(
     if let Some(code) = confirmation_of(&answer, "purge add", channel) {
         answer = plain(
             &operator
-                .chanserv(&[format!(
-                    "PURGE ADD {channel} {code} unused since the repository channels went"
-                )])
+                .chanserv(&[format!("PURGE ADD {channel} {code}")])
                 .await?
                 .concat(),
         );
