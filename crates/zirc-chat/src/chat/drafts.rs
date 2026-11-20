@@ -15,10 +15,7 @@ impl Chat {
     /// Keeps `text` as what's written in the shown conversation's composer: each app says
     /// so as it changes, and once it's sent, empty.
     pub fn set_draft(&mut self, text: &str) {
-        let shown = &mut self.conversations[self.selected];
-        if shown.draft != text {
-            text.clone_into(&mut shown.draft);
-        }
+        self.keep_draft(self.selected, text);
     }
 
     /// [`Chat::draft`] of the conversation `name`, for an app whose composer belongs to one
@@ -32,10 +29,15 @@ impl Chat {
     /// [`Chat::set_draft`] in the conversation `name`; nothing for one there isn't.
     pub fn set_draft_in(&mut self, name: &str, text: &str) {
         if let Some(at) = self.position(name) {
-            let conversation = &mut self.conversations[at];
-            if conversation.draft != text {
-                text.clone_into(&mut conversation.draft);
-            }
+            self.keep_draft(at, text);
+        }
+    }
+
+    /// Keeps `text` as the draft of the conversation at `at`.
+    fn keep_draft(&mut self, at: usize, text: &str) {
+        let conversation = &mut self.conversations[at];
+        if conversation.draft != text {
+            text.clone_into(&mut conversation.draft);
         }
     }
 }

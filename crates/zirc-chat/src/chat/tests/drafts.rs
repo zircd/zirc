@@ -36,3 +36,20 @@ fn a_draft_is_kept_by_its_conversations_name_too() {
     let _ = chat.select(chat.position("#web").unwrap());
     assert_eq!(chat.draft(), "for later");
 }
+
+#[test]
+fn enter_in_jump_to_opens_its_first_row() {
+    let mut chat = chat();
+    connected(&mut chat);
+    feed(
+        &mut chat,
+        &[":srv 322 me #design 3 :Design", ":srv 323 me :End of /LIST"],
+    );
+    assert_eq!(chat.jump_first("ap").as_deref(), Some("#api"));
+    assert_eq!(chat.jump_first("desi").as_deref(), Some("#design"));
+    assert_eq!(
+        chat.jump_first("launch"),
+        chat.join_offer("launch").map(|offer| offer.name)
+    );
+    assert_eq!(chat.jump_first("  "), None);
+}

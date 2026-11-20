@@ -1,6 +1,6 @@
 //! What the keyboard does in the composer and around it, decided once for every app: what
 //! Enter does, and which keys typed elsewhere go into the composer. Each app reads its key
-//! event into [`Pressed`] and does what it's told, so no app decides it again.
+//! event into [`KeyPressed`] and does what it's told, so no app decides it again.
 
 /// A key press as an app reads it: which modifiers were held, and where it came from.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, ts_rs::TS)]
@@ -10,7 +10,7 @@
     clippy::struct_excessive_bools,
     reason = "a key event's own flags, as every platform has them"
 )]
-pub struct Pressed {
+pub struct KeyPressed {
     /// Shift held.
     pub shift: bool,
     /// Alt (⌥ on a Mac) held.
@@ -29,7 +29,7 @@ pub struct Pressed {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
-pub enum Enter {
+pub enum EnterDoes {
     /// Sends what's written.
     Send,
     /// Starts a new line at the caret.
@@ -42,13 +42,13 @@ pub enum Enter {
 /// touch screen's keyboard, whose Send button sends, as messaging apps on phones do; with
 /// Shift, Alt, Ctrl or ⌘, a new line, as Slack does; otherwise it sends.
 #[must_use]
-pub fn enter(pressed: Pressed) -> Enter {
+pub fn enter(pressed: KeyPressed) -> EnterDoes {
     if pressed.composing {
-        Enter::Composing
+        EnterDoes::Composing
     } else if pressed.on_screen || pressed.shift || pressed.alt || pressed.ctrl || pressed.meta {
-        Enter::NewLine
+        EnterDoes::NewLine
     } else {
-        Enter::Send
+        EnterDoes::Send
     }
 }
 
@@ -57,7 +57,7 @@ pub fn enter(pressed: Pressed) -> Enter {
 /// Shift. A shortcut (⌘K, Ctrl+F) stays a shortcut, and Space, Enter, the arrows and the
 /// like stay the page's, for scrolling and buttons.
 #[must_use]
-pub fn types_into_composer(key: &str, pressed: Pressed) -> bool {
+pub fn types_into_composer(key: &str, pressed: KeyPressed) -> bool {
     let mut chars = key.chars();
     let one = matches!((chars.next(), chars.next()), (Some(c), None) if !c.is_control() && !c.is_whitespace());
     one && !(pressed.alt || pressed.ctrl || pressed.meta || pressed.composing)
@@ -67,7 +67,7 @@ pub fn types_into_composer(key: &str, pressed: Pressed) -> bool {
 mod tests {
     use super::*;
 
-    const PLAIN: Pressed = Pressed {
+    const PLAIN: KeyPressed = KeyPressed {
         shift: false,
         alt: false,
         ctrl: false,
@@ -78,53 +78,53 @@ mod tests {
 
     #[test]
     fn enter_sends_and_a_modifier_makes_a_new_line() {
-        assert_eq!(enter(PLAIN), Enter::Send);
+        assert_eq!(enter(PLAIN), EnterDoes::Send);
         for held in [
-            Pressed {
+            KeyPressed {
                 shift: true,
                 ..PLAIN
             },
-            Pressed { alt: true, ..PLAIN },
-            Pressed {
+            KeyPressed { alt: true, ..PLAIN },
+            KeyPressed {
                 ctrl: true,
                 ..PLAIN
             },
-            Pressed {
+            KeyPressed {
                 meta: true,
                 ..PLAIN
             },
         ] {
-            assert_eq!(enter(held), Enter::NewLine, "{held:?}");
+            assert_eq!(enter(held), EnterDoes::NewLine, "{held:?}");
         }
     }
 
     #[test]
     fn enter_ending_a_composition_is_the_input_methods() {
         assert_eq!(
-            enter(Pressed {
+            enter(KeyPressed {
                 composing: true,
                 ..PLAIN
             }),
-            Enter::Composing
+            EnterDoes::Composing
         );
         assert_eq!(
-            enter(Pressed {
+            enter(KeyPressed {
                 composing: true,
                 on_screen: true,
                 ..PLAIN
             }),
-            Enter::Composing
+            EnterDoes::Composing
         );
     }
 
     #[test]
     fn a_touch_keyboards_return_makes_a_new_line() {
         assert_eq!(
-            enter(Pressed {
+            enter(KeyPressed {
                 on_screen: true,
                 ..PLAIN
             }),
-            Enter::NewLine
+            EnterDoes::NewLine
         );
     }
 
@@ -133,7 +133,7 @@ mod tests {
         assert!(types_into_composer("a", PLAIN));
         assert!(types_into_composer(
             "A",
-            Pressed {
+            KeyPressed {
                 shift: true,
                 ..PLAIN
             }
@@ -142,26 +142,26 @@ mod tests {
         assert!(types_into_composer("/", PLAIN));
         assert!(!types_into_composer(
             "k",
-            Pressed {
+            KeyPressed {
                 meta: true,
                 ..PLAIN
             }
         ));
         assert!(!types_into_composer(
             "f",
-            Pressed {
+            KeyPressed {
                 ctrl: true,
                 ..PLAIN
             }
         ));
-        assert!(!types_into_composer("a", Pressed { alt: true, ..PLAIN }));
+        assert!(!types_into_composer("a", KeyPressed { alt: true, ..PLAIN }));
         assert!(!types_into_composer(" ", PLAIN));
         assert!(!types_into_composer("Enter", PLAIN));
         assert!(!types_into_composer("ArrowDown", PLAIN));
         assert!(!types_into_composer("\t", PLAIN));
         assert!(!types_into_composer(
             "a",
-            Pressed {
+            KeyPressed {
                 composing: true,
                 ..PLAIN
             }

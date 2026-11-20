@@ -1632,16 +1632,16 @@ impl App {
     /// Enter with `held`, as zirc-chat says for every app ([`keys::enter`]): it sends; with
     /// Shift, Alt, Ctrl or Super, a new line.
     fn enter(&mut self, held: KeyModifiers) -> Action {
-        let pressed = keys::Pressed {
+        let pressed = keys::KeyPressed {
             shift: held.contains(KeyModifiers::SHIFT),
             alt: held.contains(KeyModifiers::ALT),
             ctrl: held.contains(KeyModifiers::CONTROL),
             meta: held.contains(KeyModifiers::SUPER),
-            ..keys::Pressed::default()
+            ..keys::KeyPressed::default()
         };
         match keys::enter(pressed) {
-            keys::Enter::Send => self.submit(),
-            keys::Enter::NewLine | keys::Enter::Composing => {
+            keys::EnterDoes::Send => self.submit(),
+            keys::EnterDoes::NewLine | keys::EnterDoes::Composing => {
                 self.input.insert('\n');
                 Action::Send(Vec::new())
             }

@@ -84,6 +84,27 @@ impl Chat {
         nothing.then(|| super::nothing_called(query))
     }
 
+    /// What Enter in Jump to opens for `query`: its first row, as every app lists them, a
+    /// conversation the switcher finds ([`Chat::switcher`]), else a channel to browse
+    /// ([`Chat::browse_matching`]), else the last row's Join or Create #name
+    /// ([`Chat::join_offer`]); none for nothing typed.
+    #[must_use]
+    pub fn jump_first(&self, query: &str) -> Option<String> {
+        if query.trim().is_empty() {
+            return None;
+        }
+        self.switcher(query)
+            .into_iter()
+            .next()
+            .or_else(|| {
+                self.browse_matching(query)
+                    .into_iter()
+                    .next()
+                    .map(|(name, _)| name)
+            })
+            .or_else(|| self.join_offer(query).map(|offer| offer.name))
+    }
+
     /// What Jump to offers last for what's typed, `query`, when that names a channel we
     /// aren't in: `Join #name` for one the server lists, `Create #name` for one it doesn't,
     /// as joining makes it (the user's choice, 11 Nov 2026). None when it isn't a channel's
