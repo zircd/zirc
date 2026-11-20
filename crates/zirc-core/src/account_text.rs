@@ -84,6 +84,89 @@ impl OrgSummary {
     }
 }
 
+impl crate::account_keys::Joinable {
+    /// The name people read: zirc.dev's, else one made from its name on the device
+    /// ([`display_name`]).
+    #[must_use]
+    pub fn display(&self) -> String {
+        Some(self.name.trim())
+            .filter(|name| !name.is_empty())
+            .map_or_else(|| display_name(&self.org()), str::to_owned)
+    }
+
+    /// What its row or tile says: `Join Acme`.
+    #[must_use]
+    pub fn label(&self) -> String {
+        join_label(&self.display())
+    }
+
+    /// Its second line: the handle there, `@sam`, and while its server is being set up,
+    /// `@sam · Getting ready`.
+    #[must_use]
+    pub fn line(&self) -> String {
+        if self.ready {
+            format!("@{}", self.handle)
+        } else {
+            format!("@{} · {NOT_READY}", self.handle)
+        }
+    }
+
+    /// What a screen reader says of it: `Join Acme, as @sam`, or `Join Acme, getting ready`.
+    #[must_use]
+    pub fn a11y_label(&self) -> String {
+        if self.ready {
+            format!("{}, as @{}", self.label(), self.handle)
+        } else {
+            format!("{}, {}", self.label(), NOT_READY.to_lowercase())
+        }
+    }
+
+    /// Its tile's initials, as once joined ([`org_initials`]).
+    #[must_use]
+    pub fn initials(&self) -> String {
+        org_initials(&self.display())
+    }
+
+    /// Its tile's colour, as once joined ([`org_colour`]).
+    #[must_use]
+    pub fn colour(&self) -> u8 {
+        org_colour(&self.org())
+    }
+
+    /// What is said when joining it didn't work, `err` why: the most organisations
+    /// ([`too_many`]), its server still being set up, or any other reason.
+    #[must_use]
+    pub fn failed(&self, err: &crate::account_keys::Error) -> String {
+        join_failed(&self.display(), err)
+    }
+}
+
+/// A joinable organisation's server still being set up, as its line says.
+pub const NOT_READY: &str = "Getting ready";
+
+/// What a row or tile offering to join `name` says: `Join Acme`.
+#[must_use]
+pub fn join_label(name: &str) -> String {
+    format!("Join {name}")
+}
+
+/// What is said when joining `name` didn't work, `err` why.
+#[must_use]
+pub fn join_failed(name: &str, err: &crate::account_keys::Error) -> String {
+    use crate::account::AddError;
+    use crate::account_keys::Error;
+    match err {
+        Error::Add(AddError::TooMany(max)) => too_many(*max),
+        Error::NotJoinable(_) => {
+            format!("{name} isn't ready to join yet. Try again in a minute.")
+        }
+        err if err.needs_sign_in() => {
+            format!("Couldn't join {name}: sign in to zirc.dev again to add it.")
+        }
+        _ => format!("Couldn't join {name}. Try again in a moment."),
+    }
+}
+
 /// The card an organisation shows in place of its conversations when it can't be used
 /// (section 4), as every app says it: zirc-chat's [`org_card`], for `org` as people read it.
 #[must_use]

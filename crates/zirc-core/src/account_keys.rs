@@ -2,10 +2,13 @@
 //! there by default): the device's own key ([`crate::device_key`]) signs a short token for
 //! zirc.dev itself, and with it the app, without a browser,
 //!
-//! - lists the organisations the account has ([`Client::my_organisations`]), to add new
-//!   memberships and end access to removed ones ([`Account::refresh_organisations`]);
-//! - gets fresh credentials for one ([`Client::my_credentials`]), after a handle rename or a
-//!   refused sign-in, so "Sign in again" is only the fallback
+//! - lists the organisations the account has ([`Client::my_organisations`]), to end access to
+//!   removed ones and offer the others not on the device as "Join …"
+//!   ([`Account::refresh_organisations`], [`Account::joinable`]): an app holds only the
+//!   organisations the person ticked when signing in, and joins another only when asked
+//!   ([`Account::join_organisation`]), as the user chose on 20 Nov 2026;
+//! - gets fresh credentials for one ([`Client::my_credentials`]), to join it, or after a
+//!   handle rename or a refused sign-in, so "Sign in again" is only the fallback
 //!   ([`Account::renew_organisation`]);
 //! - signs out of one organisation, or of zirc.dev ([`Client::sign_out_of`],
 //!   [`Client::sign_out_device`]), which the `_online` forms of removing do.
@@ -151,6 +154,13 @@ pub enum Error {
     /// The call didn't go through: the account id or the key is missing here.
     #[error("no account credential on this device")]
     NoCredential,
+    /// The organisation asked to join isn't one zirc.dev listed for the account, or its
+    /// server isn't ready yet.
+    #[error("{0} can't be joined from this device now")]
+    NotJoinable(String),
+    /// The organisation couldn't be added: several are off, or the most are signed in to.
+    #[error(transparent)]
+    Add(#[from] AddError),
     /// Anything else.
     #[error(transparent)]
     Login(#[from] login::Error),
@@ -373,16 +383,49 @@ impl Client {
     }
 }
 
+/// One organisation of the account that isn't on the device: the app offers it as "Join …"
+/// ([`Account::joinable`]) and adds it only when the person asks
+/// ([`Account::join_organisation`]), never by itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Joinable {
+    /// Its slug, which zirc.dev's credentials are asked for by.
+    pub slug: String,
+    /// Its name, as zirc.dev has it (may be empty).
+    pub name: String,
+    /// Its server's host.
+    pub host: String,
+    /// The person's handle there.
+    pub handle: String,
+    /// Whether its server is ready: a new organisation takes a short while.
+    pub ready: bool,
+    /// The zirc.dev that listed it, which its credentials come from.
+    pub web: String,
+}
+
+impl Joinable {
+    /// The organisation's name as every client names it once joined (by its server's host),
+    /// so its tile's colour is the same before and after.
+    #[must_use]
+    pub fn org(&self) -> String {
+        crate::settings::org_name(&zirc_proto::login::Server {
+            host: self.host.clone(),
+            port: None,
+            tls: None,
+            password: None,
+        })
+    }
+}
+
 /// What a refresh found.
 #[derive(Debug, Default)]
 pub struct Refreshed {
-    /// Organisations merged in.
-    pub added: Vec<String>,
     /// Organisations whose membership is gone: marked access ended, nothing else touched.
     pub ended: Vec<String>,
-    /// Organisations zirc.dev lists that weren't added and why: not ready yet, over the limit.
-    pub left: Vec<(String, String)>,
-    /// Invitations waiting.
+    /// The account's organisations not on the device, to offer as "Join …"
+    /// ([`Account::joinable`]).
+    pub joinable: Vec<Joinable>,
+    /// Invitations waiting. Not offered yet: the client has no call to accept one, so an
+    /// invitation is accepted on zirc.dev, after which it is listed and joinable.
     pub invites: Vec<Invite>,
     /// Whether anything was asked: false with the switch off, and when zirc.dev has it off.
     pub asked: bool,
@@ -520,75 +563,65 @@ impl<T: AsRef<Chat> + AsMut<Chat>> Account<T> {
         self.get(org).map(|s| s.signin().web.clone())
     }
 
-    /// Asks zirc.dev at `web` which organisations the account has: new ones it is a member of
-    /// whose server is ready are merged in, `make` giving each a session, each with fresh
-    /// credentials; ones on that zirc.dev that are gone are marked
-    /// [access ended](OrgState::AccessEnded). The other organisations aren't touched, and no
-    /// request is made with account keys off. This holds the account across the await; an app
-    /// that mustn't ([`fetch_listing`] outside its lock, then [`Self::apply_listing`] under it)
-    /// does the two halves itself.
+    /// Asks zirc.dev at `web` which organisations the account has: ones on that zirc.dev
+    /// that are gone are marked [access ended](OrgState::AccessEnded), and the others not on
+    /// the device are kept to offer as "Join …" ([`Self::joinable`]), never added by
+    /// themselves. The other organisations aren't touched, and no request is made with
+    /// account keys off. This holds the account across the await; an app that mustn't
+    /// ([`fetch_listing`] outside its lock, then [`Self::apply_listing`] under it) does the
+    /// two halves itself.
     ///
     /// # Errors
     ///
-    /// When the call is refused ([`Error::needs_sign_in`]) or can't be made. Credentials that
-    /// can't be had for one organisation leave it in [`Refreshed::left`], not an error.
+    /// When the call is refused ([`Error::needs_sign_in`]) or can't be made.
     pub async fn refresh_organisations(
         &mut self,
         key: &Arc<dyn DeviceKey>,
         web: &str,
-        make: impl FnMut(&SignIn) -> OrgSession<T>,
     ) -> Result<Refreshed, Error> {
         if !self.account_keys_on() {
             return Ok(Refreshed::default());
         }
         let secrets = self.store().secrets().clone();
-        let known = self.connected_hosts();
-        match fetch_listing(key, secrets.as_ref(), web, &known).await? {
-            Some(fetched) => Ok(self.apply_listing(&fetched, make)),
+        match fetch_listing(key, secrets.as_ref(), web).await? {
+            Some(fetched) => Ok(self.apply_listing(&fetched)),
             None => Ok(Refreshed::default()),
         }
     }
 
-    /// Merges a [fetched](fetch_listing) listing: the new organisations it brought credentials
-    /// for, with `make` giving each a session, and access ended for the ones on that zirc.dev
-    /// that are gone. No waiting, so an app does it under its lock.
-    pub fn apply_listing(
-        &mut self,
-        fetched: &Fetched,
-        mut make: impl FnMut(&SignIn) -> OrgSession<T>,
-    ) -> Refreshed {
+    /// Takes in a [fetched](fetch_listing) listing: access ended for the organisations on
+    /// that zirc.dev that are gone, and the ones not on the device kept to offer as
+    /// "Join …" ([`Self::joinable`]). No waiting, so an app does it under its lock.
+    pub fn apply_listing(&mut self, fetched: &Fetched) -> Refreshed {
         let web = fetched.web.as_str();
+        let known = self.connected_hosts();
+        let joinable: Vec<Joinable> = fetched
+            .listing
+            .organisations
+            .iter()
+            .filter(|listed| {
+                !known
+                    .iter()
+                    .any(|host| host.eq_ignore_ascii_case(&listed.host))
+            })
+            .map(|listed| Joinable {
+                slug: listed.slug.clone(),
+                name: listed.name.clone(),
+                host: listed.host.clone(),
+                handle: listed.handle.clone(),
+                ready: listed.ready,
+                web: web.to_owned(),
+            })
+            .collect();
+        // Another zirc.dev's are kept; this one's are as it lists them now.
+        self.joinable.retain(|j| j.web != web);
+        self.joinable.extend(joinable.iter().cloned());
         let mut refreshed = Refreshed {
             asked: true,
             invites: fetched.listing.invites.clone(),
-            left: fetched.left.clone(),
+            joinable,
             ..Refreshed::default()
         };
-        let secrets = self.store().secrets().clone();
-        for (slug, org) in &fetched.credentials {
-            if self.iter().any(|(_, s)| {
-                s.signin()
-                    .server
-                    .host
-                    .eq_ignore_ascii_case(&org.server.host)
-            }) {
-                continue;
-            }
-            let credentials = credentials_of(org, &fetched.account_id);
-            let Ok(signin) = SignIn::from_credentials(&credentials, web, secrets.as_ref()) else {
-                refreshed
-                    .left
-                    .push((slug.clone(), "the passphrase couldn't be kept".into()));
-                continue;
-            };
-            match self.add_organisation(make(&signin)) {
-                Ok(()) => refreshed.added.push(signin.org()),
-                Err(err) => {
-                    let _ = signin.forget(secrets.as_ref());
-                    refreshed.left.push((slug.clone(), err.to_string()));
-                }
-            }
-        }
         let gone: Vec<String> = self
             .iter()
             .filter(|(_, s)| {
@@ -618,6 +651,97 @@ impl<T: AsRef<Chat> + AsMut<Chat>> Account<T> {
             }
         }
         refreshed
+    }
+
+    /// The account's organisations zirc.dev listed last that aren't on the device, in its
+    /// order, to offer as "Join …" beside "Add organisation": none while that isn't offered
+    /// ([`Self::can_add`]), as joining one adds it.
+    #[must_use]
+    pub fn joinable(&self) -> Vec<Joinable> {
+        if !self.can_add() {
+            return Vec::new();
+        }
+        let known = self.connected_hosts();
+        self.joinable
+            .iter()
+            .filter(|j| !known.iter().any(|host| host.eq_ignore_ascii_case(&j.host)))
+            .cloned()
+            .collect()
+    }
+
+    /// The joinable organisation `slug` ([`Self::joinable`]), to join, when its server is
+    /// ready.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotJoinable`] when it isn't listed, or isn't ready yet.
+    pub fn to_join(&self, slug: &str) -> Result<Joinable, Error> {
+        self.joinable()
+            .into_iter()
+            .find(|j| j.slug == slug && j.ready)
+            .ok_or_else(|| Error::NotJoinable(slug.to_owned()))
+    }
+
+    /// Joins the organisation `slug`, one the account has that isn't on the device
+    /// ([`Self::joinable`]): fresh credentials from zirc.dev with the device's credential,
+    /// then it is added, `make` giving it a session. Its name as every client names it. An
+    /// app that mustn't hold the account across the await does [`Self::to_join`],
+    /// [`fetch_credentials`] and [`Self::apply_joined`] itself.
+    ///
+    /// # Errors
+    ///
+    /// When it isn't joinable ([`Error::NotJoinable`]), zirc.dev refuses or can't be reached,
+    /// or it can't be added ([`Error::Add`]).
+    pub async fn join_organisation(
+        &mut self,
+        key: &Arc<dyn DeviceKey>,
+        slug: &str,
+        make: impl FnOnce(&SignIn) -> OrgSession<T>,
+    ) -> Result<String, Error> {
+        if !self.account_keys_on() {
+            return Err(Error::NoCredential);
+        }
+        let joining = self.to_join(slug)?;
+        let secrets = self.store().secrets().clone();
+        match fetch_credentials(key, secrets.as_ref(), &joining.web, slug).await? {
+            Some(fetched) => self.apply_joined(&fetched, make),
+            None => Err(Error::NoCredential),
+        }
+    }
+
+    /// Adds the organisation whose credentials were [fetched](fetch_credentials) to join it,
+    /// `make` giving it a session: the one way an organisation zirc.dev lists comes onto the
+    /// device without the browser. No waiting, so an app does it under its lock. Its name as
+    /// every client names it; already here, nothing changes.
+    ///
+    /// # Errors
+    ///
+    /// When it can't be added ([`Error::Add`], its passphrase forgotten again) or its
+    /// passphrase can't be kept.
+    pub fn apply_joined(
+        &mut self,
+        fetched: &Renewed,
+        make: impl FnOnce(&SignIn) -> OrgSession<T>,
+    ) -> Result<String, Error> {
+        let credentials = credentials_of(&fetched.credentials, &fetched.account_id);
+        let secrets = self.store().secrets().clone();
+        if let Some((org, _)) = self.iter().find(|(_, s)| {
+            s.signin()
+                .server
+                .host
+                .eq_ignore_ascii_case(&credentials.server.host)
+        }) {
+            return Ok(org.to_owned());
+        }
+        let signin = SignIn::from_credentials(&credentials, &fetched.web, secrets.as_ref())
+            .map_err(|err| signin_error(&err))?;
+        if let Err(err) = self.add_organisation(make(&signin)) {
+            let _ = signin.forget(secrets.as_ref());
+            return Err(err.into());
+        }
+        let host = &signin.server.host;
+        self.joinable.retain(|j| !j.host.eq_ignore_ascii_case(host));
+        Ok(signin.org())
     }
 
     /// Fresh credentials for the organisation `org` from zirc.dev, after the server refused
@@ -773,14 +897,11 @@ pub async fn leave(
 #[derive(Debug, Clone)]
 pub struct Fetched {
     web: String,
-    account_id: String,
     listing: Organisations,
-    credentials: Vec<(String, OrgCredentials)>,
-    left: Vec<(String, String)>,
 }
 
 /// Fresh credentials for one organisation, from [`fetch_credentials`], to apply with
-/// [`Account::apply_credentials`].
+/// [`Account::apply_credentials`] after a rename, or [`Account::apply_joined`] to join it.
 #[derive(Debug, Clone)]
 pub struct Renewed {
     web: String,
@@ -788,20 +909,18 @@ pub struct Renewed {
     credentials: OrgCredentials,
 }
 
-/// Asks the zirc.dev at `web` which organisations the account has, and for credentials for
-/// each new one that is ready (those whose host isn't in `known_hosts`), without an
-/// [`Account`], so an app can do it outside its lock. `None` when this device has no account
+/// Asks the zirc.dev at `web` which organisations the account has, without an [`Account`], so
+/// an app can do it outside its lock: nothing more is asked, as the app joins one only when
+/// the person asks ([`Account::join_organisation`]). `None` when this device has no account
 /// credential, or zirc.dev has it off. Check [`Account::account_keys_on`] first: this doesn't.
 ///
 /// # Errors
 ///
-/// When the call is refused ([`Error::needs_sign_in`]) or can't be made. Credentials that
-/// can't be had for one organisation are in the result's `left`, not an error.
+/// When the call is refused ([`Error::needs_sign_in`]) or can't be made.
 pub async fn fetch_listing(
     key: &Arc<dyn DeviceKey>,
     secrets: &dyn Secrets,
     web: &str,
-    known_hosts: &[String],
 ) -> Result<Option<Fetched>, Error> {
     let Some(device) = Device::new(key.clone(), secrets, web) else {
         return Ok(None);
@@ -812,31 +931,9 @@ pub async fn fetch_listing(
         Err(Error::Disabled) => return Ok(None),
         Err(err) => return Err(err),
     };
-    let mut credentials = Vec::new();
-    let mut left = Vec::new();
-    for listed in &listing.organisations {
-        if known_hosts
-            .iter()
-            .any(|host| host.eq_ignore_ascii_case(&listed.host))
-        {
-            continue;
-        }
-        if !listed.ready {
-            left.push((listed.slug.clone(), "not ready".into()));
-            continue;
-        }
-        match client.my_credentials(&device, &listed.slug).await {
-            Ok(org) => credentials.push((listed.slug.clone(), org)),
-            Err(err) if err.needs_sign_in() => return Err(err),
-            Err(err) => left.push((listed.slug.clone(), err.to_string())),
-        }
-    }
     Ok(Some(Fetched {
         web: web.to_owned(),
-        account_id: device.account_id,
         listing,
-        credentials,
-        left,
     }))
 }
 
@@ -870,16 +967,6 @@ fn signin_error(err: &signin::Error) -> Error {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         message: err.to_string(),
     })
-}
-
-impl From<AddError> for Error {
-    fn from(err: AddError) -> Self {
-        Self::Login(login::Error::Status {
-            web: String::new(),
-            status: StatusCode::CONFLICT,
-            message: err.to_string(),
-        })
-    }
 }
 
 impl<T: AsRef<Chat> + AsMut<Chat>> OrgSession<T> {

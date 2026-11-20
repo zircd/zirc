@@ -192,3 +192,33 @@ fn says_what_was_signed_out_of_by_its_name() {
         "Signed out of irc.example.com."
     );
 }
+
+#[test]
+fn a_joinable_organisation_says_join_and_whether_it_is_ready() {
+    use crate::account::AddError;
+    use crate::account_keys::{Error, Joinable};
+    let mut acme = Joinable {
+        slug: "acme".into(),
+        name: "Acme Inc".into(),
+        host: "acme.irc.zirc.dev".into(),
+        handle: "sam".into(),
+        ready: true,
+        web: "https://zirc.dev".into(),
+    };
+    assert_eq!(acme.label(), "Join Acme Inc");
+    assert_eq!(acme.line(), "@sam");
+    assert_eq!(acme.a11y_label(), "Join Acme Inc, as @sam");
+    assert_eq!(acme.initials(), org_initials("Acme Inc"));
+    // The same colour as once joined, when it is named by its host.
+    assert_eq!(acme.colour(), org_colour("acme"));
+    assert_eq!(acme.failed(&Error::Add(AddError::TooMany(8))), too_many(8));
+    acme.ready = false;
+    acme.name = String::new();
+    assert_eq!(acme.label(), "Join Acme");
+    assert_eq!(acme.line(), "@sam · Getting ready");
+    assert_eq!(acme.a11y_label(), "Join Acme, getting ready");
+    assert!(
+        acme.failed(&Error::NotJoinable("acme".into()))
+            .contains("isn't ready")
+    );
+}

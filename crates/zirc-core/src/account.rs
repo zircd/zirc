@@ -641,6 +641,9 @@ pub struct Account<T = Chat> {
     orgs: Orgs<OrgSession<T>>,
     store: OrgStore,
     policy: Policy,
+    /// The account's organisations zirc.dev listed last that aren't on the device, offered as
+    /// "Join …" ([`Account::joinable`], in `account_keys`).
+    pub(crate) joinable: Vec<crate::account_keys::Joinable>,
 }
 
 impl<T: AsRef<Chat> + AsMut<Chat>> Account<T> {
@@ -676,6 +679,7 @@ impl<T: AsRef<Chat> + AsMut<Chat>> Account<T> {
             orgs,
             store,
             policy,
+            joinable: Vec::new(),
         })
     }
 
