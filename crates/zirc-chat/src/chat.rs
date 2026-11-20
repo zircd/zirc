@@ -137,10 +137,11 @@ pub use describe::{
 pub use details::{DATA, Detail, Details, MESSAGE_DETAILS, details};
 pub use face::{Face, LineSpeaker};
 pub use finder::{
-    Elsewhere, GROUP_HITS, GROUPS_SHOWN, MORE_RESULTS, PAGE, RECENT_SEARCHES, RecentSearches,
-    SEARCH_EVERYWHERE, SEARCHING, ScreenChip, SearchEmpty, SearchFilter, SearchGroup, SearchLimits,
-    SearchScreen, SearchSegments, ServerSearch, SortChoice, absorb as absorb_search,
-    compose as compose_search, segment_scope, segments as search_segments, sort_a11y, sort_name,
+    CLEAR_RECENT, Elsewhere, GROUP_HITS, GROUPS_SHOWN, MORE_RESULTS, PAGE, RECENT_SEARCHES,
+    RECENT_TITLE, Recent, RecentSearches, SEARCH_EVERYWHERE, SEARCHING, ScreenChip, SearchEmpty,
+    SearchFilter, SearchGroup, SearchLimits, SearchScreen, SearchSegments, ServerSearch,
+    SortChoice, absorb as absorb_search, compose as compose_search, segment_scope,
+    segments as search_segments, sort_a11y, sort_name,
 };
 pub use finding::{Finding, SEARCH_SETTLE_MS};
 pub use flat::{

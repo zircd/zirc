@@ -1156,6 +1156,43 @@ impl RecentSearches {
             .filter_map(|text| SearchQuery::parse(text, None).ok())
             .collect()
     }
+
+    /// Them as the empty search box lists them, in every app: each its chips' labels and its
+    /// words, those that no longer read left out.
+    #[must_use]
+    pub fn listed(&self) -> Vec<Recent> {
+        self.0
+            .iter()
+            .filter_map(|said| {
+                let query = SearchQuery::parse(said, None).ok()?;
+                Some(Recent {
+                    query: said.clone(),
+                    chips: query.chips().into_iter().map(|chip| chip.label).collect(),
+                    text: query.text,
+                })
+            })
+            .collect()
+    }
+}
+
+/// What the recent searches' list is called, in every app.
+pub const RECENT_TITLE: &str = "Recent searches";
+
+/// What clears the recent searches, in every app.
+pub const CLEAR_RECENT: &str = "Clear recent searches";
+
+/// A search made lately, as the empty box lists it ([`RecentSearches::listed`]): the phones
+/// read it through their core, the web chat as JSON.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct Recent {
+    /// The whole search, chips and sort included, which [`Finding::recall`] takes.
+    pub query: String,
+    /// Its chips' labels: `in #api`.
+    pub chips: Vec<String>,
+    /// Its words.
+    pub text: String,
 }
 
 impl SearchScreen {
