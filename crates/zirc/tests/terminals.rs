@@ -273,7 +273,7 @@ async fn the_terminals_are_as_stored() {
 async fn watching_repo(henrik: &Machine) -> Terminal {
     let mut watched = Terminal::new("~/src/backend");
     watched.typed("zirc repo add", &henrik.zirc(&["repo", "add"]).await);
-    until(henrik, &["status"], "#backend").await;
+    until(henrik, &["status"], "#agents").await;
     watched.typed("zirc status", &henrik.zirc(&["status"]).await);
     watched
 }
@@ -285,7 +285,7 @@ async fn adding_repos(henrik: &Machine, raj: &Machine, ci: &Machine) -> Terminal
     start.typed("zirc repo add --session cc-7d3a", &added);
     raj.zirc(&["repo", "add", "--session", "cc-91b7"]).await;
     ci.zirc(&["repo", "add"]).await;
-    until(henrik, &["status"], "#backend").await;
+    until(henrik, &["status"], "#agents").await;
     start.typed("zirc status", &henrik.zirc(&["status"]).await);
     start
 }

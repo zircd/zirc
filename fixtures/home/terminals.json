@@ -33,7 +33,7 @@
         "output": "nick henrik-mbp"
       },
       {
-        "output": "channels #agents #backend #backend/ci #backend/landings #decisions #general #gotchas #ops"
+        "output": "channels #agents #decisions #general #gotchas #ops"
       },
       {
         "output": "zircd <version>"
@@ -59,7 +59,7 @@
         "output": "nick henrik-mbp"
       },
       {
-        "output": "channels #agents #backend #backend/ci #backend/landings #decisions #general #gotchas #ops"
+        "output": "channels #agents #decisions #general #gotchas #ops"
       },
       {
         "output": "zircd <version>"

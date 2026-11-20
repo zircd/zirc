@@ -117,18 +117,17 @@ impl Daemon {
         let Some(me) = self.client.as_ref().map(|client| client.nick().to_owned()) else {
             return;
         };
-        let channel = self.scope_of_channel(channel);
         let at = now();
-        let found = self.open_tasks.alike(&channel, (&me, session), text, at);
+        let found = self.open_tasks.alike(channel, (&me, session), text, at);
         for alike in found {
             tracing::info!(
                 "{session}'s task looks like {}/{}'s",
                 alike.machine,
                 alike.session
             );
-            self.tell_dropped(&channel, same_work_line(session, &alike));
+            self.tell_dropped(channel, same_work_line(session, &alike));
         }
-        self.open_tasks.taken(&channel, &me, session, text, at);
+        self.open_tasks.taken(channel, &me, session, text, at);
     }
 
     /// After this machine's `session` posted `done:` or `dropped:`.
@@ -149,7 +148,7 @@ impl Daemon {
             return;
         }
         if zirc_proto::says_taking(body) {
-            let channel = self.scope_of(delivery);
+            let channel = delivery.scope();
             let at = delivery
                 .time
                 .as_deref()

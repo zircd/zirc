@@ -1618,15 +1618,6 @@ fn why_of(response: &Response) -> Option<Why> {
     }
 }
 
-/// Whether `channel` is the scope `repo`, or one of the channels under it CI still speaks in
-/// (`#api/landings`).
-fn in_repo(channel: &str, repo: &str) -> bool {
-    channel == repo
-        || channel
-            .strip_prefix(repo)
-            .is_some_and(|rest| rest.starts_with('/'))
-}
-
 /// Whether a names reply (`353`: us, the channel's kind, the channel, its names) has us with
 /// ops, as `@` before our nick, alone or before others (`@+`).
 fn names_us_as_op(params: &[String], me: &str) -> bool {
@@ -1677,13 +1668,6 @@ fn routine(from: &str, message: &Message) -> bool {
         // scheduled run's "build 9's full Apple tests at 1a2b3c4 pass" (6 Nov 2026).
         || matches!(event, Event::Custom { data, .. }
             if data.get("state").and_then(serde_json::Value::as_str) == Some("passed"))
-}
-
-/// Whether `channel` is a repository's landings channel, `#<repository>/landings`
-/// (ops/lib.sh's `landings`): CI's lines that need no one, each naming the session whose
-/// landing it is, which alone it's news to.
-fn landings(channel: &str) -> bool {
-    channel.ends_with("/landings")
 }
 
 /// Whether `text` names any of `names` as a word of its own, ignoring case: `mattias-mbp`

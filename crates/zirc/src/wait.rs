@@ -288,8 +288,7 @@ fn for_session(heard: &Heard, session: Option<&str>) -> bool {
 }
 
 /// Where a wait listens, in one organisation: for CI's word, what's said about a
-/// repository (its scope), in `#agents` or the channels CI said its lines in before; or for a
-/// state, the organisation's `#ops`.
+/// repository (its scope) in `#agents`; or for a state, the organisation's `#ops`.
 struct Place<'a> {
     socket: &'a Path,
     org: Option<&'a str>,
@@ -359,18 +358,9 @@ enum Asked {
 }
 
 impl Place<'_> {
-    /// Whether `scope`, a line's ([`Delivery::scope`]) or a channel's, is the repository's,
-    /// or a channel CI said its lines in under it before (`#api/landings`).
+    /// Whether `scope`, a line's ([`Delivery::scope`]), is the repository's.
     fn has(&self, scope: &str) -> bool {
-        scope
-            .strip_prefix(self.scope)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
-    }
-
-    /// Whether what's said about the repository is read back from `channel`, one joined:
-    /// `#agents`, or one CI said its lines in before ([`Place::has`]).
-    fn reads(&self, channel: &str) -> bool {
-        channel == zirc_proto::AGENTS_CHANNEL || self.has(channel)
+        scope.eq_ignore_ascii_case(self.scope)
     }
 
     /// What a wait `asking` for CI's word waits for instead where no CI has ever said a
@@ -418,42 +408,23 @@ impl Place<'_> {
     /// messages said about the repository: yes when #agents can't be read, so a wait is
     /// never refused on a guess.
     async fn ci_speaks(&self) -> bool {
-        let Ok(Response::Status(status)) = ask(self.socket, Request::Status).await else {
+        let request = Request::Read {
+            target: zirc_proto::AGENTS_CHANNEL.to_owned(),
+            limit: READ_BACK,
+            since: None,
+            until: None,
+        };
+        let Ok(Response::Messages { messages }) = ask_in(self.socket, self.org, request).await
+        else {
             return true;
         };
-        let joined = match self.org {
-            Some(org) => status
-                .orgs
-                .iter()
-                .find(|it| it.name == org)
-                .map_or(&status.channels, |it| &it.channels),
-            None => &status.channels,
-        };
-        for channel in joined.iter().filter(|channel| self.reads(channel)) {
-            let request = Request::Read {
-                target: channel.clone(),
-                limit: READ_BACK,
-                since: None,
-                until: None,
-            };
-            let messages = match ask_in(self.socket, self.org, request).await {
-                Ok(Response::Messages { messages }) => messages,
-                // A channel CI said its lines in before may have no history to give.
-                _ if channel != zirc_proto::AGENTS_CHANNEL => continue,
-                _ => return true,
-            };
-            if messages
-                .iter()
-                .filter(|delivery| self.has(&delivery.scope()))
-                .any(|delivery| {
-                    matches!(&delivery.message.event, zirc_proto::Event::Custom { kind, .. }
+        messages
+            .iter()
+            .filter(|delivery| self.has(&delivery.scope()))
+            .any(|delivery| {
+                matches!(&delivery.message.event, zirc_proto::Event::Custom { kind, .. }
                     if kind == zirc_proto::ci::LANDING_KIND || kind == zirc_proto::ci::DEPLOY_KIND)
-                })
-            {
-                return true;
-            }
-        }
-        false
+            })
     }
 
     /// Whether `delivery` was said here: in this organisation, about the repository, or for
@@ -531,38 +502,18 @@ impl Place<'_> {
                 delivery: stands.map(|(_, delivery)| delivery),
             }));
         }
-        let Response::Status(status) = ask(self.socket, Request::Status).await? else {
+        let request = Request::Read {
+            target: self.channel.to_owned(),
+            limit: READ_BACK,
+            since: Some(since),
+            until: None,
+        };
+        let Response::Messages { messages: mut said } = ask_in(self.socket, self.org, request)
+            .await
+            .with_context(|| format!("reading {} back", self.channel))?
+        else {
             return Err(crate::client::unexpected());
         };
-        let joined = match self.org {
-            Some(org) => status
-                .orgs
-                .iter()
-                .find(|it| it.name == org)
-                .map_or(&status.channels, |it| &it.channels),
-            None => &status.channels,
-        };
-        let mut said = Vec::new();
-        for channel in joined.iter().filter(|channel| self.reads(channel)) {
-            let request = Request::Read {
-                target: channel.clone(),
-                limit: READ_BACK,
-                since: Some(since),
-                until: None,
-            };
-            let read = ask_in(self.socket, self.org, request).await;
-            // A channel CI said its lines in before may have no history to give: only
-            // `#agents` must read.
-            if read.is_err() && channel != zirc_proto::AGENTS_CHANNEL {
-                continue;
-            }
-            let Response::Messages { messages } =
-                read.with_context(|| format!("reading {channel} back"))?
-            else {
-                return Err(crate::client::unexpected());
-            };
-            said.extend(messages);
-        }
         // RFC 3339 in UTC, as the server stamps them, sorts as text.
         said.sort_by(|a, b| a.time.cmp(&b.time));
         said.retain(|delivery| self.says_here(delivery));
@@ -692,7 +643,7 @@ mod tests {
             )
         };
         assert!(place.says_here(&said("#agents", Some("api"))));
-        assert!(place.says_here(&said("#api/landings", None)));
+        assert!(!place.says_here(&said("#api/landings", None)));
         assert!(!place.says_here(&said("#agents", Some("api-docs"))));
         assert!(!place.says_here(&said("#agents", None)));
         assert!(!place.says_here(&said("#ops", None)));

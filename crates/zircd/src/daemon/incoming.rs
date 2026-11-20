@@ -212,7 +212,7 @@ impl Daemon {
                 }
                 self.lease_heard(channel, from, &delivery.message.event);
                 // A line in `#agents` counts as its repository's.
-                let channel = self.scope_of(&delivery);
+                let channel = delivery.scope();
                 let default = self.default_branch(&channel);
                 self.presence
                     .apply(&channel, from, &delivery.message, now(), default.as_deref());

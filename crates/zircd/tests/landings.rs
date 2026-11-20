@@ -105,13 +105,13 @@ async fn a_sessions_own_ci_success_waits_and_its_failure_wakes_it() {
     let mut cc1 = alpha.watch(Some("cc-1")).await;
     // CI, as one of zirc's own accounts, in the repository's channel.
     let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
-    zirc_test_irc::joins(&ci, &mut ci_in, "#api").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
     let landed = "cc-1: landed login as 1a2b3c4 (build 7)";
-    ci.privmsg("#api", landed).unwrap();
+    ci.privmsg("#agents", landed).unwrap();
     assert_eq!(next_post_why(&mut cc1).await, (landed.into(), None));
     // A failure wakes it, with what waited first.
     let failed = "cc-1: build 8 of login failed in test: //api:unit";
-    ci.privmsg("#api", failed).unwrap();
+    ci.privmsg("#agents", failed).unwrap();
     let (intro, why) = next_post_why(&mut cc1).await;
     assert_eq!(
         (intro.as_str(), why),
@@ -129,10 +129,10 @@ async fn a_sessions_own_ci_success_waits_and_its_failure_wakes_it() {
         (failed.into(), Some(Why::Mention))
     );
     // Said again, as CI says a landing in more than one channel, it's in no second digest.
-    ci.privmsg("#api", landed).unwrap();
+    ci.privmsg("#agents", landed).unwrap();
     assert_eq!(next_post_why(&mut cc1).await, (landed.into(), None));
     let again = "cc-1: build 9 of login failed in test: //api:unit";
-    ci.privmsg("#api", again).unwrap();
+    ci.privmsg("#agents", again).unwrap();
     assert_eq!(
         next_post_why(&mut cc1).await,
         (again.into(), Some(Why::Mention))
@@ -150,19 +150,19 @@ async fn landings_and_a_broken_state_are_said_with_a_sessions_next_wake() {
     alpha.request(add).await;
     let mut cc1 = alpha.watch(Some("cc-1")).await;
     let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
-    zirc_test_irc::joins(&ci, &mut ci_in, "#api").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
     // Two landings of another session's, as ops/say.sh says them: neither wakes cc-1.
     for (commit, subject) in [("c", "Fix login"), ("d", "Add logout")] {
         let event = Event::Custom {
             kind: "x-zirc/landing".into(),
             data: serde_json::json!({
                 "state": "passed", "session": "cc-9", "branch": "login",
-                "commit": commit.repeat(40), "subject": subject,
+                "commit": commit.repeat(12), "subject": subject,
             }),
             text: format!("cc-9: landed login as {} (build 7)", commit.repeat(7)),
         };
-        let line = zirc_proto::encode(&zirc_proto::Message::new("ci", event)).unwrap();
-        ci.privmsg("#api", &line).unwrap();
+        let line = zirc_proto::encode(&ci_message(event)).unwrap();
+        ci.privmsg("#agents", &line).unwrap();
         assert_eq!(next(&mut cc1).await.why, None);
     }
     // Nor does master said broken, which names nobody here; broken twice is one note.
@@ -180,7 +180,7 @@ async fn landings_and_a_broken_state_are_said_with_a_sessions_next_wake() {
     alpha.request(state(zirc_proto::state::Level::Broken)).await;
     // What wakes it brings them first: one line for both landings, and the state.
     let failed = "cc-1: build 8 of login failed in test: //api:unit";
-    ci.privmsg("#api", failed).unwrap();
+    ci.privmsg("#agents", failed).unwrap();
     let mut said = Vec::new();
     while said.last().is_none_or(|(text, _)| text != failed) {
         let delivery = next(&mut cc1).await;
@@ -222,16 +222,13 @@ async fn the_apple_apps_passing_with_a_landing_waits_for_the_next_wake() {
     let mut cc1 = alpha.watch(Some("cc-1")).await;
     // CI's account, saying it as ops/say.sh does: a landing event from its session `ci`.
     let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-alerts").await;
-    zirc_test_irc::joins(&ci, &mut ci_in, "#api").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
     let landing = |text: &str| {
-        zirc_proto::encode(&zirc_proto::Message::new(
-            "ci",
-            Event::Custom {
-                kind: "x-zirc/landing".into(),
-                data: serde_json::json!({ "branch": "apple/login" }),
-                text: text.into(),
-            },
-        ))
+        zirc_proto::encode(&ci_message(Event::Custom {
+            kind: "x-zirc/landing".into(),
+            data: serde_json::json!({ "branch": "apple/login" }),
+            text: text.into(),
+        }))
         .unwrap()
     };
     let next_landing = async |watching: &mut Watching| loop {
@@ -242,11 +239,11 @@ async fn the_apple_apps_passing_with_a_landing_waits_for_the_next_wake() {
     };
     // They compile: awaited, but needing nothing, so it wakes nobody yet.
     let pass = "cc-1 (apple/login): build 7's Apple apps compile on 1a2b3c4";
-    ci.privmsg("#api", &landing(pass)).unwrap();
+    ci.privmsg("#agents", &landing(pass)).unwrap();
     assert_eq!(next_landing(&mut cc1).await, (pass.into(), None));
     // The next line that wakes it brings it first.
     let failed = "cc-1: build 8 of login failed in test: //api:unit";
-    ci.privmsg("#api", failed).unwrap();
+    ci.privmsg("#agents", failed).unwrap();
     assert_eq!(
         next_post_why(&mut cc1).await,
         (
@@ -261,7 +258,7 @@ async fn the_apple_apps_passing_with_a_landing_waits_for_the_next_wake() {
     );
     // Their failure wakes it at once.
     let broke = "cc-1 (apple/login): build 9's Apple apps failed to compile on 1a2b3c4";
-    ci.privmsg("#api", &landing(broke)).unwrap();
+    ci.privmsg("#agents", &landing(broke)).unwrap();
     assert_eq!(
         next_landing(&mut cc1).await,
         (broke.into(), Some(Why::Awaited))
@@ -291,23 +288,23 @@ async fn a_landing_a_session_waits_on_wakes_it() {
             .await;
         machine
             .eventually(
-                |status| status.channels.iter().any(|c| c == "#api/landings"),
-                "joining #api/landings",
+                |status| status.channels.iter().any(|c| c == "#agents"),
+                "joining #agents",
             )
             .await;
     }
     let mut cc1 = alpha.watch(Some("cc-1")).await;
     // CI's line, as //ops:land's are: an x-zirc/landing event, from CI's own account.
     let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
-    zirc_test_irc::joins(&ci, &mut ci_in, "#api/landings").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
     let says = |text: &str| {
         let event = Event::Custom {
             kind: "x-zirc/landing".into(),
             data: serde_json::Value::Null,
             text: text.into(),
         };
-        let line = zirc_proto::encode(&zirc_proto::Message::new("ci", event)).unwrap();
-        ci.privmsg("#api/landings", &line).unwrap();
+        let line = zirc_proto::encode(&ci_message(event)).unwrap();
+        ci.privmsg("#agents", &line).unwrap();
     };
     let next_landing = async |watching: &mut Watching| loop {
         let delivery = next(watching).await;
@@ -373,13 +370,13 @@ async fn a_landings_steps_never_wake_a_session_waiting_on_it() {
         .await;
     alpha
         .eventually(
-            |status| status.channels.iter().any(|c| c == "#api/landings"),
-            "joining #api/landings",
+            |status| status.channels.iter().any(|c| c == "#agents"),
+            "joining #agents",
         )
         .await;
     let mut cc1 = alpha.watch(Some("cc-1")).await;
     let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
-    zirc_test_irc::joins(&ci, &mut ci_in, "#api/landings").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
     let next_landing = async |watching: &mut Watching| loop {
         let delivery = next(watching).await;
         if let Event::Custom { text, .. } = delivery.message.event {
@@ -389,17 +386,14 @@ async fn a_landings_steps_never_wake_a_session_waiting_on_it() {
     alpha.request(wait_for("cc-1", &["1302"])).await;
     let says = |text: &str, state: &str, level: Option<zirc_proto::Level>| {
         let steps = serde_json::json!([{ "name": "Build and test", "state": "running" }]);
-        let mut message = zirc_proto::Message::new(
-            "ci",
-            Event::Custom {
-                kind: "x-zirc/landing".into(),
-                data: serde_json::json!({ "build": "1302", "state": state, "steps": steps }),
-                text: text.into(),
-            },
-        );
+        let mut message = ci_message(Event::Custom {
+            kind: "x-zirc/landing".into(),
+            data: serde_json::json!({ "build": "1302", "state": state, "steps": steps }),
+            text: text.into(),
+        });
         message.level = level;
         let line = zirc_proto::encode_up_to(&message, 4096).unwrap();
-        ci.privmsg("#api/landings", &line).unwrap();
+        ci.privmsg("#agents", &line).unwrap();
     };
     for (text, level) in [
         ("build 1302 started", None),
@@ -457,8 +451,8 @@ async fn a_branch_that_changed_a_sessions_files_wakes_it_once_when_it_lands() {
     for machine in [&alpha, &beta] {
         machine
             .eventually(
-                |status| status.channels.iter().any(|c| c == "#api/landings"),
-                "joining #api/landings",
+                |status| status.channels.iter().any(|c| c == "#agents"),
+                "joining #agents",
             )
             .await;
     }
@@ -472,15 +466,15 @@ async fn a_branch_that_changed_a_sessions_files_wakes_it_once_when_it_lands() {
     .await;
     let mut cc_b = beta.watch(Some("cc-b")).await;
     let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
-    zirc_test_irc::joins(&ci, &mut ci_in, "#api/landings").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
     let says = |text: &str, branch: &str| {
         let event = Event::Custom {
             kind: "x-zirc/landing".into(),
             data: serde_json::json!({ "branch": branch }),
             text: text.into(),
         };
-        let line = zirc_proto::encode(&zirc_proto::Message::new("ci", event)).unwrap();
-        ci.privmsg("#api/landings", &line).unwrap();
+        let line = zirc_proto::encode(&ci_message(event)).unwrap();
+        ci.privmsg("#agents", &line).unwrap();
     };
     let next_landing = async |watching: &mut Watching| loop {
         let delivery = next(watching).await;

@@ -256,7 +256,7 @@ impl Daemon {
         let Response::Delivery(delivery) = response else {
             return;
         };
-        let channel = self.scope_of(delivery);
+        let channel = delivery.scope();
         match &delivery.message.event {
             Event::Push { on: Some(on), .. } => {
                 self.built_on.insert((channel, on.clone()));

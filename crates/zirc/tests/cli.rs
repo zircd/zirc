@@ -334,7 +334,7 @@ async fn watches_a_repository_and_hears_another_machine() {
         let cli = Cli::try_parse_from(["zirc", "--home", beta_home.to_str().unwrap(), "watch"]);
         let _ = zirc::run(cli.unwrap(), &mut Lines(lines, Vec::new())).await;
     });
-    until_in(beta.path(), "#web").await;
+    until_in(beta.path(), "#agents").await;
     // The watch registered before anything is said.
     until_watching(beta.path()).await;
 
@@ -557,7 +557,7 @@ async fn a_team_emits_its_own_events_and_a_filter_picks_them_out() {
         ]);
         let _ = zirc::run(cli.unwrap(), &mut Lines(lines, Vec::new())).await;
     });
-    until_in(beta.path(), "#web").await;
+    until_in(beta.path(), "#agents").await;
     until_watching(beta.path()).await;
 
     let emit = async |json: &str, text: &str| {
@@ -739,7 +739,7 @@ async fn a_watch_once_ends_after_the_first_thing_that_concerns_it() {
         zirc(home.path(), &["repo", "add", repo.to_str().unwrap()])
             .await
             .unwrap();
-        until_in(home.path(), "#web").await;
+        until_in(home.path(), "#agents").await;
     }
 
     let alpha_home = alpha.path().to_owned();
@@ -889,8 +889,12 @@ fn ci_says(ergo: &zirc_test_ergo::Ergo, kind: &str, text: &str, data: serde_json
         data,
         text: text.into(),
     };
-    let line = zirc_proto::encode(&zirc_proto::Message::new("ci", event)).unwrap();
-    zirc_test_ergo::signin::say_as(ergo.port(), "zirc-ci", CI_PASSPHRASE, "#web", &line)
+    let message = zirc_proto::Message {
+        repo: Some("web".into()),
+        ..zirc_proto::Message::new("ci", event)
+    };
+    let line = zirc_proto::encode(&message).unwrap();
+    zirc_test_ergo::signin::say_as(ergo.port(), "zirc-ci", CI_PASSPHRASE, "#agents", &line)
         .expect("CI said it");
 }
 
@@ -909,7 +913,7 @@ async fn a_wait_for_a_landing_no_ci_would_say_is_refused() {
     zirc(alpha.path(), &["repo", "add", "--session", "cc-a", &here])
         .await
         .unwrap();
-    until_in(alpha.path(), "#web").await;
+    until_in(alpha.path(), "#agents").await;
     let landing = zirc_proto::ci::LANDING_KIND;
     zirc_test_ergo::signin::register(ergo.port(), "zirc-ci", CI_PASSPHRASE).expect("CI's account");
     let refused = zirc(alpha.path(), &["wait", "landed", "login", "--repo", &here]).await;
@@ -958,7 +962,7 @@ async fn a_wait_ends_when_ci_says_it_happened_or_failed() {
     // A wait reads back the channels zircd has joined, and hears what's said in them: one
     // started before alpha was in #web read nothing back and never heard CI, which had
     // spoken already, and waited till Bazel's 300s (build 3346).
-    until_in(alpha.path(), "#web").await;
+    until_in(alpha.path(), "#agents").await;
     let here = alpha_clone.path().to_str().unwrap().to_owned();
     let landing = zirc_proto::ci::LANDING_KIND;
     let deploy = zirc_proto::ci::DEPLOY_KIND;
@@ -983,7 +987,7 @@ async fn a_wait_ends_when_ci_says_it_happened_or_failed() {
     });
     until_watching(alpha.path()).await;
     let data = json!({"branch": "login", "build": "7", "commit": "1a2b3c4d5e", "state": "passed"});
-    let edge = "cc-2: deployed to production: the edge (deploy/edge) at 1a2b3c4 \u{2713}";
+    let edge = "cc-2: deployed to production: the edge at 1a2b3c4 \u{2713}";
     let deployed = "cc-2: deployed to production: controller at 1a2b3c4 \u{2713}";
     ci_says(&ergo, deploy, edge, data.clone());
     ci_says(&ergo, deploy, deployed, data);
@@ -1049,7 +1053,7 @@ async fn a_wait_for_a_branch_landed_again_waits_past_its_earlier_failure() {
     zirc(alpha.path(), &["repo", "add", "--session", "cc-a", &here])
         .await
         .unwrap();
-    until_in(alpha.path(), "#web").await;
+    until_in(alpha.path(), "#agents").await;
     let landing = zirc_proto::ci::LANDING_KIND;
     zirc_test_ergo::signin::register(ergo.port(), "zirc-ci", CI_PASSPHRASE).expect("CI's account");
     let failed = json!({"branch": "money", "build": "1", "state": "failed"});
@@ -1136,7 +1140,7 @@ async fn catches_up_on_what_people_said_not_on_zircds_events() {
     }
     // Both in #web: beta's post from outside it is refused, and never in its history.
     for home in [&alpha, &beta] {
-        until_in(home.path(), "#web").await;
+        until_in(home.path(), "#agents").await;
     }
 
     // Beta's working set, which zircd announces in #web, and a post naming alpha.

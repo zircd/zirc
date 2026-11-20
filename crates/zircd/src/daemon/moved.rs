@@ -27,7 +27,7 @@ use zirc_core::sessions::LANDING_KIND;
 use zirc_proto::state::{Level, State};
 use zirc_proto::{Event, Message};
 
-use super::{Daemon, Input, WATCHER_SESSION, in_repo};
+use super::{Daemon, Input, WATCHER_SESSION};
 use crate::git;
 
 /// How many landings are counted for a session at most.
@@ -66,7 +66,7 @@ struct Landed {
 
 impl Landed {
     /// The landing `response` says landed, if it's CI saying one did.
-    fn of(response: &Response) -> Option<(&str, Self)> {
+    fn of(response: &Response) -> Option<(String, Self)> {
         let Response::Delivery(delivery) = response else {
             return None;
         };
@@ -85,7 +85,7 @@ impl Landed {
             session: ci.session,
             subject: ci.subject,
         };
-        Some((&delivery.channel, landed))
+        Some((delivery.scope(), landed))
     }
 }
 
@@ -180,7 +180,7 @@ impl Daemon {
             .collect();
         self.repos
             .values()
-            .filter(|watched| in_repo(channel, &watched.scope))
+            .filter(|watched| watched.scope == channel)
             .flat_map(|watched| {
                 watched.sessions.names().map(|session| {
                     (
@@ -199,7 +199,6 @@ impl Daemon {
     pub(super) fn note_quietly(&mut self, response: &Response, woken: &BTreeSet<String>) {
         self.heard_head(response);
         if let Some((channel, landed)) = Landed::of(response) {
-            let channel = channel.to_owned();
             self.note_landed(&channel, &landed, woken);
         } else if let Response::Delivery(delivery) = response
             && let Some(state) = State::of(&delivery.message.event)
@@ -216,17 +215,16 @@ impl Daemon {
                 Event::Push { branch, head, .. } => self
                     .repos
                     .values()
-                    .any(|w| in_repo(&delivery.channel, &w.scope) && w.default_branch == *branch)
-                    .then(|| (delivery.channel.clone(), head.clone())),
-                _ => Landed::of(response)
-                    .map(|(channel, landed)| (channel.to_owned(), landed.commit)),
+                    .any(|w| w.scope == delivery.scope() && w.default_branch == *branch)
+                    .then(|| (delivery.scope(), head.clone())),
+                _ => Landed::of(response).map(|(channel, landed)| (channel, landed.commit)),
             },
             _ => None,
         };
         let Some((channel, head)) = said else {
             return;
         };
-        if let Some(repo) = self.repos.values().find(|w| in_repo(&channel, &w.scope)) {
+        if let Some(repo) = self.repos.values().find(|w| w.scope == channel) {
             self.moved.heads.insert(repo.scope.clone(), head);
         }
     }
@@ -422,20 +420,21 @@ mod tests {
     }
 
     fn landing(state: &str, text: &str) -> Response {
+        let event = Event::Custom {
+            kind: LANDING_KIND.into(),
+            data: serde_json::json!({
+                "state": state, "session": "cc-2", "commit": "c".repeat(40),
+                "subject": "Fix login",
+            }),
+            text: text.into(),
+        };
         Response::Delivery(Delivery::new(
-            "#api/landings",
+            "#agents",
             "zirc-ci",
-            Message::new(
-                "ci",
-                Event::Custom {
-                    kind: LANDING_KIND.into(),
-                    data: serde_json::json!({
-                        "state": state, "session": "cc-2", "commit": "c".repeat(40),
-                        "subject": "Fix login",
-                    }),
-                    text: text.into(),
-                },
-            ),
+            Message {
+                repo: Some("api".into()),
+                ..Message::new("ci", event)
+            },
         ))
     }
 
@@ -443,7 +442,8 @@ mod tests {
     fn only_a_landing_that_landed_counts() {
         let said = landing("passed", "cc-2: landed login as ccccccc (build 7)");
         let (channel, landed) = Landed::of(&said).unwrap();
-        assert_eq!(channel, "#api/landings");
+        // CI's line in #agents counts as its repository's.
+        assert_eq!(channel, "#api");
         assert_eq!(landed.commit, "c".repeat(40));
         assert_eq!(landed.session.as_deref(), Some("cc-2"));
         assert_eq!(landed.subject.as_deref(), Some("Fix login"));

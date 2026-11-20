@@ -184,6 +184,7 @@ impl Daemon {
             return;
         };
         tracing::info!("{} is gone, so it's no longer watched", root.display());
+        self.left_scope(&watched.scope);
         self.tell_gone(root, &watched);
         self.save();
         self.reconcile();

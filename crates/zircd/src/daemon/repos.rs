@@ -288,9 +288,6 @@ impl Daemon {
     /// repository watched, its `#ops`, where decisions are, and the topics joined.
     pub(super) fn desired_channels(&self) -> BTreeSet<String> {
         let mut desired: BTreeSet<String> = self.topics.keys().cloned().collect();
-        for watched in self.repos.values() {
-            desired.extend(watched.ci_rooms());
-        }
         // Only while this machine's asked its owner something, to hear their answer.
         if self.requests.any_open() {
             desired.insert(zirc_proto::request::CHANNEL.to_owned());

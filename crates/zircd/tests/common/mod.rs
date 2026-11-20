@@ -285,18 +285,8 @@ pub async fn next_local_overlap(watching: &mut Watching) -> LocalOverlap {
 }
 
 /// Every channel a machine watching a clone of the test repository joins, sorted, as its
-/// status says them once it's settled: the organisation's, and the repository's own that CI
-/// still speaks in until it says everything in `#agents`.
-pub const JOINED: [&str; 8] = [
-    "#agents",
-    "#api",
-    "#api/ci",
-    "#api/landings",
-    "#decisions",
-    "#general",
-    "#gotchas",
-    "#ops",
-];
+/// status says them once it's settled: the organisation's.
+pub const JOINED: [&str; 5] = ["#agents", "#decisions", "#general", "#gotchas", "#ops"];
 
 pub async fn two_machines(ergo: &Ergo) -> [(Machine, TempDir); 2] {
     let mut machines = Vec::new();
@@ -369,6 +359,14 @@ pub async fn until_refused(machine: &Machine, request: &Request, why: &str) {
     })
     .await
     .unwrap_or_else(|_| panic!("timed out waiting for a refusal saying {why}"));
+}
+
+/// CI's line about the test repository, as it says in `#agents`.
+pub fn ci_message(event: Event) -> zirc_proto::Message {
+    zirc_proto::Message {
+        repo: Some("api".into()),
+        ..zirc_proto::Message::new("ci", event)
+    }
 }
 
 pub fn plain_post(repo: &Path, session: &str, text: &str, to: Target) -> Request {

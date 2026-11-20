@@ -83,23 +83,20 @@ async fn a_landing_landing_finishes_the_task_it_was_queued_under() {
         other => panic!("{other:?}"),
     };
     let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-alerts").await;
-    zirc_test_irc::joins(&ci, &mut ci_in, "#api").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
     let landed = |build: u32| {
-        zirc_proto::encode(&zirc_proto::Message::new(
-            "ci",
-            Event::Custom {
-                kind: "x-zirc/landing".into(),
-                data: serde_json::json!({ "session": "cc-t", "branch": "login" }),
-                text: format!("cc-t: landed login as 1a2b3c4 (build {build})"),
-            },
-        ))
+        zirc_proto::encode(&ci_message(Event::Custom {
+            kind: "x-zirc/landing".into(),
+            data: serde_json::json!({ "session": "cc-t", "branch": "login" }),
+            text: format!("cc-t: landed login as 1a2b3c4 (build {build})"),
+        }))
         .unwrap()
     };
     let mut beta_hears = beta.watch(None).await;
     let repo = alpha_clone.path();
     post(&alpha, repo, "cc-t", "taking: the recorder").await;
     let task = land().await.expect("its landing claims the task it's on");
-    ci.privmsg("#api", &landed(7)).unwrap();
+    ci.privmsg("#agents", &landed(7)).unwrap();
     // zircd says done: for it, where its taking: went, as part of that task.
     let done = loop {
         let delivery = next_post(&mut beta_hears).await;
@@ -119,7 +116,7 @@ async fn a_landing_landing_finishes_the_task_it_was_queued_under() {
     post(&alpha, repo, "cc-t", "taking: the player").await;
     land().await;
     post(&alpha, repo, "cc-t", "taking: the next thing").await;
-    ci.privmsg("#api", &landed(8)).unwrap();
+    ci.privmsg("#agents", &landed(8)).unwrap();
     post(&alpha, repo, "cc-t", "marker").await;
     loop {
         let delivery = next_post(&mut beta_hears).await;

@@ -68,7 +68,7 @@ async fn a_watch_registers_intend_takes_the_task_and_its_landing_says_done() {
     let clone = zirc_test_ergo::git::clone("https://github.com/acme/web.git");
     let repo = clone.path();
     until(repo, home, &["repo", "add"], "as web in #agents").await;
-    until(repo, home, &["status"], " #web").await;
+    until(repo, home, &["status"], " #agents").await;
 
     // A session's watch, started in the repository, is all it needs to be registered there.
     let watch_home = home.to_owned();
@@ -123,8 +123,12 @@ async fn a_watch_registers_intend_takes_the_task_and_its_landing_says_done() {
         data: serde_json::json!({"session": "cc-t", "branch": "login", "state": "passed"}),
         text: "cc-t: landed login as 1a2b3c4 (build 7)".into(),
     };
-    let line = zirc_proto::encode(&zirc_proto::Message::new("ci", event)).unwrap();
-    zirc_test_ergo::signin::say_as(ergo.port(), "zirc-ci", CI_PASSPHRASE, "#web", &line)
+    let message = zirc_proto::Message {
+        repo: Some("web".into()),
+        ..zirc_proto::Message::new("ci", event)
+    };
+    let line = zirc_proto::encode(&message).unwrap();
+    zirc_test_ergo::signin::say_as(ergo.port(), "zirc-ci", CI_PASSPHRASE, "#agents", &line)
         .expect("CI said it");
     // zircd's done: ends it (its words are zircd's tests' to check).
     tokio::time::timeout(WAIT, async {

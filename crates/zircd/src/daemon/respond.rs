@@ -329,6 +329,9 @@ impl Daemon {
         } else {
             let watched = self.repos.remove(&root);
             anyhow::ensure!(watched.is_some(), "{} isn't being watched", root.display());
+            if let Some(watched) = watched {
+                self.left_scope(&watched.scope);
+            }
             // A linked worktree stays unwatched, though its main checkout is watched
             // ([`Daemon::find_worktrees`]).
             if root.join(".git").is_file() {

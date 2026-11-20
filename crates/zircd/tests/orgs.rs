@@ -61,22 +61,7 @@ async fn observer(ergo: &Ergo, nick: &str) -> (Machine, [TempDir; 2], Watching) 
     }
     observer
         .eventually(
-            |status| {
-                status.channels
-                    == [
-                        "#agents",
-                        "#decisions",
-                        "#general",
-                        "#gotchas",
-                        "#magnets",
-                        "#magnets/ci",
-                        "#magnets/landings",
-                        "#ops",
-                        "#rockets",
-                        "#rockets/ci",
-                        "#rockets/landings",
-                    ]
-            },
+            |status| status.channels == ["#agents", "#decisions", "#general", "#gotchas", "#ops"],
             "joining",
         )
         .await;
@@ -123,22 +108,8 @@ async fn bind(machine: &Machine, rockets: &TempDir, magnets: &TempDir) -> TempDi
     machine
         .eventually(
             |status| {
-                let joined = |repo: &str| {
-                    let mut channels = vec![
-                        "#agents".to_owned(),
-                        "#decisions".to_owned(),
-                        "#general".to_owned(),
-                        "#gotchas".to_owned(),
-                        "#ops".to_owned(),
-                        format!("#{repo}"),
-                        format!("#{repo}/ci"),
-                        format!("#{repo}/landings"),
-                    ];
-                    channels.sort();
-                    channels
-                };
-                status.orgs[0].channels == joined("rockets")
-                    && status.orgs[1].channels == joined("magnets")
+                let joined = ["#agents", "#decisions", "#general", "#gotchas", "#ops"];
+                status.orgs.iter().all(|org| org.channels == joined)
             },
             "joining each organisation's channels",
         )

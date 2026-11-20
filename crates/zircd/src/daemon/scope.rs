@@ -5,38 +5,20 @@
 //! all it knows of a repository by its scope ([`Project::scope`], `#<repo>`), as it once keyed
 //! it by the repository's channel of that name: what's sent to a scope goes out in `#agents`
 //! ([`Daemon::on_wire`]), and what's heard there counts as its repository's
-//! ([`Daemon::scope_of`]). A plain post addressed to one agent session (`coordinator: landed
+//! ([`zirc_core::ipc::Delivery::scope`]). A plain post addressed to one agent session (`coordinator: landed
 //! it`) is a note for it alone ([`zirc_core::notes`]), in no room at all.
 //!
 //! Nothing said in `#agents` wakes a session unless it names it, or `@everyone`
 //! ([`Daemon::is_post_room`]).
 //!
-//! Until CI says everything in `#agents` too, zircd also hears the channels CI still speaks
-//! in, a repository's `#<repo>`, `#<repo>/landings` and `#<repo>/ci` ([`Watched::ci_rooms`]),
-//! whose lines count as the repository's as they always have.
-//!
 //! [`Project::scope`]: zirc_core::project::Project::scope
 
 use std::collections::BTreeSet;
 
-use zirc_core::ipc::Delivery;
 use zirc_core::notes;
 use zirc_proto::{AGENTS_CHANNEL, Message};
 
-use super::{Daemon, Watched, in_repo};
-
-impl Watched {
-    /// The channels CI still says a repository's landings, deploys and checks in, which
-    /// zircd hears until CI says them in `#agents`: `#<repo>`, `#<repo>/landings` and
-    /// `#<repo>/ci`.
-    pub(super) fn ci_rooms(&self) -> [String; 3] {
-        [
-            self.scope.clone(),
-            format!("{}/landings", self.scope),
-            format!("{}/ci", self.scope),
-        ]
-    }
-}
+use super::Daemon;
 
 impl Daemon {
     /// Where `message`, sent to `channel`, goes on the wire: a watched repository's scope
@@ -62,6 +44,15 @@ impl Daemon {
         }
     }
 
+    /// `scope` is no longer watched here, as its last checkout is unwatched or gone: it's out
+    /// of `joined`, which holds a watched repository's scope while `#agents` is joined
+    /// ([`Daemon::someone_joined`]).
+    pub(super) fn left_scope(&mut self, scope: &str) {
+        if !self.is_scope(scope) {
+            self.joined.remove(scope);
+        }
+    }
+
     /// Whether `channel` is one of the watched repositories' scopes, which zircd keys them
     /// by, rather than a channel it's in on the server.
     pub(super) fn is_scope(&self, channel: &str) -> bool {
@@ -74,21 +65,6 @@ impl Daemon {
             .values()
             .map(|watched| watched.scope.clone())
             .collect()
-    }
-
-    /// What `delivery` counts as said in: the scope of the watched repository it's about,
-    /// by the repository it says, or else by the channel CI said it in
-    /// ([`Watched::ci_rooms`]); else its own channel.
-    pub(super) fn scope_of(&self, delivery: &Delivery) -> String {
-        self.scope_of_channel(&delivery.scope())
-    }
-
-    /// [`Daemon::scope_of`] for a line known only by `channel`, or by a scope already.
-    pub(super) fn scope_of_channel(&self, channel: &str) -> String {
-        self.repos
-            .values()
-            .find(|watched| in_repo(channel, &watched.scope))
-            .map_or_else(|| channel.to_owned(), |watched| watched.scope.clone())
     }
 
     /// Whether `channel` is where agents say what they're doing, [`AGENTS_CHANNEL`], whose

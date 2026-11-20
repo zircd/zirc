@@ -166,7 +166,7 @@ impl Daemon {
             .client
             .as_ref()
             .map(|client| client.nick().to_owned())?;
-        let home = self.scope_of(delivery);
+        let home = delivery.scope();
         let channel = home.as_str();
         let intended: Vec<&str> = paths.iter().map(String::as_str).collect();
         let sender = delivery.message.session.as_str();

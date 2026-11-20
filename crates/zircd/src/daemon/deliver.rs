@@ -15,8 +15,7 @@ use zirc_proto::{Event, Message};
 
 use super::{
     Daemon, MISSED, MISSED_FOR, Said, WATCHER_SESSION, Watched, answered_concerns, channel_of,
-    direct_concerns, from_guest, in_repo, landings, lands_under, later, mentions, now, routine,
-    wakes,
+    direct_concerns, from_guest, lands_under, later, mentions, now, routine, wakes,
 };
 
 impl Daemon {
@@ -254,7 +253,7 @@ impl Daemon {
         self.repos
             .values()
             .filter(|watched| watched.sessions.contains(session))
-            .filter(|watched| in_repo(channel, &watched.scope))
+            .filter(|watched| watched.scope == channel)
             .flat_map(|watched| watched.paths_of(session))
             .collect()
     }
@@ -326,7 +325,7 @@ impl Daemon {
         self.repos
             .values()
             .filter(|watched| session.is_none_or(|s| watched.sessions.contains(s)))
-            .filter(|watched| in_repo(channel, &watched.scope))
+            .filter(|watched| watched.scope == channel)
             .collect()
     }
 
@@ -359,7 +358,7 @@ impl Daemon {
         };
         // A line in `#agents` is its repository's, but only what names a session in it is
         // news.
-        let home = self.scope_of(delivery);
+        let home = delivery.scope();
         let channel = home.as_str();
         if delivery.from == me && session == Some(delivery.message.session.as_str()) {
             return None;
@@ -568,11 +567,8 @@ impl Daemon {
         mine: &BTreeSet<&str>,
     ) -> Option<Why> {
         // What goes as it should, such as a deploy done, isn't news to a
-        // channel's every joiner, only to whom it names; and nothing in a
-        // landings channel is, which is there for whom it names.
-        let topic = self.in_topic(channel, session)
-            && !routine(&delivery.from, &delivery.message)
-            && !landings(&delivery.channel);
+        // channel's every joiner, only to whom it names.
+        let topic = self.in_topic(channel, session) && !routine(&delivery.from, &delivery.message);
         if mentions(body, names) || self.broadcast(delivery) || self.stacked_on_named(body, session)
         {
             Some(Why::Mention)
@@ -689,7 +685,7 @@ impl Daemon {
             if delivery.message.session == session {
                 return false;
             }
-            let home = self.scope_of(delivery);
+            let home = delivery.scope();
             return self.told.local.iter().any(|((channel, pair), paths)| {
                 // A pair whose overlap was told only as different parts never woke
                 // anyone, and its commits needn't either.
@@ -704,12 +700,12 @@ impl Daemon {
         let mine: Vec<String> = self
             .repos
             .values()
-            .filter(|watched| in_repo(&delivery.scope(), &watched.scope))
+            .filter(|watched| watched.scope == delivery.scope())
             .flat_map(|watched| watched.paths_of(session))
             .collect();
         self.told
             .remote
-            .get(&(self.scope_of(delivery), delivery.from.clone()))
+            .get(&(delivery.scope(), delivery.from.clone()))
             .is_some_and(|told| mine.iter().any(|path| told.contains_key(path)))
     }
 
