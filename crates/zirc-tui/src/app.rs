@@ -1029,7 +1029,8 @@ impl App {
                     "Not sent, {why}: it's back in the input, Enter sends it again"
                 ));
             }
-            Some(_) => self.note(format!("Not sent, {why}: Up brings it back to send again")),
+            // Something else typed since: the words not sent, said whole, to copy.
+            Some(typed) => self.note(format!("Not sent, {why}: {typed}")),
         }
     }
 
@@ -1275,6 +1276,22 @@ impl App {
     pub fn editing_after(&self) -> Option<String> {
         let (name, _, said) = self.editing.as_ref()?;
         (*name == fold(&self.current().name)).then(|| zirc_core::chat::editing_after(said))
+    }
+
+    /// Up, with `held`: in an empty input, corrects our last message here, as in every app.
+    fn up(&mut self, held: KeyModifiers) {
+        if !self.editing() && keys::up_edits_last(self.input.text().is_empty(), pressed(held)) {
+            self.edit_last();
+        }
+    }
+
+    /// Corrects our last message in the conversation shown, the core's pick, as Up in an empty
+    /// input does in every app; nothing when there's none.
+    fn edit_last(&mut self) {
+        let name = self.current().name.clone();
+        if let Some(id) = self.chat.last_editable(&name) {
+            self.edit(id);
+        }
     }
 
     /// Puts our message `id` in the conversation shown in the input to correct it, while
@@ -1614,14 +1631,7 @@ impl App {
     /// Enter with `held`, as zirc-chat says for every app ([`keys::enter`]): it sends; with
     /// Shift, Alt, Ctrl or Super, a new line.
     fn enter(&mut self, held: KeyModifiers) -> Action {
-        let pressed = keys::KeyPressed {
-            shift: held.contains(KeyModifiers::SHIFT),
-            alt: held.contains(KeyModifiers::ALT),
-            ctrl: held.contains(KeyModifiers::CONTROL),
-            meta: held.contains(KeyModifiers::SUPER),
-            ..keys::KeyPressed::default()
-        };
-        match keys::enter(pressed) {
+        match keys::enter(pressed(held)) {
             keys::EnterDoes::Send => self.submit(),
             keys::EnterDoes::NewLine | keys::EnterDoes::Composing => {
                 self.input.insert('\n');
@@ -1730,8 +1740,7 @@ impl App {
             KeyCode::Right => self.input.right(),
             KeyCode::Home => self.input.home(),
             KeyCode::End => self.input.end(),
-            KeyCode::Up => self.input.older(),
-            KeyCode::Down => self.input.newer(),
+            KeyCode::Up => self.up(key.modifiers),
             KeyCode::Tab => self.complete(),
             KeyCode::PageUp => return Action::Send(self.scroll_up()),
             KeyCode::PageDown => return Action::Send(self.scroll_down()),
@@ -2322,6 +2331,17 @@ fn joining(before: &str) -> Option<&str> {
 
 fn quit(reason: Option<&str>) -> Line {
     Line::new("QUIT", [reason.unwrap_or("zirc-tui")])
+}
+
+/// A key's modifiers, `held`, as zirc-chat reads a press ([`keys::KeyPressed`]).
+fn pressed(held: KeyModifiers) -> keys::KeyPressed {
+    keys::KeyPressed {
+        shift: held.contains(KeyModifiers::SHIFT),
+        alt: held.contains(KeyModifiers::ALT),
+        ctrl: held.contains(KeyModifiers::CONTROL),
+        meta: held.contains(KeyModifiers::SUPER),
+        ..keys::KeyPressed::default()
+    }
 }
 
 #[cfg(test)]

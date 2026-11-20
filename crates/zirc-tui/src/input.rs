@@ -1,17 +1,11 @@
-//! The input line: the text being typed, where the cursor is, and what was sent before.
+//! The input line: the text being typed, and where the cursor is.
 
 /// The text being typed, with a cursor counted in characters.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Input {
     text: String,
     cursor: usize,
-    history: Vec<String>,
-    /// While browsing history: which entry, and what was being typed before.
-    browsing: Option<(usize, String)>,
 }
-
-/// How many sent lines Up and Down go back through.
-const HISTORY: usize = 200;
 
 impl Input {
     /// The text.
@@ -127,51 +121,11 @@ impl Input {
         self.cursor = start + word.chars().count();
     }
 
-    /// Takes the text to send, remembering it for Up.
+    /// Takes the text to send, leaving the line empty.
     pub fn take(&mut self) -> String {
         let text = std::mem::take(&mut self.text);
         self.cursor = 0;
-        self.browsing = None;
-        if !text.trim().is_empty() && self.history.last() != Some(&text) {
-            self.history.push(text.clone());
-            if self.history.len() > HISTORY {
-                self.history.remove(0);
-            }
-        }
         text
-    }
-
-    /// Shows the line sent before the one shown.
-    pub fn older(&mut self) {
-        let at = match &self.browsing {
-            Some((at, _)) => at.checked_sub(1),
-            None => self.history.len().checked_sub(1),
-        };
-        let Some(at) = at else { return };
-        let typed = match self.browsing.take() {
-            Some((_, typed)) => typed,
-            None => self.text.clone(),
-        };
-        self.browsing = Some((at, typed));
-        self.set(self.history[at].clone());
-    }
-
-    /// Shows the line sent after the one shown, and then what was being typed.
-    pub fn newer(&mut self) {
-        let Some((at, typed)) = self.browsing.take() else {
-            return;
-        };
-        if at + 1 < self.history.len() {
-            self.browsing = Some((at + 1, typed));
-            self.set(self.history[at + 1].clone());
-        } else {
-            self.set(typed);
-        }
-    }
-
-    fn set(&mut self, text: String) {
-        self.text = text;
-        self.cursor = self.len();
     }
 
     fn len(&self) -> usize {
@@ -227,24 +181,5 @@ mod tests {
         assert_eq!(input.word_before_cursor(), (3, "al"));
         input.replace_word_before_cursor("alice");
         assert_eq!((input.text(), input.cursor()), ("hi alice", 8));
-    }
-
-    #[test]
-    fn goes_through_history_and_back_to_what_was_typed() {
-        let mut input = Input::default();
-        for line in ["first", "second"] {
-            input.insert_str(line);
-            input.take();
-        }
-        input.insert_str("draft");
-        input.older();
-        assert_eq!(input.text(), "second");
-        input.older();
-        input.older();
-        assert_eq!(input.text(), "first");
-        input.newer();
-        assert_eq!(input.text(), "second");
-        input.newer();
-        assert_eq!(input.text(), "draft");
     }
 }

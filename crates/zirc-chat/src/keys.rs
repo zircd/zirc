@@ -52,6 +52,15 @@ pub fn enter(pressed: KeyPressed) -> EnterDoes {
     }
 }
 
+/// Whether Up, pressed in the composer with `pressed`, corrects our last message in the
+/// conversation ([`crate::chat::Chat::last_editable`]): while the composer is `empty`, with no
+/// modifier and no input method composing, as Slack does (the user's choice, 20 Nov 2026).
+/// Otherwise it's the field's own, moving the caret.
+#[must_use]
+pub fn up_edits_last(empty: bool, pressed: KeyPressed) -> bool {
+    empty && !(pressed.composing || pressed.shift || pressed.alt || pressed.ctrl || pressed.meta)
+}
+
 /// Whether `key`, typed while nothing that takes text has the focus, goes into the composer
 /// (focusing it) on a desktop or in a browser: a printable character with no modifier but
 /// Shift. A shortcut (⌘K, Ctrl+F) stays a shortcut, and Space, Enter, the arrows and the
@@ -75,6 +84,26 @@ mod tests {
         composing: false,
         on_screen: false,
     };
+
+    #[test]
+    fn up_edits_the_last_message_only_from_an_empty_composer_with_no_modifier() {
+        let plain = KeyPressed::default();
+        assert!(up_edits_last(true, plain));
+        assert!(!up_edits_last(false, plain));
+        for held in [
+            KeyPressed {
+                shift: true,
+                ..plain
+            },
+            KeyPressed { alt: true, ..plain },
+            KeyPressed {
+                composing: true,
+                ..plain
+            },
+        ] {
+            assert!(!up_edits_last(true, held));
+        }
+    }
 
     #[test]
     fn enter_sends_and_a_modifier_makes_a_new_line() {

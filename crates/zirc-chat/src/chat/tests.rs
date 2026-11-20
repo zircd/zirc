@@ -1894,6 +1894,9 @@ fn corrects_our_own_message_while_it_is_recent() {
     assert!(chat.can_edit("#api", "m2"));
     assert!(!chat.can_edit("#api", "m1"));
     assert!(!chat.can_edit("#api", "m3"));
+    // Up in an empty composer corrects our newest still ours, past someone else's after it.
+    assert_eq!(chat.last_editable("#api").as_deref(), Some("m2"));
+    assert_eq!(chat.last_editable("#nowhere"), None);
     assert_eq!(chat.edit_text("#api", "m3"), None);
     let sent = texts(&chat.say_edit("#api", "m2", "the fix"));
     assert_eq!(sent.len(), 1);

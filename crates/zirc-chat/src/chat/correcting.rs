@@ -55,6 +55,19 @@ impl Chat {
             .is_some_and(|entry| editable(entry, &self.me, (self.clock)()))
     }
 
+    /// Our newest message in `target` still ours to correct ([`editable`]), by the server's id:
+    /// what Up in an empty composer corrects in every app ([`crate::keys::up_edits_last`]).
+    #[must_use]
+    pub fn last_editable(&self, target: &str) -> Option<String> {
+        let now = (self.clock)();
+        self.conversation(target)?
+            .entries
+            .iter()
+            .rev()
+            .find(|entry| editable(entry, &self.me, now))
+            .and_then(|entry| entry.id.clone())
+    }
+
     /// The words message `id` in `target` says, to put in the composer to correct it, while
     /// it's ours to correct ([`Chat::can_edit`]): with IRC's formatting codes, as typed.
     #[must_use]
