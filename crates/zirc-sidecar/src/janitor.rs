@@ -336,15 +336,20 @@ async fn unregister(session: &mut Session<'_>, name: &str) -> Result<(), String>
 
 /// The code in `ChanServ`'s ask to confirm unregistering `channel`, as it gave it.
 fn confirmation(notice: &str, channel: &str) -> Option<String> {
-    let at = notice
-        .to_lowercase()
-        .find(&format!("unregister {} ", channel.to_lowercase()))?;
-    let rest = notice.get(at + "unregister ".len() + channel.len() + 1..)?;
+    confirmation_of(notice, "unregister", channel)
+}
+
+/// The code `ChanServ` asks for to confirm `command` (`unregister`, `purge add`) on `channel`,
+/// as it says it: `To confirm, run this command: /CS <COMMAND> <channel> <code>`.
+pub(crate) fn confirmation_of(notice: &str, command: &str, channel: &str) -> Option<String> {
+    let said = format!("{command} {} ", channel.to_lowercase());
+    let at = notice.to_lowercase().find(&said)?;
+    let rest = notice.get(at + said.len()..)?;
     rest.split_whitespace().next().map(ToOwned::to_owned)
 }
 
 /// Text without IRC's formatting codes (bold, colours and the like).
-fn plain(text: &str) -> String {
+pub(crate) fn plain(text: &str) -> String {
     text.chars().filter(|c| !c.is_control()).collect()
 }
 

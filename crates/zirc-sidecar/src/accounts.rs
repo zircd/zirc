@@ -452,6 +452,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         )
         .route(zirc_proto::workflow::RUNS_PATH, get(workflow_runs))
         .route("/v1/channels", get(list_channels))
+        .route("/v1/channels/purge", post(purge_channels))
         .route("/v1/guests", get(list_guests))
         .route("/v1/guests/unread", get(unread_for_guests))
         .route("/v1/guests/mailed", post(mailed_to_guests))
@@ -1301,6 +1302,66 @@ async fn remove_message(State(ergo): State<Arc<Ergo>>, Path(msgid): Path<String>
         }
     };
     Json(json!({"removed": msgid, "channel": channel, "scrubbed": scrubbed})).into_response()
+}
+
+/// What `POST /v1/channels/purge` asks: the channels to purge, by name.
+#[derive(Deserialize)]
+struct PurgeAsked {
+    channels: Vec<String>,
+}
+
+/// Purges each of the channels asked for, with all their history ([`crate::purge`]): none if
+/// any is the organisation's own room. Says what each purge did; on a failure, what was done
+/// before it and why it stopped. The history is scrubbed and the search index pruned after, so
+/// no copy of a deleted message is left.
+async fn purge_channels(State(ergo): State<Arc<Ergo>>, Json(asked): Json<PurgeAsked>) -> Response {
+    if let Some(why) = asked.channels.iter().find_map(|c| crate::purge::refused(c)) {
+        return error(StatusCode::BAD_REQUEST, "refused", why);
+    }
+    let mut purged = Vec::new();
+    let mut failed = None;
+    for channel in &asked.channels {
+        let history = ergo.history.clone();
+        let target = channel.clone();
+        let ids =
+            match tokio::task::spawn_blocking(move || trim::msgids_in(&history, &target)).await {
+                Ok(Ok(ids)) => ids,
+                Ok(Err(failure)) => return history_failed(failure),
+                Err(failure) => return history_failed(failure),
+            };
+        match crate::purge::purge(&ergo.operator, channel, ids).await {
+            Ok(done) => {
+                info!(channel, deleted = done.deleted, "channel purged");
+                purged.push(done);
+            }
+            Err(failure) => {
+                warn!(channel, error = %failure, "couldn't purge a channel");
+                failed = Some(format!("{channel}: {failure}"));
+                break;
+            }
+        }
+    }
+    let history = ergo.history.clone();
+    let cleaned = tokio::task::spawn_blocking(move || {
+        trim::scrub(&history)?;
+        let mut index = crate::index::open(&crate::index::path_for(&history))?;
+        crate::index::prune(&mut index, &history)
+    })
+    .await;
+    let scrubbed = matches!(cleaned, Ok(Ok(_)));
+    if !scrubbed {
+        warn!("couldn't scrub the history after a purge; it's tried again shortly");
+    }
+    let status = if failed.is_some() {
+        StatusCode::BAD_GATEWAY
+    } else {
+        StatusCode::OK
+    };
+    (
+        status,
+        Json(json!({"purged": purged, "failed": failed, "scrubbed": scrubbed})),
+    )
+        .into_response()
 }
 
 fn history_failed(failure: impl std::fmt::Display) -> Response {

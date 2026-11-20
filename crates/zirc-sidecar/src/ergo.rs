@@ -103,6 +103,16 @@ impl Operator {
         Ok(answers.pop().unwrap_or_default())
     }
 
+    /// Runs `ChanServ` commands as the operator, one after another in one login, and returns
+    /// `ChanServ`'s first reply to each.
+    ///
+    /// # Errors
+    ///
+    /// When it can't connect, isn't let in as an operator, or `ChanServ` doesn't answer.
+    pub async fn chanserv(&self, commands: &[String]) -> Result<Vec<String>, OperatorError> {
+        self.service("ChanServ", commands).await
+    }
+
     /// Runs `HostServ` commands as the operator, one after another in one login, and returns
     /// `HostServ`'s first reply to each.
     ///

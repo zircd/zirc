@@ -103,6 +103,22 @@ pub fn find(
     Ok(found)
 }
 
+/// Every id Ergo's history keeps under `channel`, of any kind: what deleting the channel's
+/// history deletes ([`crate::ergo::Operator::delete_messages`]).
+///
+/// # Errors
+///
+/// When the history can't be read, or has a schema this doesn't know.
+pub fn msgids_in(path: &Path, channel: &str) -> rusqlite::Result<Vec<String>> {
+    let connection = open(path)?;
+    let mut statement = connection.prepare(
+        "SELECT h.msgid FROM sequence s JOIN history h ON h.id = s.history_id \
+         WHERE s.target = lower(?1) AND h.msgid != '' ORDER BY s.nanotime",
+    )?;
+    let ids = statement.query_map([channel], |row| row.get::<_, String>(0))?;
+    ids.collect()
+}
+
 /// The channel message `msgid` was sent to, if it's a channel message in the history.
 ///
 /// # Errors
