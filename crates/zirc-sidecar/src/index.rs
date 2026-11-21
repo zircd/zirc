@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, params};
 use tracing::{info, warn};
 
 /// The index's format. A file with another is built again from Ergo's history.
@@ -53,60 +53,39 @@ pub fn path_for(history: &Path) -> PathBuf {
 ///
 /// When the file can't be opened or made.
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
-    let connection = open_file(path)?;
-    let version: Option<String> = connection
-        .query_row("SELECT value FROM meta WHERE key = 'version'", [], |row| {
-            row.get(0)
-        })
-        .optional()
-        .unwrap_or(None);
-    if version.as_deref() == Some(VERSION) {
-        return Ok(connection);
-    }
-    if version.is_some() {
-        info!(
-            ?version,
-            "the search index's format changed: building it again"
-        );
-    }
-    drop(connection);
-    for suffix in ["", "-wal", "-shm"] {
-        let mut file = path.as_os_str().to_owned();
-        file.push(suffix);
-        match std::fs::remove_file(PathBuf::from(file)) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                return Err(rusqlite::Error::InvalidPath(path.to_owned()));
-            }
-            _ => {}
+    crate::sqlite::made(open_file(path)?, VERSION, |connection, found| {
+        if found.is_some() {
+            info!(
+                version = ?found,
+                "the search index's format changed: building it again"
+            );
         }
-    }
-    let connection = open_file(path)?;
-    connection.execute_batch(&format!(
-        "BEGIN;
-         CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-         -- One row per history row: where and when it was said, Ergo's id as the key.
-         CREATE TABLE rows (
-             id INTEGER PRIMARY KEY,
-             msgid TEXT NOT NULL,
-             nanotime INTEGER NOT NULL,
-             channel TEXT,
-             a TEXT,
-             b TEXT,
-             sender TEXT,
-             said INTEGER NOT NULL,
-             session TEXT
-         );
-         CREATE INDEX rows_time ON rows (nanotime, id);
-         CREATE INDEX rows_sender ON rows (sender, nanotime);
-         CREATE INDEX rows_msgid ON rows (msgid);
-         -- Three-letter runs of each row's text, case folded; the text itself isn't kept.
-         CREATE VIRTUAL TABLE grams USING fts5(
-             text, content='', contentless_delete=1, tokenize='trigram'
-         );
-         INSERT INTO meta VALUES ('version', '{VERSION}'), ('last', '0'), ('built', '0');
-         COMMIT;"
-    ))?;
-    Ok(connection)
+        crate::sqlite::clear(connection)?;
+        connection.execute_batch(&format!(
+            "
+             CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             -- One row per history row: where and when it was said, Ergo's id as the key.
+             CREATE TABLE rows (
+                 id INTEGER PRIMARY KEY,
+                 msgid TEXT NOT NULL,
+                 nanotime INTEGER NOT NULL,
+                 channel TEXT,
+                 a TEXT,
+                 b TEXT,
+                 sender TEXT,
+                 said INTEGER NOT NULL,
+                 session TEXT
+             );
+             CREATE INDEX rows_time ON rows (nanotime, id);
+             CREATE INDEX rows_sender ON rows (sender, nanotime);
+             CREATE INDEX rows_msgid ON rows (msgid);
+             -- Three-letter runs of each row's text, case folded; the text itself isn't kept.
+             CREATE VIRTUAL TABLE grams USING fts5(
+                 text, content='', contentless_delete=1, tokenize='trigram'
+             );
+             INSERT INTO meta VALUES ('version', '{VERSION}'), ('last', '0'), ('built', '0');"
+        ))
+    })
 }
 
 fn open_file(path: &Path) -> rusqlite::Result<Connection> {

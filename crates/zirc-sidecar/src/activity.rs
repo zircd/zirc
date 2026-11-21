@@ -17,7 +17,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, params};
 use serde::Serialize;
 use serde_json::{Value, json};
 use tracing::{info, warn};
@@ -73,68 +73,46 @@ pub fn path_for(history: &Path) -> PathBuf {
 ///
 /// When the file can't be opened or made.
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
-    let connection = open_file(path)?;
-    let version: Option<String> = connection
-        .query_row("SELECT value FROM meta WHERE key = 'version'", [], |row| {
-            row.get(0)
-        })
-        .optional()
-        .unwrap_or(None);
-    if version.as_deref() == Some(VERSION) {
-        return Ok(connection);
-    }
-    if version.as_deref() == Some("2") {
-        migrate(&connection)?;
-        return Ok(connection);
-    }
-    if version.is_some() {
-        info!(
-            ?version,
-            "the activity store's format changed: building it again"
-        );
-    }
-    drop(connection);
-    for suffix in ["", "-wal", "-shm"] {
-        let mut file = path.as_os_str().to_owned();
-        file.push(suffix);
-        match std::fs::remove_file(PathBuf::from(file)) {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                return Err(rusqlite::Error::InvalidPath(path.to_owned()));
-            }
-            _ => {}
+    crate::sqlite::made(open_file(path)?, VERSION, |connection, found| {
+        if found == Some("2") {
+            return migrate(connection);
         }
-    }
-    let connection = open_file(path)?;
-    connection.execute_batch(&format!(
-        "BEGIN;
-         CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-         -- One row per history row (ergo, its id) or live record (ergo NULL).
-         CREATE TABLE rows (
-             id INTEGER PRIMARY KEY AUTOINCREMENT,
-             ergo INTEGER UNIQUE,
-             msgid TEXT,
-             nanotime INTEGER NOT NULL,
-             channel TEXT,
-             direct INTEGER NOT NULL DEFAULT 0,
-             account TEXT,
-             agent INTEGER NOT NULL DEFAULT 0,
-             session TEXT,
-             name TEXT,
-             tool TEXT,
-             kind TEXT NOT NULL,
-             level TEXT,
-             task TEXT,
-             data TEXT,
-             -- A working set said again in its hour ([`AGAIN`]).
-             again INTEGER NOT NULL DEFAULT 0
-         );
-         CREATE INDEX rows_time ON rows (nanotime, id);
-         CREATE INDEX rows_kind ON rows (kind, nanotime);
-         {REPEATS}
-         INSERT INTO meta VALUES ('version', '{VERSION}'), ('last', '0');
-         COMMIT;"
-    ))?;
-    Ok(connection)
+        if found.is_some() {
+            info!(
+                version = ?found,
+                "the activity store's format changed: building it again"
+            );
+        }
+        crate::sqlite::clear(connection)?;
+        connection.execute_batch(&format!(
+            "
+             CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             -- One row per history row (ergo, its id) or live record (ergo NULL).
+             CREATE TABLE rows (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 ergo INTEGER UNIQUE,
+                 msgid TEXT,
+                 nanotime INTEGER NOT NULL,
+                 channel TEXT,
+                 direct INTEGER NOT NULL DEFAULT 0,
+                 account TEXT,
+                 agent INTEGER NOT NULL DEFAULT 0,
+                 session TEXT,
+                 name TEXT,
+                 tool TEXT,
+                 kind TEXT NOT NULL,
+                 level TEXT,
+                 task TEXT,
+                 data TEXT,
+                 -- A working set said again in its hour ([`AGAIN`]).
+                 again INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE INDEX rows_time ON rows (nanotime, id);
+             CREATE INDEX rows_kind ON rows (kind, nanotime);
+             {REPEATS}
+             INSERT INTO meta VALUES ('version', '{VERSION}'), ('last', '0');"
+        ))
+    })
 }
 
 /// Each session's working sets by time, for [`AGAIN`].
@@ -142,36 +120,25 @@ const REPEATS: &str =
     "CREATE INDEX rows_repeats ON rows (session, nanotime) WHERE kind = 'working';";
 
 /// Brings a store of format 2 up to [`VERSION`], keeping its live records: marks the working
-/// sets said again in their hour, as [`insert`] does from now on. Once, under a write lock,
-/// so a second connection opening meanwhile waits and finds it done.
+/// sets said again in their hour, as [`insert`] does from now on. Inside [`open`]'s write
+/// transaction ([`crate::sqlite::made`]), so a second connection opening meanwhile waits and
+/// finds it done.
 fn migrate(connection: &Connection) -> rusqlite::Result<()> {
-    connection.execute_batch("BEGIN IMMEDIATE;")?;
-    let done = (|| {
-        let version: String =
-            connection.query_row("SELECT value FROM meta WHERE key = 'version'", [], |row| {
-                row.get(0)
-            })?;
-        if version == VERSION {
-            return Ok(());
-        }
-        connection.execute_batch(&format!(
-            "ALTER TABLE rows ADD COLUMN again INTEGER NOT NULL DEFAULT 0;
-             {REPEATS}
-             UPDATE rows SET again = 1 WHERE id IN (
-                 SELECT id FROM (
-                     SELECT id, ROW_NUMBER() OVER (
-                         PARTITION BY session, agent, task, nanotime / {HOUR}, data ORDER BY id
-                     ) AS nth
-                     FROM rows WHERE kind = 'working' AND session IS NOT NULL
-                 ) WHERE nth > 1
-             );
-             UPDATE meta SET value = '{VERSION}' WHERE key = 'version';"
-        ))?;
-        info!("the activity store marks working sets said again in their hour");
-        Ok(())
-    })();
-    connection.execute_batch(if done.is_ok() { "COMMIT;" } else { "ROLLBACK;" })?;
-    done
+    connection.execute_batch(&format!(
+        "ALTER TABLE rows ADD COLUMN again INTEGER NOT NULL DEFAULT 0;
+         {REPEATS}
+         UPDATE rows SET again = 1 WHERE id IN (
+             SELECT id FROM (
+                 SELECT id, ROW_NUMBER() OVER (
+                     PARTITION BY session, agent, task, nanotime / {HOUR}, data ORDER BY id
+                 ) AS nth
+                 FROM rows WHERE kind = 'working' AND session IS NOT NULL
+             ) WHERE nth > 1
+         );
+         UPDATE meta SET value = '{VERSION}' WHERE key = 'version';"
+    ))?;
+    info!("the activity store marks working sets said again in their hour");
+    Ok(())
 }
 
 fn open_file(path: &Path) -> rusqlite::Result<Connection> {
