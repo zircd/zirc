@@ -407,6 +407,9 @@ pub struct LineReaction {
     pub count: u32,
     /// Whether we did.
     pub mine: bool,
+    /// Who gave it, as hovering over its chip and a screen reader say it
+    /// ([`super::reacted_by_label`]): `👍 by bob, ann`.
+    pub label: String,
 }
 
 /// What a reply answers, shown above it as `↪ bob: first line…` and jumped to by its id.
@@ -1226,6 +1229,7 @@ impl<'a> Layout<'a> {
                 emoji: reaction.emoji.clone(),
                 count: count(reaction.nicks.len()),
                 mine: reaction.by(me),
+                label: super::reacted_by_label(&reaction.emoji, &reaction.nicks),
             })
             .collect()
     }
@@ -1732,12 +1736,14 @@ mod tests {
                 LineReaction {
                     emoji: "👍".into(),
                     count: 2,
-                    mine: true
+                    mine: true,
+                    label: "👍 by bob, me".into(),
                 },
                 LineReaction {
                     emoji: "🎉".into(),
                     count: 1,
-                    mine: false
+                    mine: false,
+                    label: "🎉 by bob".into(),
                 },
             ]
         );
@@ -1788,7 +1794,8 @@ mod tests {
             [LineReaction {
                 emoji: "👀".into(),
                 count: 1,
-                mine: false
+                mine: false,
+                label: "👀 by bob".into(),
             }]
         );
         assert!(line(&lines, "mine").actions.delete);

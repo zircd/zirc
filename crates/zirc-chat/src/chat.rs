@@ -247,8 +247,8 @@ pub use words::{
     SHOWN_PATHS, SIGNED_IN, STOP_REPLYING, THREADS, TRY_AGAIN, TURN_ON_NOTIFICATIONS, VERSION,
     Words, YOU_PAGE, YOUR_NAME, activity_empty, couldnt_label, details_label, guests_label,
     in_label, mentions_label, menu_bar, more_paths_label, new_label, nothing_called, profile_label,
-    react_with_label, removed_label, scope_label, sharing_label, show_more_paths_label,
-    signin_failed, version_label, words,
+    react_with_label, reacted_by_label, removed_label, scope_label, sharing_label,
+    show_more_paths_label, signin_failed, version_label, words,
 };
 pub use working::{Intending, WorkingPerson, WorkingSet};
 pub use zirc_proto::search::{
