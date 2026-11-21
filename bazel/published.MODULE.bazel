@@ -9,6 +9,8 @@ declare (crate.from_cargo), as their manifests differ."""
 
 bazel_dep(name = "platforms", version = "1.1.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
+# C: bazel:bus_error, and the apps' native parts in the monorepo.
+bazel_dep(name = "rules_cc", version = "0.2.26")
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 

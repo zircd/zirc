@@ -17,6 +17,9 @@ ERGO_ENV = {
     "ZIRC_ERGO_CONFIG": "$(rootpath //dev/ergo:default_yaml)",
 }
 
+# And what says where a Bus error in one of them struck (bus_error.c).
+ERGO_DEPS = ["//bazel:bus_error"]
+
 def _tests(name, crate, deps, test_deps, ergo, test_data, test_env, test_size):
     """The crate's unit tests, and each file in tests/ as an integration test of its own,
     as Cargo builds them. Those that start Ergo are medium-sized: a server and the daemons
@@ -26,7 +29,7 @@ def _tests(name, crate, deps, test_deps, ergo, test_data, test_env, test_size):
         name = name + "_test",
         crate = crate,
         aliases = aliases(normal_dev = True, proc_macro_dev = True),
-        deps = all_crate_deps(normal_dev = True) + test_deps,
+        deps = all_crate_deps(normal_dev = True) + test_deps + (ERGO_DEPS if ergo else []),
         proc_macro_deps = all_crate_deps(proc_macro_dev = True),
         lint_config = "//bazel:lints",
         version = VERSION,
@@ -40,7 +43,7 @@ def _tests(name, crate, deps, test_deps, ergo, test_data, test_env, test_size):
             srcs = [src] + native.glob(["tests/common/**/*.rs"], allow_empty = True),  # tests/common/mod.rs: what the tests share
             crate_root = src,
             aliases = aliases(normal = True, normal_dev = True, proc_macro = True, proc_macro_dev = True),
-            deps = [crate] + deps + test_deps + all_crate_deps(normal = True, normal_dev = True),
+            deps = [crate] + deps + test_deps + all_crate_deps(normal = True, normal_dev = True) + (ERGO_DEPS if ergo else []),
             proc_macro_deps = all_crate_deps(proc_macro = True, proc_macro_dev = True),
             lint_config = "//bazel:lints",
             version = VERSION,

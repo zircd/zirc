@@ -1,6 +1,9 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_rust//rust:defs.bzl", "rust_lint_config")
 load("@rules_rust_wasm_bindgen//:defs.bzl", "rust_wasm_bindgen_toolchain")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load(":platforms.bzl", "PLATFORMS")
 
 [
@@ -26,6 +29,33 @@ rust_lint_config(
         "unsafe_code": "forbid",
     },
     visibility = ["//visibility:public"],
+)
+
+# Says what a Bus error hit in a test that starts Ergo (bus_error.c), on Linux, where they
+# happened; rust.bzl links it into each. alwayslink: nothing calls it, it installs itself.
+cc_library(
+    name = "bus_error",
+    srcs = select({
+        "@platforms//os:linux": ["bus_error.c"],
+        "//conditions:default": [],
+    }),
+    alwayslink = True,
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "bus_error_demo",
+    srcs = ["bus_error_demo.c"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [":bus_error"],
+)
+
+sh_test(
+    name = "bus_error_test",
+    srcs = ["bus_error_test.sh"],
+    args = ["$(rootpath :bus_error_demo)"],
+    data = [":bus_error_demo"],
+    target_compatible_with = ["@platforms//os:linux"],
 )
 
 # What runs a test inside zirc-sandbox (sandbox.bzl).
