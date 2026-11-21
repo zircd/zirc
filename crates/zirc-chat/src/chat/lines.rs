@@ -529,6 +529,8 @@ pub struct SessionName {
     pub id: String,
     /// Its name, `zirc-chat`, as [`Chat::session_label`] says, or else its id.
     pub label: String,
+    /// It as a card's words are followed by it, dim, in every app: `· zirc-chat`.
+    pub aside: String,
 }
 
 /// A system line in parts ([`Parts`]): headed as a message is, by who, whose agent and the
@@ -1298,8 +1300,10 @@ impl<'a> Layout<'a> {
     }
 
     fn session(&self, id: String) -> SessionName {
+        let label = self.chat.session_label(&id);
         SessionName {
-            label: self.chat.session_label(&id),
+            aside: format!("· {label}"),
+            label,
             id,
         }
     }
@@ -2026,7 +2030,8 @@ mod tests {
             system.session,
             Some(SessionName {
                 id: "cc-1".into(),
-                label: "checkout".into()
+                label: "checkout".into(),
+                aside: "· checkout".into(),
             })
         );
         // A commit's paths aren't said in its line.
@@ -2064,7 +2069,8 @@ mod tests {
             system.to,
             Some(SessionName {
                 id: "cc-598aa1".into(),
-                label: "cc-598aa1".into()
+                label: "cc-598aa1".into(),
+                aside: "· cc-598aa1".into(),
             })
         );
         assert_eq!(system.details, "please rebase");
@@ -2219,7 +2225,8 @@ mod tests {
             to.system.as_ref().and_then(|system| system.to.as_ref()),
             Some(&SessionName {
                 id: "cc-598aa1".into(),
-                label: "cc-598aa1".into()
+                label: "cc-598aa1".into(),
+                aside: "· cc-598aa1".into(),
             })
         );
         let [RichBlock::Paragraph { spans }] = to.rich.as_slice() else {

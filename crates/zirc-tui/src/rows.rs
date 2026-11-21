@@ -508,7 +508,7 @@ fn card_rows(look: &Look<'_>, line: &Line, system: &SystemLine, rows: &mut Vec<R
             && first
         {
             if let Some(session) = &system.session {
-                *hint = format!("· {}", session.label);
+                hint.clone_from(&session.aside);
             }
             if !matches!(tone, Tone::App(_)) {
                 *tone = Tone::App(system.outcome);
