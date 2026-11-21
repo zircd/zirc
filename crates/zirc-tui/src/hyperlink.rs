@@ -1,8 +1,8 @@
-//! Links in messages, clickable where the terminal can: each bare address shows as
-//! zirc-chat's [`link_label`] inside an OSC 8 hyperlink to the whole address. Ratatui has no
-//! hyperlinks of its own, and its buffer holds one symbol a cell, so the escapes go into the
-//! first and last cells of what's drawn, with their widths forced to what shows. A terminal
-//! that doesn't understand OSC 8 shows the address as it was written instead.
+//! Links in messages, clickable where the terminal can: each link shows as the words
+//! zirc-chat gives it, a bare address as its label, inside an OSC 8 hyperlink to the whole
+//! address. Ratatui has no hyperlinks of its own, and its buffer holds one symbol a cell, so
+//! the escapes go into the first and last cells of what's drawn, with their widths forced to
+//! what shows. A terminal that doesn't understand OSC 8 shows the address as it was written instead.
 
 use std::num::NonZeroU16;
 
@@ -10,7 +10,6 @@ use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use unicode_width::UnicodeWidthStr as _;
-use zirc_core::chat::{Block, SpanKind, each_span, link_label, rich};
 
 /// How the terminal shows links.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -63,83 +62,6 @@ pub struct Link {
     pub shown: String,
     /// The whole address; `None` for an agent session, drawn as a mention is.
     pub url: Option<String>,
-}
-
-/// `text` with each agent session named in it by its name, `zirc-chat` (`session` says
-/// what to call one), each person named by their nick without the `@`, and each bare
-/// address as its label where the terminal shows `links` so; and those labels with where
-/// they go, in order. `code` is the files and commits it names that link, as written and
-/// where each goes ([`zirc_core::chat::Chat::code_links`]), which keep their words.
-/// Addresses written as Markdown links, or in code, stay as written.
-#[must_use]
-pub fn label(
-    text: &str,
-    links: Links,
-    names: &dyn Fn(&SpanKind) -> Option<String>,
-    code: &[(String, String)],
-) -> (String, Vec<(String, Option<String>)>) {
-    let mut found = Vec::new();
-    named(&rich(text), &mut found);
-    // Each in order of where it's written, what it shows and where it goes.
-    let mut placed: Vec<(usize, String, String, Option<String>)> = Vec::new();
-    let mut from = 0;
-    for (written, kind) in found {
-        let (label, url) = match kind {
-            SpanKind::Link(url) if links == Links::Labelled => (link_label(&url), Some(url)),
-            // An agent session or a person named, `@alice`, as zirc-chat names them, a chip
-            // with no "@" ([`zirc_core::chat::Chat::kind_label`]).
-            SpanKind::Session(_) | SpanKind::Mention(_) => {
-                (names(&kind).unwrap_or_else(|| written.clone()), None)
-            }
-            _ => continue,
-        };
-        let Some(at) = text[from..].find(&written).map(|at| at + from) else {
-            continue;
-        };
-        from = at + written.len();
-        placed.push((at, written, label, url));
-    }
-    let mut from = 0;
-    for (written, url) in code {
-        let Some(at) = text[from..].find(written.as_str()).map(|at| at + from) else {
-            continue;
-        };
-        from = at + written.len();
-        let overlaps = placed
-            .iter()
-            .any(|(start, other, ..)| at < start + other.len() && *start < from);
-        if !overlaps && !url.chars().any(char::is_control) {
-            placed.push((at, written.clone(), written.clone(), Some(url.clone())));
-        }
-    }
-    placed.sort_by_key(|(at, ..)| *at);
-    let mut shown = String::new();
-    let mut labels = Vec::new();
-    let mut at = 0;
-    for (start, written, label, url) in placed {
-        shown.push_str(&text[at..start]);
-        shown.push_str(&label);
-        at = start + written.len();
-        labels.push((label, url));
-    }
-    shown.push_str(&text[at..]);
-    (shown, labels)
-}
-
-/// What's named in `blocks`, as written and what it is: bare addresses, links whose text
-/// is their address, and agent sessions. An address with a control character in it, which
-/// could end the escape early, is left as text.
-fn named(blocks: &[Block], found: &mut Vec<(String, SpanKind)>) {
-    // A code block's text comes as plain words, which name nothing.
-    each_span(blocks, &mut |span| match &span.kind {
-        SpanKind::Link(url) if *url == span.text && !url.chars().any(char::is_control) => {
-            found.push((span.text.clone(), span.kind.clone()));
-        }
-        SpanKind::Session(_) | SpanKind::Mention(_) => {
-            found.push((span.text.clone(), span.kind.clone()));
-        }
-        _ => {}
-    });
 }
 
 /// The links each of `rows`, wrapped `width` columns wide from text holding `links`, shows.
@@ -265,97 +187,6 @@ mod tests {
         assert!(!plain("x\u{1b}\\\u{1b}]52;c;aGk=\u{7}"));
         assert!(!plain("https://a.example/\u{1b}]52;c;aGk=\u{7}"));
         assert!(!plain("file:///etc/passwd") && !plain("javascript:alert(1)"));
-    }
-
-    #[test]
-    fn labels_bare_addresses_and_leaves_written_links_and_code() {
-        let (shown, links) = label(
-            "see https://github.com/zircapp/zirc/pull/12?tab=files and `https://x.dev`",
-            Links::Labelled,
-            &|_| None,
-            &[],
-        );
-        assert_eq!(
-            shown,
-            "see github.com/zircapp/zirc/pull/12 and `https://x.dev`"
-        );
-        assert_eq!(
-            links,
-            [(
-                "github.com/zircapp/zirc/pull/12".to_owned(),
-                Some("https://github.com/zircapp/zirc/pull/12?tab=files".to_owned())
-            )]
-        );
-        let (shown, links) = label(
-            "[the PR](https://github.com/zircapp/zirc/pull/12)",
-            Links::Labelled,
-            &|_| None,
-            &[],
-        );
-        assert_eq!(shown, "[the PR](https://github.com/zircapp/zirc/pull/12)");
-        assert!(links.is_empty());
-    }
-
-    #[test]
-    fn links_the_files_and_commits_zirc_chat_found_keeping_their_words() {
-        let code = [
-            (
-                "src/a.rs:4".to_owned(),
-                "vscode://file/src/api/src/a.rs:4".to_owned(),
-            ),
-            (
-                "3f2a1c0".to_owned(),
-                "https://github.com/acme/api/commit/3f2a1c0".to_owned(),
-            ),
-        ];
-        let (shown, links) = label(
-            "src/a.rs:4 broke in 3f2a1c0, see https://zirc.dev/x",
-            Links::Labelled,
-            &|_| None,
-            &code,
-        );
-        assert_eq!(shown, "src/a.rs:4 broke in 3f2a1c0, see zirc.dev/x");
-        assert_eq!(
-            links,
-            [
-                (
-                    "src/a.rs:4".to_owned(),
-                    Some("vscode://file/src/api/src/a.rs:4".to_owned())
-                ),
-                (
-                    "3f2a1c0".to_owned(),
-                    Some("https://github.com/acme/api/commit/3f2a1c0".to_owned())
-                ),
-                (
-                    "zirc.dev/x".to_owned(),
-                    Some("https://zirc.dev/x".to_owned())
-                ),
-            ]
-        );
-    }
-
-    #[test]
-    fn names_agent_sessions_by_what_they_go_by_whatever_the_terminal() {
-        let session = |kind: &SpanKind| match kind {
-            SpanKind::Session(id) if id == "cc-598aa1" => Some("zirc-chat".to_owned()),
-            SpanKind::Session(id) => Some(id.clone()),
-            _ => None,
-        };
-        let (shown, links) = label(
-            "ask cc-598aa1 or @cc-ad4f7c, see https://zirc.dev/x",
-            Links::Plain,
-            &session,
-            &[],
-        );
-        // Plain, the address stays as written; sessions are named either way.
-        assert_eq!(shown, "ask zirc-chat or cc-ad4f7c, see https://zirc.dev/x");
-        assert_eq!(
-            links,
-            [
-                ("zirc-chat".to_owned(), None),
-                ("cc-ad4f7c".to_owned(), None)
-            ]
-        );
     }
 
     #[test]

@@ -1613,7 +1613,7 @@ fn header_line(
     app: &App,
     (nick, agent): (&str, Option<&rows::Agent>),
     time: &str,
-    (tone, pill): (Tone, Option<&str>),
+    (tone, pill): (&Tone, Option<&str>),
     hint: &str,
 ) -> Line<'static> {
     let theme = app.theme;
@@ -1662,7 +1662,9 @@ fn row_line(app: &App, row: &Row, width: u16) -> Line<'static> {
     let theme = app.theme;
     let picked = |id: &Option<String>| id.is_some() && id.as_deref() == app.picked();
     match row {
-        Row::Buttons { labels, id } => highlight(app, buttons_line(app, labels), picked(id)),
+        Row::Buttons { labels, id, said } => {
+            highlight(app, buttons_line(app, labels, said.as_deref()), picked(id))
+        }
         Row::Reactions { chips, id } => {
             highlight(app, reactions_line(app, chips), picked(&Some(id.clone())))
         }
@@ -1676,7 +1678,7 @@ fn row_line(app: &App, row: &Row, width: u16) -> Line<'static> {
             agent,
         } => highlight(
             app,
-            header_line(app, (nick, agent.as_ref()), time, (*tone, *pill), hint),
+            header_line(app, (nick, agent.as_ref()), time, (tone, *pill), hint),
             picked(id),
         ),
         Row::New => new_line(app, width),
@@ -1698,7 +1700,7 @@ fn row_line(app: &App, row: &Row, width: u16) -> Line<'static> {
             id,
             ..
         } => {
-            let (nick_style, text_style) = text_styles(app, nick, *tone);
+            let (nick_style, text_style) = text_styles(app, nick, tone);
             // Under its header: a mark in front, the bar of the message picked, or the edge
             // of one that mentions us.
             let lead = if picked(id) && nick.is_empty() {
@@ -1710,7 +1712,7 @@ fn row_line(app: &App, row: &Row, width: u16) -> Line<'static> {
             };
             let pad = rows::INDENT.saturating_sub(lead.width());
             let mut spans = vec![lead, Span::raw(" ".repeat(pad))];
-            spans.extend(lead_spans(app, text, *tone, text_style));
+            spans.extend(lead_spans(app, text, tone, text_style));
             // The session an app's post is about, dim at the end.
             if !hint.is_empty() {
                 spans.push(Span::styled(
@@ -1723,18 +1725,34 @@ fn row_line(app: &App, row: &Row, width: u16) -> Line<'static> {
     }
 }
 
-/// A body row's `text` in `style`, but for an event's lead, whose marker alone is in its
-/// icon's tone ([`Icon::tone`]), as every app draws it.
-fn lead_spans(app: &App, text: &str, tone: Tone, style: Style) -> Vec<Span<'static>> {
-    if let Tone::Lead(icon) = tone
-        && let Some(rest) = text.strip_prefix(icon.glyph())
-    {
-        return vec![
-            Span::styled(icon.glyph(), icon_style(app, icon)),
-            Span::styled(rest.to_owned(), style),
-        ];
+/// A body row's `text` in `style`, but for an event's lead, whose marker, its first
+/// character, is in the theme role zirc-chat names for it ([`Tone::Lead`]), and its details
+/// after it on the row in theirs, as every app draws it.
+fn lead_spans(app: &App, text: &str, tone: &Tone, style: Style) -> Vec<Span<'static>> {
+    let Tone::Lead { marker, details } = tone else {
+        return vec![Span::styled(text.to_owned(), style)];
+    };
+    let glyph = text.chars().next().map_or(0, char::len_utf8);
+    let (words, details) = match details {
+        Some((from, role)) if text.is_char_boundary(*from) && *from >= glyph => {
+            (&text[glyph..*from], Some((&text[*from..], role)))
+        }
+        _ => (&text[glyph..], None),
+    };
+    let mut spans = vec![
+        Span::styled(text[..glyph].to_owned(), role_style(app, marker)),
+        Span::styled(words.to_owned(), style),
+    ];
+    if let Some((details, role)) = details {
+        spans.push(Span::styled(details.to_owned(), role_style(app, role)));
     }
-    vec![Span::styled(text.to_owned(), style)]
+    spans
+}
+
+/// The colour of the theme role `role`, as zirc-chat names one, muted when the theme has none.
+fn role_style(app: &App, role: &str) -> Style {
+    let theme = app.theme;
+    fg(theme.role(role).unwrap_or(theme.muted))
 }
 
 /// The shortest rule worth drawing before what's new.
@@ -1790,7 +1808,7 @@ fn reactions_line(app: &App, chips: &[rows::Chip]) -> Line<'static> {
 
 /// A card's buttons, from the text column: the first a tonal word and the rest outlined (in
 /// brackets), as every app draws them (zirc-chat's `CardAction::primary`); `/press` presses one.
-fn buttons_line(app: &App, labels: &[String]) -> Line<'static> {
+fn buttons_line(app: &App, labels: &[String], said: Option<&str>) -> Line<'static> {
     let theme = app.theme;
     let mut spans = vec![Span::raw(" ".repeat(rows::INDENT))];
     for (i, label) in labels.iter().enumerate() {
@@ -1808,6 +1826,10 @@ fn buttons_line(app: &App, labels: &[String]) -> Line<'static> {
             Span::styled(format!("[{label}]"), fg(theme.text))
         });
     }
+    // What came of our last press, after them, until the card changes.
+    if let Some(said) = said {
+        spans.push(Span::styled(format!("  {said}"), fg(theme.muted)));
+    }
     Line::from(spans)
 }
 
@@ -1821,37 +1843,33 @@ fn mentioned(app: &App, line: Line<'static>, mention: bool) -> Line<'static> {
 }
 
 /// How a row of text reads: the style of what's in its indent, and of its text.
-fn text_styles(app: &App, nick: &str, tone: Tone) -> (Style, Style) {
+fn text_styles(app: &App, nick: &str, tone: &Tone) -> (Style, Style) {
     let theme = app.theme;
     let nick_style = match tone {
-        Tone::Message | Tone::Notice | Tone::App(None) => nick_style(app, nick.trim_matches('-')),
-        Tone::App(Some(icon)) | Tone::Lead(icon) => icon_style(app, icon),
-        Tone::Info => fg(theme.error),
-        Tone::Action | Tone::Status | Tone::Path | Tone::Quote | Tone::Details(_) => {
-            fg(theme.muted)
-        }
+        Tone::Message | Tone::Notice | Tone::App(None) => nick_style(app, nick),
+        Tone::App(Some(icon)) => icon_style(app, *icon),
+        _ => fg(theme.muted),
     };
     let text_style = match tone {
-        Tone::Message | Tone::App(_) => fg(theme.body),
+        Tone::Message | Tone::App(_) | Tone::Code => fg(theme.body),
         Tone::Action => fg(theme.body).add_modifier(Modifier::ITALIC),
         Tone::Notice => fg(theme.warning),
-        // Its marker in its icon's tone ([`lead_spans`]), its words muted, as every app.
-        Tone::Lead(_) | Tone::Status | Tone::Quote => fg(theme.muted),
-        Tone::Details(icon) => fg(theme.role(icon.words_tone()).unwrap_or(theme.body)),
-        Tone::Path => fg(theme.muted).add_modifier(Modifier::DIM),
-        Tone::Info => fg(theme.error),
+        // Its marker in the role zirc-chat names ([`lead_spans`]), its words muted.
+        Tone::Lead { .. } | Tone::Status | Tone::Quote => fg(theme.muted),
+        Tone::Details(role) => fg(theme.role(role).unwrap_or(theme.body)),
+        Tone::Path | Tone::More => fg(theme.muted).add_modifier(Modifier::DIM),
+        Tone::Heading => fg(theme.text).add_modifier(Modifier::BOLD),
     };
     (nick_style, text_style)
 }
 
-/// A system row's first line: its icon or its agent's mark, then who in bold, whose agent
-/// and what they did, then when, dim.
+/// A quiet row: its agent's mark, when an agent did it, its marker, what it says, muted,
+/// then when, dim, when it shows a time.
 fn system_line(app: &App, row: &Row) -> Line<'static> {
     let Row::System {
         time,
-        icon,
-        actor,
-        verb,
+        glyph,
+        text,
         agent,
         mention,
         ..
@@ -1859,46 +1877,31 @@ fn system_line(app: &App, row: &Row) -> Line<'static> {
     else {
         return Line::raw("");
     };
-    let (icon, agent) = (*icon, agent.as_ref());
     let theme = app.theme;
-    // An agent's post is headed by the agent, its tool's mark in its colour; anything else
-    // by what sort of thing it is.
-    let (mark, mark_style) = match agent {
-        Some(agent) if icon == Icon::Post => (agent.mark, fg_colour(hue_colour(app, agent.hue))),
-        _ => (icon.glyph(), icon_style(app, icon)),
-    };
     let mut spans = Vec::new();
-    // An agent's other doings: its mark, as other apps draw its avatar, then the icon.
-    if let Some(agent) = agent.filter(|_| icon != Icon::Post) {
+    if let Some(agent) = agent {
         spans.push(Span::styled(
             format!("{:1$}", agent.mark, rows::AGENT_MARK_WIDTH),
             fg_colour(hue_colour(app, agent.hue)),
         ));
     }
-    spans.push(Span::styled(mark, mark_style));
+    spans.push(Span::styled(glyph.clone(), fg(theme.muted)));
     spans.push(Span::raw(
-        " ".repeat(rows::INDENT.saturating_sub(mark.width())),
+        " ".repeat(rows::INDENT.saturating_sub(glyph.width())),
     ));
     // One that mentions us stands out, as a message that does.
-    let (actor_style, verb_style) = if *mention {
-        let style = fg(theme.warning).add_modifier(Modifier::BOLD);
-        (style, style)
+    let style = if *mention {
+        fg(theme.warning).add_modifier(Modifier::BOLD)
     } else {
-        (fg(theme.text).add_modifier(Modifier::BOLD), fg(theme.muted))
+        fg(theme.muted)
     };
-    if !actor.is_empty() {
-        spans.push(Span::styled(actor.to_owned(), actor_style));
+    spans.push(Span::styled(text.clone(), style));
+    if !time.is_empty() {
+        spans.push(Span::styled(
+            format!(" · {time}"),
+            fg(theme.muted).add_modifier(Modifier::DIM),
+        ));
     }
-    let dim = fg(theme.muted).add_modifier(Modifier::DIM);
-    // Whose agent it is.
-    if let Some(agent) = agent.filter(|agent| !agent.detail.is_empty() && !actor.is_empty()) {
-        spans.push(Span::styled(format!(" {}", agent.detail), dim));
-    }
-    if !verb.is_empty() {
-        let gap = if actor.is_empty() { "" } else { " " };
-        spans.push(Span::styled(format!("{gap}{verb}"), verb_style));
-    }
-    spans.push(Span::styled(format!(" · {time}"), dim));
     Line::from(spans)
 }
 
@@ -2776,6 +2779,10 @@ mod tests {
             .parse()
             .unwrap(),
         );
+        // In the channel it's one quiet line, zirc-chat's brief, which links nothing; whole in
+        // the agent's own conversation.
+        let _ = app.chat.open("mattias-mbp/cc-598aa1");
+        assert_eq!(app.current().name, "mattias-mbp/cc-598aa1");
         let (rows, _) = draw(&app, 160, 24);
         let row = row_with(&rows, "pushed");
         // The commit and the branch, each a link to its page on the forge.
@@ -2916,10 +2923,11 @@ mod tests {
             ),
             ("zirc-alerts", "d/42", "retry")
         );
-        // What came of it shows on the card's line, until the card changes.
+        // What came of it shows beside its buttons, as every app shows it, until the card
+        // changes.
         app.press_answered(&press, Ok(Some("Retrying smoke tests".into())));
         let (rows, _) = draw(&app, 140, 24);
-        row_with(&rows, "· Retrying smoke tests");
+        assert!(row_with(&rows, "Retrying smoke tests").contains(" Redeploy "));
         app.handle(card("retried").parse().unwrap());
         let (rows, _) = draw(&app, 140, 24);
         assert!(!rows.iter().any(|row| row.contains("Retrying smoke tests")));
@@ -3024,11 +3032,12 @@ mod tests {
             app.handle(line.parse().unwrap());
         }
         let (rows, _) = draw(&app, 140, 24);
-        // One card, how it went in place; its build a link to its page.
+        // One card, how it went in place, its outcome in front, as zirc-chat words its line;
+        // its build a link to its page; the session it's about dim after it.
         let row = row_with(&rows, "production updated");
         assert!(
             row.contains(
-                "fix-login · \x1b]8;;https://ci/builds/771\x1b\\build 771\x1b]8;;\x1b\\ · ✓ landed · ✓ production updated"
+                "✓ fix-login · \x1b]8;;https://ci/builds/771\x1b\\build 771\x1b]8;;\x1b\\ · landed · ✓ production updated · cc-1"
             ),
             "{row:?}"
         );
@@ -4311,10 +4320,11 @@ mod tests {
         assert_eq!(app.input.text(), "on it");
         let (rows, terminal) = draw(&app, 130, 16);
         let words = "Not sent, you're offline: it's back in the input, Enter sends it again";
+        // One quiet line, as zirc-chat shapes every note for every app (RowShape::Quiet).
         let (x, y) = place_of(&rows, words);
         assert_eq!(
             terminal.backend().buffer()[(x, y)].fg,
-            colour(app.theme.error)
+            colour(app.theme.muted)
         );
 
         // What a key sends, not what was typed, has nothing to give back.

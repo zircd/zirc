@@ -220,10 +220,7 @@ pub struct App {
     editor: Option<String>,
     /// A card's button about to be pressed, once the person says so.
     pressing: Option<Pressing>,
-    /// The card being pressed as it was then, to show what came of it until it changes.
-    pressing_card: Option<String>,
-    /// What came of our presses, by the card's folded sender and id, with the card as it was
-    /// then.
+    /// What came of our presses, by the version of the card pressed.
     pressed: Presses,
     /// The size of the scrollback, in columns and rows, as last drawn.
     pub view: (u16, u16),
@@ -233,7 +230,7 @@ pub struct App {
     pub connection: Status,
     /// Where each conversation scrolled up from the newest is read from, by folded name.
     scrolled: HashMap<String, Anchor>,
-    /// The rows of the scrollback's items, as last laid out.
+    /// The rows of the scrollback's lines, as last laid out.
     laid: RefCell<Cache>,
     /// Counts changes that may change how any item is laid out, such as a name, rather
     /// than what an item is: each one lays out afresh what's shown.
@@ -297,17 +294,15 @@ pub struct App {
     send_typing: bool,
 }
 
-/// What came of our presses, by the card's folded sender and id, with the card as it was
-/// then.
+/// What came of our presses, by the version of the card pressed
+/// ([`zirc_core::chat::CardButtons::key`]): a card posted again is a new version, which
+/// shows nothing of them.
 #[derive(Debug, Default)]
-struct Presses(HashMap<(String, String), (String, String)>);
+struct Presses(HashMap<String, String>);
 
 impl rows::Pressed for Presses {
-    fn pressed(&self, sender: &str, card: &zirc_proto::card::Card) -> Option<String> {
-        self.0
-            .get(&(fold(sender), card.id.clone()))
-            .filter(|(_, then)| *then == format!("{card:?}"))
-            .map(|(said, _)| said.clone())
+    fn pressed(&self, key: &str) -> Option<String> {
+        self.0.get(key).cloned()
     }
 }
 
@@ -387,7 +382,6 @@ impl App {
             people_only: std::collections::BTreeSet::new(),
             editor: None,
             pressing: None,
-            pressing_card: None,
             pressed: Presses::default(),
             view: (80, 20),
             theme: Theme::dark(),
@@ -786,40 +780,36 @@ impl App {
     fn press(&mut self, name: &str) -> Action {
         let picked = self.picked().map(str::to_owned);
         let channel = self.current().name.clone();
-        let cards: Vec<(String, zirc_proto::card::Card, Option<String>)> = self
-            .chat
-            .items(self.current(), |time| self.zone.date(time))
-            .into_iter()
-            .filter_map(|item| match item {
-                zirc_core::chat::Item::Landing(landing) => landing
-                    .card
-                    .clone()
-                    .map(|card| (landing.entry.from.clone(), card, landing.entry.id.clone())),
-                _ => None,
-            })
-            .collect();
+        // The cards here with buttons, those zirc-chat shows us ([`Chat::shows_action`]).
+        let cards: Vec<(zirc_core::chat::CardButtons, Option<String>, String)> = {
+            let laid = self.laid(usize::from(self.view.0));
+            laid.lines()
+                .iter()
+                .filter_map(|line| {
+                    let buttons = line.system.as_ref()?.buttons.clone()?;
+                    Some((buttons, line.id.clone(), line.text.clone()))
+                })
+                .collect()
+        };
         let card = cards
             .iter()
-            .find(|(.., id)| id.is_some() && *id == picked)
+            .find(|(_, id, _)| id.is_some() && *id == picked)
             .or_else(|| cards.last());
-        let Some((sender, card, _)) = card else {
+        let Some((buttons, _, title)) = card else {
             return Action::Send(self.refuse("there's no card here to press"));
         };
-        let Some(action) = card.actions.iter().find(|action| {
-            (action.id.eq_ignore_ascii_case(name) || action.label.eq_ignore_ascii_case(name))
-                && self.chat.shows_action(card, action)
+        let Some(action) = buttons.actions.iter().find(|action| {
+            action.id.eq_ignore_ascii_case(name) || action.label.eq_ignore_ascii_case(name)
         }) else {
-            return Action::Send(
-                self.refuse(&format!("\"{}\" has no button {name} for you", card.title)),
-            );
+            let title = title.lines().next().unwrap_or_default();
+            return Action::Send(self.refuse(&format!("\"{title}\" has no button {name} for you")));
         };
         let press = zirc_proto::card::Press {
             channel,
-            sender: sender.clone(),
-            card: card.id.clone(),
+            sender: buttons.sender.clone(),
+            card: buttons.card.clone(),
             action: action.id.clone(),
         };
-        self.pressing_card = Some(format!("{card:?}"));
         match action.confirm.clone() {
             Some(ask) => {
                 self.pressing = Some(Pressing { press, ask });
@@ -840,10 +830,20 @@ impl App {
             Ok(message) => message.unwrap_or_else(|| zirc_core::chat::DONE.to_owned()),
             Err(why) => zirc_core::chat::couldnt_label(&why),
         };
-        let then = self.pressing_card.take().unwrap_or_default();
-        self.pressed
-            .0
-            .insert((fold(&press.sender), press.card.clone()), (said, then));
+        // On the card as it is now: one posted again since shows nothing of it.
+        let key = self
+            .chat
+            .lines(&press.channel, self.zone.offset(), false)
+            .iter()
+            .filter_map(|line| line.system.as_ref()?.buttons.as_ref())
+            .find(|buttons| {
+                buttons.card == press.card && fold(&buttons.sender) == fold(&press.sender)
+            })
+            .map(|buttons| buttons.key.clone());
+        if let Some(key) = key {
+            self.pressed.0.insert(key, said);
+        }
+        self.changed();
     }
 
     /// The account was renamed to `handle` on another device or at zirc.dev: what to say of
@@ -901,14 +901,14 @@ impl App {
         })
     }
 
-    /// How many items have been laid out afresh rather than found laid out already: for
+    /// How many lines have been laid out afresh rather than found laid out already: for
     /// tests.
     #[cfg(test)]
     pub(crate) fn laid_afresh(&self) -> usize {
         self.laid.borrow().laid
     }
 
-    /// Something changed that may change how items are laid out: the next draw lays out
+    /// Something changed that may change how lines are laid out: the next draw lays out
     /// afresh what it shows.
     pub fn changed(&mut self) {
         self.changes += 1;
@@ -1048,26 +1048,22 @@ impl App {
         self.laid(width).all()
     }
 
-    /// The conversation shown, to lay out `width` columns wide as it's looked at, each
-    /// item's rows kept until it changes.
+    /// The conversation shown, as zirc-chat's lines of it, to lay out `width` columns wide as
+    /// it's looked at, each line's rows kept until it changes: an agent session's own as its
+    /// activity everywhere ([`zirc_core::chat::Chat::agent_lines`]), as every app shows it.
     pub(crate) fn laid(&self, width: usize) -> Laid<'_, '_> {
         let today = self.zone.date((self.chat.clock)());
-        let conversation = self.current();
+        let name = &self.current().name;
         let people = self.people_only();
-        let who = rows::Who {
-            chat: &self.chat,
-            pressed: &self.pressed,
-        };
         let look = rows::Look::new(
-            conversation,
-            who,
+            &self.chat,
+            &self.pressed,
             self.chat.divider(),
             width,
-            (self.zone, today),
             self.links,
         );
         self.laid.borrow_mut().stamp((
-            fold(&conversation.name),
+            fold(name),
             width,
             look.text_width,
             self.links,
@@ -1075,11 +1071,13 @@ impl App {
             today,
             self.changes,
         ));
-        Laid::new(
-            look,
-            rows::items(&self.chat, conversation, self.zone, people),
-            &self.laid,
-        )
+        let offset = self.zone.offset();
+        let lines = if zirc_core::chat::agent(name).is_some() {
+            self.chat.agent_lines(name, offset)
+        } else {
+            self.chat.lines(name, offset, people)
+        };
+        Laid::new(look, lines, &self.laid)
     }
 
     /// What the scrollback shows of `laid`, `height` rows high: from where it's read, or
@@ -1204,9 +1202,9 @@ impl App {
     fn pick(&mut self, by: isize) -> Vec<Line> {
         let ids: Vec<String> = {
             let laid = self.laid(usize::from(self.view.0));
-            laid.items()
+            laid.lines()
                 .iter()
-                .filter_map(rows::item_id)
+                .filter_map(rows::line_id)
                 .map(str::to_owned)
                 .collect()
         };
@@ -1235,9 +1233,9 @@ impl App {
         let (anchor, older) = {
             let laid = self.laid(usize::from(self.view.0));
             let Some(at) = laid
-                .items()
+                .lines()
                 .iter()
-                .position(|item| rows::item_id(item) == Some(id))
+                .position(|line| rows::line_id(line) == Some(id))
             else {
                 return Vec::new();
             };
@@ -1677,10 +1675,10 @@ impl App {
     fn reacting_to(&self) -> Option<String> {
         self.picked().map(str::to_owned).or_else(|| {
             let laid = self.laid(usize::from(self.view.0));
-            laid.items()
+            laid.lines()
                 .iter()
                 .rev()
-                .find_map(rows::item_id)
+                .find_map(rows::line_id)
                 .map(str::to_owned)
         })
     }

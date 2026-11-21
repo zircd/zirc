@@ -1,20 +1,18 @@
-//! A conversation laid out as rows of the scrollback: the lines zirc-core says it has
-//! ([`items`]: days, runs, events, comings and goings), and long text wrapped to the width.
-//! As zirc's other apps show them, a run starts with a header, the nick and then the time,
-//! and its messages follow under it. The UI only has to colour them in.
+//! A conversation laid out as rows of the scrollback, from the lines zirc-chat gives every
+//! app ([`Chat::lines`]): the core decides each line's shape, its head, whether it carries
+//! on a run, its words as blocks, its quote, its reactions and its card; this lays them out
+//! in rows of the terminal's width, long text wrapped. The UI only has to colour them in.
 
-use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Offset as _, Utc};
 use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
-
-use zirc_core::chat::file::size_text;
-
-use crate::hyperlink::{Link, Links, fragments, label};
+use zirc_core::chat::lines::Line;
 use zirc_core::chat::{
-    Avatar, CellAlign, Chat, Conversation, Entry, EntryKind, Icon, Item, Landing, Parts,
-    SenderKind, SpanKind, Speaker, day_label, people_only, sender_kind, strip_formatting,
-    tables_in,
+    APP_TAG, CellAlign, Chat, EDITED, Face, Icon, LineFile, LineKind, LineReaction, LineSpeaker,
+    RichBlock, RichSpan, RichSpanKind, RowShape, SHOWN_PATHS, SystemBody, SystemLine, link_label,
+    show_more_paths_label,
 };
-use zirc_proto::card::Card;
+
+use crate::hyperlink::{Link, Links, fragments};
 
 /// The narrowest text column, however narrow the terminal.
 const MIN_TEXT_WIDTH: usize = 10;
@@ -46,6 +44,15 @@ impl Zone {
     pub fn date(self, time: DateTime<Utc>) -> NaiveDate {
         self.wall(time).date()
     }
+
+    /// How far its clock is from UTC now, which zirc-chat's lines are told.
+    #[must_use]
+    pub fn offset(self) -> FixedOffset {
+        match self {
+            Self::Local => chrono::Local::now().offset().fix(),
+            Self::Fixed(offset) => offset,
+        }
+    }
 }
 
 /// One row of the scrollback.
@@ -61,42 +68,40 @@ pub enum Row {
         id: Option<String>,
         /// The buttons' labels, in order.
         labels: Vec<String>,
+        /// What came of our last press of one, until the card changes.
+        said: Option<String>,
     },
-    /// A system row drawn in one line: someone coming or going, or an agent's routine work.
-    /// Its icon, who in bold and what they did, then when, dim; what it's about follows in
-    /// [`Tone::Status`] rows when it wraps. Any other event is a message: a [`Row::Header`],
-    /// unless it carries on a run, then a [`Tone::Lead`] row, zirc-chat's `Parts::lead`,
-    /// [`Tone::Message`] rows for what it was, and a [`Tone::Path`] row.
+    /// A quiet line, as zirc-chat shapes it ([`RowShape::Quiet`], [`RowShape::Brief`],
+    /// [`RowShape::Pointer`]): its marker, what it says, muted, then when, dim, when it
+    /// shows a time. What it says further, when it wraps, follows in [`Tone::Status`] rows.
     System {
-        /// When, `12:04`.
+        /// When, `12:04`; empty for a line that shows no time.
         time: String,
-        /// What sort it is.
-        icon: Icon,
-        /// Who: `dana's agent`, a nick, or nothing.
-        actor: String,
-        /// What they did, after who, on a one-line row; empty on an event's header.
-        verb: String,
-        /// The id of the event, when it can be reacted to.
+        /// Its marker, zirc-chat's [`SystemLine::glyph`], or nothing.
+        glyph: String,
+        /// What it says on this row.
+        text: String,
+        /// The id of the message, when it can be reacted to.
         id: Option<String>,
-        /// When an agent session did it, its mark and whose agent it is.
+        /// When an agent session did it, its mark.
         agent: Option<Agent>,
-        /// The links on its line: the branch and commit it names, to their pages.
+        /// The links on its row.
         links: Vec<Link>,
-        /// Whether it mentions us: zirc-chat's `Item::mentions_me`.
+        /// Whether it mentions us: zirc-chat's `Line::mention`.
         mention: bool,
     },
-    /// Part of an entry.
+    /// Part of a line's body.
     Text {
-        /// What goes in the indent in front of the text: a marker such as `→`, or nothing.
+        /// What goes in the indent in front of the text: a marker such as `*`, a card's
+        /// outcome, or nothing.
         nick: String,
         /// The text on this row.
         text: String,
         /// How it reads.
         tone: Tone,
-        /// Whether the entry mentions us.
+        /// Whether the line mentions us.
         mention: bool,
-        /// Which app a message was sent from, `· desktop`, on its first row when zirc-core
-        /// says to show it; empty otherwise.
+        /// What goes dim at the end of the row: the session a card is about, on its first.
         hint: String,
         /// The id of the message the row is part of, when it's one that can be reacted to.
         id: Option<String>,
@@ -111,7 +116,8 @@ pub enum Row {
         time: String,
         /// How it reads: a message, or a notice.
         tone: Tone,
-        /// Which app it was sent from, `· desktop`, when zirc-core says to show it.
+        /// What goes dim after the time: in an agent session's conversation, the room it
+        /// was said in ([`Line::room`]).
         hint: String,
         /// The id of its first message.
         id: Option<String>,
@@ -130,8 +136,8 @@ pub enum Row {
     },
 }
 
-/// One reaction to a message, as zirc-chat counts it ([`Conversation::chips`]).
-pub use zirc_core::chat::ReactionChip as Chip;
+/// One reaction to a message, as zirc-chat counts it ([`Line::reactions`]).
+pub use zirc_core::chat::LineReaction as Chip;
 
 /// A chip as drawn, padded: ` 🎉 2 `.
 #[must_use]
@@ -156,36 +162,9 @@ pub fn chip_at(chips: &[Chip], column: usize) -> Option<&Chip> {
     None
 }
 
-/// What an item of the conversation comes to, before it's laid out in rows.
-struct Piece {
-    /// The time, `12:04`.
-    time: String,
-    /// Who said it, or a mark, as `→`, for what nobody said.
-    nick: String,
-    text: String,
-    tone: Tone,
-    mention: bool,
-    hint: String,
-    /// What goes dim at the end of its first row: the session an app's post is about.
-    after: String,
-    id: Option<String>,
-    /// Whether it continues the run before it.
-    continues: bool,
-    /// Whether someone said it, rather than it being an event or a coming and going.
-    said: bool,
-    /// What it answers, as quoted above it.
-    quote: Option<String>,
-    /// What's marked after the nick: see [`Row::Header`].
-    pill: Option<&'static str>,
-    /// The labels of the links in [`Piece::text`], with their addresses.
-    links: Vec<(String, Option<String>)>,
-    /// When an agent session said it: see [`Row::Header`].
-    agent: Option<Agent>,
-}
-
-/// An agent session heading a row, as zirc-chat's [`Speaker`] says, where other apps
-/// draw its owner's photo with a robot badge: a mark for its tool in its own colour, and
-/// whose agent it is after its name, `mattias's agent`.
+/// An agent session heading a row, as zirc-chat's [`LineSpeaker`] says, where other apps
+/// draw its tool on its colour: a mark for its tool in its own colour, and whose agent it is
+/// after its name, `mattias's agent`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Agent {
     /// One cell for its tool: see [`zirc_core::chat::tool_mark`].
@@ -196,50 +175,33 @@ pub struct Agent {
     pub detail: String,
 }
 
-/// The columns an agent's mark takes in front of a system row's icon, with its space.
+/// The columns an agent's mark takes in front of a quiet row's marker, with its space.
 pub const AGENT_MARK_WIDTH: usize = 2;
 
-/// How a row heads who it's from, by [`Speaker`]: an agent session by its name with its
-/// [`Agent`] mark, a person or an app by their name; and whether it's an app, tagged
-/// [`APP_TAG`] after it.
-fn head(speaker: Speaker) -> (String, Option<Agent>, bool) {
-    let app = speaker.is_app;
-    match speaker.avatar {
-        avatar @ Avatar::Agent { .. } => (
-            speaker.name,
-            agent_mark(&avatar).map(|agent| Agent {
-                detail: speaker.detail.unwrap_or_default(),
-                ..agent
-            }),
-            app,
-        ),
-        _ => (speaker.name, None, app),
-    }
-}
-
-/// An agent's avatar as its mark, with nothing after its name; `None` for anyone else's.
-fn agent_mark(avatar: &Avatar) -> Option<Agent> {
-    match avatar {
-        Avatar::Agent { tool, hue, .. } => Some(Agent {
+/// An agent's face as its mark, with what follows its name; `None` for anyone else.
+fn agent(speaker: &LineSpeaker) -> Option<Agent> {
+    match &speaker.face {
+        Face::Agent { tool, hue, .. } => Some(Agent {
             mark: zirc_core::chat::tool_mark(tool.as_deref()),
             hue: *hue,
-            detail: String::new(),
+            detail: speaker.detail.clone().unwrap_or_default(),
         }),
         _ => None,
     }
 }
 
-/// What's marked after the nick of what was said, `said`, as zirc-chat says
-/// ([`Chat::name_pill`]): a guest as outside, an app by its tag, `CI APP`.
-fn pill(chat: &Chat, said: Option<&Entry>, app: bool) -> Option<&'static str> {
-    match said {
-        Some(entry) => chat.name_pill(&entry.from, app),
-        None => app.then_some(zirc_core::chat::APP_TAG),
+/// What's marked after the name heading `line`, as zirc-chat says ([`Chat::name_pill`]): a
+/// guest as outside, an app by its tag.
+fn pill(chat: &Chat, line: &Line, speaker: &LineSpeaker) -> Option<&'static str> {
+    if line.from.is_empty() {
+        speaker.app.then_some(APP_TAG)
+    } else {
+        chat.name_pill(&line.from, speaker.app)
     }
 }
 
 /// How a row reads, for colouring.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tone {
     /// A message.
     Message,
@@ -247,128 +209,99 @@ pub enum Tone {
     Action,
     /// A notice.
     Notice,
-    /// An app's post, such as CI's, with its outcome's icon in front.
+    /// A card's words, its outcome's icon in front on its first row.
     App(Option<Icon>),
-    /// An event's lead, zirc-chat's `Parts::lead`: its marker and what it did, in its
-    /// icon's colour.
-    Lead(Icon),
-    /// An event's details, what it was, in the core's tone for them
-    /// ([`Icon::words_tone`]).
-    Details(Icon),
-    /// What a one-line system row is about, wrapped.
+    /// An event's lead, zirc-chat's [`SystemLine::lead`]: its marker in the theme role
+    /// `marker` names ([`SystemLine::marker_tone`]), what was done muted; and, when its
+    /// details follow on the same row, from the byte `details.0` on, those in the role
+    /// `details.1` names ([`SystemLine::details_tone`]).
+    Lead {
+        /// The role of its marker.
+        marker: String,
+        /// Where its details start on the row, and their role.
+        details: Option<(usize, String)>,
+    },
+    /// An event's details, in the theme role zirc-chat names for them
+    /// ([`SystemLine::details_tone`]).
+    Details(String),
+    /// Quiet words: a wrapped quiet line, a card's updates, a rule.
     Status,
-    /// The paths a system row is about.
+    /// The paths an event is about.
     Path,
-    /// This client speaking.
-    Info,
-    /// The message a reply answers, quoted above it.
+    /// What's left out, dim: a long message's "Show 34 more lines", the paths not listed.
+    More,
+    /// The message a reply answers, quoted above it, or a quote in a message.
     Quote,
+    /// A heading, or a table's header row: bold.
+    Heading,
+    /// A line of a code block.
+    Code,
 }
 
-/// Who's who, for [`layout`].
-#[derive(Clone, Copy)]
-pub struct Who<'a> {
-    /// The chat the conversation is in, which says who's who: us, guests, names, agent
-    /// sessions, speakers, and which of a card's buttons we're shown.
-    pub chat: &'a Chat,
-    /// What came of our pressing one of the card from the sender, if anything, until the
-    /// card changes.
-    pub pressed: &'a dyn Pressed,
-}
-
-/// What came of our pressing one of a card's buttons, as [`Who::pressed`] says.
+/// What came of our pressing one of a card's buttons, as [`Look`] is told it.
 pub trait Pressed {
-    /// What came of our pressing one of `card`'s from `sender`, if anything, until the
-    /// card changes.
-    fn pressed(&self, sender: &str, card: &Card) -> Option<String>;
+    /// What came of our last press of a button on the card whose version is `key`
+    /// ([`zirc_core::chat::CardButtons::key`]), if anything: it shows until the card changes.
+    fn pressed(&self, key: &str) -> Option<String>;
 }
 
-impl<F: Fn(&str, &Card) -> Option<String>> Pressed for F {
-    fn pressed(&self, sender: &str, card: &Card) -> Option<String> {
-        self(sender, card)
+impl<F: Fn(&str) -> Option<String>> Pressed for F {
+    fn pressed(&self, key: &str) -> Option<String> {
+        self(key)
     }
 }
 
-/// The rows of `conversation` at `width` columns, `today` being the date in `zone`, for us,
-/// `me`, as zirc's other apps show them. The "New" divider goes above the message `divider`.
-#[must_use]
-pub fn layout(
-    conversation: &Conversation,
-    who: Who<'_>,
-    divider: Option<&str>,
-    width: usize,
-    (zone, today): (Zone, NaiveDate),
-    (links, people): (Links, bool),
-) -> Vec<Row> {
-    let look = Look::new(conversation, who, divider, width, (zone, today), links);
-    let items = shown(who.chat, conversation, zone, people);
-    (0..items.len())
-        .flat_map(|at| item_rows(&look, &items[at], at.checked_sub(1).map(|i| &items[i])))
-        .collect()
-}
-
-/// Everything a conversation's items are laid out by, but the items: see [`layout`].
+/// Everything lines are laid out by, but the lines.
 #[derive(Clone, Copy)]
 pub struct Look<'a> {
-    conversation: &'a Conversation,
-    who: Who<'a>,
+    /// The chat the conversation is in, which says who's who: guests and apps.
+    chat: &'a Chat,
+    /// What came of our presses.
+    pressed: &'a dyn Pressed,
+    /// The message the "New" divider goes above.
     divider: Option<&'a str>,
     /// How wide the text column is.
     pub text_width: usize,
-    zone: Zone,
-    today: NaiveDate,
+    /// How the terminal shows links.
     links: Links,
 }
 
 impl<'a> Look<'a> {
-    /// `conversation` laid out as [`layout`] says.
+    /// Lines in `chat` laid out `width` columns wide, the "New" divider above the message
+    /// `divider`, what came of our presses as `pressed` says, links as the terminal shows
+    /// them.
     #[must_use]
     pub fn new(
-        conversation: &'a Conversation,
-        who: Who<'a>,
+        chat: &'a Chat,
+        pressed: &'a dyn Pressed,
         divider: Option<&'a str>,
         width: usize,
-        (zone, today): (Zone, NaiveDate),
         links: Links,
     ) -> Self {
-        let text_width = width.saturating_sub(INDENT).max(MIN_TEXT_WIDTH);
         Self {
-            conversation,
-            who,
+            chat,
+            pressed,
             divider,
-            text_width,
-            zone,
-            today,
+            text_width: width.saturating_sub(INDENT).max(MIN_TEXT_WIDTH),
             links,
         }
     }
-
-    /// The minute `item` shows, `12:04`, if it has a time.
-    fn minute(&self, item: &Item<'_>) -> Option<String> {
-        item.time()
-            .map(|at| self.zone.wall(at).format("%H:%M").to_string())
-    }
 }
 
-/// What `conversation`, in `chat`, shows, its items by day in `zone`: only what people
-/// say, and whatever mentions us, when `people` is all that's wanted. Each is laid out
-/// by [`item_rows`].
+/// The rows of `lines`, as `look` lays them out.
 #[must_use]
-pub fn items<'a>(
-    chat: &Chat,
-    conversation: &'a Conversation,
-    zone: Zone,
-    people: bool,
-) -> Vec<Item<'a>> {
-    shown(chat, conversation, zone, people)
+pub fn layout(look: &Look<'_>, lines: &[Line]) -> Vec<Row> {
+    lines
+        .iter()
+        .flat_map(|line| line_rows(look, line))
+        .collect()
 }
 
-/// A number that changes whenever anything [`item_rows`] lays `item`, after `before`, out
-/// by does, besides what [`Look`] holds and the names [`Who`] gives: what it is, the minute
-/// before it, whether the "New" divider is above it, what it answers, its reactions and what
-/// came of pressing its card.
+/// A number that changes whenever anything [`line_rows`] lays `line` out by does, besides
+/// what the stamp of the scrollback's cache covers (the width, how links show): the line,
+/// whether the "New" divider is above it and what came of pressing its card.
 #[must_use]
-pub fn fingerprint(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) -> u64 {
+pub fn fingerprint(look: &Look<'_>, line: &Line) -> u64 {
     use std::fmt::Write as _;
     use std::hash::Hasher as _;
     /// Hashes what's written to it, so nothing's put in a string first.
@@ -380,597 +313,618 @@ pub fn fingerprint(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) 
         }
     }
     let mut hashing = Hashing(std::collections::hash_map::DefaultHasher::new());
-    let entry = entry_of(item);
-    let id = entry.and_then(|entry| entry.id.as_deref());
-    let quote = match item {
-        Item::Message { entry, .. } | Item::Notice { entry, .. } | Item::Action { entry, .. } => {
-            look.who.chat.quote(look.conversation, entry)
-        }
-        _ => None,
-    };
-    let chips = id.map(|id| look.conversation.chips(id, look.who.chat.me()));
-    let pressed = match item {
-        Item::Landing(landing) => landing
-            .card
-            .as_ref()
-            .and_then(|card| look.who.pressed.pressed(&landing.entry.from, card)),
-        _ => None,
-    };
-    let new = look.divider.is_some_and(|id| holds(item, id));
-    // Revealing a sealed part, or a key for it arriving, draws it anew.
-    let sealed: Vec<_> = entry
-        .map(|entry| look.who.chat.sealed_parts(entry))
-        .unwrap_or_default()
-        .into_iter()
-        .map(|part| part.state)
-        .collect();
-    let _ = write!(
-        hashing,
-        "{item:?}{:?}{new}{quote:?}{chips:?}{pressed:?}{sealed:?}",
-        before.and_then(|before| look.minute(before)),
-    );
+    let new = is_new(look, line);
+    let pressed = pressed(look, line);
+    let _ = write!(hashing, "{line:?}{new}{pressed:?}");
     hashing.0.finish()
 }
 
-/// The rows of `item`, which comes after `before`, laid out as `look` says.
+/// The id of the message `line` is, as its rows carry it, when it can be reacted to:
+/// never a quiet line's, people coming and going or a note.
 #[must_use]
-pub fn item_rows(look: &Look<'_>, item: &Item<'_>, before: Option<&Item<'_>>) -> Vec<Row> {
-    let Look {
-        conversation,
-        who,
-        divider,
-        text_width,
-        links,
-        ..
-    } = *look;
+pub fn line_id(line: &Line) -> Option<&str> {
+    line.id.as_deref().filter(|_| line.actions.react)
+}
+
+/// Whether the "New" divider goes above `line`.
+fn is_new(look: &Look<'_>, line: &Line) -> bool {
+    look.divider.is_some() && look.divider == line.id.as_deref()
+}
+
+/// What came of our last press of `line`'s card, if it has one.
+fn pressed(look: &Look<'_>, line: &Line) -> Option<String> {
+    let buttons = line.system.as_ref()?.buttons.as_ref()?;
+    look.pressed.pressed(&buttons.key)
+}
+
+/// The rows of `line`, laid out as `look` says, in the shape zirc-chat gives it
+/// ([`Line::shape`]).
+#[must_use]
+pub fn line_rows(look: &Look<'_>, line: &Line) -> Vec<Row> {
     let mut rows = Vec::new();
-    let Some(at) = item.time() else {
-        if let Item::Day(date) = item {
-            rows.push(Row::Divider(day_label(*date, look.today)));
-        }
-        return rows;
-    };
-    if divider.is_some_and(|id| holds(item, id)) {
+    if let Some(day) = &line.day {
+        rows.push(Row::Divider(day.clone()));
+    }
+    if is_new(look, line) {
         rows.push(Row::New);
     }
-    let shown = look.zone.wall(at).format("%H:%M").to_string();
-    let entry = entry_of(item);
-    let id = entry.and_then(|entry| entry.id.clone());
-    let head = entry.map(|entry| head(who.chat.speaker(entry)));
-    let after_brief = before.is_some_and(|before| brief_of(look, before).is_some());
-    if let Some(parts) = system_parts(item) {
-        let brief = brief_of(look, item);
-        // A post addressed to an agent session says to whom first, by its name.
-        let parts = who.chat.addressed_parts(parts);
-        system_rows(
-            &mut rows,
-            &parts,
-            &shown,
-            id.as_deref(),
-            (text_width, &|kind| who.chat.kind_label(kind), links),
-            (
-                head.as_ref().and_then(|head| head.1.clone()),
-                pill(who.chat, entry, head.is_some_and(|head| head.2)),
-                runs_on(item) && !after_brief,
-                brief,
-            ),
-        );
-        let first = usize::from(matches!(rows.first(), Some(Row::New)));
-        mark_mentions(&mut rows[first..], item.mentions_me(conversation));
-        return rows;
-    }
-    let quote = match item {
-        Item::Message { entry, .. } | Item::Notice { entry, .. } | Item::Action { entry, .. } => {
-            who.chat.quote(conversation, entry)
+    let start = rows.len();
+    match (line.shape, &line.speaker) {
+        (RowShape::Message, Some(_)) if line.kind == LineKind::Action => {
+            action_rows(look, line, &mut rows);
         }
-        _ => None,
-    };
-    let said = matches!(
-        item,
-        Item::Message { .. } | Item::Notice { .. } | Item::File { .. } | Item::Landing(_)
-    );
-    let (nick, text, tone, continues) = columns(who.chat, item, look.zone);
-    // A corrected message says so after its words, as in every zirc app.
-    let text = if item.said_entry().is_some_and(|entry| entry.edited) {
-        format!("{text} {}", zirc_core::chat::EDITED)
-    } else {
-        text
-    };
-    let (text, links) = linked(item, text, links, who, &conversation.name);
-    // A reply names who's speaking under its quote, even within a run. The New divider
-    // doesn't break a run, as in every zirc app: one header, not the same one twice.
-    let continues = continues && quote.is_none();
-    // Heading a run as zirc's other apps do, by who it's from.
-    let (nick, agent, app) = match head {
-        _ if continues => (String::new(), None, false),
-        Some(head) if said => head,
-        _ => (nick, None, false),
-    };
-    let (hint, after) = hints(item);
-    let piece = Piece {
-        time: shown,
-        nick,
-        text,
-        tone,
-        mention: entry.is_some_and(|entry| conversation.highlights(entry)),
-        hint,
-        after,
-        id: id.clone().filter(|_| !matches!(item, Item::Note { .. })),
-        continues,
-        said,
-        quote: quote.map(|quote| fit(&quote.line(), text_width)),
-        links,
-        pill: pill(who.chat, entry.filter(|_| said), app),
-        agent,
-    };
-    standard_rows(&mut rows, &piece, text_width);
-    rows.extend(under(conversation, item, who, &piece, text_width));
+        (RowShape::Message, Some(speaker)) => message_rows(look, line, speaker, &mut rows),
+        (RowShape::System, Some(speaker)) => system_rows(look, line, speaker, &mut rows),
+        (RowShape::Brief | RowShape::Pointer, _) => brief_rows(look, line, &mut rows),
+        _ => quiet_rows(look, line, &mut rows),
+    }
+    let mention = line.mention;
+    for row in &mut rows[start..] {
+        match row {
+            Row::Text { tone, .. } if *tone == Tone::Quote => {}
+            Row::System {
+                mention: marked, ..
+            }
+            | Row::Text {
+                mention: marked, ..
+            } => {
+                *marked = mention;
+            }
+            _ => {}
+        }
+    }
+    rows.extend(reaction_rows(line, look.text_width));
     rows
 }
 
-/// The id of what `item` came from, if it has one.
-#[must_use]
-pub fn entry_id<'a>(item: &Item<'a>) -> Option<&'a str> {
-    entry_of(item).and_then(|entry| entry.id.as_deref())
-}
-
-/// The id of the message `item` is, as its rows carry it, when it can be reacted to.
-#[must_use]
-pub fn item_id<'a>(item: &Item<'a>) -> Option<&'a str> {
-    entry_id(item).filter(|_| !matches!(item, Item::Note { .. }))
-}
-
-/// `text`, what `item` says, with the agent sessions it names by their names (`session`)
-/// and its addresses as their labels where the terminal shows `links` so; and those
-/// labels with where they go: see [`crate::hyperlink`].
-fn linked(
-    item: &Item<'_>,
+/// A row of a line's body, before it's a [`Row::Text`]: what it says, how it reads and the
+/// links it shows.
+struct Run {
     text: String,
-    links: Links,
-    who: Who<'_>,
-    conversation: &str,
-) -> (String, Vec<(String, Option<String>)>) {
-    match item {
-        Item::Message { entry, .. } | Item::Notice { entry, .. } | Item::Action { entry, .. } => {
-            // Files and commits it names link into the editor or to the forge, as zirc-chat
-            // says, where the terminal can: a line in #agents, its own repository's.
-            let code = if links == Links::Labelled {
-                who.chat.code_links(&entry.place(conversation), &text)
-            } else {
-                Vec::new()
-            };
-            let (text, linked) = label(&text, links, &|kind| who.chat.kind_label(kind), &code);
-            (lined_up(&text), linked)
+    tone: Tone,
+    links: Vec<Link>,
+}
+
+impl Run {
+    /// It as a row of `line`'s, `nick` in the indent in front of it.
+    fn row(self, line: &Line, nick: String) -> Row {
+        Row::Text {
+            nick,
+            text: self.text,
+            tone: self.tone,
+            mention: false,
+            hint: String::new(),
+            id: line_id(line).map(str::to_owned),
+            links: self.links,
         }
-        // A landing's words link where zirc-chat says, its build, branch and commit to their
-        // pages, where the terminal can; a card's say what came of our last press of it.
-        Item::Landing(landing) => {
-            let text = pressed(landing, text, who);
-            let linked = if links == Links::Labelled {
-                landing
-                    .plain_links()
-                    .into_iter()
-                    .map(|(word, url)| (word, Some(url)))
-                    .collect()
-            } else {
-                Vec::new()
-            };
-            (text, linked)
-        }
-        _ => (text, Vec::new()),
     }
 }
 
-/// `text` with each Markdown table in it laid out in columns, as zirc's other apps draw it
-/// as a grid: each column as wide as its widest cell, lined up as its `:--`, `:-:` or `--:`
-/// says, `│` between them and `─┼─` under the header. Cells keep what was typed in them.
-#[must_use]
-pub fn lined_up(text: &str) -> String {
-    let mut text = text.to_owned();
-    for table in tables_in(&text).into_iter().rev() {
-        let columns = table.rows.iter().map(Vec::len).max().unwrap_or(0);
-        let cell = |row: &[String], at: usize| row.get(at).map_or("", String::as_str).to_owned();
-        let widths: Vec<usize> = (0..columns)
-            .map(|at| {
-                table
-                    .rows
-                    .iter()
-                    .map(|row| cell(row, at).width())
-                    .max()
-                    .unwrap_or(0)
-            })
-            .collect();
-        let line = |row: &[String]| {
-            let cells: Vec<String> = widths
-                .iter()
-                .enumerate()
-                .map(|(at, &width)| {
-                    let words = cell(row, at);
-                    let room = width.saturating_sub(words.width());
-                    let before = match table.align.get(at).copied().unwrap_or_default() {
-                        CellAlign::Start => 0,
-                        CellAlign::Center => room / 2,
-                        CellAlign::End => room,
-                    };
-                    format!("{}{words}{}", " ".repeat(before), " ".repeat(room - before))
-                })
-                .collect();
-            cells.join(" │ ").trim_end().to_owned()
+/// `line`'s head: who, whose agent or their pill, and when.
+fn header(look: &Look<'_>, line: &Line, speaker: &LineSpeaker) -> Row {
+    Row::Header {
+        nick: speaker.name.clone(),
+        time: line.clock.clone(),
+        tone: if line.kind == LineKind::Notice {
+            Tone::Notice
+        } else {
+            Tone::Message
+        },
+        hint: line.room.clone().unwrap_or_default(),
+        id: line_id(line).map(str::to_owned),
+        pill: pill(look.chat, line, speaker),
+        agent: agent(speaker),
+    }
+}
+
+/// What someone said, or a file they shared, under their head unless it carries on their
+/// run: the quote of what it answers, its words, then what's cut from a long one.
+fn message_rows(look: &Look<'_>, line: &Line, speaker: &LineSpeaker, rows: &mut Vec<Row>) {
+    if !line.continues {
+        rows.push(header(look, line, speaker));
+    }
+    let width = look.text_width;
+    if let Some(quote) = &line.quote {
+        rows.push(
+            Run {
+                text: fit(&quote.line(), width),
+                tone: Tone::Quote,
+                links: Vec::new(),
+            }
+            .row(line, String::new()),
+        );
+    }
+    let tone = if line.kind == LineKind::Notice {
+        Tone::Notice
+    } else {
+        Tone::Message
+    };
+    let mut runs = match &line.file {
+        Some(file) => file_runs(file, width),
+        None => words(look, line, width, &tone),
+    };
+    edited(line, &mut runs, width);
+    rows.extend(runs.into_iter().map(|run| run.row(line, String::new())));
+    rows.extend(more_row(line));
+}
+
+/// An action, `/me waves`: one line of its own naming who, `* alice waves`.
+fn action_rows(look: &Look<'_>, line: &Line, rows: &mut Vec<Row>) {
+    let width = look.text_width;
+    let mut runs = wrapped(
+        (format!("{} {}", line.from, line.text), Vec::new()),
+        width,
+        &Tone::Action,
+    );
+    edited(line, &mut runs, width);
+    for (at, run) in runs.into_iter().enumerate() {
+        let nick = if at == 0 { "*" } else { "" };
+        rows.push(run.row(line, nick.to_owned()));
+    }
+}
+
+/// An event, a landing or a card, drawn as a message is: its actor's head unless it carries
+/// on their run, then what zirc-chat says its body is ([`SystemLine::body`]).
+fn system_rows(look: &Look<'_>, line: &Line, speaker: &LineSpeaker, rows: &mut Vec<Row>) {
+    let Some(system) = &line.system else {
+        return quiet_rows(look, line, rows);
+    };
+    if !line.continues {
+        rows.push(header(look, line, speaker));
+    }
+    let width = look.text_width;
+    if line.kind == LineKind::Landing {
+        return card_rows(look, line, system, rows);
+    }
+    let runs = match system.body {
+        SystemBody::Parts => parts_runs(look, line, system, width),
+        SystemBody::Card | SystemBody::Blocks => blocks(look, &line.rich, width, &Tone::Message),
+    };
+    rows.extend(runs.into_iter().map(|run| run.row(line, String::new())));
+    rows.extend(more_row(line));
+}
+
+/// A landing's card, or any integration's: its words with its outcome's icon in front and the
+/// session it's about dim after them, its updates, its picture, what's cut from it, then its
+/// buttons we may press with what came of our last press.
+fn card_rows(look: &Look<'_>, line: &Line, system: &SystemLine, rows: &mut Vec<Row>) {
+    let width = look.text_width;
+    let mut runs = if line.rich.is_empty() {
+        parts_runs(look, line, system, width)
+    } else {
+        blocks(look, &line.rich, width, &Tone::App(system.outcome))
+    };
+    if let Some(file) = &line.file {
+        runs.extend(file_runs(file, width));
+    }
+    for (at, run) in runs.into_iter().enumerate() {
+        let first = at == 0;
+        let nick = match system.outcome {
+            Some(icon) if first => icon.glyph().to_owned(),
+            _ => String::new(),
         };
-        let mut lines: Vec<String> = table.rows.iter().map(|row| line(row)).collect();
-        let rule: Vec<String> = widths.iter().map(|&width| "─".repeat(width)).collect();
-        lines.insert(1.min(lines.len()), rule.join("─┼─"));
-        text.replace_range(table.range, &lines.join("\n"));
-    }
-    text
-}
-
-/// `text`, what `landing` says, with what came of our last press of its card after its
-/// first line, `web · deploy 42 failed · Retrying smoke tests`, until the card changes.
-fn pressed(landing: &Landing<'_>, mut text: String, who: Who<'_>) -> String {
-    let Some(result) = landing
-        .card
-        .as_ref()
-        .and_then(|card| who.pressed.pressed(&landing.entry.from, card))
-    else {
-        return text;
-    };
-    let end = text.find('\n').unwrap_or(text.len());
-    text.insert_str(end, &format!(" · {result}"));
-    text
-}
-
-/// What goes under `item`, laid out as `piece` in `conversation`: its card's buttons,
-/// then its reactions, `text_width` wide.
-fn under(
-    conversation: &Conversation,
-    item: &Item<'_>,
-    who: Who<'_>,
-    piece: &Piece,
-    text_width: usize,
-) -> Vec<Row> {
-    let id = piece.id.as_ref();
-    let mut rows: Vec<Row> = card_buttons(item, who, id).into_iter().collect();
-    if let Some(id) = id {
-        rows.extend(reaction_rows(conversation, id, who.chat.me(), text_width));
-    }
-    rows
-}
-
-/// The row of the buttons we may press on `item`'s card, if it has any: drawn apart from
-/// its text, as every app draws a card's buttons.
-fn card_buttons(item: &Item<'_>, who: Who<'_>, id: Option<&String>) -> Option<Row> {
-    let Item::Landing(landing) = item else {
-        return None;
-    };
-    let card = landing.card.as_ref()?;
-    let labels: Vec<String> = who
-        .chat
-        .card_buttons(card)
-        .into_iter()
-        .map(|action| action.label.clone())
-        .collect();
-    (!labels.is_empty()).then(|| Row::Buttons {
-        id: id.cloned(),
-        labels,
-    })
-}
-
-/// What goes dim after a line: the session an app's post is about, at the end of its first
-/// row. Never the app a message was sent from, which only its details say.
-fn hints(item: &Item<'_>) -> (String, String) {
-    match item {
-        Item::Landing(landing) => (
-            String::new(),
-            landing
-                .session
-                .map(|session| format!("· {session}"))
-                .unwrap_or_default(),
-        ),
-        _ => (String::new(), String::new()),
-    }
-}
-
-/// What `conversation`, in `chat`, shows, its items by day in `zone`: only what people
-/// say, and whatever mentions us, when `people` is all that's wanted.
-fn shown<'a>(
-    chat: &Chat,
-    conversation: &'a Conversation,
-    zone: Zone,
-    people: bool,
-) -> Vec<Item<'a>> {
-    let all = chat.items(conversation, |time| zone.date(time));
-    if people { people_only(all) } else { all }
-}
-
-/// What `item` came from, unless it's several things or none.
-fn entry_of<'a>(item: &Item<'a>) -> Option<&'a Entry> {
-    match item {
-        Item::Message { entry, .. }
-        | Item::Notice { entry, .. }
-        | Item::Action { entry, .. }
-        | Item::Event { entry, .. }
-        | Item::File { entry, .. }
-        | Item::Note { entry, .. } => Some(entry),
-        Item::Landing(landing) => Some(landing.entry),
-        Item::Pointer(pointer) => Some(pointer.entry),
-        Item::Day(_) | Item::Membership(_) => None,
-    }
-}
-
-/// Whether `item` is the message `id`.
-fn holds(item: &Item<'_>, id: &str) -> bool {
-    entry_of(item).is_some_and(|entry| entry.id.as_deref() == Some(id))
-}
-
-/// Whether `item` carries on a run of what the same agent said, as zirc-chat says: its
-/// posts read on under one header, as a person's do.
-fn runs_on(item: &Item<'_>) -> bool {
-    matches!(
-        item,
-        Item::Event {
-            continues: true,
-            ..
+        let mut row = run.row(line, nick);
+        if let Row::Text { hint, tone, .. } = &mut row
+            && first
+        {
+            if let Some(session) = &system.session {
+                *hint = format!("· {}", session.label);
+            }
+            if !matches!(tone, Tone::App(_)) {
+                *tone = Tone::App(system.outcome);
+            }
         }
+        rows.push(row);
+    }
+    rows.extend(more_row(line));
+    if let Some(buttons) = &system.buttons {
+        rows.push(Row::Buttons {
+            id: line_id(line).map(str::to_owned),
+            labels: buttons
+                .actions
+                .iter()
+                .map(|action| action.label.clone())
+                .collect(),
+            said: look.pressed.pressed(&buttons.key),
+        });
+    }
+}
+
+/// An event's parts, as zirc-chat says them: its lead ([`SystemLine::lead`]), its details
+/// on the lead's row unless they start one of their own ([`SystemLine::details_apart`]),
+/// and its paths when they're listed, the first [`SHOWN_PATHS`] one a row and how many more.
+fn parts_runs(look: &Look<'_>, line: &Line, system: &SystemLine, width: usize) -> Vec<Run> {
+    let links = look.links;
+    let lead = if system.lead.is_empty() || system.verb_links.is_empty() {
+        (system.lead.clone(), Vec::new())
+    } else {
+        let (verb, marks) = spans_text(&system.verb_links, links);
+        (format!("{} {verb}", system.glyph), marks)
+    };
+    let words = system.words(&line.text);
+    let details = if words == system.details && !system.details_links.is_empty() {
+        spans_text(&system.details_links, links)
+    } else {
+        (words.to_owned(), Vec::new())
+    };
+    let details_tone = Tone::Details(system.details_tone.clone());
+    let lead_tone = |details| Tone::Lead {
+        marker: system.marker_tone.clone(),
+        details,
+    };
+    let mut runs = match (lead.0.is_empty(), details.0.is_empty()) {
+        (true, true) => Vec::new(),
+        (true, false) => wrapped(details, width, &details_tone),
+        (false, true) => wrapped(lead, width, &lead_tone(None)),
+        (false, false) if system.details_apart => {
+            let mut runs = wrapped(lead, width, &lead_tone(None));
+            runs.extend(wrapped(details, width, &details_tone));
+            runs
+        }
+        (false, false) => {
+            let from = lead.0.len() + 1;
+            let mut marks = lead.1;
+            marks.extend(details.1);
+            let mut runs = wrapped(
+                (format!("{} {}", lead.0, details.0), marks),
+                width,
+                &details_tone,
+            );
+            if let Some(first) = runs.first_mut() {
+                let details =
+                    (first.text.len() > from).then(|| (from, system.details_tone.clone()));
+                first.tone = lead_tone(details);
+            }
+            runs
+        }
+    };
+    // What's wrapped of a lead too long for its row reads as the lead does, muted.
+    for run in runs.iter_mut().skip(1) {
+        if matches!(run.tone, Tone::Lead { .. }) {
+            run.tone = Tone::Status;
+        }
+    }
+    if system.paths_listed {
+        runs.extend(system.paths.iter().take(SHOWN_PATHS).map(|path| Run {
+            text: fit(path, width),
+            tone: Tone::Path,
+            links: Vec::new(),
+        }));
+        if let Some(hidden) = system
+            .paths
+            .len()
+            .checked_sub(SHOWN_PATHS)
+            .filter(|n| *n > 0)
+        {
+            runs.push(Run {
+                text: show_more_paths_label(hidden),
+                tone: Tone::More,
+                links: Vec::new(),
+            });
+        }
+    }
+    runs
+}
+
+/// People coming and going, or a note: one quiet line, its marker in front when it has
+/// one, and no time, as every app draws it (the user's choice, 20 Nov 2026).
+fn quiet_rows(look: &Look<'_>, line: &Line, rows: &mut Vec<Row>) {
+    let glyph = line
+        .system
+        .as_ref()
+        .map(|system| system.glyph.clone())
+        .unwrap_or_default();
+    let mut runs = wrapped(
+        (line.text.clone(), Vec::new()),
+        look.text_width,
+        &Tone::Status,
+    )
+    .into_iter();
+    let first = runs.next().map(|run| run.text).unwrap_or_default();
+    rows.push(Row::System {
+        time: String::new(),
+        glyph,
+        text: first,
+        id: line_id(line).map(str::to_owned),
+        agent: None,
+        links: Vec::new(),
+        mention: false,
+    });
+    rows.extend(runs.map(|run| run.row(line, String::new())));
+}
+
+/// An agent's routine work as one quiet line, zirc-chat's [`SystemLine::brief`], its mark
+/// in front; or a card's update said further down, [`Line::text`]: its marker, its words cut
+/// to the row and its time.
+fn brief_rows(look: &Look<'_>, line: &Line, rows: &mut Vec<Row>) {
+    let Some(system) = &line.system else {
+        return quiet_rows(look, line, rows);
+    };
+    let brief = line.shape == RowShape::Brief;
+    let agent = line
+        .speaker
+        .as_ref()
+        .filter(|_| brief)
+        .and_then(agent)
+        .map(|agent| Agent {
+            detail: String::new(),
+            ..agent
+        });
+    let text = match &system.brief {
+        Some(words) if brief => words.clone(),
+        _ => line.text.clone(),
+    };
+    let mark = if agent.is_some() { AGENT_MARK_WIDTH } else { 0 };
+    let width = look
+        .text_width
+        .saturating_sub(mark + line.clock.width() + 3);
+    rows.push(Row::System {
+        time: line.clock.clone(),
+        glyph: system.glyph.clone(),
+        text: fit(&text, width),
+        id: line_id(line).map(str::to_owned),
+        agent,
+        links: Vec::new(),
+        mention: false,
+    });
+}
+
+/// `line`'s words: its blocks ([`Line::rich`]), or its text when it's one plain paragraph.
+fn words(look: &Look<'_>, line: &Line, width: usize, tone: &Tone) -> Vec<Run> {
+    if line.rich.is_empty() {
+        wrapped((line.text.clone(), Vec::new()), width, tone)
+    } else {
+        blocks(look, &line.rich, width, tone)
+    }
+}
+
+/// A shared file: its name, its size as zirc-chat says it and where it's fetched, which
+/// terminals make clickable.
+fn file_runs(file: &LineFile, width: usize) -> Vec<Run> {
+    let text = match &file.url {
+        Some(url) => format!("{} ({}) {url}", file.name, file.size_text),
+        None => format!("{} ({})", file.name, file.size_text),
+    };
+    wrapped((text, Vec::new()), width, &Tone::Message)
+}
+
+/// `runs`, `line`'s words, saying it was corrected after them when it was ([`EDITED`]): on
+/// their last row when it fits there, else on a row of its own.
+fn edited(line: &Line, runs: &mut Vec<Run>, width: usize) {
+    if !line.edited {
+        return;
+    }
+    match runs.last_mut() {
+        Some(last) if last.text.width() + 1 + EDITED.width() <= width => {
+            last.text = format!("{} {EDITED}", last.text);
+        }
+        _ => runs.push(Run {
+            text: EDITED.to_owned(),
+            tone: Tone::More,
+            links: Vec::new(),
+        }),
+    }
+}
+
+/// A long message's control, as zirc-chat words it ([`Line::more`]): `Show 34 more lines`.
+fn more_row(line: &Line) -> Option<Row> {
+    let more = line.more.as_ref()?;
+    Some(
+        Run {
+            text: more.label.clone(),
+            tone: Tone::More,
+            links: Vec::new(),
+        }
+        .row(line, String::new()),
     )
 }
 
-/// `item` as a system row, if it's one: a machine's event, its words its own when
-/// zirc-chat has none for it ([`Parts::words`]), or people coming and going.
-fn system_parts(item: &Item<'_>) -> Option<Parts> {
-    match item {
-        Item::Event { parts, text, .. } => Some(Parts {
-            details: parts.words(text),
-            ..parts.clone()
-        }),
-        Item::Membership(membership) => Some(membership.parts()),
-        Item::Pointer(pointer) => Some(pointer.parts()),
-        _ => None,
-    }
-}
-
-/// `item` as one quiet line, as the core says ([`Conversation::brief`]): an agent's routine
-/// work, unless someone has reacted to it or it's an agent's own conversation. What follows
-/// a brief line heads itself again: there's no header for it to carry on from.
-fn brief_of(look: &Look<'_>, item: &Item<'_>) -> Option<String> {
-    let id = entry_of(item).and_then(|entry| entry.id.as_deref());
-    look.conversation.brief(&system_parts(item)?, id)
-}
-
-/// Marks a system row's `rows` as mentioning us when it does, as a message's are.
-fn mark_mentions(rows: &mut [Row], mentions: bool) {
-    for row in rows {
-        if let Row::System { mention, .. } | Row::Text { mention, .. } = row {
-            *mention = mentions;
-        }
-    }
-}
-
-/// How a system row's text is laid out: its width, what to call an agent session it names,
-/// and how the terminal shows links.
-type Shape<'a> = (usize, &'a dyn Fn(&SpanKind) -> Option<String>, Links);
-
-/// A system row, `parts`, at `time`. A short one is one line, `dana's agent pushed main`,
-/// wrapped; an agent's routine work with its `brief` is that brief on one line, its paths
-/// left out; otherwise a header, `dana's agent · intent · 14:03`, with what it's about
-/// under it. Its paths follow on a dim row cut to fit.
-fn system_rows(
-    rows: &mut Vec<Row>,
-    parts: &Parts,
-    time: &str,
-    id: Option<&str>,
-    (text_width, named, link_mode): Shape<'_>,
-    (agent, pill, continues, brief): (Option<Agent>, Option<&'static str>, bool, Option<String>),
-) {
-    // Agent sessions named in it go by their names, drawn as mentions; the branch and
-    // commit it names link to their pages, where the terminal can.
-    let (details, mut marks) = label(&strip_formatting(&parts.details), Links::Plain, named, &[]);
-    let parts = &Parts {
-        details,
-        ..parts.clone()
-    };
-    if link_mode == Links::Labelled {
-        marks.extend(
-            parts
-                .links
-                .iter()
-                .map(|(word, url)| (word.clone(), Some(url.clone()))),
-        );
-    }
-    // People coming and going are one line, as zirc-chat decides (`Parts::compact`), as is
-    // an agent's routine work, its icon in front. Anything else is drawn as a message: its
-    // actor's header, unless it carries on their run, then its body.
-    let one_line = parts.compact || brief.is_some();
-    let agent = agent.map(|agent| Agent {
-        detail: if one_line {
-            String::new()
-        } else {
-            agent.detail
-        },
-        ..agent
-    });
-    let lines = if one_line {
-        let text_width = if agent.is_some() {
-            text_width.saturating_sub(AGENT_MARK_WIDTH)
-        } else {
-            text_width
-        };
-        let (said, width) = time_room(
-            brief.clone().unwrap_or_else(|| parts.line()),
-            text_width,
-            time,
-            agent.is_some(),
-        );
-        let wrapped = wrap(&said, width);
-        let marked = fragments(&wrapped, &marks, width);
-        let mut lines = wrapped.into_iter().zip(marked);
-        let (first, first_links) = lines.next().unwrap_or_default();
-        // Who is drawn apart, in bold, when it fits on the first line.
-        let (actor, verb) = match first.strip_prefix(parts.actor.as_str()) {
-            Some(rest) if !parts.actor.is_empty() => (parts.actor.clone(), rest.trim_start()),
-            _ => (String::new(), first.as_str()),
-        };
-        rows.push(Row::System {
-            time: time.to_owned(),
-            icon: parts.icon,
-            actor,
-            verb: verb.to_owned(),
-            id: id.map(str::to_owned),
-            agent: agent.clone(),
-            links: first_links,
-            mention: false,
-        });
-        lines.map(|line| (line, Tone::Status)).collect::<Vec<_>>()
-    } else {
-        // Its header, a message's: who, whose agent or an app's tag, and when. No verb, no
-        // kind word and no AGENT tag: its body's lead says what it did.
-        if !continues {
-            rows.push(Row::Header {
-                nick: fit(&parts.actor, text_width),
-                time: time.to_owned(),
-                tone: Tone::Message,
-                hint: String::new(),
-                id: id.map(str::to_owned),
-                pill,
-                agent,
-            });
-        }
-        // Its body: zirc-chat's lead, the marker and what it did, then what it was, all
-        // wrapped, never cut.
-        let mut lines = Vec::new();
-        for (text, tone) in body(parts) {
-            if text.is_empty() {
-                continue;
+/// What a run of spans says, and the links and names it shows with where each goes: a link
+/// by the words zirc-chat gives it where the terminal shows `links` as labels, else its
+/// address as written; an agent session or a person named, as a chip, going nowhere.
+fn spans_text(spans: &[RichSpan], links: Links) -> (String, Vec<(String, Option<String>)>) {
+    let mut text = String::new();
+    let mut marks = Vec::new();
+    for span in spans {
+        match &span.kind {
+            RichSpanKind::Link { url } if !url.chars().any(char::is_control) => match links {
+                Links::Labelled => {
+                    text.push_str(&span.text);
+                    marks.push((span.text.clone(), Some(url.clone())));
+                }
+                // Code linked to, a file or a commit, keeps its words; a bare address is its
+                // address; a link with words of its own says where it goes after them.
+                Links::Plain if span.code.is_some() || span.text == *url => {
+                    text.push_str(&span.text);
+                }
+                Links::Plain if span.text == link_label(url) => text.push_str(url),
+                Links::Plain => {
+                    text.push_str(&span.text);
+                    text.push_str(" (");
+                    text.push_str(url);
+                    text.push(')');
+                }
+            },
+            RichSpanKind::Session { .. } | RichSpanKind::Mention { .. } => {
+                text.push_str(&span.text);
+                marks.push((span.text.clone(), None));
             }
-            let wrapped = wrap(&text, text_width);
-            let marked = fragments(&wrapped, &marks, text_width);
-            lines.extend(wrapped.into_iter().zip(marked).map(|line| (line, tone)));
+            _ => text.push_str(&span.text),
         }
-        lines
-    };
-    let text_row = |(text, links): (String, Vec<Link>), tone: Tone| Row::Text {
-        nick: String::new(),
-        text,
-        tone,
-        mention: false,
-        hint: String::new(),
-        id: id.map(str::to_owned),
-        links,
-    };
-    rows.extend(lines.into_iter().map(|(line, tone)| text_row(line, tone)));
-    if brief.is_none() && !parts.paths.is_empty() {
-        rows.push(text_row(
-            (paths_line(&parts.paths, text_width), Vec::new()),
-            Tone::Path,
-        ));
     }
+    (text, marks)
 }
 
-/// An event's body as a message draws it: zirc-chat's lead, the marker and what it did, then
-/// its details, what it was, in the core's tone for them ([`Icon::words_tone`]).
-fn body(parts: &Parts) -> [(String, Tone); 2] {
-    [
-        (parts.lead(), Tone::Lead(parts.icon)),
-        (parts.details.clone(), Tone::Details(parts.icon)),
-    ]
-}
-
-/// A one-line system row's words, `said`, and the width to wrap them in, `text_width` less
-/// room for its time at the end, ` · 14:03`, which is never cut: an `agent`'s doings are
-/// cut short to one line, anything else wraps.
-fn time_room(said: String, text_width: usize, time: &str, agent: bool) -> (String, usize) {
-    let width = text_width.saturating_sub(time.width() + 3);
-    let said = if agent { fit(&said, width) } else { said };
-    (said, width)
-}
-
-/// `paths` on one row of at most `width` columns, those that don't fit counted: `src/a.rs
-/// src/b.rs +3`.
-fn paths_line(paths: &[String], width: usize) -> String {
-    let mut line = String::new();
-    for (i, path) in paths.iter().enumerate() {
-        let gap = if line.is_empty() { "" } else { "  " };
-        let left = paths.len() - i - 1;
-        let more = if left == 0 {
-            String::new()
-        } else {
-            format!("  +{left}")
-        };
-        if line.width() + gap.width() + path.width() + more.width() > width {
-            let rest = format!("+{}", paths.len() - i);
-            return if line.is_empty() {
-                fit(path, width.saturating_sub(rest.width() + 2)) + "  " + &rest
-            } else {
-                format!("{line}  {rest}")
-            };
-        }
-        line.push_str(gap);
-        line.push_str(path);
-    }
-    line
-}
-
-/// The quote of what `piece` answers, if it's a reply, as a row.
-fn quote_row(piece: &Piece) -> Option<Row> {
-    Some(Row::Text {
-        nick: String::new(),
-        text: piece.quote.clone()?,
-        tone: Tone::Quote,
-        mention: false,
-        hint: String::new(),
-        id: piece.id.clone(),
-        links: Vec::new(),
-    })
-}
-
-/// `piece` as zirc's other apps show it: what someone said under a header, its nick and
-/// time, unless it continues their run; anything else on its own, after its mark.
-fn standard_rows(rows: &mut Vec<Row>, piece: &Piece, text_width: usize) {
-    if piece.said && !piece.continues {
-        rows.push(Row::Header {
-            nick: piece.nick.clone(),
-            time: piece.time.clone(),
-            tone: piece.tone,
-            hint: piece.hint.clone(),
-            id: piece.id.clone(),
-            pill: piece.pill,
-            agent: piece.agent.clone(),
-        });
-    }
-    rows.extend(quote_row(piece));
-    let wrapped = wrap(&piece.text, text_width);
-    let links = fragments(&wrapped, &piece.links, text_width);
-    for (i, (text, links)) in wrapped.into_iter().zip(links).enumerate() {
-        rows.push(Row::Text {
-            // What nobody said has its mark in front, and an app's post its outcome's icon.
-            nick: match piece.tone {
-                _ if i > 0 => String::new(),
-                _ if !piece.said => piece.nick.clone(),
-                Tone::App(Some(icon)) => icon.glyph().to_owned(),
-                _ => String::new(),
-            },
+/// `text`, with the links it shows, `marks`, wrapped to `width` in rows that read as `tone`.
+fn wrapped(
+    (text, marks): (String, Vec<(String, Option<String>)>),
+    width: usize,
+    tone: &Tone,
+) -> Vec<Run> {
+    let rows = wrap(&text, width);
+    let links = fragments(&rows, &marks, width);
+    rows.into_iter()
+        .zip(links)
+        .map(|(text, links)| Run {
             text,
-            tone: piece.tone,
-            mention: piece.mention,
-            // The session an app's post is about, dim at the end of its first row.
-            hint: if i == 0 {
-                piece.after.clone()
-            } else {
-                String::new()
-            },
-            id: piece.id.clone(),
+            tone: tone.clone(),
             links,
-        });
+        })
+        .collect()
+}
+
+/// `blocks`, a message's words as zirc-chat gives them ([`RichBlock`]), as rows `width`
+/// wide, words reading as `tone`.
+fn blocks(look: &Look<'_>, blocks: &[RichBlock], width: usize, tone: &Tone) -> Vec<Run> {
+    let mut runs = Vec::new();
+    for block in blocks {
+        block_runs(look, block, width, tone, &mut runs);
+    }
+    runs
+}
+
+/// `block`'s rows, `width` wide, onto `runs`: words wrapped, a heading bold, a code block's
+/// lines indented and cut, never wrapped, a table in columns, a quote behind a bar, a list's
+/// items after their markers, a card's updates each on its row and a rule across.
+fn block_runs(look: &Look<'_>, block: &RichBlock, width: usize, tone: &Tone, runs: &mut Vec<Run>) {
+    match block {
+        RichBlock::Paragraph { spans } => {
+            runs.extend(wrapped(spans_text(spans, look.links), width, tone));
+        }
+        RichBlock::Heading { spans, .. } => {
+            runs.extend(wrapped(
+                spans_text(spans, look.links),
+                width,
+                &Tone::Heading,
+            ));
+        }
+        RichBlock::Code { text, .. } => {
+            let text = text.strip_suffix('\n').unwrap_or(text);
+            runs.extend(text.split('\n').map(|code| Run {
+                text: fit(&format!("  {code}"), width),
+                tone: Tone::Code,
+                links: Vec::new(),
+            }));
+        }
+        RichBlock::Table { align, head, rows } => {
+            let cells = |row: &zirc_core::chat::RichRow| {
+                row.cells
+                    .iter()
+                    .map(|cell| spans_text(&cell.spans, look.links))
+                    .collect::<Vec<_>>()
+            };
+            let head = cells(head);
+            let rows: Vec<_> = rows.iter().map(cells).collect();
+            runs.extend(table(align, &head, &rows, width, tone));
+        }
+        RichBlock::Rule => runs.push(Run {
+            text: "─".repeat(width),
+            tone: Tone::Status,
+            links: Vec::new(),
+        }),
+        RichBlock::Quote { blocks: quoted } => {
+            for run in blocks(look, quoted, width.saturating_sub(2).max(1), &Tone::Quote) {
+                runs.push(Run {
+                    text: format!("│ {}", run.text),
+                    ..run
+                });
+            }
+        }
+        RichBlock::Items { items, .. } => {
+            for item in items {
+                let lead = item.marker.width() + 1;
+                let inner = blocks(look, &item.blocks, width.saturating_sub(lead).max(1), tone);
+                for (at, run) in inner.into_iter().enumerate() {
+                    let before = if at == 0 {
+                        format!("{} ", item.marker)
+                    } else {
+                        " ".repeat(lead)
+                    };
+                    runs.push(Run {
+                        text: format!("{before}{}", run.text),
+                        ..run
+                    });
+                }
+            }
+        }
+        RichBlock::Trail { stubs } => {
+            for stub in stubs {
+                runs.extend(wrapped(
+                    spans_text(&stub.spans, look.links),
+                    width,
+                    &Tone::Status,
+                ));
+            }
+        }
     }
 }
 
-/// The reactions to the message `id`, in rows of at most `width` columns.
-fn reaction_rows(conversation: &Conversation, id: &str, me: &str, width: usize) -> Vec<Row> {
+/// A cell's words and the links it shows.
+type Cell = (String, Vec<(String, Option<String>)>);
+
+/// A table's rows, `head` over `rows`, in columns, as zirc's other apps draw it as a grid:
+/// each column as wide as its widest cell, lined up as zirc-chat says (`align`), `│` between
+/// them and `─┼─` under the header; each row cut to `width`.
+fn table(
+    align: &[CellAlign],
+    head: &[Cell],
+    rows: &[Vec<Cell>],
+    width: usize,
+    tone: &Tone,
+) -> Vec<Run> {
+    fn words(row: &[Cell], at: usize) -> &str {
+        row.get(at).map_or("", |cell| cell.0.as_str())
+    }
+    let all = || std::iter::once(head).chain(rows.iter().map(Vec::as_slice));
+    let columns = all().map(<[Cell]>::len).max().unwrap_or(0);
+    let widths: Vec<usize> = (0..columns)
+        .map(|at| all().map(|row| words(row, at).width()).max().unwrap_or(0))
+        .collect();
+    let line = |row: &[Cell], tone: Tone| {
+        let cells: Vec<String> = widths
+            .iter()
+            .enumerate()
+            .map(|(at, &column)| {
+                let said = words(row, at);
+                let room = column.saturating_sub(said.width());
+                let before = match align.get(at).copied().unwrap_or_default() {
+                    CellAlign::Start => 0,
+                    CellAlign::Center => room / 2,
+                    CellAlign::End => room,
+                };
+                format!("{}{said}{}", " ".repeat(before), " ".repeat(room - before))
+            })
+            .collect();
+        let text = fit(cells.join(" │ ").trim_end(), width);
+        let marks: Vec<_> = row.iter().flat_map(|cell| cell.1.clone()).collect();
+        let links = fragments(std::slice::from_ref(&text), &marks, width)
+            .pop()
+            .unwrap_or_default();
+        Run { text, tone, links }
+    };
+    let rule: Vec<String> = widths.iter().map(|&column| "─".repeat(column)).collect();
+    let mut runs = vec![
+        line(head, Tone::Heading),
+        Run {
+            text: fit(&rule.join("─┼─"), width),
+            tone: Tone::Status,
+            links: Vec::new(),
+        },
+    ];
+    runs.extend(rows.iter().map(|row| line(row, tone.clone())));
+    runs
+}
+
+/// The reactions to `line`, in rows of at most `width` columns.
+fn reaction_rows(line: &Line, width: usize) -> Vec<Row> {
+    let Some(id) = line_id(line) else {
+        return Vec::new();
+    };
     let mut rows = Vec::new();
     let mut chips: Vec<Chip> = Vec::new();
     let mut used = 0;
-    for chip in conversation.chips(id, me) {
-        let wide = chip_text(&chip).width();
+    for chip in &line.reactions {
+        let wide = chip_text(chip).width();
         if !chips.is_empty() && used + CHIP_GAP + wide > width {
             rows.push(Row::Reactions {
                 id: id.to_owned(),
@@ -982,7 +936,7 @@ fn reaction_rows(conversation: &Conversation, id: &str, me: &str, width: usize) 
         } else {
             used + CHIP_GAP + wide
         };
-        chips.push(chip);
+        chips.push(LineReaction::clone(chip));
     }
     if !chips.is_empty() {
         rows.push(Row::Reactions {
@@ -1005,96 +959,6 @@ pub fn message_ids(rows: &[Row]) -> Vec<&str> {
         }
     }
     ids
-}
-
-/// What a line shows as its name, or its mark in front, and as text, how it reads, and whether it carries
-/// on a run. System rows are laid out by [`system_rows`] instead. A notice is headed by its
-/// sender's name, as a message's head names them ([`Chat::speaker`]): zirc's own as zirc.
-fn columns(chat: &Chat, item: &Item<'_>, zone: Zone) -> (String, String, Tone, bool) {
-    match item {
-        Item::Message {
-            entry,
-            text,
-            continues,
-            ..
-        } => (
-            entry.from.clone(),
-            // A sealed part as `🔒 sealed`, or its value once revealed.
-            chat.sealed_text(entry, text),
-            if sender_kind(&entry.from, entry.owner.as_deref()) == SenderKind::Integration {
-                Tone::App(None)
-            } else {
-                Tone::Message
-            },
-            *continues,
-        ),
-        Item::Notice {
-            entry,
-            text,
-            continues,
-        } => (
-            format!("-{}-", chat.speaker(entry).name),
-            (*text).to_owned(),
-            Tone::Notice,
-            *continues,
-        ),
-        Item::Action { entry, text, .. } => (
-            "*".into(),
-            format!("{} {text}", entry.from),
-            Tone::Action,
-            false,
-        ),
-        // An app's post, under its name like anyone's, its outcome's icon in front, in the
-        // indent.
-        // A card's updates under it, each on its line: the terminal shows them all.
-        Item::Landing(landing) => {
-            let icon = Some(landing.parts().icon).filter(|icon| *icon != Icon::Post);
-            let plain = std::iter::once(landing.plain())
-                .chain(
-                    landing
-                        .updates
-                        .iter()
-                        .map(|update| update.line(&|at| zirc_core::chat::clock(zone.wall(at)))),
-                )
-                .collect::<Vec<_>>()
-                .join("\n");
-            (
-                landing.entry.from.clone(),
-                plain,
-                Tone::App(icon),
-                landing.continues,
-            )
-        }
-        // The link opens it: terminals make URLs clickable, and zirc.dev asks the person to
-        // sign in.
-        Item::File {
-            file,
-            from,
-            continues,
-            ..
-        } => (
-            from.clone(),
-            format!(
-                "{} ({}) {}",
-                strip_formatting(&file.name),
-                size_text(file.size),
-                file.url
-            ),
-            Tone::Message,
-            *continues,
-        ),
-        Item::Note { entry, text } => {
-            let (mark, tone) = if matches!(entry.kind, EntryKind::Info(_)) {
-                ("!", Tone::Info)
-            } else {
-                ("·", Tone::Status)
-            };
-            (mark.into(), text.clone(), tone, false)
-        }
-        Item::Day(_) | Item::Event { .. } | Item::Membership(_) | Item::Pointer(_) => {
-            (String::new(), String::new(), Tone::Status, false)
-        }
-    }
 }
 
 /// `name` cut to `width` columns, with `…` when cut: how every name too long for its place
@@ -1158,54 +1022,82 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone as _;
+    use zirc_core::chat::{Link as Linked, Options};
 
-    fn unpressed(_: &str, _: &Card) -> Option<String> {
+    fn unpressed(_: &str) -> Option<String> {
         None
     }
 
-    /// Us as `me`, in a chat that knows nothing more: no guests, everyone by their nick and
-    /// sessions by their ids.
-    fn who() -> Who<'static> {
-        let mut chat = Chat::new(
-            "me",
-            "irc.zirc.test",
-            Vec::new(),
-            zirc_core::chat::Options::default(),
+    fn noon() -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 10, 30, 12, 0, 0).unwrap()
+    }
+
+    fn utc() -> FixedOffset {
+        FixedOffset::east_opt(0).unwrap()
+    }
+
+    /// Us as `me`, connected at noon on 30 October and in `#api` with alice and bob, and
+    /// the machines these tests hear from, whose their hosts say they are.
+    fn chat() -> Chat {
+        let mut chat = Chat::new("me", "irc.zirc.test", Vec::new(), Options::default());
+        chat.clock = noon;
+        let _ = chat.connected(Linked {
+            nick: "me".into(),
+            metadata: false,
+            chathistory: false,
+            echo: true,
+            read_marker: false,
+            trim: true,
+            multiline: None,
+        });
+        hear(
+            &mut chat,
+            &[
+                ":me!u@h JOIN #api".to_owned(),
+                ":s 353 me = #api :me alice bob mattias-mbp dana-mbp".to_owned(),
+                ":s 366 me #api :End".to_owned(),
+            ],
         );
-        // The machines these tests hear from, whose their hosts say they are.
-        for machine in [":mattias-mbp!u@machine/mattias", ":dana-mbp!u@machine/dana"] {
-            let _ = chat.receive(format!("{machine} JOIN #api").parse().unwrap());
-        }
-        let chat: &'static Chat = Box::leak(Box::new(chat));
-        Who {
-            chat,
-            pressed: &unpressed,
-        }
-    }
-    use chrono::TimeZone as _;
-    use zirc_core::chat::Kind;
-
-    fn utc() -> Zone {
-        Zone::Fixed(FixedOffset::east_opt(0).unwrap())
+        chat
     }
 
-    /// What `from` said at `hour`:`minute` on the `day`th. These tests' machines,
-    /// `mattias-mbp` and `dana-mbp`, are their owners', as their hosts said.
-    fn at(day: u32, hour: u32, minute: u32, (from, kind): (&str, EntryKind)) -> Entry {
-        Entry {
-            from: from.into(),
-            owner: from.strip_suffix("-mbp").map(str::to_owned),
-            kind,
-            ..Entry::info(
-                Utc.with_ymd_and_hms(2026, 10, day, hour, minute, 0)
-                    .unwrap(),
-                String::new(),
-            )
+    fn hear(chat: &mut Chat, lines: &[String]) {
+        for line in lines {
+            let _ = chat.receive(line.parse().unwrap());
         }
     }
 
-    fn says<'a>(nick: &'a str, text: &str) -> (&'a str, EntryKind) {
-        (nick, EntryKind::Message(text.into()))
+    /// `line`, from `who`, said at `time` (`2026-10-30T09:00`) with the id `id`.
+    fn at(time: &str, id: &str, who: &str, line: &str) -> String {
+        format!("@time={time}:00.000Z;msgid={id} :{who} {line}")
+    }
+
+    /// `event` from the agent session `cc-12` on `machine`, owned by `owner`, in `room`.
+    fn zirc(
+        (time, id): (&str, &str),
+        (machine, owner): (&str, &str),
+        room: &str,
+        event: zirc_proto::Event,
+    ) -> String {
+        let body = zirc_proto::encode(&zirc_proto::Message::new("cc-12", event)).unwrap();
+        at(
+            time,
+            id,
+            &format!("{machine}!u@machine/{owner}"),
+            &format!("PRIVMSG {room} :{body}"),
+        )
+    }
+
+    fn look(chat: &Chat, width: usize, links: Links) -> Look<'_> {
+        Look::new(chat, &unpressed, chat.divider(), width, links)
+    }
+
+    fn rows_of(chat: &Chat, name: &str, width: usize) -> Vec<Row> {
+        layout(
+            &look(chat, width, Links::Plain),
+            &chat.lines(name, utc(), false),
+        )
     }
 
     fn shown(rows: &[Row]) -> Vec<String> {
@@ -1213,14 +1105,15 @@ mod tests {
             .map(|row| match row {
                 Row::Divider(day) => format!("--- {day}"),
                 Row::New => "--- New".to_owned(),
-                Row::Buttons { labels, .. } => format!("{:13} {}", "", labels.join(" · ")),
+                Row::Buttons { labels, said, .. } => {
+                    let said = said.as_deref().unwrap_or_default();
+                    format!("{:13} {} {said}", "", labels.join(" · "))
+                        .trim_end()
+                        .to_owned()
+                }
                 Row::System {
-                    time,
-                    icon,
-                    actor,
-                    verb,
-                    ..
-                } => format!("{time:5} {:>7} {actor}|{verb}", icon.glyph()),
+                    time, glyph, text, ..
+                } => format!("{time:5} {glyph:>7} {text}").trim_end().to_owned(),
                 Row::Header {
                     nick,
                     time,
@@ -1252,30 +1145,23 @@ mod tests {
 
     #[test]
     fn shows_reactions_under_what_they_react_to() {
-        use zirc_core::chat::{Chat, Link, Options};
-        let mut chat = Chat::new("me", "irc.zirc.test", Vec::new(), Options::default());
-        let _ = chat.connected(Link {
-            nick: "me".into(),
-            metadata: false,
-            chathistory: false,
-            echo: true,
-            read_marker: false,
-            trim: true,
-            multiline: None,
-        });
-        for line in [
-            ":me!u@h JOIN #api",
-            "@msgid=m1;time=2026-10-30T09:00:00.000Z :alice!u@h PRIVMSG #api :shipped it",
-            "@msgid=m2;time=2026-10-30T09:01:00.000Z :bob!u@h PRIVMSG #api :nice",
-            "@+draft/react=🎉;+draft/reply=m1 :bob!u@h TAGMSG #api",
-            "@+draft/react=🎉;+draft/reply=m1 :me!u@h TAGMSG #api",
-            "@+draft/react=🚀;+draft/reply=m1 :bob!u@h TAGMSG #api",
-        ] {
-            let _ = chat.receive(line.parse().unwrap());
-        }
-        let api = chat.conversation("#api").unwrap();
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(api, who(), None, 80, (utc(), today), (Links::Plain, false));
+        let mut chat = chat();
+        hear(
+            &mut chat,
+            &[
+                at(
+                    "2026-10-30T09:00",
+                    "m1",
+                    "alice!u@h",
+                    "PRIVMSG #api :shipped it",
+                ),
+                at("2026-10-30T09:01", "m2", "bob!u@h", "PRIVMSG #api :nice"),
+                "@+draft/react=🎉;+draft/reply=m1 :bob!u@h TAGMSG #api".to_owned(),
+                "@+draft/react=🎉;+draft/reply=m1 :me!u@h TAGMSG #api".to_owned(),
+                "@+draft/react=🚀;+draft/reply=m1 :bob!u@h TAGMSG #api".to_owned(),
+            ],
+        );
+        let rows = rows_of(&chat, "#api", 80);
         assert_eq!(
             shown(&rows),
             [
@@ -1289,7 +1175,7 @@ mod tests {
         );
         assert_eq!(message_ids(&rows), ["m1", "m2"]);
         // Too many for a row go on to the next.
-        let narrow = layout(api, who(), None, 14, (utc(), today), (Links::Plain, false));
+        let narrow = rows_of(&chat, "#api", 14);
         assert_eq!(
             shown(&narrow)[3..5],
             ["              [🎉 2*]", "              [🚀 1]"]
@@ -1304,29 +1190,39 @@ mod tests {
     }
 
     #[test]
-    fn groups_runs_and_divides_days() {
-        let mut api = Conversation::new("#api", Kind::Channel);
-        for entry in [
-            at(29, 23, 50, says("alice", "late")),
-            at(30, 9, 0, says("alice", "morning")),
-            at(30, 9, 0, says("alice", "again")),
-            at(30, 9, 3, says("alice", "and again")),
-            at(30, 9, 4, says("bob", "hi")),
-            at(30, 9, 30, says("bob", "much later")),
-            at(30, 9, 31, ("carol", EntryKind::Join)),
-        ] {
-            api.entries.push(entry);
-        }
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+    fn groups_runs_and_divides_days_as_zirc_chat_says() {
+        let mut chat = chat();
+        hear(
+            &mut chat,
+            &[
+                at("2026-10-29T23:50", "a0", "alice!u@h", "PRIVMSG #api :late"),
+                at(
+                    "2026-10-30T09:00",
+                    "a1",
+                    "alice!u@h",
+                    "PRIVMSG #api :morning",
+                ),
+                at("2026-10-30T09:00", "a2", "alice!u@h", "PRIVMSG #api :again"),
+                at(
+                    "2026-10-30T09:03",
+                    "a3",
+                    "alice!u@h",
+                    "PRIVMSG #api :and again",
+                ),
+                at("2026-10-30T09:04", "b1", "bob!u@h", "PRIVMSG #api :hi"),
+                at(
+                    "2026-10-30T09:30",
+                    "b2",
+                    "bob!u@h",
+                    "PRIVMSG #api :much later",
+                ),
+                "@time=2026-10-30T09:31:00.000Z :carol!u@h JOIN #api".to_owned(),
+            ],
+        );
+        // The core's runs and its days; people coming and going as one quiet line by its
+        // marker, with no time (the user's choice, 20 Nov 2026).
         assert_eq!(
-            shown(&layout(
-                &api,
-                who(),
-                None,
-                80,
-                (utc(), today),
-                (Links::Plain, false)
-            )),
+            shown(&rows_of(&chat, "#api", 80)),
             [
                 "--- Yesterday",
                 "alice 23:50",
@@ -1340,39 +1236,26 @@ mod tests {
                 "              hi",
                 "bob 09:30",
                 "              much later",
-                "09:31       + |carol joined",
+                "            + carol joined",
             ]
-        );
-        let older = NaiveDate::from_ymd_opt(2026, 11, 5).unwrap();
-        assert_eq!(
-            shown(&layout(
-                &api,
-                who(),
-                None,
-                80,
-                (utc(), older),
-                (Links::Plain, false)
-            ))[0],
-            "--- Thursday 29 October 2026"
         );
     }
 
     #[test]
     fn wraps_long_text_under_its_header() {
-        let mut api = Conversation::new("#api", Kind::Channel);
-        api.entries
-            .push(at(30, 9, 1, says("alice", "one two three four five")));
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+        let mut chat = chat();
+        hear(
+            &mut chat,
+            &[at(
+                "2026-10-30T09:01",
+                "m1",
+                "alice!u@h",
+                "PRIVMSG #api :one two three four five",
+            )],
+        );
         // 20 less the indent, 2, leaves 18 columns of text.
         assert_eq!(
-            shown(&layout(
-                &api,
-                who(),
-                None,
-                20,
-                (utc(), today),
-                (Links::Plain, false)
-            )),
+            shown(&rows_of(&chat, "#api", 20)),
             [
                 "--- Today",
                 "alice 09:01",
@@ -1382,90 +1265,65 @@ mod tests {
         );
     }
 
-    fn commit(session: &str, sha: &str, tool: Option<&str>) -> EntryKind {
-        let mut message = zirc_proto::Message::new(
-            session,
-            zirc_proto::Event::Commit {
-                paths: Vec::new(),
-                branch: "main".into(),
-                sha: sha.into(),
-                subject: "Fix".into(),
-                repo: None,
-            },
-        );
-        message.tool = tool.map(str::to_owned);
-        EntryKind::Zirc(message)
+    fn commit(sha: &str) -> zirc_proto::Event {
+        zirc_proto::Event::Commit {
+            paths: Vec::new(),
+            branch: "main".into(),
+            sha: sha.into(),
+            subject: "Fix".into(),
+            repo: None,
+        }
     }
 
     #[test]
-    fn says_a_commit_and_its_push_in_one_row() {
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        // In the agent's own conversation, where its work is whole.
-        let mut api = Conversation::new("mattias-mbp/cc-12", Kind::Query);
-        let push = zirc_proto::Message::new(
-            "cc-12",
-            zirc_proto::Event::Push {
-                branch: "main".into(),
-                head: "abc1234".into(),
-                forced: false,
-                subjects: Vec::new(),
-                paths: Vec::new(),
-                base: None,
-                lines: std::collections::BTreeMap::new(),
-                repo: None,
-                on: None,
-            },
+    fn says_a_commit_and_its_push_in_one_row_in_the_agents_own_conversation() {
+        let mut chat = chat();
+        let push = zirc_proto::Event::Push {
+            branch: "main".into(),
+            head: "abc1234".into(),
+            forced: false,
+            subjects: Vec::new(),
+            paths: Vec::new(),
+            base: None,
+            lines: std::collections::BTreeMap::new(),
+            repo: None,
+            on: None,
+        };
+        let machine = ("mattias-mbp", "mattias");
+        hear(
+            &mut chat,
+            &[
+                zirc(("2026-10-30T09:00", "e1"), machine, "#api", commit("abc")),
+                zirc(("2026-10-30T09:01", "e2"), machine, "#api", push),
+            ],
         );
-        api.entries
-            .push(at(30, 9, 0, ("mattias-mbp", commit("cc-12", "abc", None))));
-        api.entries
-            .push(at(30, 9, 1, ("mattias-mbp", EntryKind::Zirc(push))));
-        let rows = layout(&api, who(), None, 80, (utc(), today), (Links::Plain, false));
-        // One message: its header, whose agent too, then what it was under it.
-        assert_eq!(
-            shown(&rows),
-            [
-                "--- Today",
-                "cc-12 09:00",
-                "              ● committed and pushed to main",
-                "              Fix  (main abc)"
-            ]
-        );
+        let lines = chat.agent_lines("mattias-mbp/cc-12", utc());
+        let rows = layout(&look(&chat, 80, Links::Plain), &lines);
+        // One message: its head, the room it was said in after its time, then what it was
+        // under it, as zirc-chat folds it.
+        let shown = shown(&rows);
+        assert_eq!(shown[1], "cc-12 09:00  #api", "{shown:#?}");
         assert!(
-            matches!(&rows[1], Row::Header { agent: Some(agent), .. } if !agent.detail.is_empty())
+            shown[2].contains("committed and pushed to main"),
+            "{shown:#?}"
         );
-    }
-
-    fn zirc(nick: &str, event: zirc_proto::Event) -> (&str, EntryKind) {
-        (
-            nick,
-            EntryKind::Zirc(zirc_proto::Message::new("cc-12", event)),
-        )
-    }
-
-    fn landing(text: &str) -> zirc_proto::Event {
-        zirc_proto::Event::custom(zirc_proto::ci::LANDING_KIND, text)
+        assert!(matches!(&rows[1], Row::Header { agent: Some(_), .. }));
     }
 
     #[test]
     fn draws_a_new_divider_above_the_first_unread_without_breaking_the_run() {
-        let mut api = Conversation::new("#api", Kind::Channel);
-        for (minute, id) in [(0, "a1"), (1, "a2")] {
-            api.entries.push(Entry {
-                id: Some(id.into()),
-                ..at(30, 9, minute, says("alice", id))
-            });
-        }
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+        let mut chat = chat();
+        hear(
+            &mut chat,
+            &[
+                at("2026-10-30T09:00", "a1", "alice!u@h", "PRIVMSG #api :a1"),
+                at("2026-10-30T09:01", "a2", "alice!u@h", "PRIVMSG #api :a2"),
+            ],
+        );
+        let lines = chat.lines("#api", utc(), false);
+        let look = Look::new(&chat, &unpressed, Some("a2"), 80, Links::Plain);
         assert_eq!(
-            shown(&layout(
-                &api,
-                who(),
-                Some("a2"),
-                80,
-                (utc(), today),
-                (Links::Plain, false)
-            )),
+            shown(&layout(&look, &lines)),
             [
                 "--- Today",
                 "alice 09:00",
@@ -1478,137 +1336,265 @@ mod tests {
     }
 
     #[test]
-    fn shows_an_apps_posts_as_its_run_with_the_outcome_in_front_and_the_session_after() {
-        let mut api = Conversation::new("#zirc", Kind::Channel);
-        for (minute, text) in [
-            (0, "cc-cdbba7: landed web-look as 3d5fe8a (build 435)"),
-            (
-                1,
-                "cc-cdbba7: build 436 failed in test: //crates/zirc-tui:zirc-tui_test",
-            ),
-        ] {
-            api.entries.push(at(
-                30,
-                9,
-                minute,
-                (
-                    "zirc-ci",
-                    EntryKind::Zirc(zirc_proto::Message::new("ci", landing(text))),
+    fn shows_an_apps_posts_as_cards_with_the_outcome_in_front() {
+        let mut chat = chat();
+        let post = |time: &str, id: &str, text: &str| {
+            let landing = zirc_proto::Event::custom(zirc_proto::ci::LANDING_KIND, text);
+            let body = zirc_proto::encode(&zirc_proto::Message::new("ci", landing)).unwrap();
+            at(time, id, "zirc-ci!u@h", &format!("PRIVMSG #api :{body}"))
+        };
+        hear(
+            &mut chat,
+            &[
+                post(
+                    "2026-10-30T09:00",
+                    "c1",
+                    "cc-cdbba7: landed web-look as 3d5fe8a (build 435)",
                 ),
-            ));
-        }
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(&api, who(), None, 80, (utc(), today), (Links::Plain, false));
-        assert_eq!(
-            shown(&rows),
-            [
-                "--- Today",
-                // An app by its glyph, as zirc's other apps show its avatar.
-                "CI APP 09:00",
-                "            ✓ landed web-look as 3d5fe8a (build 435)  · cc-cdbba7",
-                "            ✗ build 436 failed in test: //crates/zirc-tui:zirc-tui_test  · cc-cdbba7",
-            ]
+                post(
+                    "2026-10-30T09:01",
+                    "c2",
+                    "cc-cdbba7: build 436 failed in test: //crates/zirc-tui:zirc-tui_test",
+                ),
+            ],
         );
-        assert!(matches!(
-            rows[2],
+        let rows = rows_of(&chat, "#api", 100);
+        let shown = shown(&rows);
+        // An app by its tag, as zirc's other apps show it; each landing's outcome in front.
+        assert_eq!(shown[1], "CI APP 09:00", "{shown:#?}");
+        assert!(shown[2].contains("✓ "), "{shown:#?}");
+        assert!(shown.iter().any(|row| row.contains("✗ ")), "{shown:#?}");
+        assert!(rows.iter().any(|row| matches!(
+            row,
             Row::Text {
                 tone: Tone::App(Some(Icon::Landed)),
                 ..
             }
-        ));
+        )));
+    }
+
+    fn intent(paths: usize) -> zirc_proto::Event {
+        zirc_proto::Event::Intent {
+            summary: "split the login form".into(),
+            paths: (1..=paths).map(|n| format!("web/p{n}.ts")).collect(),
+            expires: None,
+            lasts: None,
+        }
     }
 
     #[test]
     fn says_routine_work_in_a_channel_on_one_quiet_line() {
-        let mut api = Conversation::new("#api", Kind::Channel);
-        let intent = zirc_proto::Event::Intent {
-            summary: "split the login form".into(),
-            paths: (1..=6)
-                .map(|n| format!("web/src/login/part{n}.tsx"))
-                .collect(),
-            expires: None,
-            lasts: None,
-        };
-        api.entries.push(at(30, 14, 3, zirc("dana-mbp", intent)));
-        api.entries.push(at(30, 14, 4, ("bob", EntryKind::Join)));
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(&api, who(), None, 60, (utc(), today), (Links::Plain, false));
-        // The core's brief: who, what and the first file's name, no paths after it (the
-        // user's choice, 14 Nov 2026).
+        let mut chat = chat();
+        hear(
+            &mut chat,
+            &[
+                zirc(
+                    ("2026-10-30T14:03", "e1"),
+                    ("dana-mbp", "dana"),
+                    "#api",
+                    intent(6),
+                ),
+                "@time=2026-10-30T14:04:00.000Z :bob!u@h PART #api".to_owned(),
+            ],
+        );
+        let rows = rows_of(&chat, "#api", 60);
+        // The core's brief, its time after it: who, what and the first file's name, no
+        // paths after it (the user's choice, 14 Nov 2026).
         assert_eq!(
-            shown(&rows),
+            shown(&rows)[1..],
             [
-                "--- Today",
-                "14:03       ✎ cc-12|is about to change part1.tsx and 5 more",
-                "14:04       + |bob joined",
+                "14:03       ✎ cc-12 is about to change p1.ts and 5 more",
+                "            − bob left",
             ]
         );
+        assert!(matches!(&rows[1], Row::System { agent: Some(_), .. }));
     }
 
     #[test]
     fn heads_an_event_as_a_message_and_starts_its_body_with_the_lead() {
         // In the agent's own conversation, where its work is whole; in a channel it's one
         // quiet line (says_routine_work_in_a_channel_on_one_quiet_line).
-        let mut api = Conversation::new("dana-mbp/cc-12", Kind::Query);
-        let intent = zirc_proto::Event::Intent {
-            summary: "split the login form".into(),
-            paths: (1..=6)
-                .map(|n| format!("web/src/login/part{n}.tsx"))
-                .collect(),
-            expires: None,
-            lasts: None,
-        };
-        api.entries.push(at(30, 14, 3, zirc("dana-mbp", intent)));
-        api.entries.push(at(30, 14, 4, ("bob", EntryKind::Join)));
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(&api, who(), None, 60, (utc(), today), (Links::Plain, false));
-        assert_eq!(
-            shown(&rows),
-            [
-                "--- Today",
-                // An agent's activity as a message: its header, who and when with no verb
-                // or kind word; then zirc-chat's lead, what it's about, and its paths.
-                "cc-12 14:03",
-                "              ✎ is about to change",
-                "              split the login form",
-                "              web/src/login/part1.tsx  web/src/login/part2.tsx  +4",
-                "14:04       + |bob joined",
-            ]
+        let mut chat = chat();
+        hear(
+            &mut chat,
+            &[zirc(
+                ("2026-10-30T14:03", "e1"),
+                ("dana-mbp", "dana"),
+                "#api",
+                intent(10),
+            )],
         );
+        let lines = chat.agent_lines("dana-mbp/cc-12", utc());
+        let rows = layout(&look(&chat, 60, Links::Plain), &lines);
+        let mut expected = vec![
+            "--- Today".to_owned(),
+            // An agent's activity as a message: its head, who and when; then zirc-chat's
+            // lead, its details under it as its paths are listed, and its paths.
+            "cc-12 14:03  #api".to_owned(),
+            "              ✎ is about to change".to_owned(),
+            "              split the login form".to_owned(),
+        ];
+        expected.extend((1..=SHOWN_PATHS).map(|n| format!("              web/p{n}.ts")));
+        expected.push(format!("              {}", show_more_paths_label(2)));
+        assert_eq!(shown(&rows), expected);
         assert!(matches!(
-            rows[2],
+            &rows[2],
             Row::Text {
-                tone: Tone::Lead(Icon::Intent),
+                tone: Tone::Lead { details: None, .. },
                 ..
             }
         ));
         assert!(matches!(
-            rows[4],
+            &rows[3],
+            Row::Text {
+                tone: Tone::Details(_),
+                ..
+            }
+        ));
+        assert!(matches!(
+            &rows[4],
             Row::Text {
                 tone: Tone::Path,
                 ..
             }
         ));
+        assert!(matches!(
+            rows.last(),
+            Some(Row::Text {
+                tone: Tone::More,
+                ..
+            })
+        ));
     }
 
     #[test]
-    fn lines_up_a_tables_columns() {
+    fn draws_a_messages_blocks() {
+        let chat = chat();
+        let said = [
+            "# Plan",
+            "",
+            "builds:",
+            "",
+            "| target | took |",
+            "| :-: | --: |",
+            "| `//web:e2e` | 90s |",
+            "| 漢字 | |",
+            "",
+            "```",
+            "let a = 1;",
+            "```",
+            "",
+            "> quoted",
+            "",
+            "- one",
+            "- two",
+            "",
+            "---",
+        ]
+        .join("\n");
+        let blocks = chat.flat(chat.drawn(zirc_core::chat::rich(&said)));
+        let look = look(&chat, 22, Links::Plain);
+        let texts: Vec<String> = super::blocks(&look, &blocks, 20, &Tone::Message)
+            .into_iter()
+            .map(|run| run.text)
+            .collect();
         assert_eq!(
-            lined_up(
-                "builds:\n| target | took |\n| :-: | --: |\n| `//web:e2e` | 90s |\n| 漢字 |\n\ndone"
-            ),
+            texts,
             [
+                "Plan",
                 "builds:",
-                "  target    │ took",
-                "────────────┼─────",
-                "`//web:e2e` │  90s",
-                "   漢字     │",
-                "",
-                "done",
+                // Inline code as its words, which zirc-chat gives without their backticks.
+                " target   │ took",
+                "──────────┼─────",
+                "//web:e2e │  90s",
+                "  漢字    │",
+                "  let a = 1;",
+                "│ quoted",
+                "• one",
+                "• two",
+                "────────────────────",
             ]
-            .join("\n")
         );
-        assert_eq!(lined_up("a | b"), "a | b");
+    }
+
+    #[test]
+    fn shows_links_by_their_labels_or_as_written_and_names_people_either_way() {
+        let chat = chat();
+        let spans = |text: &str| match chat
+            .flat(chat.drawn(zirc_core::chat::rich(text)))
+            .into_iter()
+            .next()
+        {
+            Some(RichBlock::Paragraph { spans }) => spans,
+            other => panic!("{other:?}"),
+        };
+        let url = "https://github.com/zircapp/zirc/pull/12?tab=files";
+        let bare = spans(&format!("see {url} please"));
+        assert_eq!(
+            spans_text(&bare, Links::Labelled),
+            (
+                "see github.com/zircapp/zirc/pull/12 please".to_owned(),
+                vec![(
+                    "github.com/zircapp/zirc/pull/12".to_owned(),
+                    Some(url.to_owned())
+                )]
+            )
+        );
+        assert_eq!(
+            spans_text(&bare, Links::Plain),
+            (format!("see {url} please"), Vec::new())
+        );
+        // A link with words of its own says where it goes after them, where the terminal
+        // can't link them.
+        let titled = spans(&format!("[the PR]({url})"));
+        assert_eq!(
+            spans_text(&titled, Links::Plain).0,
+            format!("the PR ({url})")
+        );
+        assert_eq!(spans_text(&titled, Links::Labelled).0, "the PR");
+        // People named go by what they show as, a chip that goes nowhere.
+        let named = spans("ask @alice");
+        assert_eq!(
+            spans_text(&named, Links::Plain),
+            ("ask alice".to_owned(), vec![("alice".to_owned(), None)])
+        );
+    }
+
+    #[test]
+    fn quotes_what_a_reply_answers_and_says_it_was_edited() {
+        let mut chat = chat();
+        hear(
+            &mut chat,
+            &[
+                at(
+                    "2026-10-30T09:00",
+                    "m1",
+                    "alice!u@h",
+                    "PRIVMSG #api :the login bug",
+                ),
+                at("2026-10-30T09:01", "m2", "bob!u@h", "PRIVMSG #api :on it")
+                    .replace(";msgid=m2", ";msgid=m2;+draft/reply=m1"),
+                at("2026-10-30T09:02", "m3", "bob!u@h", "PRIVMSG #api :fixed"),
+                at(
+                    "2026-10-30T09:03",
+                    "m4",
+                    "bob!u@h",
+                    "PRIVMSG #api :fixed it",
+                )
+                .replace(";msgid=m4", ";msgid=m4;+draft/edit=m3"),
+            ],
+        );
+        let shown = shown(&rows_of(&chat, "#api", 60));
+        assert_eq!(
+            shown[3..],
+            [
+                "bob 09:01".to_owned(),
+                "              ↪ alice: the login bug".to_owned(),
+                "              on it".to_owned(),
+                format!("              fixed it {EDITED}"),
+            ],
+            "{shown:#?}"
+        );
     }
 
     #[test]
@@ -1622,37 +1608,35 @@ mod tests {
 
     #[test]
     fn heads_each_run_with_who_and_when_as_the_other_apps_do() {
-        let mut api = Conversation::new("#api", Kind::Channel);
-        for entry in [
-            at(30, 9, 0, says("alice", "morning")),
-            at(
-                30,
-                9,
-                1,
-                says(
-                    "alice",
-                    "can you look at the login bug? it's been failing since",
+        let mut chat = chat();
+        hear(
+            &mut chat,
+            &[
+                at(
+                    "2026-10-30T09:00",
+                    "m1",
+                    "alice!u@h",
+                    "PRIVMSG #api :morning",
                 ),
-            ),
-            at(30, 9, 2, ("bob", EntryKind::Join)),
-            at(30, 9, 3, says("bob", "on it")),
-        ] {
-            api.entries.push(entry);
-        }
-        let today = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
-        let rows = layout(&api, who(), None, 40, (utc(), today), (Links::Plain, false));
+                at(
+                    "2026-10-30T09:01",
+                    "m2",
+                    "alice!u@h",
+                    "PRIVMSG #api :can you look at the login bug? it's been failing since",
+                ),
+                "@time=2026-10-30T09:02:00.000Z :carol!u@h JOIN #api".to_owned(),
+                at("2026-10-30T09:03", "m3", "carol!u@h", "PRIVMSG #api :on it"),
+            ],
+        );
+        let rows = rows_of(&chat, "#api", 40);
         let shown: Vec<String> = rows
             .iter()
             .map(|row| match row {
-                Row::Divider(day) => format!("--- {day}"),
-                Row::New => "--- New".to_owned(),
-                Row::Buttons { labels, .. } => labels.join(" · "),
-                Row::System {
-                    icon, actor, verb, ..
-                } => format!("{} {actor}|{verb}", icon.glyph()),
                 Row::Header { nick, time, .. } => format!("{nick} {time}"),
                 Row::Text { nick, text, .. } => format!("{nick:2}{text}"),
-                Row::Reactions { .. } => String::new(),
+                Row::System { glyph, text, .. } => format!("{glyph} {text}"),
+                Row::Divider(day) => format!("--- {day}"),
+                _ => String::new(),
             })
             .collect();
         assert_eq!(
@@ -1663,8 +1647,8 @@ mod tests {
                 "  morning",
                 "  can you look at the login bug? it's",
                 "  been failing since",
-                "+ |bob joined",
-                "bob 09:03",
+                "+ carol joined",
+                "carol 09:03",
                 "  on it",
             ]
         );

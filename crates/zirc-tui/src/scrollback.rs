@@ -1,93 +1,72 @@
-//! The scrollback's window on the conversation shown. Only what it shows is laid out, with
-//! what's needed around it to scroll and to know how near the top it is, and each item's
-//! rows are kept, by what it is and the width, until it changes, so a frame wraps nothing
-//! it wrapped before. Where it's read from, while it isn't at the end, is held to an item
-//! and a row of it, not a count of rows from the end: messages arriving below and older
-//! history coming in above leave what's read where it was.
+//! The scrollback's window on the conversation shown, zirc-chat's lines of it. Only what it
+//! shows is laid out, with what's needed around it to scroll and to know how near the top it
+//! is, and each line's rows are kept, by what it is and the width, until it changes, so a
+//! frame wraps nothing it wrapped before. Where it's read from, while it isn't at the end, is
+//! held to a line and a row of it, not a count of rows from the end: messages arriving below
+//! and older history coming in above leave what's read where it was.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher as _};
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
-use zirc_core::chat::{Item, SCROLL_RULES};
+use zirc_core::chat::SCROLL_RULES;
+use zirc_core::chat::lines::Line;
 
 use crate::rows::{self, Look, Row};
 
-/// How many items' rows are kept before they're all let go, well above the most a
+/// How many lines' rows are kept before they're all let go, well above the most a
 /// conversation holds.
 const KEPT: usize = 16_384;
 
 /// Where the scrollback of a conversation is read from while it isn't at the end: its top
-/// row is `row` rows on from the first of the item `key` names, before it when negative.
+/// row is `row` rows on from the first of the line `key` names, before it when negative.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Anchor {
-    key: Key,
+    key: Option<Key>,
     row: isize,
 }
 
-/// An item, as found again however many come in before or after it: by its message's id,
-/// or else by its time and how many before it have the same.
+/// A line, as found again however many come in before or after it: by zirc-chat's key for
+/// it ([`Line::key`]), or, once it's gone, by its time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Key {
-    id: Option<String>,
-    time: Option<DateTime<Utc>>,
-    nth: usize,
+    key: String,
+    time_ms: i64,
 }
 
 impl Key {
-    /// The item `at` of `items`.
-    fn of(items: &[Item<'_>], at: usize) -> Self {
-        let item = &items[at];
-        let time = item.time();
+    fn of(line: &Line) -> Self {
         Self {
-            id: rows::entry_id(item).map(str::to_owned),
-            time,
-            nth: items[..at]
-                .iter()
-                .rev()
-                .take_while(|before| before.time() == time)
-                .count(),
+            key: line.key.clone(),
+            time_ms: line.time_ms,
         }
     }
 
-    /// Where the item is among `items`, or, gone, the first after when it was.
-    fn find(&self, items: &[Item<'_>]) -> Option<usize> {
-        if let Some(id) = &self.id
-            && let Some(at) = items
-                .iter()
-                .position(|item| rows::entry_id(item) == Some(id))
-        {
-            return Some(at);
-        }
-        let time = self.time?;
-        let first = items
+    /// Where the line is among `lines`, or, gone, the first after when it was.
+    fn find(&self, lines: &[Line]) -> Option<usize> {
+        lines
             .iter()
-            .position(|item| item.time().is_some_and(|at| at >= time))?;
-        let same = items[first..]
-            .iter()
-            .take_while(|item| item.time() == Some(time))
-            .count();
-        Some(first + self.nth.min(same.saturating_sub(1)))
+            .position(|line| line.key == self.key)
+            .or_else(|| lines.iter().position(|line| line.time_ms >= self.time_ms))
     }
 }
 
-/// A row of the conversation: the item, and the row of it.
+/// A row of the conversation: the line, and the row of it.
 pub type Place = (usize, usize);
 
-/// The rows items were laid out in, by what each was and everything they were laid out by,
+/// The rows lines were laid out in, by what each was and everything they were laid out by,
 /// as [`rows::fingerprint`] says, for as long as what [`Cache::stamp`] covers stays the same.
 #[derive(Debug, Default)]
 pub struct Cache {
     stamp: u64,
     rows: HashMap<u64, Arc<[Row]>>,
-    /// How many items were laid out afresh, rather than found here: for tests.
+    /// How many lines were laid out afresh, rather than found here: for tests.
     pub laid: usize,
 }
 
 impl Cache {
-    /// Starts over unless `stamp`, everything every item is laid out by that its
+    /// Starts over unless `stamp`, everything every line is laid out by that its
     /// fingerprint doesn't cover, is what it was.
     pub fn stamp(&mut self, stamp: impl Hash) {
         let mut hasher = DefaultHasher::new();
@@ -100,10 +79,10 @@ impl Cache {
     }
 }
 
-/// A conversation's items, laid out as `look` says when they're looked at, with `cache`.
+/// A conversation's lines, laid out as `look` says when they're looked at, with `cache`.
 pub struct Laid<'a, 'c> {
     look: Look<'a>,
-    items: Vec<Item<'a>>,
+    lines: Vec<Line>,
     cache: &'c RefCell<Cache>,
 }
 
@@ -119,28 +98,27 @@ pub struct View {
 }
 
 impl<'a, 'c> Laid<'a, 'c> {
-    /// `items` laid out as `look` says, kept in `cache`.
+    /// `lines` laid out as `look` says, kept in `cache`.
     #[must_use]
-    pub fn new(look: Look<'a>, items: Vec<Item<'a>>, cache: &'c RefCell<Cache>) -> Self {
-        Self { look, items, cache }
+    pub fn new(look: Look<'a>, lines: Vec<Line>, cache: &'c RefCell<Cache>) -> Self {
+        Self { look, lines, cache }
     }
 
-    /// The items.
+    /// The lines.
     #[must_use]
-    pub fn items(&self) -> &[Item<'a>] {
-        &self.items
+    pub fn lines(&self) -> &[Line] {
+        &self.lines
     }
 
-    /// The rows of the item `at`.
+    /// The rows of the line `at`.
     #[must_use]
     pub fn rows(&self, at: usize) -> Arc<[Row]> {
-        let item = &self.items[at];
-        let before = at.checked_sub(1).map(|before| &self.items[before]);
-        let fingerprint = rows::fingerprint(&self.look, item, before);
+        let line = &self.lines[at];
+        let fingerprint = rows::fingerprint(&self.look, line);
         if let Some(rows) = self.cache.borrow().rows.get(&fingerprint) {
             return Arc::clone(rows);
         }
-        let rows: Arc<[Row]> = rows::item_rows(&self.look, item, before).into();
+        let rows: Arc<[Row]> = rows::line_rows(&self.look, line).into();
         let mut cache = self.cache.borrow_mut();
         cache.laid += 1;
         cache.rows.insert(fingerprint, Arc::clone(&rows));
@@ -150,7 +128,7 @@ impl<'a, 'c> Laid<'a, 'c> {
     /// Every row, oldest first.
     #[must_use]
     pub fn all(&self) -> Vec<Row> {
-        (0..self.items.len())
+        (0..self.lines.len())
             .flat_map(|at| self.rows(at).to_vec())
             .collect()
     }
@@ -158,44 +136,24 @@ impl<'a, 'c> Laid<'a, 'c> {
     /// Where `anchor` is now, if what it names, or something after it, is still here.
     #[must_use]
     pub fn place(&self, anchor: &Anchor) -> Option<Place> {
-        let at = anchor.key.find(&self.items)?;
+        let at = anchor.key.as_ref()?.find(&self.lines)?;
         Some(self.step((at, 0), anchor.row))
     }
 
-    /// An anchor for `place`, on the first item at or after it with a time, so it's found
-    /// again as items come and go around it: a day's divider has none.
+    /// An anchor for `place`, so it's found again as lines come and go around it.
     #[must_use]
     pub fn anchor(&self, (at, row): Place) -> Anchor {
-        let signed = |rows: usize| isize::try_from(rows).unwrap_or(isize::MAX);
-        let timed = (at..self.items.len()).find(|&i| self.items[i].time().is_some());
-        match timed {
-            Some(item) if item > at => {
-                let between: usize = (at..item).map(|i| self.rows(i).len()).sum();
-                Anchor {
-                    key: Key::of(&self.items, item),
-                    row: -signed(between.saturating_sub(row)),
-                }
-            }
-            Some(item) => Anchor {
-                key: Key::of(&self.items, item),
-                row: signed(row),
-            },
-            None => Anchor {
-                key: Key {
-                    id: None,
-                    time: None,
-                    nth: 0,
-                },
-                row: 0,
-            },
+        Anchor {
+            key: self.lines.get(at).map(Key::of),
+            row: isize::try_from(row).unwrap_or(isize::MAX),
         }
     }
 
     /// `by` rows on from `place`, towards the newest, or the oldest when negative: no
-    /// further than the first row, or than one past the last, `(items, 0)`.
+    /// further than the first row, or than one past the last, `(lines, 0)`.
     #[must_use]
     pub fn step(&self, (mut at, mut row): Place, by: isize) -> Place {
-        let count = self.items.len();
+        let count = self.lines.len();
         if at < count {
             row = row.min(self.rows(at).len().saturating_sub(1));
         }
@@ -228,11 +186,11 @@ impl<'a, 'c> Laid<'a, 'c> {
         }
     }
 
-    /// The first row from the item `at` on that there is.
+    /// The first row from the line `at` on that there is.
     fn first_from(&self, at: usize) -> Place {
-        (at..self.items.len())
+        (at..self.lines.len())
             .find(|&i| !self.rows(i).is_empty())
-            .map_or((self.items.len(), 0), |i| (i, 0))
+            .map_or((self.lines.len(), 0), |i| (i, 0))
     }
 
     /// What `height` rows show from `top`, or, with none or from too near the end to fill
@@ -252,11 +210,11 @@ impl<'a, 'c> Laid<'a, 'c> {
         // The newest rows, read back from the end.
         let mut rows: Vec<Row> = Vec::with_capacity(height);
         let mut top = None;
-        'items: for at in (0..self.items.len()).rev() {
+        'lines: for at in (0..self.lines.len()).rev() {
             let laid = self.rows(at);
             for (row, laid) in laid.iter().enumerate().rev() {
                 if rows.len() == height {
-                    break 'items;
+                    break 'lines;
                 }
                 rows.push(laid.clone());
                 top = Some((at, row));
@@ -274,9 +232,9 @@ impl<'a, 'c> Laid<'a, 'c> {
     /// Up to `count` rows from `place` on.
     fn down_from(&self, (at, row): Place, count: usize) -> Vec<Row> {
         let mut rows = Vec::with_capacity(count);
-        for item in at..self.items.len() {
-            let laid = self.rows(item);
-            let skip = if item == at { row } else { 0 };
+        for line in at..self.lines.len() {
+            let laid = self.rows(line);
+            let skip = if line == at { row } else { 0 };
             for laid in laid.iter().skip(skip) {
                 if rows.len() == count {
                     return rows;
@@ -290,8 +248,8 @@ impl<'a, 'c> Laid<'a, 'c> {
     /// How many rows there are from `place` to the end, counting them all: for tests.
     #[must_use]
     pub fn to_end(&self, (at, row): Place) -> usize {
-        (at..self.items.len())
-            .map(|item| self.rows(item).len())
+        (at..self.lines.len())
+            .map(|line| self.rows(line).len())
             .sum::<usize>()
             .saturating_sub(row)
     }
@@ -304,11 +262,11 @@ impl<'a, 'c> Laid<'a, 'c> {
     pub fn wants_older(&self, (at, row): Place, height: usize) -> bool {
         let rows = |count: usize| f32::from(u16::try_from(count).unwrap_or(u16::MAX));
         let mut above = row;
-        for item in (0..at).rev() {
+        for line in (0..at).rev() {
             if !SCROLL_RULES.wants_older(rows(above), rows(height)) {
                 return false;
             }
-            above += self.rows(item).len();
+            above += self.rows(line).len();
         }
         SCROLL_RULES.wants_older(rows(above), rows(height))
     }

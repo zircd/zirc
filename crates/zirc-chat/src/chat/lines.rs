@@ -425,6 +425,19 @@ pub struct LineQuote {
     pub face: Option<Face>,
 }
 
+impl LineQuote {
+    /// The quote as one line above the reply, for an app that draws it as text: `↪ bob:
+    /// first line…`, or `↪ a reply to an earlier message` once that's no longer kept.
+    #[must_use]
+    pub fn line(&self) -> String {
+        if self.from.is_empty() {
+            format!("{} {}", super::QUOTE_MARK, super::EARLIER_REPLY)
+        } else {
+            format!("{} {}: {}", super::QUOTE_MARK, self.from, self.text)
+        }
+    }
+}
+
 /// A long message's one control ([`super::More`]): a text button on its own line under the
 /// cut, or in a cut code block's footer beside Copy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -531,6 +544,20 @@ pub struct SystemLine {
     /// which apps bring into view when the line is clicked or tapped, as a reply's quote
     /// does ([`LineQuote::id`]).
     pub points_to: Option<String>,
+}
+
+impl SystemLine {
+    /// What its body says under its lead, its line's `text` being [`Line::text`]: its
+    /// details, or, for an event zirc-chat has no verb or details for (zircd's lease and
+    /// rename lines, say), its own words, rather than a lead over nothing ([`Parts::words`]).
+    #[must_use]
+    pub fn words<'a>(&'a self, text: &'a str) -> &'a str {
+        if self.verb.is_empty() && self.details.is_empty() {
+            text
+        } else {
+            &self.details
+        }
+    }
 }
 
 /// A card's buttons ([`zirc_proto::card`]): which card, by its sender and id, and the
@@ -1804,12 +1831,55 @@ mod tests {
                 text: String::new(),
                 face: None,
             })
-        ); // The bar over the composer while a reply is written says the same.
+        ); // As text, for an app that draws it so.
+        assert_eq!(
+            line(&lines, "on it").quote.as_ref().unwrap().line(),
+            "↪ Alice Liddell: the login bug"
+        );
+        assert_eq!(
+            line(&lines, "and that").quote.as_ref().unwrap().line(),
+            format!("↪ {}", crate::chat::EARLIER_REPLY)
+        );
+        // The bar over the composer while a reply is written says the same.
         let conversation = chat.conversation("#api").unwrap();
         assert_eq!(chat.quoted(conversation, "m1"), line(&lines, "on it").quote);
         assert_eq!(chat.quoted(conversation, "gone"), None);
         // Messages are under who said them.
         assert!(lines.iter().all(|line| line.shape == RowShape::Message));
+    }
+
+    #[test]
+    fn an_event_says_its_own_words_when_it_has_no_verb_or_details() {
+        let mut chat = chat();
+        chat.set_threshold("#api", crate::chat::COMMITS_AND_PUSHES_SHOW_AT);
+        let commit = named(
+            "cc-1",
+            "checkout",
+            Event::Commit {
+                branch: "main".into(),
+                sha: "abc1234".into(),
+                subject: "Fix login".into(),
+                paths: Vec::new(),
+                repo: None,
+            },
+        );
+        feed(
+            &mut chat,
+            &[&at(
+                "09:00:00",
+                Some("e1"),
+                &zirc("me-mbp", "#api", &commit),
+            )],
+        );
+        let lines = api(&chat);
+        let system = lines[0].system.clone().unwrap();
+        assert_eq!(system.words(&lines[0].text), system.details);
+        let bare = SystemLine {
+            verb: String::new(),
+            details: String::new(),
+            ..system
+        };
+        assert_eq!(bare.words("lease taken"), "lease taken");
     }
 
     #[expect(clippy::too_many_lines, reason = "one story, told step by step")]
