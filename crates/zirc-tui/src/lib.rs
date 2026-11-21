@@ -10,6 +10,7 @@ pub mod cli;
 pub mod command;
 pub mod hyperlink;
 pub mod input;
+pub mod jump;
 pub mod picker;
 pub mod prefs;
 pub mod rows;

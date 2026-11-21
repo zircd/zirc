@@ -333,6 +333,11 @@ pub mod tui {
     pub const ESC_CANCELS: &str = "Esc cancels";
     /// On the status line while scrolled back.
     pub const SCROLLED_BACK: &str = "scrolled back, PgDn for newer";
+    /// The terminal's key for Jump to, where a computer's is [`super::keys::JUMP_TO`]: its
+    /// Ctrl+K is the line editor's.
+    pub const JUMP_KEY: &str = "Alt-K";
+    /// Under Jump to's rows, before [`super::ESC_CLOSES`].
+    pub const ENTER_OPENS: &str = "Enter opens";
 }
 
 /// What a computer's keys for Jump to, search here and search everywhere are, as every app's

@@ -14,6 +14,7 @@ use unicode_width::UnicodeWidthStr as _;
 
 use crate::app::{App, SessionsPanel, Side, Target, Trimming};
 use crate::hyperlink;
+use crate::jump::{self, Jumping};
 use crate::picker::{self, Picker};
 use crate::rows::{self, Row, Tone, fit, wrap};
 use zirc_core::chat::{
@@ -610,15 +611,16 @@ fn header(frame: &mut Frame<'_>, app: &App, area: Rect) {
     // ([`Chat::header_line`]): an agent at work after the here dot, a person away in the
     // warning colour, the rest muted.
     if let Some(line) = chat.header_line(&buffer.name) {
+        spans.push(Span::raw("  "));
         if line.kind == HeaderLineKind::AgentAtWork {
-            spans.push(Span::styled(" ●", fg(theme.ok)));
+            spans.push(presence_mark(theme, Presence::Here));
         }
         let tone = if line.kind == HeaderLineKind::Away {
             theme.warning
         } else {
             theme.muted
         };
-        spans.push(Span::styled(format!("  {}", line.text), fg(tone)));
+        spans.push(Span::styled(line.text, fg(tone)));
     }
     frame.render_widget(
         Paragraph::new(Line::from(spans)).style(fg(theme.text)),
@@ -1101,6 +1103,9 @@ fn scrollback_rows(frame: &mut Frame<'_>, app: &App, area: Rect) {
     if let Some(picker) = app.picker() {
         picker_card(frame, app, picker, area);
     }
+    if let Some(jumping) = app.jumping() {
+        jump_card(frame, app, jumping, area);
+    }
     if let Some(trimming) = app.trimming() {
         trim_card(frame, app, trimming, area);
     }
@@ -1166,6 +1171,114 @@ fn scrollback_target(app: &App, area: Rect, column: u16, row: u16) -> Target {
         ) => Target::Message(id),
         _ => Target::Scrollback,
     }
+}
+
+/// Jump to, as a card over the top of the scrollback, `area`, laid out as zirc-chat lays it
+/// out for every app ([`zirc_core::chat::Chat::jump_to`]): what's typed, `Nothing called
+/// “x”.` when it offers nothing, the conversations it finds by title and mention badge (the
+/// user's choice, 20 Nov 2026), Browse channels' heading over the channels to join with how
+/// many are in each, then Join or Create #name.
+fn jump_card(frame: &mut Frame<'_>, app: &App, jumping: &Jumping, area: Rect) {
+    use zirc_core::chat::labels;
+    let theme = app.theme;
+    let jump = app.chat.jump_to(&jumping.query);
+    let at = jumping.at(jump::names(&jump).len());
+    let width = area.width.clamp(30, 60).min(area.width);
+    let text = usize::from(width).saturating_sub(4);
+    let mut lines = vec![Line::from(vec![
+        Span::styled(
+            format!("{} ", zirc_core::chat::JUMP_TO_PROMPT),
+            fg(theme.muted),
+        ),
+        Span::styled(jumping.query.clone(), fg(theme.text)),
+        Span::styled("▏", fg(theme.signal)),
+    ])];
+    if let Some(nothing) = &jump.nothing {
+        lines.push(Line::styled(fit(nothing, text), fg(theme.muted)));
+    }
+    // Each row to go to, the one picked on the signal colour.
+    let mut row = 0;
+    let mut push = |lines: &mut Vec<Line<'static>>, spans: Vec<Span<'static>>| {
+        let line = Line::from(spans);
+        lines.push(if row == at {
+            line.style(fg(theme.on_signal).bg(colour(theme.signal)))
+        } else {
+            line
+        });
+        row += 1;
+    };
+    for name in &jump.conversations {
+        let badge = match app.chat.badge(name) {
+            0 => String::new(),
+            count => format!(" {} ", zirc_core::chat::badge_label(count)),
+        };
+        let title = fit(
+            &app.chat.title(name),
+            text.saturating_sub(badge.width() + 1),
+        );
+        push(
+            &mut lines,
+            vec![
+                Span::styled(title, fg(theme.text)),
+                Span::raw(" "),
+                Span::styled(badge, fg(theme.on_signal).bg(colour(theme.mention_edge))),
+            ],
+        );
+    }
+    if let Some(heading) = &jump.browse_heading {
+        lines.push(Line::styled(Type::get().label(heading), fg(theme.muted)));
+    }
+    for channel in &jump.browse {
+        let members = channel
+            .members
+            .as_ref()
+            .map(|members| format!("  {members}"))
+            .unwrap_or_default();
+        push(
+            &mut lines,
+            vec![
+                Span::styled(channel.name.clone(), fg(theme.channel)),
+                Span::styled(members, fg(theme.muted)),
+            ],
+        );
+    }
+    if let Some(offer) = &jump.offer {
+        push(
+            &mut lines,
+            vec![Span::styled(
+                fit(&format!("{} {}", offer.mark, offer.label), text),
+                fg(theme.text),
+            )],
+        );
+    }
+    lines.push(Line::styled(
+        fit(
+            &format!("{} · {}", labels::tui::ENTER_OPENS, labels::ESC_CLOSES),
+            text,
+        ),
+        fg(theme.muted),
+    ));
+    let height = u16::try_from(lines.len() + 2)
+        .unwrap_or(u16::MAX)
+        .min(area.height);
+    let card = Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y,
+        width,
+        height,
+    };
+    frame.render_widget(Clear, card);
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            panel(Block::new().borders(Borders::ALL), theme)
+                .border_style(fg(theme.signal))
+                .title(format!(
+                    " {} ",
+                    labels::with_shortcut(zirc_core::chat::JUMP_TO, labels::tui::JUMP_KEY)
+                )),
+        ),
+        card,
+    );
 }
 
 /// The reaction picker, as a card over the bottom of the scrollback, `area`.
@@ -2193,6 +2306,36 @@ mod tests {
         row_with(&rows, COMPOSER_NOTE);
         // The pill every app shows after a guest's name.
         row_with(&rows, &format!("Anna {GUEST_PILL}  11:00"));
+    }
+
+    #[test]
+    fn jumps_where_whats_typed_names_as_zirc_chat_lays_it_out() {
+        use zirc_core::chat::{JUMP_TO, labels, nothing_called};
+        let mut app = app();
+        let _ = app.key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::ALT));
+        let (rows, _) = draw(&app, 100, 24);
+        row_with(
+            &rows,
+            &labels::with_shortcut(JUMP_TO, labels::tui::JUMP_KEY),
+        );
+        for c in "we".chars() {
+            let _ = app.key(KeyEvent::from(KeyCode::Char(c)));
+        }
+        let (rows, _) = draw(&app, 100, 24);
+        // What the core finds, then the channel to make for what's typed.
+        row_with(&rows, "Create #we");
+        let _ = app.key(KeyEvent::from(KeyCode::Enter));
+        assert!(app.jumping().is_none());
+        assert_eq!(app.current().name, "#web");
+
+        let _ = app.key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::ALT));
+        for c in "zz zz".chars() {
+            let _ = app.key(KeyEvent::from(KeyCode::Char(c)));
+        }
+        let (rows, _) = draw(&app, 100, 24);
+        row_with(&rows, &nothing_called("zz zz"));
+        let _ = app.key(KeyEvent::from(KeyCode::Esc));
+        assert!(app.jumping().is_none());
     }
 
     #[test]

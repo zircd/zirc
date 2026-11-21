@@ -26,6 +26,7 @@ pub use zirc_core::chat::Link;
 
 use crate::command::{self, Command};
 use crate::input::Input;
+use crate::jump::{Jumped, Jumping};
 use crate::picker::{self, Picked, Picker};
 use crate::rows::{self, Row, Zone};
 use crate::scrollback::{Anchor, Cache, Laid, View};
@@ -244,6 +245,8 @@ pub struct App {
     picked: Option<(String, String)>,
     /// The reaction picker, when it's open.
     picker: Option<Picker>,
+    /// Jump to, when it's open (Alt+K).
+    jumping: Option<Jumping>,
     /// The picked message's details, shown over the scrollback (`i`), and how many of its
     /// lines are scrolled past.
     details: Option<(Details, u16)>,
@@ -394,6 +397,7 @@ impl App {
             agent: None,
             picked: None,
             picker: None,
+            jumping: None,
             details: None,
             recent: Recent::default(),
             trimming: None,
@@ -1108,6 +1112,34 @@ impl App {
         self.picker.as_ref()
     }
 
+    /// Jump to, when it's open.
+    #[must_use]
+    pub fn jumping(&self) -> Option<&Jumping> {
+        self.jumping.as_ref()
+    }
+
+    /// Takes in a key while Jump to is open. Returns what to send.
+    fn jumping_key(&mut self, key: KeyEvent) -> Vec<Line> {
+        let Some(jumping) = self.jumping.as_mut() else {
+            return Vec::new();
+        };
+        match jumping.key(key, &self.chat) {
+            Jumped::Open => Vec::new(),
+            Jumped::Closed => {
+                self.jumping = None;
+                Vec::new()
+            }
+            Jumped::To(name) => {
+                self.jumping = None;
+                if self.chat.position(&name).is_some() {
+                    self.show_named(Some(name))
+                } else {
+                    self.chat.open(&name)
+                }
+            }
+        }
+    }
+
     /// Picks the message `by` places on from the one picked, older when negative, and keeps
     /// it in view. From none, the first step up picks the newest; past the newest, none; and
     /// the oldest stays picked.
@@ -1638,6 +1670,24 @@ impl App {
         self.take_key(key)
     }
 
+    /// Takes in a key while a card that takes every key is open, the reaction picker, Jump
+    /// to or the trim card: Ctrl-C still quits.
+    fn card_key(&mut self, key: KeyEvent, ctrl: bool) -> Option<Action> {
+        if self.picker.is_none() && self.jumping.is_none() && self.trimming.is_none() {
+            return None;
+        }
+        if ctrl && key.code == KeyCode::Char('c') {
+            return Some(Action::Quit(vec![quit(None)]));
+        }
+        Some(Action::Send(if self.picker.is_some() {
+            self.picker_key(key)
+        } else if self.jumping.is_some() {
+            self.jumping_key(key)
+        } else {
+            self.trimming_key(key)
+        }))
+    }
+
     fn take_key(&mut self, key: KeyEvent) -> Action {
         if key.kind == KeyEventKind::Release {
             return Action::Send(Vec::new());
@@ -1647,17 +1697,8 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-        if self.picker.is_some() {
-            if ctrl && key.code == KeyCode::Char('c') {
-                return Action::Quit(vec![quit(None)]);
-            }
-            return Action::Send(self.picker_key(key));
-        }
-        if self.trimming.is_some() {
-            if ctrl && key.code == KeyCode::Char('c') {
-                return Action::Quit(vec![quit(None)]);
-            }
-            return Action::Send(self.trimming_key(key));
+        if let Some(action) = self.card_key(key, ctrl) {
+            return action;
         }
         if let Some(action) = self
             .details_key(key, ctrl)
@@ -1698,6 +1739,7 @@ impl App {
             KeyCode::Up if shift => return Action::Send(self.pick(-1)),
             KeyCode::Down if shift => return Action::Send(self.pick(1)),
             KeyCode::Char('r' | 'R') if alt => self.open_picker(),
+            KeyCode::Char('k' | 'K') if alt => self.jumping = Some(Jumping::default()),
             KeyCode::Char('p' | 'P') if alt => self.toggle_pin(),
             KeyCode::Char('o' | 'O') if alt && self.orgs.len() > 1 => return Action::Org(None),
             KeyCode::Char('s' | 'S') if alt => return self.open_sessions(),
