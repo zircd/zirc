@@ -13,6 +13,10 @@ pub fn sendable(text: &str) -> bool {
         .any(|c| !c.is_whitespace() && !INVISIBLE.contains(&c))
 }
 
+/// The most lines the message field grows to as it's written, wrapped lines included, before
+/// it scrolls: the same in every app (the user's choice, 21 Nov 2026).
+pub const FIELD_LINES: u32 = 6;
+
 /// Marks that take no room, which a message of nothing else doesn't say anything: zero-width
 /// space, non-joiner and joiner, word joiner, and the byte-order mark.
 const INVISIBLE: [char; 5] = ['\u{200B}', '\u{200C}', '\u{200D}', '\u{2060}', '\u{FEFF}'];

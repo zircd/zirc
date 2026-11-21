@@ -2205,11 +2205,14 @@ fn elsewhere(app: &App) -> Option<String> {
     (!others.is_empty()).then(|| format!("  · {}, Alt-O", others.join(", ")))
 }
 
-/// How many rows the input takes: one for each line typed, up to two fifths of the screen.
+/// How many rows the input takes: one for each line typed, up to as many as every app's field
+/// grows to ([`zirc_core::compose::FIELD_LINES`]) and two fifths of the screen.
 fn input_height(app: &App, area: Rect) -> u16 {
     let lines = app.input.text().split('\n').count();
+    let most = u16::try_from(zirc_core::compose::FIELD_LINES).unwrap_or(u16::MAX);
     u16::try_from(lines)
         .unwrap_or(u16::MAX)
+        .min(most)
         .min((area.height * 2 / 5).max(1))
 }
 
