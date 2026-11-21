@@ -25,7 +25,7 @@
   "channels": [
     { "name": "#general", "topic": "Zirc, all together", "last": "08:55", "preview": "monica: back at 11, dentist" },
     { "name": "#backend", "topic": "The IRC server and its history", "last": "09:39", "preview": "zirc-ci: build 1421 failed: server:e2e, presence_survives_restart", "branches": ["#backend/agents"], "unread": 5 },
-    { "name": "#backend/agents", "topic": "What the agents in backend do", "last": "09:40", "preview": "flaky-e2e: presence_survives_restart waited on a fixed sleep. It waits for the listener now; testing again." },
+    { "name": "#backend/agents", "topic": "What the agents in backend do", "last": "09:40", "preview": "henrik: Thanks, all. I'm on the school run till 10: anything for me, ask here" },
     { "name": "#clients", "topic": "The apps: Mac, web and phones", "last": "Yesterday", "preview": "jari: 0.6 is in TestFlight" },
     { "name": "#ops", "topic": "Alerts, deploys and main", "last": "09:31", "preview": "main_bot: main-12 · fix → @henrik-mbp/cc-7d3a", "mentions": 1 },
     { "name": "#decisions", "topic": "What agents ask before they act", "last": "09:39", "preview": "tls-rotation: Revoke last month's TLS certificate now? Every client moved to the new one by 08:40." }
@@ -52,10 +52,16 @@
       { "id": "r2a", "kind": "message", "from": "henrik-mbp/cc-5e20", "at": "09:12", "text": "taking: quarantine the flaky e2e tests" },
       { "id": "r2b", "kind": "message", "from": "henrik-mbp/cc-a41f", "at": "09:19", "text": "taking: rotate the server's TLS certificates" },
       { "id": "r2c", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:20", "text": "taking: name the replay metrics as the dashboards expect" },
+      { "id": "r4", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:24", "text": "Kept the old metric names as aliases for one release rather than renaming them outright, so the dashboards don't go blank." },
+      { "id": "r5", "kind": "message", "from": "henrik-mbp/cc-a41f", "at": "09:28", "text": "Every client has used the new certificate since 08:40. The old one is only still valid." },
       { "id": "r3", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:32", "text": "taking: reconnect_resumes_history on main" },
-      { "id": "r4", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:33", "text": "Kept the old metric names as aliases for one release rather than renaming them outright, so the dashboards don't go blank." },
-      { "id": "r5", "kind": "message", "from": "henrik-mbp/cc-a41f", "at": "09:37", "text": "Every client has used the new certificate since 08:40. The old one is only still valid." },
-      { "id": "r6", "kind": "message", "from": "henrik-mbp/cc-5e20", "at": "09:40", "text": "presence_survives_restart waited on a fixed sleep. It waits for the listener now; testing again." }
+      { "id": "r7", "kind": "message", "from": "raj-studio/cc-91b7", "at": "09:33", "text": "Build 1418 was my landing, so I'm holding my next push until main is green." },
+      { "id": "r8", "kind": "message", "from": "raj", "at": "09:34", "reply_to": "r3", "text": "The old listener lingers 200 ms after shutdown, in `server/src/listen.rs`. Worth a look" },
+      { "id": "r9", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:37", "reply_to": "r8", "text": "That was it: the test rebound 6697 inside those 200 ms. It lands ahead of the queue, with a yes in #decisions." },
+      { "id": "r10", "kind": "message", "from": "raj-studio/cc-91b7", "at": "09:38", "text": "main is green. Pushing the replay change again." },
+      { "id": "r11", "kind": "message", "from": "andre-air/cc-2c08", "at": "09:39", "text": "I'm next in store.rs: I'll rebase once replay-index lands." },
+      { "id": "r6", "kind": "message", "from": "henrik-mbp/cc-5e20", "at": "09:40", "text": "presence_survives_restart waited on a fixed sleep. It waits for the listener now; testing again." },
+      { "id": "r12", "kind": "message", "from": "henrik", "at": "09:40", "text": "Thanks, all. I'm on the school run till 10: anything for me, ask here" }
     ],
     "#decisions": [
       { "id": "3", "kind": "request", "from": "raj-studio/cc-91b7", "at": "09:14", "day": "Today", "text": "Build the new history index on production now?", "yes": "It builds online in about 4 minutes; replay stays on the old path meanwhile", "no": "It waits for tonight's window", "answered": "09:15" },
@@ -93,6 +99,6 @@
   ],
   "screens": [
     { "name": "chat", "open": "#backend", "caption": "The team's channel on the Mac" },
-    { "name": "decide", "open": "#decisions", "caption": "What agents ask, on the phone" }
+    { "name": "agents", "open": "#backend/agents", "caption": "The agents' thread, on the phone" }
   ]
 }
