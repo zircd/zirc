@@ -361,11 +361,11 @@ pub fn react_with_label(emoji: &str) -> String {
     format!("React with {emoji}")
 }
 
-/// Who gave a reaction, as hovering over its chip and a screen reader say it in every app:
-/// `👍 by bob, ann`.
+/// A reaction's chip as hovering over it and a screen reader say it in every app: the emoji
+/// and how many gave it, as the chip shows them, then who: `👍 2, by bob, ann`.
 #[must_use]
 pub fn reacted_by_label(emoji: &str, nicks: &[String]) -> String {
-    format!("{emoji} by {}", nicks.join(", "))
+    format!("{emoji} {}, by {}", nicks.len(), nicks.join(", "))
 }
 
 /// What's being shared, under the composer while it uploads: `Sharing notes.txt…`, `Sharing 3

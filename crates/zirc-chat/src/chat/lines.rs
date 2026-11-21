@@ -408,7 +408,7 @@ pub struct LineReaction {
     /// Whether we did.
     pub mine: bool,
     /// Who gave it, as hovering over its chip and a screen reader say it
-    /// ([`super::reacted_by_label`]): `👍 by bob, ann`.
+    /// ([`super::reacted_by_label`]): `👍 2, by bob, ann`.
     pub label: String,
 }
 
@@ -1788,13 +1788,13 @@ mod tests {
                     emoji: "👍".into(),
                     count: 2,
                     mine: true,
-                    label: "👍 by bob, me".into(),
+                    label: "👍 2, by bob, me".into(),
                 },
                 LineReaction {
                     emoji: "🎉".into(),
                     count: 1,
                     mine: false,
-                    label: "🎉 by bob".into(),
+                    label: "🎉 1, by bob".into(),
                 },
             ]
         );
@@ -1846,7 +1846,7 @@ mod tests {
                 emoji: "👀".into(),
                 count: 1,
                 mine: false,
-                label: "👀 by bob".into(),
+                label: "👀 1, by bob".into(),
             }]
         );
         assert!(line(&lines, "mine").actions.delete);
