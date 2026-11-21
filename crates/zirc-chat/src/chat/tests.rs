@@ -3307,11 +3307,36 @@ fn a_title_opens_its_people_or_someones_card_in_every_app() {
 }
 
 #[test]
+fn jump_to_rows_are_a_title_and_the_sidebars_mention_badge() {
+    let mut chat = marking();
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #api",
+            ":me!u@h JOIN #web",
+            "@time=2026-10-30T11:02:00.000Z;msgid=w2 :bob!u@h PRIVMSG #web :me: look",
+        ],
+    );
+    let _ = chat.select(chat.position("#api").unwrap());
+    let rows = chat.jump_to("").conversations;
+    let web = rows.iter().find(|row| row.name == "#web").unwrap();
+    assert_eq!(web.title, chat.title("#web"));
+    assert_eq!((web.mentions, web.badge.as_deref()), (1, Some("1")));
+    let api = rows.iter().find(|row| row.name == "#api").unwrap();
+    assert_eq!((api.mentions, api.badge.as_deref()), (0, None));
+}
+
+#[test]
 fn jump_to_heads_browse_channels_only_over_channels_to_join() {
     let mut chat = Scene::in_api();
     // Nothing to join: no heading.
     let jump = chat.jump_to("");
-    assert_eq!(jump.conversations, ["#api"]);
+    let names: Vec<&str> = jump
+        .conversations
+        .iter()
+        .map(|row| row.name.as_str())
+        .collect();
+    assert_eq!(names, ["#api"]);
     assert!(jump.browse.is_empty() && jump.browse_heading.is_none());
     feed(
         &mut chat,

@@ -138,7 +138,19 @@ impl Chat {
     /// ([`Chat::join_offer`]).
     #[must_use]
     pub fn jump_to(&self, query: &str) -> JumpTo {
-        let conversations = self.switcher(query);
+        let conversations: Vec<JumpRow> = self
+            .switcher(query)
+            .into_iter()
+            .map(|name| {
+                let mentions = self.badge(&name);
+                JumpRow {
+                    title: self.title(&name),
+                    badge: (mentions > 0).then(|| super::badge_label(mentions)),
+                    mentions,
+                    name,
+                }
+            })
+            .collect();
         let room = super::JUMP_ROWS.saturating_sub(conversations.len());
         let browse = browse_rows(self.browse_matching(query).into_iter().take(room).collect());
         let offer = self.join_offer(query);
@@ -552,6 +564,21 @@ pub const CREATE_MARK: &str = "+";
 /// The mark before Jump to's `Join #name`.
 pub const JOIN_MARK: &str = "→";
 
+/// A conversation Jump to finds, as every app draws its row: its title, then its mention
+/// badge.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+pub struct JumpRow {
+    /// Its name, to open it by ([`Chat::open`]).
+    pub name: String,
+    /// It as shown ([`Chat::title`]).
+    pub title: String,
+    /// What the sidebar's badge counts in it ([`Chat::badge`]).
+    pub mentions: usize,
+    /// That count in the badge's words ([`super::badge_label`]): `3`, `99+`; none when it
+    /// counts nothing.
+    pub badge: Option<String>,
+}
+
 /// Jump to for what's typed, as every app lays it out top to bottom ([`Chat::jump_to`]):
 /// the phones read it through their core, the web chat as JSON.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
@@ -561,8 +588,9 @@ pub struct JumpTo {
     /// `Nothing called “x”.`, when it offers nothing at all; none while anything shows or
     /// nothing's typed.
     pub nothing: Option<String>,
-    /// The conversations it finds, by name, best first ([`Chat::switcher`]).
-    pub conversations: Vec<String>,
+    /// The conversations it finds, best first ([`Chat::switcher`]), each by its title and
+    /// mention badge (the user's choice, 20 Nov 2026).
+    pub conversations: Vec<JumpRow>,
     /// `Browse channels`, over [`Self::browse`]; none when there's no channel to join.
     pub browse_heading: Option<String>,
     /// The channels to join that what's typed names.

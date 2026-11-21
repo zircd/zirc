@@ -1443,15 +1443,13 @@ fn jump_card(frame: &mut Frame<'_>, app: &App, jumping: &Jumping, area: Rect) {
         });
         row += 1;
     };
-    for name in &jump.conversations {
-        let badge = match app.chat.badge(name) {
-            0 => String::new(),
-            count => format!(" {} ", zirc_core::chat::badge_label(count)),
-        };
-        let title = fit(
-            &app.chat.title(name),
-            text.saturating_sub(badge.width() + 1),
-        );
+    for row in &jump.conversations {
+        let badge = row
+            .badge
+            .as_ref()
+            .map(|badge| format!(" {badge} "))
+            .unwrap_or_default();
+        let title = fit(&row.title, text.saturating_sub(badge.width() + 1));
         push(
             &mut lines,
             vec![

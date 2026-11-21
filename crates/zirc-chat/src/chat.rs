@@ -26,7 +26,8 @@ mod both;
 mod channel_rows;
 mod channels;
 pub use channels::{
-    BrowseRow, CREATE_MARK, JOIN_MARK, JoinOffer, JumpTo, browse_rows, create_label, join_label,
+    BrowseRow, CREATE_MARK, JOIN_MARK, JoinOffer, JumpRow, JumpTo, browse_rows, create_label,
+    join_label,
 };
 mod closing;
 mod code;

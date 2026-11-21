@@ -32,7 +32,7 @@ pub enum Jumped {
 pub fn names(jump: &JumpTo) -> Vec<&str> {
     jump.conversations
         .iter()
-        .map(String::as_str)
+        .map(|row| row.name.as_str())
         .chain(jump.browse.iter().map(|row| row.name.as_str()))
         .chain(jump.offer.iter().map(|offer| offer.name.as_str()))
         .collect()
