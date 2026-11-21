@@ -75,6 +75,38 @@ pub fn up_edits_last(composer: Composing, pressed: KeyPressed) -> bool {
         && !(pressed.composing || pressed.shift || pressed.alt || pressed.ctrl || pressed.meta)
 }
 
+/// What Escape does in the composer, as every app reads it ([`escape`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum EscapeDoes {
+    /// Closes the list of mentions or emoji it offers.
+    ClosePopup,
+    /// Stops correcting a message, giving back what was written before.
+    StopEditing,
+    /// Stops replying: what's written goes as an ordinary message.
+    StopReplying,
+    /// Nothing of the composer's: the app's own, as a desktop's marking the conversation
+    /// read.
+    Nothing,
+}
+
+/// What Escape does in the composer, the first that applies: closes the list it offers
+/// (`popup`), else stops correcting a message (`editing`), else stops a reply (`replying`).
+/// The same in every app with a keyboard.
+#[must_use]
+pub fn escape(popup: bool, composer: Composing, replying: bool) -> EscapeDoes {
+    if popup {
+        EscapeDoes::ClosePopup
+    } else if composer.editing {
+        EscapeDoes::StopEditing
+    } else if replying {
+        EscapeDoes::StopReplying
+    } else {
+        EscapeDoes::Nothing
+    }
+}
+
 /// Whether `key`, typed while nothing that takes text has the focus, goes into the composer
 /// (focusing it) on a desktop or in a browser: a printable character with no modifier but
 /// Shift. A shortcut (⌘K, Ctrl+F) stays a shortcut, and Space, Enter, the arrows and the
@@ -88,6 +120,24 @@ pub fn types_into_composer(key: &str, pressed: KeyPressed) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn escape_closes_the_popup_then_stops_an_edit_then_a_reply() {
+        let editing = Composing {
+            empty: false,
+            editing: true,
+        };
+        assert_eq!(escape(true, editing, true), EscapeDoes::ClosePopup);
+        assert_eq!(escape(false, editing, true), EscapeDoes::StopEditing);
+        assert_eq!(
+            escape(false, Composing::default(), true),
+            EscapeDoes::StopReplying
+        );
+        assert_eq!(
+            escape(false, Composing::default(), false),
+            EscapeDoes::Nothing
+        );
+    }
     use super::*;
 
     const PLAIN: KeyPressed = KeyPressed {
