@@ -13,8 +13,8 @@ use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
 use zirc_core::chat::{
-    Chat, Conversation, Details, Entry, Face, GuestRequest, Here, Kind, ListKind, ListOptions,
-    ListRow, Options, Quote, Ran, RecentSearches, SearchScreen, Shelf, complete_mention, copy_text,
+    Chat, Conversation, Details, Face, GuestRequest, Here, Kind, ListKind, ListOptions, ListRow,
+    Options, Ran, RecentSearches, ReplyBar, SearchScreen, Shelf, complete_mention, copy_text,
     entry_text, first_link, fold, is_channel,
 };
 use zirc_core::keys::EscapeDoes;
@@ -1309,19 +1309,20 @@ impl App {
         }
     }
 
-    /// What the next line sent answers, in the conversation shown, if it's a reply.
+    /// The message the next line sent answers, by id, in the conversation shown, if it's a
+    /// reply: kept or not.
     #[must_use]
-    pub fn replying(&self) -> Option<Quote> {
+    pub fn replying(&self) -> Option<&str> {
         let (name, id) = self.replying.as_ref()?;
-        let conversation = self.current();
-        if *name != fold(&conversation.name) {
-            return None;
-        }
-        let reply = Entry {
-            reply_to: Some(id.clone()),
-            ..Entry::info((self.chat.clock)(), String::new())
-        };
-        self.chat.quote(conversation, &reply)
+        (*name == fold(&self.current().name)).then_some(id.as_str())
+    }
+
+    /// The bar for the reply being written, as every app words it ([`ReplyBar`]): `Replying
+    /// to bob: first line…`, or to an earlier message once that's no longer kept.
+    #[must_use]
+    pub fn reply_bar(&self) -> Option<ReplyBar> {
+        let id = self.replying()?;
+        Some(ReplyBar::of(self.chat.quoted(self.current(), id)))
     }
 
     /// Starts a reply to the message `id` in the conversation shown, which the next line
@@ -2202,7 +2203,7 @@ impl App {
             return action;
         }
         let picked = self.reacting_to();
-        let replying = self.replying().map(|quote| quote.id);
+        let replying = self.replying().map(str::to_owned);
         let editing = self.editing_id().map(str::to_owned);
         let ran = self.chat.run(
             &Here {

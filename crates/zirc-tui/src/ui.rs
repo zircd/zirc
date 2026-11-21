@@ -20,8 +20,8 @@ use crate::picker::{self, Picker};
 use crate::rows::{self, Row, Tone, fit, wrap};
 use zirc_core::chat::{
     AGENT_TAG, APP_TAG, APPS_SECTION, Avatar, COMPOSER_NOTE, GUEST_PILL, HeaderLineKind, Icon,
-    Kind, OrgHeader, Presence, Profile, QUOTE_MARK, SearchHit, SearchScreen, away_label,
-    members_label, mentions_label,
+    Kind, OrgHeader, Presence, Profile, SearchHit, SearchScreen, away_label, members_label,
+    mentions_label,
 };
 use zirc_core::emoji;
 use zirc_theme::{Design, Rgb, Theme, Type};
@@ -2133,9 +2133,9 @@ fn status_left(app: &App) -> Line<'static> {
             hint,
         ));
     }
-    if let Some(quote) = app.replying() {
+    if let Some(bar) = app.reply_bar() {
         spans.push(Span::styled(
-            format!("  · {}", quote.line()),
+            format!("  · {}", bar.line()),
             fg(theme.signal),
         ));
         spans.push(Span::styled(
@@ -2218,10 +2218,7 @@ fn input_height(app: &App, area: Rect) -> u16 {
 
 fn input(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let title = app.chat.title(&app.current().name);
-    let prompt = match app.replying() {
-        Some(quote) => format!("{title} {QUOTE_MARK} {} › ", quote.name),
-        None => format!("{title} › "),
-    };
+    let prompt = format!("{title} › ");
     let text = app.input.text();
     let before: String = text.chars().take(app.input.cursor()).collect();
     // The line the cursor is on, and what's before it on that line.
@@ -3554,12 +3551,18 @@ mod tests {
         key(&mut app, KeyCode::Char('r'));
         assert_eq!(app.picked(), None);
         let (rows, _) = draw(&app, screen.width, screen.height);
+        // The prompt is the conversation's alone; the status line says what it answers, as
+        // every app's bar words it.
         assert!(
-            row_with(&rows, "↪ bob ›").starts_with("#api ↪ bob ›"),
+            rows.iter().any(|row| row.trim_end() == "#api ›"),
             "{rows:?}"
         );
+        let bar = format!(
+            "{} bob: is staging up?, Esc cancels",
+            zirc_core::chat::REPLYING_TO
+        );
         assert!(
-            row_with(&rows, "irc.zirc.test · ").contains("↪ bob: is staging up?, Esc cancels"),
+            row_with(&rows, "irc.zirc.test · ").contains(&bar),
             "{rows:?}"
         );
 
@@ -3570,7 +3573,7 @@ mod tests {
             key(&mut app, KeyCode::Char(c));
         }
         key(&mut app, KeyCode::Enter);
-        assert_eq!(app.replying().map(|quote| quote.id).as_deref(), Some("m7"));
+        assert_eq!(app.replying(), Some("m7"));
         for c in "it is".chars() {
             key(&mut app, KeyCode::Char(c));
         }

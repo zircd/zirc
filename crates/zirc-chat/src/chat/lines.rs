@@ -441,6 +441,53 @@ impl LineQuote {
     }
 }
 
+/// Above the composer while a reply's written, as every app draws it: [`Self::lead`], a
+/// space, who said what it answers in bold, then [`Self::rest`]: `Replying to bob: first
+/// line…`, or `Replying to an earlier message` once that's no longer kept.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+pub struct ReplyBar {
+    /// `Replying to` ([`super::REPLYING_TO`]).
+    pub lead: String,
+    /// Who said what it answers, bold; none once that's no longer kept.
+    pub from: Option<String>,
+    /// After `from`: `: ` and its first line, cut short; [`super::EARLIER_MESSAGE`] without
+    /// `from`.
+    pub rest: String,
+}
+
+impl ReplyBar {
+    /// The bar for a reply to `quote`, as [`Chat::quoted`] gives it: none, or one with no
+    /// `from`, once it's no longer kept.
+    #[must_use]
+    pub fn of(quote: Option<LineQuote>) -> Self {
+        let lead = super::REPLYING_TO.to_owned();
+        match quote.filter(|quote| !quote.from.is_empty()) {
+            Some(quote) => Self {
+                lead,
+                from: Some(quote.from),
+                rest: format!(": {}", quote.text),
+            },
+            None => Self {
+                lead,
+                from: None,
+                rest: super::EARLIER_MESSAGE.to_owned(),
+            },
+        }
+    }
+
+    /// What follows [`Self::lead`], for an app that draws it plain: `bob: first line…`.
+    #[must_use]
+    pub fn said(&self) -> String {
+        format!("{}{}", self.from.as_deref().unwrap_or_default(), self.rest)
+    }
+
+    /// The bar as one line of text: `Replying to bob: first line…`.
+    #[must_use]
+    pub fn line(&self) -> String {
+        format!("{} {}", self.lead, self.said())
+    }
+}
+
 /// A long message's one control ([`super::More`]): a text button on its own line under the
 /// cut, or in a cut code block's footer beside Copy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -1863,6 +1910,17 @@ mod tests {
         let conversation = chat.conversation("#api").unwrap();
         assert_eq!(chat.quoted(conversation, "m1"), line(&lines, "on it").quote);
         assert_eq!(chat.quoted(conversation, "gone"), None);
+        // In every app's words: who, bold, and what they said; an earlier message once gone.
+        let bar = ReplyBar::of(chat.quoted(conversation, "m1"));
+        assert_eq!(bar.from.as_deref(), Some("Alice Liddell"));
+        assert_eq!(bar.line(), "Replying to Alice Liddell: the login bug");
+        let gone = ReplyBar::of(chat.quoted(conversation, "gone"));
+        assert_eq!(
+            (gone.line(), gone.from),
+            ("Replying to an earlier message".to_owned(), None)
+        );
+        let gone = ReplyBar::of(line(&lines, "and that").quote.clone());
+        assert_eq!(gone.said(), crate::chat::EARLIER_MESSAGE);
         // Messages are under who said them.
         assert!(lines.iter().all(|line| line.shape == RowShape::Message));
     }

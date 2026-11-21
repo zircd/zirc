@@ -163,8 +163,8 @@ pub use header_line::{HeaderLine, HeaderLineKind};
 pub use layout::{ClockAt, Heading, row_heading};
 pub use lines::{
     ANIMATION_PLAYS, CardAction, CardButtons, FileShape, LineActions, LineFile, LineKind, LineMore,
-    LineQuote, LineReaction, MEDIA_HEIGHT, MEDIA_WIDTH, MenuEntry, MenuItem, RowShape, SessionName,
-    SystemBody, SystemLine, VIDEO_MAKING, VIDEO_PLAN, VIDEO_UNREACHABLE, VideoPlan,
+    LineQuote, LineReaction, MEDIA_HEIGHT, MEDIA_WIDTH, MenuEntry, MenuItem, ReplyBar, RowShape,
+    SessionName, SystemBody, SystemLine, VIDEO_MAKING, VIDEO_PLAN, VIDEO_UNREACHABLE, VideoPlan,
     copy_code_label,
 };
 pub use list::{
