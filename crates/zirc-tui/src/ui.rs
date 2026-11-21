@@ -17,9 +17,8 @@ use crate::hyperlink;
 use crate::picker::{self, Picker};
 use crate::rows::{self, Row, Tone, fit, wrap};
 use zirc_core::chat::{
-    APP_TAG, APPS_SECTION, Avatar, COMPOSER_NOTE, GUEST_PILL, GuestHeader, Icon, Kind, OUTSIDE,
-    OrgHeader, Presence, Profile, QUOTE_MARK, UNASSIGNED, agent, assigned_label, away_label,
-    is_group, members_label, mentions_label,
+    AGENT_TAG, APP_TAG, APPS_SECTION, Avatar, COMPOSER_NOTE, GUEST_PILL, HeaderLineKind, Icon,
+    Kind, OrgHeader, Presence, Profile, QUOTE_MARK, away_label, members_label, mentions_label,
 };
 use zirc_core::emoji;
 use zirc_theme::{Design, Rgb, Theme, Type};
@@ -576,56 +575,51 @@ fn profile_lines(app: &App, profile: &Profile, width: usize) -> Vec<Line<'static
 fn header(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let theme = app.theme;
     let buffer = app.current();
-    let guest = app.chat.guest_header(&buffer.name);
+    let chat = &app.chat;
+    let guest = chat.guest_header(&buffer.name).is_some();
     // A guest is from outside, and tinted so.
-    let name = if guest.is_some() {
+    let name = if guest {
         theme.warning
     } else if buffer.kind == Kind::Channel {
         theme.channel
     } else {
         theme.text
     };
-    // A guest's room by the guest's name.
-    let title = guest.as_ref().map_or_else(
-        || app.person_title(&buffer.name),
-        |guest| guest.label.clone(),
-    );
     let mut spans = vec![Span::raw(" ")];
     // Who it's with in front: an agent session by its tool's mark, a person by their
     // presence; a channel by its whole name, "#" and all.
     spans.extend(header_face(app, &buffer.name));
+    // What every app's header calls it, and tags it with ([`Chat::header_title`]).
     spans.push(Span::styled(
-        format!("{title} "),
+        chat.header_title(&buffer.name),
         fg(name).add_modifier(Modifier::BOLD),
     ));
-    let about = match (buffer.kind, &buffer.topic) {
-        _ if guest.is_some() => guest.as_ref().map(guest_about).unwrap_or_default(),
-        (Kind::Channel, _) if is_group(&buffer.name) => " group direct message".to_owned(),
-        // A channel's people, threads and topic, from the core: "5 members · 2 threads · The
-        // web app".
-        (Kind::Channel, topic)
-            if app.chat.channel_about(&buffer.name).is_some() || topic.is_some() =>
-        {
-            format!(
-                " {}",
-                app.chat
-                    .channel_about(&buffer.name)
-                    .or_else(|| topic.clone())
-                    .unwrap_or_default()
-            )
-        }
-        (Kind::Channel, None) if !buffer.joined => " (not joined)".to_owned(),
-        _ => String::new(),
-    };
-    // An agent's conversation tagged as one, as every app tags it.
-    if agent(&buffer.name).is_some() {
+    if chat.shows_agent_tag(&buffer.name) {
         spans.push(Span::styled(
-            tag_text("agent"),
+            format!(" {AGENT_TAG}"),
             fg(theme.muted).add_modifier(Modifier::BOLD),
         ));
     }
-    // A channel's line counts its threads already, as every app's header counts them.
-    spans.push(Span::styled(about, fg(theme.muted)));
+    if guest {
+        spans.push(Span::styled(
+            format!(" {GUEST_PILL}"),
+            fg(theme.warning).add_modifier(Modifier::BOLD),
+        ));
+    }
+    // The core's one line under the name, as every app's header has it
+    // ([`Chat::header_line`]): an agent at work after the here dot, a person away in the
+    // warning colour, the rest muted.
+    if let Some(line) = chat.header_line(&buffer.name) {
+        if line.kind == HeaderLineKind::AgentAtWork {
+            spans.push(Span::styled(" ●", fg(theme.ok)));
+        }
+        let tone = if line.kind == HeaderLineKind::Away {
+            theme.warning
+        } else {
+            theme.muted
+        };
+        spans.push(Span::styled(format!("  {}", line.text), fg(tone)));
+    }
     frame.render_widget(
         Paragraph::new(Line::from(spans)).style(fg(theme.text)),
         area,
@@ -650,23 +644,6 @@ fn header_face(app: &App, name: &str) -> Vec<Span<'static>> {
         .map(|presence| presence_mark(app.theme, presence))
         .into_iter()
         .collect()
-}
-
-/// What the title line says of a conversation with a guest: that they're outside, their
-/// account, who it's assigned to, and whether it's closed.
-fn guest_about(guest: &GuestHeader) -> String {
-    let mut about = vec![OUTSIDE.to_owned()];
-    about.extend(guest.account_line().map(str::to_owned));
-    about.push(
-        guest
-            .assignee
-            .as_ref()
-            .map_or_else(|| UNASSIGNED.to_owned(), |nick| assigned_label(nick)),
-    );
-    if guest.closed {
-        about.push("closed".to_owned());
-    }
-    format!(" {}", about.join(" · "))
 }
 
 fn sidebar_width(app: &App) -> u16 {
@@ -1751,7 +1728,7 @@ fn status_left(app: &App) -> Line<'static> {
     spans.extend([
         Span::styled(format!(" {org} · "), fg(theme.muted)),
         Span::styled(
-            app.person_title(&app.current().name),
+            app.chat.header_title(&app.current().name),
             fg(theme.text).add_modifier(Modifier::BOLD),
         ),
     ]);
@@ -1956,7 +1933,7 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
     use zirc_core::chat::{
-        AGENT_TAG, BADGE_MOST, BROWSE_CHANNELS, MACHINES, NO_OTHER_CHANNELS, PEOPLE_SECTION,
+        BADGE_MOST, BROWSE_CHANNELS, MACHINES, NO_OTHER_CHANNELS, OUTSIDE, PEOPLE_SECTION,
         SERVER_TITLE, Shelf, badge_label,
     };
 
@@ -2206,16 +2183,16 @@ mod tests {
         let at = app.chat.position("#lobby/guest-7k2q").unwrap();
         let _ = app.select(at);
         let (rows, _) = draw(&app, screen.width, screen.height);
-        // The title line says they're from outside, and to nobody yet; the line over the
-        // input that it's a guest we're writing to.
+        // The title line says they're a guest from outside, as every app's header does
+        // (`Chat::header_line`); the line over the input that it's a guest we're writing to.
         assert!(
-            rows[0].starts_with(&format!(" Anna  {OUTSIDE} · {UNASSIGNED}")),
+            rows[0].starts_with(&format!(" Anna {GUEST_PILL}  {OUTSIDE}")),
             "{}",
             rows[0]
         );
         row_with(&rows, COMPOSER_NOTE);
         // The pill every app shows after a guest's name.
-        assert!(row_with(&rows, &format!("Anna {GUEST_PILL}")).contains("11:00"));
+        row_with(&rows, &format!("Anna {GUEST_PILL}  11:00"));
     }
 
     #[test]

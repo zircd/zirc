@@ -848,18 +848,6 @@ impl App {
         self.note(answer.unwrap_or_else(|why| format!("zirc.dev: {why}")));
     }
 
-    /// A direct message's title: a person by the name their profile gives, anyone else
-    /// as zirc-chat titles them.
-    #[must_use]
-    pub fn person_title(&self, name: &str) -> String {
-        let title = self.chat.title(name);
-        if title == name {
-            self.chat.shown_name(name)
-        } else {
-            title
-        }
-    }
-
     /// What a click on the list's row for the conversation called `name` does: shows it,
     /// or opens an agent session's not yet talked in.
     fn side_target(&self, name: &str) -> Option<Target> {
