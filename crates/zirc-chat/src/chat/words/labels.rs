@@ -84,7 +84,9 @@ pub const OPEN_IN_NEW_TAB: &str = "Open in a new tab";
 /// When a guest page's captcha can't load.
 pub const CAPTCHA_FAILED: &str = "The captcha couldn't load.";
 
-/// What signs in, as a link.
+/// What signs in: a link on a guest's page, and the one button on the phones' first screen and
+/// in the desktop's Account, which opens zirc.dev's sign-in, where the person picks how (a code
+/// by email, Google or GitHub), so no app names one way.
 pub const SIGN_IN: &str = "Sign in";
 
 /// After [`SIGN_IN`] on a guest's page.

@@ -78,10 +78,6 @@ pub const CONNECTION: &str = "Connection";
 /// the same menu its header's [`MORE`] opens (the user's choice, 17 Nov 2026).
 pub const CONVERSATION_OPTIONS: &str = "Conversation options";
 
-/// The sign-in's one button, which opens zirc.dev's sign-in by email: on the phones' first
-/// screen and in the desktop's Account.
-pub const CONTINUE_WITH_EMAIL: &str = "Continue with email";
-
 /// A code block's own button that copies it.
 pub const COPY: &str = "Copy";
 
@@ -656,8 +652,6 @@ pub struct Words {
     pub connection: String,
     /// A conversation's row's long press, for a screen reader: `Conversation options`.
     pub conversation_options: String,
-    /// The sign-in's one button: `Continue with email`.
-    pub continue_with_email: String,
     /// A code block's button that copies it: `Copy`.
     pub copy_block: String,
     /// A message's menu, copying a code block of it: `Copy code`.
@@ -989,7 +983,6 @@ pub fn words() -> Words {
         close_search: CLOSE_SEARCH.to_owned(),
         connection: CONNECTION.to_owned(),
         conversation_options: CONVERSATION_OPTIONS.to_owned(),
-        continue_with_email: CONTINUE_WITH_EMAIL.to_owned(),
         copy_block: COPY.to_owned(),
         copy_code: COPY_CODE.to_owned(),
         copy_link: COPY_LINK.to_owned(),
