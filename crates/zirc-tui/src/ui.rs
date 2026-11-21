@@ -1761,7 +1761,7 @@ fn new_line(app: &App, width: u16) -> Line<'static> {
     // How much is new, and since when, in zirc-chat's words; its short ones where the row
     // has no room for a rule before them.
     let label = app.chat.unseen(|at| app.zone.wall(at)).map_or_else(
-        || format!(" {}", zirc_core::chat::NEW_DIVIDER),
+        || format!(" {}", zirc_core::chat::NEW_TAG),
         |unseen| {
             let long = format!(" {}", unseen.label);
             if long.width() + NEW_RULE_MIN <= usize::from(width) {

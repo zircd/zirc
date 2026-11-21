@@ -241,14 +241,14 @@ pub use words::{
     COPY_LINK, COPY_MESSAGE_LINK, COPY_TEXT, COULDNT_SIGN_IN, DELETE, DELETE_MY_ACCOUNT, DISMISS,
     DONE, DOWNLOAD, EARLIER_MESSAGE, EARLIER_REPLY, EDIT_PROFILE, EVERYWHERE, GO_TO_NEWEST,
     GUEST_ACTIONS, HOME, JUMP_TO, JUMP_TO_PROMPT, MACHINES, MORE, MORE_PEOPLE_ONLY, NEW_CHANNEL,
-    NEW_DIVIDER, NEW_MESSAGE, NEW_TAG, NO_CHANNELS, NO_DIRECTS, NO_DIRECTS_HINT, NOT_NOW,
-    NOTHING_YET, NOTIFICATION_CHANNEL, PEOPLE_ONLY, PICK_A_CONVERSATION, PROFILE, REACT_LABEL,
-    REPLY_LABEL, REPLYING_TO, RESULTS, RETRY, SAID_BY, SAVE, SEARCH, SEARCH_IN, SEND, SENDING,
-    SETTINGS_ALL, SHOWN_PATHS, SIGNED_IN, STOP_REPLYING, THREADS, TRY_AGAIN, TURN_ON_NOTIFICATIONS,
-    VERSION, Words, YOU_PAGE, YOUR_NAME, activity_empty, couldnt_label, details_label,
-    guests_label, in_label, mentions_label, menu_bar, more_paths_label, new_label, nothing_called,
-    profile_label, react_with_label, removed_label, scope_label, sharing_label,
-    show_more_paths_label, signin_failed, version_label, words,
+    NEW_MESSAGE, NEW_TAG, NO_CHANNELS, NO_DIRECTS, NO_DIRECTS_HINT, NOT_NOW, NOTHING_YET,
+    NOTIFICATION_CHANNEL, PEOPLE_ONLY, PICK_A_CONVERSATION, PROFILE, REACT_LABEL, REPLY_LABEL,
+    REPLYING_TO, RESULTS, RETRY, SAID_BY, SAVE, SEARCH, SEARCH_IN, SEND, SENDING, SETTINGS_ALL,
+    SHOWN_PATHS, SIGNED_IN, STOP_REPLYING, THREADS, TRY_AGAIN, TURN_ON_NOTIFICATIONS, VERSION,
+    Words, YOU_PAGE, YOUR_NAME, activity_empty, couldnt_label, details_label, guests_label,
+    in_label, mentions_label, menu_bar, more_paths_label, new_label, nothing_called, profile_label,
+    react_with_label, removed_label, scope_label, sharing_label, show_more_paths_label,
+    signin_failed, version_label, words,
 };
 pub use working::{Intending, WorkingPerson, WorkingSet};
 pub use zirc_proto::search::{

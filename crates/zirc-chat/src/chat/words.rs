@@ -138,14 +138,12 @@ pub const MORE: &str = "More";
 /// What a screen reader says of a header's [`MORE`] while [`PEOPLE_ONLY`] is on.
 pub const MORE_PEOPLE_ONLY: &str = "More, showing people only";
 
-/// What marks the first message unread when a conversation was opened.
-pub const NEW_DIVIDER: &str = "New";
-
 /// What starts a direct message to someone not picked yet: a button, a menu item, its
 /// sheet's title.
 pub const NEW_MESSAGE: &str = "New message";
 
-/// [`NEW_DIVIDER`] where a tag is drawn in capitals without a style to raise it.
+/// What marks the first message unread when a conversation was opened, on a tag at the end
+/// of its line, as every app draws it (the user's choice, 21 Nov 2026: a tag, as `AGENT`).
 pub const NEW_TAG: &str = "NEW";
 
 /// What puts a question off, such as the offer to turn notifications on.
@@ -556,7 +554,6 @@ mod tests {
 
     #[test]
     fn a_phrase_said_two_ways_is_one_phrase() {
-        assert_eq!(NEW_TAG, NEW_DIVIDER.to_uppercase());
         assert_eq!(JUMP_TO_PROMPT, format!("{JUMP_TO}…"));
         assert_eq!(
             settings_list::ADD_ORGANISATION,
@@ -744,11 +741,9 @@ pub struct Words {
     /// A header's `more` for a screen reader while `people_only` is on: `More, showing
     /// people only`.
     pub more_people_only: String,
-    /// What marks the first message unread when a conversation was opened: `New`.
-    pub new_divider: String,
     /// What starts a direct message to someone not picked yet: `New message`.
     pub new_message: String,
-    /// `new_divider` where a tag is drawn in capitals: `NEW`.
+    /// What marks the first message unread when a conversation was opened, on a tag: `NEW`.
     pub new_tag: String,
     /// The channel list's empty line: `No channels yet.`.
     pub no_channels: String,
@@ -1030,7 +1025,6 @@ pub fn words() -> Words {
         menu_previous_conversation: menu_bar::PREVIOUS_CONVERSATION.to_owned(),
         more: MORE.to_owned(),
         more_people_only: MORE_PEOPLE_ONLY.to_owned(),
-        new_divider: NEW_DIVIDER.to_owned(),
         new_message: NEW_MESSAGE.to_owned(),
         new_tag: NEW_TAG.to_owned(),
         no_channels: NO_CHANNELS.to_owned(),
