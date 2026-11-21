@@ -17,6 +17,7 @@ use zirc_core::chat::{
     ListRow, Options, Quote, Ran, RecentSearches, SearchScreen, Shelf, complete_mention, copy_text,
     entry_text, first_link, fold, is_channel,
 };
+use zirc_core::keys::EscapeDoes;
 use zirc_irc::Line;
 
 use crate::hyperlink::Links;
@@ -1386,10 +1387,23 @@ impl App {
         self.input.replace(text, end);
     }
 
-    /// Stops correcting a message or writing a reply, which Esc lets go of first.
-    fn stop_composing(&mut self) {
-        self.stop_editing();
-        self.replying = None;
+    /// Esc in the input, as in every app with a keyboard ([`zirc_core::keys::escape`]): stops
+    /// correcting a message, else a reply.
+    fn escape_composer(&mut self, does: EscapeDoes) {
+        match does {
+            EscapeDoes::StopEditing => self.stop_editing(),
+            EscapeDoes::StopReplying => self.replying = None,
+            EscapeDoes::ClosePopup | EscapeDoes::Nothing => {}
+        }
+    }
+
+    /// What Esc does in the input now ([`zirc_core::keys::escape`]).
+    fn escape_does(&self) -> EscapeDoes {
+        let composer = zirc_core::keys::Composing {
+            empty: self.input.text().is_empty(),
+            editing: self.editing(),
+        };
+        zirc_core::keys::escape(false, composer, self.replying().is_some())
     }
 
     /// Stops correcting a message, emptying the input of its words.
@@ -1845,7 +1859,9 @@ impl App {
             // Shift-Esc marks everything read. Esc lets a reply or a correction go first,
             // then the message picked, and else marks the conversation shown read.
             KeyCode::Esc if shift => return Action::Send(self.chat.mark_all_read()),
-            KeyCode::Esc if self.editing() || self.replying().is_some() => self.stop_composing(),
+            KeyCode::Esc if self.escape_does() != EscapeDoes::Nothing => {
+                self.escape_composer(self.escape_does());
+            }
             KeyCode::Esc if self.picked().is_some() => self.let_go(),
             KeyCode::Esc => {
                 let name = self.current().name.clone();
