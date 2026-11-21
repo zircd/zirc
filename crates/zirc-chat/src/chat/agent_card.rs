@@ -38,9 +38,13 @@ pub struct AgentCard {
     pub titled: bool,
     /// Its short handle, `checkout`, in mono, or its id when it has none.
     pub handle: String,
-    /// Whose agent it is, after the handle: `Maya Chen's agent`, `your agent`. `None` when
-    /// its owner isn't known.
+    /// Whose agent it is: `Maya Chen's agent`, `your agent`. `None` when its owner isn't
+    /// known.
     pub whose: Option<String>,
+    /// [`Self::whose`] as it follows the handle, muted, when the card is titled: ` · Maya
+    /// Chen's agent`, its separator first. Untitled, the title is the handle, and `whose`
+    /// shows alone.
+    pub after_handle: Option<String>,
     /// The tool it runs in, `claude-code`, for the tool's icon.
     pub tool: Option<String>,
     /// Where it runs, after the tool's icon: `Claude Code · mbp`.
@@ -51,12 +55,14 @@ pub struct AgentCard {
     /// change web/src/checkout/Coupon.tsx · 4m`, `⟶ the login bug · 12m`, or `Nothing in
     /// progress`.
     pub now: Option<String>,
-    /// [`Self::now`] in parts, for apps that set its paths in mono: its marker and words,
-    /// `✎ about to change`, `⟶ the login bug`, or `Nothing in progress`.
+    /// [`Self::now`] in parts, for apps that set its paths in mono and its age muted, drawn
+    /// one after another as they are: its marker and words, `✎ about to change`, `⟶ the
+    /// login bug`, or `Nothing in progress`.
     pub now_lead: Option<String>,
-    /// The paths [`Self::now`] names after its lead, in mono, comma-separated.
-    pub now_paths: Vec<String>,
-    /// How long ago it said so, after a `·`: `4m`.
+    /// The paths [`Self::now`] names after its lead, in mono: ` src/auth, src/login`, a
+    /// space first.
+    pub now_paths: Option<String>,
+    /// How long ago it said so, muted, last: ` · 4m`, its separator first.
     pub now_ago: Option<String>,
     /// The task under [`Self::now`], when an intent says one: `refactor login`.
     pub task: Option<String>,
@@ -107,12 +113,13 @@ impl super::Chat {
                 titled: false,
                 handle,
                 whose,
+                after_handle: None,
                 tool: None,
                 place: None,
                 standing,
                 now: None,
                 now_lead: None,
-                now_paths: Vec::new(),
+                now_paths: None,
                 now_ago: None,
                 task: None,
                 heard: None,
@@ -138,14 +145,15 @@ impl super::Chat {
             title: registered.title.clone(),
             titled: true,
             handle,
+            after_handle: whose.as_ref().map(|whose| format!("{SEPARATOR}{whose}")),
             whose,
             tool,
-            place: (!place.is_empty()).then(|| place.join(" · ")),
+            place: (!place.is_empty()).then(|| place.join(SEPARATOR)),
             standing,
             now: Some(doing.line()),
-            now_lead: Some(doing.lead),
-            now_paths: doing.paths,
-            now_ago: doing.ago,
+            now_lead: Some(doing.lead.clone()),
+            now_paths: doing.paths_text(),
+            now_ago: doing.ago_text(),
             task: doing.task,
             heard: Some(heard),
             active,
@@ -270,6 +278,9 @@ impl super::Chat {
 /// ([`Chat::heard_all`]).
 pub(super) type Heard = std::collections::HashMap<(String, String), DateTime<Utc>>;
 
+/// Between the parts of a card's line: `Claude Code · mbp`, `checkout · Maya Chen's agent`.
+const SEPARATOR: &str = " · ";
+
 /// What a session is doing, in the parts its card's Now line draws.
 pub(super) struct Doing {
     /// Its marker and words: `✎ about to change`, `⟶ the login bug`.
@@ -288,15 +299,21 @@ impl Doing {
     /// The line as one string, as the terminal client prints it: `✎ about to change
     /// src/auth · 8m`.
     pub(super) fn line(&self) -> String {
-        let mut line = self.lead.clone();
-        if !self.paths.is_empty() {
-            line.push(' ');
-            line.push_str(&self.paths.join(", "));
-        }
-        if let Some(ago) = &self.ago {
-            line.push_str(" · ");
-            line.push_str(ago);
-        }
-        line
+        format!(
+            "{}{}{}",
+            self.lead,
+            self.paths_text().unwrap_or_default(),
+            self.ago_text().unwrap_or_default()
+        )
+    }
+
+    /// The paths as they follow the lead: ` src/auth, src/login`.
+    fn paths_text(&self) -> Option<String> {
+        (!self.paths.is_empty()).then(|| format!(" {}", self.paths.join(", ")))
+    }
+
+    /// How long ago, as it follows the rest: ` · 8m`.
+    fn ago_text(&self) -> Option<String> {
+        self.ago.as_ref().map(|ago| format!("{SEPARATOR}{ago}"))
     }
 }

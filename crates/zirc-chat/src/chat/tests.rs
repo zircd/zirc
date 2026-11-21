@@ -3107,12 +3107,13 @@ fn an_unregistered_agent_card_has_its_handle_whose_agent_and_id() {
             titled: false,
             handle: "analytics".into(),
             whose: Some("Alice's agent".into()),
+            after_handle: None,
             tool: None,
             place: None,
             standing: None,
             now: None,
             now_lead: None,
-            now_paths: Vec::new(),
+            now_paths: None,
             now_ago: None,
             task: None,
             heard: None,
@@ -3160,19 +3161,16 @@ fn an_agent_card_has_the_full_title_where_it_runs_and_what_its_doing() {
     assert_eq!(card.place.as_deref(), Some("Claude Code · alice-mbp"));
     // Its live intent, said at 11:52, with its task under it.
     assert_eq!(card.now.as_deref(), Some("✎ about to change src/auth · 8m"));
-    // In parts, for apps that set the paths in mono.
+    // In parts, for apps that set the paths in mono and the age muted, drawn as they come.
     assert_eq!(
         (
             card.now_lead.as_deref(),
-            &card.now_paths[..],
+            card.now_paths.as_deref(),
             card.now_ago.as_deref()
         ),
-        (
-            Some("✎ about to change"),
-            &["src/auth".to_owned()][..],
-            Some("8m")
-        )
+        (Some("✎ about to change"), Some(" src/auth"), Some(" · 8m"))
     );
+    assert_eq!(card.after_handle.as_deref(), Some(" · Alice's agent"));
     assert_eq!(card.task.as_deref(), Some("refactor login"));
     assert_eq!(card.heard.as_deref(), Some("Active now"));
     assert!(card.active);
@@ -8579,12 +8577,13 @@ fn the_card_the_note_and_the_header_are_the_wire_records() {
             "titled": false,
             "handle": "analytics",
             "whose": "Alice's agent",
+            "afterHandle": null,
             "tool": null,
             "place": null,
             "standing": null,
             "now": null,
             "nowLead": null,
-            "nowPaths": [],
+            "nowPaths": null,
             "nowAgo": null,
             "task": null,
             "heard": null,
