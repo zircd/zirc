@@ -1196,6 +1196,17 @@ pub struct Recent {
 }
 
 impl SearchScreen {
+    /// Its hits in the order drawn, in every app: the one list, or each conversation's in
+    /// turn.
+    #[must_use]
+    pub fn listed_hits(&self) -> Vec<&SearchHit> {
+        if self.groups.is_empty() {
+            self.hits.iter().collect()
+        } else {
+            self.groups.iter().flat_map(|group| &group.hits).collect()
+        }
+    }
+
     /// The hit Return in the search box opens, in every app: the first listed, or the
     /// first conversation's first.
     #[must_use]

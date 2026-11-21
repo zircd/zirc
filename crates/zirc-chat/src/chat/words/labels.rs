@@ -336,8 +336,13 @@ pub mod tui {
     /// The terminal's key for Jump to, where a computer's is [`super::keys::JUMP_TO`]: its
     /// Ctrl+K is the line editor's.
     pub const JUMP_KEY: &str = "Alt-K";
-    /// Under Jump to's rows, before [`super::ESC_CLOSES`].
+    /// Under Jump to's rows and search's hits, before [`super::ESC_CLOSES`].
     pub const ENTER_OPENS: &str = "Enter opens";
+    /// The terminal's key for search, where a computer's is [`super::keys::SEARCH`].
+    pub const SEARCH_KEY: &str = "Alt-F";
+    /// Under search's hits, in a search opened in a conversation: what Tab does, as the
+    /// control beside the box does in the other apps.
+    pub const TAB_EVERYWHERE: &str = "Tab here or everywhere";
 }
 
 /// What a computer's keys for Jump to, search here and search everywhere are, as every app's

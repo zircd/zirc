@@ -46,6 +46,7 @@ pub const HELP: &[&str] = &[
     "/quit [reason]            leave",
     "Keys: Ctrl-N/Ctrl-P or Alt-↓/Alt-↑ switch, Alt-1…9 jump, Alt-A next unread,",
     "      Alt-K finds any conversation or channel by name, to go to or join,",
+    "      Alt-F looks for words in the conversation shown (Tab: everywhere),",
     "      Alt-P pins the conversation shown to the top of its section, or unpins it,",
     "      PgUp/PgDn scroll, Tab completes nicks, Ctrl-C quits. Shift-Enter (or",
     "      Alt-Enter) starts a new line. Esc marks the conversation shown read,",

@@ -14,8 +14,8 @@ use ratatui::crossterm::event::{
 };
 use zirc_core::chat::{
     Chat, Conversation, Details, Entry, Face, GuestRequest, Here, Kind, ListKind, ListOptions,
-    ListRow, Options, Quote, Ran, Shelf, complete_mention, copy_text, entry_text, first_link, fold,
-    is_channel,
+    ListRow, Options, Quote, Ran, RecentSearches, SearchScreen, Shelf, complete_mention, copy_text,
+    entry_text, first_link, fold, is_channel,
 };
 use zirc_irc::Line;
 
@@ -25,6 +25,7 @@ use zirc_proto::telemetry::{Event, FeatureUsed};
 pub use zirc_core::chat::Link;
 
 use crate::command::{self, Command};
+use crate::find::{Searched, Searching};
 use crate::input::Input;
 use crate::jump::{Jumped, Jumping};
 use crate::picker::{self, Picked, Picker};
@@ -245,8 +246,12 @@ pub struct App {
     picked: Option<(String, String)>,
     /// The reaction picker, when it's open.
     picker: Option<Picker>,
-    /// Jump to, when it's open (Alt+K).
+    /// Jump to, when it's open (Alt-K).
     jumping: Option<Jumping>,
+    /// Search, when it's open (Alt-F).
+    searching: Option<Searching>,
+    /// The searches made lately on this server, newest first ([`RecentSearches`]).
+    recent_searches: RecentSearches,
     /// The picked message's details, shown over the scrollback (`i`), and how many of its
     /// lines are scrolled past.
     details: Option<(Details, u16)>,
@@ -398,6 +403,8 @@ impl App {
             picked: None,
             picker: None,
             jumping: None,
+            searching: None,
+            recent_searches: RecentSearches::default(),
             details: None,
             recent: Recent::default(),
             trimming: None,
@@ -940,7 +947,12 @@ impl App {
     /// Takes in a line from the server, saying what to send back.
     pub fn handle(&mut self, line: Line) -> Vec<Line> {
         self.changed();
-        self.chat.receive(line)
+        let lines = self.chat.receive(line);
+        // An open search finds what just came in.
+        if let Some(searching) = &mut self.searching {
+            searching.refresh(&self.chat, self.zone);
+        }
+        lines
     }
 
     /// Shows the conversation at `at`, marking it read. Returns what to send: where it's
@@ -1116,6 +1128,52 @@ impl App {
     #[must_use]
     pub fn jumping(&self) -> Option<&Jumping> {
         self.jumping.as_ref()
+    }
+
+    /// Search, when it's open.
+    #[must_use]
+    pub fn searching(&self) -> Option<&Searching> {
+        self.searching.as_ref()
+    }
+
+    /// The searches made lately, as the empty search box lists them.
+    #[must_use]
+    pub fn recent_searches(&self) -> Vec<zirc_core::chat::Recent> {
+        self.recent_searches.listed()
+    }
+
+    /// The search screen open, as zirc-chat lays it out.
+    #[must_use]
+    pub fn search_screen(&self) -> Option<&SearchScreen> {
+        self.searching.as_ref().map(Searching::screen)
+    }
+
+    /// Takes in a key while search is open. Returns what to send.
+    fn searching_key(&mut self, key: KeyEvent) -> Vec<Line> {
+        let recent = self.recent_searches();
+        let Some(searching) = self.searching.as_mut() else {
+            return Vec::new();
+        };
+        match searching.key(key, (&self.chat, self.zone), &recent) {
+            Searched::Open => Vec::new(),
+            Searched::Closed => {
+                self.searching = None;
+                Vec::new()
+            }
+            Searched::Hit(hit) => {
+                // Opening what it found keeps the search among the recent ones.
+                if let Some(searching) = &self.searching {
+                    self.recent_searches.remember(&searching.finding.query());
+                }
+                self.prefs_changed = true;
+                let mut lines = self.show_named(Some(hit.conversation.clone()));
+                if let Some(id) = hit.id.filter(|_| hit.loaded) {
+                    self.picked = Some((fold(&hit.conversation), id.clone()));
+                    lines.extend(self.keep_in_view(&id));
+                }
+                lines
+            }
+        }
     }
 
     /// Takes in a key while Jump to is open. Returns what to send.
@@ -1388,6 +1446,10 @@ impl App {
                 .into_iter()
                 .map(|closed| (closed.name, closed.at_ms))
                 .collect(),
+            recent_searches: [(self.server().to_owned(), self.recent_searches.0.clone())]
+                .into_iter()
+                .filter(|(_, recent)| !recent.is_empty())
+                .collect(),
         }
     }
 
@@ -1412,6 +1474,13 @@ impl App {
                 .closed
                 .into_iter()
                 .map(|(name, at_ms)| zirc_core::chat::Closed { name, at_ms }),
+        );
+        self.recent_searches = RecentSearches(
+            prefs
+                .recent_searches
+                .get(self.server())
+                .cloned()
+                .unwrap_or_default(),
         );
     }
 
@@ -1673,7 +1742,11 @@ impl App {
     /// Takes in a key while a card that takes every key is open, the reaction picker, Jump
     /// to or the trim card: Ctrl-C still quits.
     fn card_key(&mut self, key: KeyEvent, ctrl: bool) -> Option<Action> {
-        if self.picker.is_none() && self.jumping.is_none() && self.trimming.is_none() {
+        if self.picker.is_none()
+            && self.jumping.is_none()
+            && self.searching.is_none()
+            && self.trimming.is_none()
+        {
             return None;
         }
         if ctrl && key.code == KeyCode::Char('c') {
@@ -1683,6 +1756,8 @@ impl App {
             self.picker_key(key)
         } else if self.jumping.is_some() {
             self.jumping_key(key)
+        } else if self.searching.is_some() {
+            self.searching_key(key)
         } else {
             self.trimming_key(key)
         }))
@@ -1740,6 +1815,10 @@ impl App {
             KeyCode::Down if shift => return Action::Send(self.pick(1)),
             KeyCode::Char('r' | 'R') if alt => self.open_picker(),
             KeyCode::Char('k' | 'K') if alt => self.jumping = Some(Jumping::default()),
+            KeyCode::Char('f' | 'F') if alt => {
+                let shown = self.current().name.clone();
+                self.searching = Some(Searching::new(&self.chat, Some(shown), self.zone));
+            }
             KeyCode::Char('p' | 'P') if alt => self.toggle_pin(),
             KeyCode::Char('o' | 'O') if alt && self.orgs.len() > 1 => return Action::Org(None),
             KeyCode::Char('s' | 'S') if alt => return self.open_sessions(),

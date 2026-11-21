@@ -25,6 +25,8 @@ pub struct Prefs {
     pub thresholds: std::collections::BTreeMap<String, String>,
     /// The direct messages closed (`/close`), by name: when, in milliseconds since 1970.
     pub closed: std::collections::BTreeMap<String, i64>,
+    /// The searches made lately (Alt-F), newest first, by the server they were made on.
+    pub recent_searches: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 impl Default for Prefs {
@@ -36,6 +38,7 @@ impl Default for Prefs {
             editor: None,
             thresholds: std::collections::BTreeMap::new(),
             closed: std::collections::BTreeMap::new(),
+            recent_searches: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -88,6 +91,11 @@ mod tests {
             editor: Some("zed".into()),
             thresholds: [("#ops".to_owned(), "info".to_owned())].into(),
             closed: [("mattias-build-2301".to_owned(), 1_793_000_000_000)].into(),
+            recent_searches: [(
+                "irc.zirc.test".to_owned(),
+                vec!["in:#api timeout".to_owned()],
+            )]
+            .into(),
         };
         prefs.save(&path).unwrap();
         assert_eq!(Prefs::load(&path), prefs);

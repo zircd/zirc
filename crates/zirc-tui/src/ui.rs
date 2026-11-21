@@ -13,13 +13,15 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr as _;
 
 use crate::app::{App, SessionsPanel, Side, Target, Trimming};
+use crate::find::Searching;
 use crate::hyperlink;
 use crate::jump::{self, Jumping};
 use crate::picker::{self, Picker};
 use crate::rows::{self, Row, Tone, fit, wrap};
 use zirc_core::chat::{
     AGENT_TAG, APP_TAG, APPS_SECTION, Avatar, COMPOSER_NOTE, GUEST_PILL, HeaderLineKind, Icon,
-    Kind, OrgHeader, Presence, Profile, QUOTE_MARK, away_label, members_label, mentions_label,
+    Kind, OrgHeader, Presence, Profile, QUOTE_MARK, SearchHit, SearchScreen, away_label,
+    members_label, mentions_label,
 };
 use zirc_core::emoji;
 use zirc_theme::{Design, Rgb, Theme, Type};
@@ -1106,6 +1108,9 @@ fn scrollback_rows(frame: &mut Frame<'_>, app: &App, area: Rect) {
     if let Some(jumping) = app.jumping() {
         jump_card(frame, app, jumping, area);
     }
+    if let Some(searching) = app.searching() {
+        search_card(frame, app, (searching, searching.screen()), area);
+    }
     if let Some(trimming) = app.trimming() {
         trim_card(frame, app, trimming, area);
     }
@@ -1171,6 +1176,237 @@ fn scrollback_target(app: &App, area: Rect, column: u16, row: u16) -> Target {
         ) => Target::Message(id),
         _ => Target::Scrollback,
     }
+}
+
+/// One line of search's card, with the row it's part of (a hit, or a recent search), to keep
+/// the one picked in view.
+type Listed = (Line<'static>, Option<usize>);
+
+/// Search, as a card over the top of the scrollback, `area`, laid out as zirc-chat lays it
+/// out for every app ([`zirc_core::chat::Chat::search_screen`]): the box with its chips,
+/// here or everywhere, what it couldn't cover, then the recent searches while nothing's
+/// typed, else what it found, each hit's who and when over its words with the matches bold.
+fn search_card(
+    frame: &mut Frame<'_>,
+    app: &App,
+    (searching, screen): (&Searching, &SearchScreen),
+    area: Rect,
+) {
+    use zirc_core::chat::labels;
+    let theme = app.theme;
+    let width = area.width.clamp(30, 80).min(area.width);
+    let text = usize::from(width).saturating_sub(4);
+    let head = search_head(app, (searching, screen), text);
+    let recent = app.recent_searches();
+    let (body, at) = if searching.blank() {
+        let at = searching.at(recent.len());
+        (recent_lines(app, &recent, at, text), at)
+    } else {
+        let at = searching.at(screen.listed_hits().len());
+        (found_lines(app, screen, at, text), at)
+    };
+    let mut keys = vec![labels::tui::ENTER_OPENS];
+    if searching.finding.opened_in.is_some() {
+        keys.push(labels::tui::TAB_EVERYWHERE);
+    }
+    keys.push(labels::ESC_CLOSES);
+    let foot = Line::styled(fit(&keys.join(" · "), text), fg(theme.muted));
+    // The rows that fit between the head and the foot, round the one picked.
+    let room = usize::from(area.height.saturating_sub(2))
+        .saturating_sub(head.len() + 1)
+        .max(1);
+    let last = body
+        .iter()
+        .rposition(|(_, row)| *row == Some(at))
+        .unwrap_or(0);
+    let first = (last + 1).saturating_sub(room);
+    let mut lines = head;
+    lines.extend(
+        body.into_iter()
+            .skip(first)
+            .take(room)
+            .map(|(line, _)| line),
+    );
+    lines.push(foot);
+    let height = u16::try_from(lines.len() + 2)
+        .unwrap_or(u16::MAX)
+        .min(area.height);
+    let card = Rect {
+        x: area.x + area.width.saturating_sub(width) / 2,
+        y: area.y,
+        width,
+        height,
+    };
+    frame.render_widget(Clear, card);
+    frame.render_widget(
+        Paragraph::new(lines).block(
+            panel(Block::new().borders(Borders::ALL), theme)
+                .border_style(fg(theme.signal))
+                .title(format!(
+                    " {} ",
+                    labels::with_shortcut(zirc_core::chat::SEARCH, labels::tui::SEARCH_KEY)
+                )),
+        ),
+        card,
+    );
+}
+
+/// `line` on the signal colour when it's part of the row picked.
+fn picked_line(app: &App, line: Line<'static>, picked: bool) -> Line<'static> {
+    if picked {
+        line.style(fg(app.theme.on_signal).bg(colour(app.theme.signal)))
+    } else {
+        line
+    }
+}
+
+/// Search's box, its chips then what's typed, or what it says while empty; here or
+/// everywhere; and why what's typed doesn't read, or what it couldn't cover.
+fn search_head(
+    app: &App,
+    (searching, screen): (&Searching, &SearchScreen),
+    text: usize,
+) -> Vec<Line<'static>> {
+    let theme = app.theme;
+    let finding = &searching.finding;
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for chip in &screen.chips {
+        spans.push(Span::styled(
+            format!(" {} ", chip.label),
+            fg(theme.text).bg(colour(theme.panel)),
+        ));
+        spans.push(Span::raw(" "));
+    }
+    if finding.typed.is_empty() && screen.chips.is_empty() {
+        spans.push(Span::styled(screen.placeholder.clone(), fg(theme.muted)));
+    }
+    spans.push(Span::styled(finding.typed.clone(), fg(theme.text)));
+    spans.push(Span::styled("▏", fg(theme.signal)));
+    let mut head = vec![Line::from(spans)];
+    let here = finding
+        .opened_in
+        .as_deref()
+        .map(|name| app.chat.title(name));
+    if let Some(segments) = finding.segments(screen, here) {
+        let chosen = fg(theme.text).add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+        let (here, everywhere) = if segments.everywhere_chosen {
+            (fg(theme.muted), chosen)
+        } else {
+            (chosen, fg(theme.muted))
+        };
+        head.push(Line::from(vec![
+            Span::styled(segments.here, here),
+            Span::styled(" · ", fg(theme.muted)),
+            Span::styled(segments.everywhere, everywhere),
+        ]));
+    }
+    let warning = |words: &str| Line::styled(fit(words, text), fg(theme.warning));
+    head.extend(finding.problem().as_deref().map(warning));
+    if let Some(limits) = &screen.limits {
+        head.push(if limits.warning {
+            warning(&limits.text)
+        } else {
+            Line::styled(fit(&limits.text, text), fg(theme.muted))
+        });
+    }
+    head
+}
+
+/// The recent searches, as the empty box lists them, the one `at` picked.
+fn recent_lines(
+    app: &App,
+    recent: &[zirc_core::chat::Recent],
+    at: usize,
+    text: usize,
+) -> Vec<Listed> {
+    let theme = app.theme;
+    let mut body = Vec::new();
+    if !recent.is_empty() {
+        body.push((
+            Line::styled(
+                Type::get().label(zirc_core::chat::RECENT_TITLE),
+                fg(theme.muted),
+            ),
+            None,
+        ));
+    }
+    for (i, search) in recent.iter().enumerate() {
+        let said = search
+            .chips
+            .iter()
+            .cloned()
+            .chain((!search.text.is_empty()).then(|| search.text.clone()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let line = Line::styled(fit(&said, text), fg(theme.text));
+        body.push((picked_line(app, line, i == at), Some(i)));
+    }
+    body
+}
+
+/// What `screen` found: its header, what it says when nothing matches, then each hit, in
+/// one list or under its conversation, the one `at` picked.
+fn found_lines(app: &App, screen: &SearchScreen, at: usize, text: usize) -> Vec<Listed> {
+    let theme = app.theme;
+    let muted = |words: &str| (Line::styled(fit(words, text), fg(theme.muted)), None);
+    let mut body: Vec<Listed> = screen.header.iter().map(|header| muted(header)).collect();
+    if let Some(empty) = &screen.empty {
+        body.push((Line::styled(fit(&empty.text, text), fg(theme.text)), None));
+        body.extend(empty.hint.iter().map(|hint| muted(hint)));
+    }
+    let mut i = 0;
+    let mut hit = |body: &mut Vec<Listed>, hit: &SearchHit| {
+        for line in hit_lines(app, hit, text) {
+            body.push((picked_line(app, line, i == at), Some(i)));
+        }
+        i += 1;
+    };
+    if screen.groups.is_empty() {
+        for found in &screen.hits {
+            hit(&mut body, found);
+        }
+    } else {
+        for group in &screen.groups {
+            let title = fit(&group.title, text);
+            body.push((
+                Line::styled(title, fg(theme.muted).add_modifier(Modifier::BOLD)),
+                None,
+            ));
+            for found in &group.hits {
+                hit(&mut body, found);
+            }
+        }
+    }
+    body.extend(screen.more_groups.iter().map(|more| muted(more)));
+    body
+}
+
+/// A hit's two lines: who said it and when, then its words, the matches bold.
+fn hit_lines(app: &App, hit: &SearchHit, text: usize) -> [Line<'static>; 2] {
+    let theme = app.theme;
+    let who = Line::from(vec![
+        Span::styled(
+            hit.name.clone(),
+            fg(theme.text).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!("  {}", hit.aside), fg(theme.muted)),
+    ]);
+    let mut spans = Vec::new();
+    let mut room = text;
+    for part in &hit.parts {
+        if room == 0 {
+            break;
+        }
+        let shown = fit(&part.text, room);
+        room = room.saturating_sub(shown.width());
+        let style = if part.hit {
+            fg(theme.text).add_modifier(Modifier::BOLD)
+        } else {
+            fg(theme.text)
+        };
+        spans.push(Span::styled(shown, style));
+    }
+    [who, Line::from(spans)]
 }
 
 /// Jump to, as a card over the top of the scrollback, `area`, laid out as zirc-chat lays it
@@ -2306,6 +2542,58 @@ mod tests {
         row_with(&rows, COMPOSER_NOTE);
         // The pill every app shows after a guest's name.
         row_with(&rows, &format!("Anna {GUEST_PILL}  11:00"));
+    }
+
+    #[test]
+    fn searches_here_or_everywhere_as_zirc_chat_lays_it_out_and_keeps_what_was_found() {
+        use zirc_core::chat::{RECENT_TITLE, SEARCH, labels};
+        let mut app = app();
+        app.handle(
+            "@msgid=m7;time=2026-10-30T11:04:00.000Z :bob!u@h PRIVMSG #api :look at the lookup tables"
+                .parse()
+                .unwrap(),
+        );
+        let api = app.chat.position("#api").unwrap();
+        let _ = app.select(api);
+        let alt_f = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::ALT);
+        let _ = app.key(alt_f);
+        let (rows, _) = draw(&app, 100, 30);
+        row_with(
+            &rows,
+            &labels::with_shortcut(SEARCH, labels::tui::SEARCH_KEY),
+        );
+        for c in "look".chars() {
+            let _ = app.key(KeyEvent::from(KeyCode::Char(c)));
+        }
+        let (rows, _) = draw(&app, 100, 30);
+        let screen = app.search_screen().unwrap();
+        row_with(&rows, screen.header.as_deref().unwrap());
+        row_with(&rows, "me: can you look?");
+        // Tab: everywhere, as the control beside the box says.
+        let _ = app.key(KeyEvent::from(KeyCode::Tab));
+        assert!(
+            app.chat
+                .search_scope(&app.searching().unwrap().finding.query())
+                .is_none()
+        );
+        let _ = app.key(KeyEvent::from(KeyCode::Tab));
+        // Enter opens the hit picked and picks its message; search stays open.
+        let first = app.search_screen().unwrap().listed_hits()[0].clone();
+        assert_eq!(first.id.as_deref(), Some("m7"), "newest first: {first:?}");
+        let _ = app.key(KeyEvent::from(KeyCode::Enter));
+        assert_eq!(app.current().name, "#api");
+        assert_eq!(app.picked(), Some("m7"));
+        assert!(app.searching().is_some());
+        let _ = app.key(KeyEvent::from(KeyCode::Esc));
+        assert!(app.searching().is_none());
+        // What was searched for is kept, and listed while nothing's typed.
+        let _ = app.key(alt_f);
+        let (rows, _) = draw(&app, 100, 30);
+        row_with(&rows, &Type::get().label(RECENT_TITLE));
+        assert_eq!(
+            app.prefs().recent_searches.values().next().unwrap().len(),
+            1
+        );
     }
 
     #[test]

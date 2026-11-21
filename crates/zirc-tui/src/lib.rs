@@ -8,6 +8,7 @@
 pub mod app;
 pub mod cli;
 pub mod command;
+pub mod find;
 pub mod hyperlink;
 pub mod input;
 pub mod jump;
