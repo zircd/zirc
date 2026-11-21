@@ -1069,7 +1069,6 @@ impl App {
             self.links,
             people,
             today,
-            self.changes,
         ));
         let offset = self.zone.offset();
         let lines = if zirc_core::chat::agent(name).is_some() {
@@ -1534,6 +1533,27 @@ impl App {
         self.flash = Some(said.to_owned());
     }
 
+    /// Opens the picked message when it's long and cut, or cuts it again, as its control's
+    /// press does in every app ([`zirc_core::chat::Chat::toggle_more`]). Whether it's long.
+    fn toggle_more(&mut self) -> bool {
+        let Some(id) = self.picked().map(str::to_owned) else {
+            return false;
+        };
+        let more = {
+            let laid = self.laid(usize::from(self.view.0));
+            laid.lines()
+                .iter()
+                .find(|line| line.id.as_deref() == Some(id.as_str()))
+                .and_then(|line| Some((line.key.clone(), line.more.as_ref()?.open)))
+        };
+        let Some((key, open)) = more else {
+            return false;
+        };
+        self.changed();
+        self.chat.toggle_more(&key, open);
+        true
+    }
+
     /// Reveals the picked message's sealed parts, or hides them again.
     fn reveal(&mut self) {
         let Some(id) = self.picked() else {
@@ -1610,6 +1630,8 @@ impl App {
             KeyCode::Char('y') => self.copy(false),
             KeyCode::Char('l') => self.copy(true),
             KeyCode::Char('s') => self.reveal(),
+            // Enter on a long message opens it, or cuts it again, as its row says.
+            KeyCode::Enter if self.toggle_more() => {}
             KeyCode::Char('i') => {
                 let name = self.current().name.clone();
                 self.details = self

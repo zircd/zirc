@@ -2600,6 +2600,36 @@ mod tests {
     }
 
     #[test]
+    fn opens_a_long_message_with_enter_as_its_row_says() {
+        let mut app = app();
+        // Twelve lines, as a multiline batch brings them: more than the core shows of one.
+        app.handle(
+            "@msgid=m9;time=2026-10-30T11:05:00.000Z :bob!u@h BATCH +b1 draft/multiline #api"
+                .parse()
+                .unwrap(),
+        );
+        for n in 1..=12 {
+            app.handle(
+                format!("@batch=b1 :bob!u@h PRIVMSG #api :step {n}")
+                    .parse()
+                    .unwrap(),
+            );
+        }
+        app.handle(":bob!u@h BATCH -b1".parse().unwrap());
+        let api = app.chat.position("#api").unwrap();
+        let _ = app.select(api);
+        let _ = app.key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
+        assert_eq!(app.picked(), Some("m9"));
+        let (rows, _) = draw(&app, 100, 40);
+        row_with(&rows, "more lines · Enter shows them");
+        assert!(!rows.iter().any(|row| row.contains("step 12")));
+        let _ = app.key(KeyEvent::from(KeyCode::Enter));
+        let (rows, _) = draw(&app, 100, 40);
+        row_with(&rows, "step 12");
+        row_with(&rows, "Enter shows less");
+    }
+
+    #[test]
     fn jumps_where_whats_typed_names_as_zirc_chat_lays_it_out() {
         use zirc_core::chat::{JUMP_TO, labels, nothing_called};
         let mut app = app();

@@ -458,6 +458,18 @@ pub struct LineMore {
     pub code_lines: Option<u32>,
 }
 
+impl LineMore {
+    /// The row the terminal client draws for it, dim: `… 34 more lines · Enter shows them`
+    /// ([`super::more::terminal_line`]).
+    #[must_use]
+    pub fn terminal_line(&self) -> String {
+        super::more::terminal_line(
+            self.open,
+            usize::try_from(self.hidden).unwrap_or(usize::MAX),
+        )
+    }
+}
+
 /// An agent session, by what it goes by.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

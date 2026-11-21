@@ -706,12 +706,13 @@ fn edited(line: &Line, runs: &mut Vec<Run>, width: usize) {
     }
 }
 
-/// A long message's control, as zirc-chat words it ([`Line::more`]): `Show 34 more lines`.
+/// A long message's control, as zirc-chat words it for a terminal
+/// ([`zirc_core::chat::lines::LineMore::terminal_line`]): `… 34 more lines · Enter shows them`.
 fn more_row(line: &Line) -> Option<Row> {
     let more = line.more.as_ref()?;
     Some(
         Run {
-            text: more.label.clone(),
+            text: more.terminal_line(),
             tone: Tone::More,
             links: Vec::new(),
         }

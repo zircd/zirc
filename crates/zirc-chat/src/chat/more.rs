@@ -89,11 +89,18 @@ impl More {
     /// · Enter shows them`, or `· Enter shows less` at the end of an open one.
     #[must_use]
     pub fn terminal_line(&self) -> String {
-        match (self.open, self.hidden) {
-            (true, _) => "· Enter shows less".to_owned(),
-            (false, 1) => "… 1 more line · Enter shows it".to_owned(),
-            (false, hidden) => format!("… {hidden} more lines · Enter shows them"),
-        }
+        terminal_line(self.open, self.hidden)
+    }
+}
+
+/// The row the terminal client draws for a long message's control, `open` or with
+/// `hidden` lines cut: see [`More::terminal_line`].
+#[must_use]
+pub fn terminal_line(open: bool, hidden: usize) -> String {
+    match (open, hidden) {
+        (true, _) => "· Enter shows less".to_owned(),
+        (false, 1) => "… 1 more line · Enter shows it".to_owned(),
+        (false, hidden) => format!("… {hidden} more lines · Enter shows them"),
     }
 }
 
