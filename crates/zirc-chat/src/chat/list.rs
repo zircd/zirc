@@ -223,11 +223,10 @@ pub struct Thread {
     pub badge: usize,
     /// That count as its badge says it, `3`, `99+` ([`badge_label`]); `None` for none.
     pub badge_label: Option<String>,
-    /// The newest thing said in it ([`Chat::preview`]), or [`super::NO_MESSAGES`] once its
-    /// history came back with nothing said ([`Thread::placeholder`]).
-    pub preview: Option<String>,
-    /// Whether [`Thread::preview`] is [`super::NO_MESSAGES`], drawn faint.
-    pub placeholder: bool,
+    /// The one line under its title, as a row of the sidebar's ([`super::ListRow::under`]):
+    /// the newest thing said in it ([`Chat::preview`]), or a faint [`super::NO_MESSAGES`] once
+    /// its history came back with nothing said. Every app draws this.
+    pub under: Option<super::RowUnder>,
     /// When that was, as the list says it ([`super::ago_short`]): `5m`, `3h`.
     pub when: Option<String>,
     /// The server's id for the message in the channel it was started from, when one was
@@ -979,7 +978,10 @@ impl Chat {
                 let (unread, mentions, latest) = self.counts(&name);
                 let (preview, when) = self.row_preview([name.as_str()]);
                 let placeholder = preview.is_none() && self.nothing_said(&name);
+                let preview =
+                    preview.or_else(|| placeholder.then(|| super::NO_MESSAGES.to_owned()));
                 Thread {
+                    under: super::RowUnder::of(None, preview, placeholder),
                     of: started
                         .iter()
                         .find(|(_, thread)| thread.eq_ignore_ascii_case(&name))
@@ -994,8 +996,6 @@ impl Chat {
                     latest_ms: latest.map(|at| at.timestamp_millis()),
                     unread,
                     mentions,
-                    preview: preview.or_else(|| placeholder.then(|| super::NO_MESSAGES.to_owned())),
-                    placeholder,
                     when,
                     name,
                 }

@@ -7895,7 +7895,10 @@ fn lists_a_channels_threads_newest_first_with_what_is_new() {
         ]
     );
     assert_eq!(
-        chat.threads("#api")[1].preview.as_deref(),
+        chat.threads("#api")[1]
+            .under
+            .as_ref()
+            .map(|under| under.text.as_str()),
         Some("bob: pushed")
     );
     assert!(chat.threads("#web").is_empty());

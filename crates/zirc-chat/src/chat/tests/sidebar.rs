@@ -2,7 +2,7 @@
 //! nests under a channel, the folds and the rows that end a part.
 
 use super::*;
-use crate::chat::{KeptGuest, ListKind, ListOptions, ListRow, SidebarSection};
+use crate::chat::{KeptGuest, ListKind, ListOptions, ListRow, RowUnder, SidebarSection, UnderKind};
 
 fn all() -> ListOptions {
     ListOptions::default()
@@ -103,7 +103,7 @@ fn lists_starred_then_channels_with_guests_rooms_then_direct_messages() {
     assert_eq!((bob.badge, bob.badge_label.as_deref()), (1, Some("1")));
     assert_eq!(bob.presence, Some(Presence::Gone));
     assert_eq!(bob.faces.len(), 1);
-    assert_eq!(bob.preview.as_deref(), Some("hi"));
+    assert_eq!(said(bob.under.as_ref()), Some("hi"));
     assert!(bob.latest_ms.is_some() && bob.when.is_some());
     // A guest's room says whether it's answered, and whether it's ours.
     let anna = row(&rows, "#lobby/guest-7k2q");
@@ -258,9 +258,9 @@ fn a_channels_row_is_bold_for_itself_not_its_rooms_which_are_bold_for_themselves
     assert!(!api.unread && api.opens && api.joined);
     assert_eq!((api.badge, api.rooms), (0, 1));
     // What's said in a room is its own row's preview, not its channel's.
-    assert_ne!(api.preview.as_deref(), Some("bob: me: look"));
+    assert_ne!(said(api.under.as_ref()), Some("bob: me: look"));
     let login = row(&rows, "#api/login");
-    assert_eq!(login.preview.as_deref(), Some("bob: me: look"));
+    assert_eq!(said(login.under.as_ref()), Some("bob: me: look"));
     assert_eq!(
         (login.kind, login.depth, login.title.as_str()),
         (ListKind::Room, 1, "login")
@@ -519,6 +519,24 @@ fn an_agent_at_work_that_wrote_to_us_has_its_direct_row_with_its_task() {
     assert_eq!(ours.shelf, Shelf::Direct);
     assert_eq!(ours.direct_kind, Some(DirectKind::Agent));
     assert_eq!(ours.note.as_deref(), Some("the login page"));
+    // Its one line under its name is what it's taking on, though it said something too
+    // (the user's choice, 22 Nov 2026); a person's is what was said last.
+    assert_eq!(
+        ours.under,
+        Some(RowUnder {
+            text: "the login page".to_owned(),
+            kind: UnderKind::Note,
+        })
+    );
+    let bob = row(&rows, "bob");
+    assert_eq!(
+        bob.under.as_ref().map(|under| under.kind),
+        Some(UnderKind::Said)
+    );
+    assert!(
+        rows.iter()
+            .all(|r| r.kind != ListKind::Heading || r.under.is_none())
+    );
     assert!(ours.mine);
     assert_eq!(ours.faces.len(), 1);
     // A teammate's agent at work that never wrote to us isn't listed, nor is its machine.
@@ -634,7 +652,11 @@ fn an_empty_conversation_says_no_messages_yet_once_its_history_is_in() {
     let says = |chat: &Chat, name: &str| {
         let rows = chat.sidebar_list(&all());
         let row = row(&rows, name);
-        (row.preview.clone(), row.placeholder, row.when.clone())
+        (
+            row.under.as_ref().map(|under| under.text.clone()),
+            row.under.as_ref().map(|under| under.kind) == Some(UnderKind::Nothing),
+            row.when.clone(),
+        )
     };
     // Its history on its way: nothing yet, so a row doesn't say it's empty and then change.
     assert_eq!(says(&chat, "#api"), (None, false, None));
@@ -669,8 +691,11 @@ fn an_empty_conversation_says_no_messages_yet_once_its_history_is_in() {
     );
     let thread = &chat.threads("#api")[0];
     assert_eq!(
-        (thread.preview.as_deref(), thread.placeholder),
-        (Some(crate::chat::NO_MESSAGES), true)
+        thread.under,
+        Some(RowUnder {
+            text: crate::chat::NO_MESSAGES.to_owned(),
+            kind: UnderKind::Nothing,
+        })
     );
     // Once something's said, it's what's previewed.
     feed(&mut chat, &[":bob!u@h PRIVMSG #api :hello"]);
@@ -715,16 +740,16 @@ fn a_channel_previews_its_own_words_and_each_thread_its_own() {
     let rows = chat.sidebar_list(&all());
     // The channel's own line, though its thread's is newer: no line shows on two rows.
     assert_eq!(
-        row(&rows, "#api").preview.as_deref(),
+        said(row(&rows, "#api").under.as_ref()),
         Some("bob: shipping at 3")
     );
     let thread = row(&rows, "#api/fix-login");
     assert_eq!(
-        (thread.preview.as_deref(), thread.when.as_deref()),
+        (said(thread.under.as_ref()), thread.when.as_deref()),
         (Some("carol: retried with a 30s cap"), Some("30m"))
     );
     assert_eq!(
-        chat.threads("#api")[0].preview.as_deref(),
+        said(chat.threads("#api")[0].under.as_ref()),
         Some("carol: retried with a 30s cap")
     );
 }
@@ -811,4 +836,9 @@ fn each_tab_says_when_it_holds_no_conversation_folded_away_or_not() {
     chat.set_collapsed(Shelf::Direct, true);
     assert_eq!(empty(&chat, SidebarSection::Channels), None);
     assert_eq!(empty(&chat, SidebarSection::Direct), None);
+}
+
+/// What a row's or a thread's line under its name says.
+fn said(under: Option<&RowUnder>) -> Option<&str> {
+    under.map(|under| under.text.as_str())
 }

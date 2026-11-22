@@ -14,8 +14,8 @@ use ratatui::crossterm::event::{
 };
 use zirc_core::chat::{
     Chat, Conversation, Details, Face, GuestRequest, Here, Kind, ListKind, ListOptions, ListRow,
-    Options, Ran, RecentSearches, ReplyBar, SearchScreen, Shelf, complete_mention, copy_text,
-    entry_text, first_link, fold, is_channel,
+    Options, Ran, RecentSearches, ReplyBar, RowUnder, SearchScreen, Shelf, UnderKind,
+    complete_mention, copy_text, entry_text, first_link, fold, is_channel,
 };
 use zirc_core::keys::EscapeDoes;
 use zirc_irc::Line;
@@ -548,13 +548,23 @@ impl App {
         } else {
             row.title
         };
-        // After a name, a thread's under its channel too, what was said last in it and when,
-        // as chat apps list them; for an agent at work, what it's taking on.
+        // After a name, a thread's under its channel too, zirc-chat's one line for it
+        // (`ListRow::under`): for an agent at work, what it's taking on, else what was said
+        // last in it and when, as chat apps list them.
         let private = row.direct_kind.is_some();
-        // Nothing said in it yet: zirc-chat's `No messages yet`, with no time.
-        let when = row.when.or_else(|| row.placeholder.then(String::new));
-        let preview = row.preview.zip(when);
-        let note = row.note.filter(|_| private);
+        let (preview, note, placeholder) = match row.under {
+            Some(RowUnder {
+                text,
+                kind: UnderKind::Note,
+            }) => (None, Some(text), false),
+            Some(RowUnder { text, kind }) => {
+                // Nothing said in it yet: zirc-chat's `No messages yet`, with no time.
+                let nothing = kind == UnderKind::Nothing;
+                let when = row.when.or_else(|| nothing.then(String::new));
+                (when.map(|when| (text, when)), None, nothing)
+            }
+            None => (None, None, false),
+        };
         Side::Row {
             label,
             target,
@@ -563,7 +573,7 @@ impl App {
             agent,
             muted: row.muted,
             preview,
-            placeholder: row.placeholder,
+            placeholder,
             note,
             presence: row.presence.filter(|_| private),
             unread: row.unread,

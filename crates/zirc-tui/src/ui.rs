@@ -993,7 +993,7 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
     // What was said last, dimmed after the name, and when, at the right, where there's room.
     let room = width.saturating_sub(lead_width + name.width() + count.width() + 1);
     // The pill pads itself, so the time needs no space before it.
-    let said_style = said_style(theme, placeholder && note.is_none());
+    let said_style = said_style(theme, placeholder);
     let (said, when) = match note {
         Some(note) => note_columns(&note, room),
         None => preview_columns(preview, room, false),

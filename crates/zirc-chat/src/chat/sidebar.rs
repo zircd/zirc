@@ -24,8 +24,48 @@ use super::list::{ChannelGroup, DirectKind, DirectRow, Shelf, SidebarSection};
 use super::{Attendance, Avatar, Chat, Presence, ago_short, badge_label, room_label};
 
 /// What a channel's, a thread's or a direct message's row says under its name, faint, while
-/// nothing's been said in it ([`ListRow::placeholder`]).
+/// nothing's been said in it ([`UnderKind::Nothing`]).
 pub const NO_MESSAGES: &str = "No messages yet";
+
+/// The line under a conversation's name in the sidebar, as every app draws it
+/// ([`ListRow::under`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct RowUnder {
+    /// What it says.
+    pub text: String,
+    /// What it is, which says how it's drawn.
+    pub kind: UnderKind,
+}
+
+impl RowUnder {
+    /// The line under a row's name: its `note` while it has one, else its `preview`, which
+    /// is [`NO_MESSAGES`] when `placeholder` (the user's choice, 22 Nov 2026).
+    #[must_use]
+    pub fn of(note: Option<String>, preview: Option<String>, placeholder: bool) -> Option<Self> {
+        let (text, kind) = match (note, preview) {
+            (Some(note), _) => (note, UnderKind::Note),
+            (None, Some(said)) if placeholder => (said, UnderKind::Nothing),
+            (None, Some(said)) => (said, UnderKind::Said),
+            (None, None) => return None,
+        };
+        Some(Self { text, kind })
+    }
+}
+
+/// What the line under a row's name is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum UnderKind {
+    /// What an agent session at work said it's taking on ([`ListRow::note`]), muted.
+    Note,
+    /// The newest thing said in it, muted, in the text's colour while it's unread.
+    Said,
+    /// [`NO_MESSAGES`], faint.
+    Nothing,
+}
 
 /// What a row of the sidebar is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
@@ -116,13 +156,12 @@ pub struct ListRow {
     pub faces: Vec<Face>,
     /// A person's or a guest's dot, a guest's room's (here while they're connected).
     pub presence: Option<Presence>,
-    /// The newest thing said in it, or under it for a channel, as every list previews it;
-    /// [`NO_MESSAGES`] for a conversation whose history came back with nothing said
-    /// ([`ListRow::placeholder`]).
-    pub preview: Option<String>,
-    /// Whether [`ListRow::preview`] is [`NO_MESSAGES`], drawn faint: nothing's been said in
-    /// it. Never while its history is on its way, so a row doesn't say so and then change.
-    pub placeholder: bool,
+    /// The one line under a conversation's name: its note while it has one, else the newest
+    /// thing said in it, or under it for a channel, as every list previews it (the user's
+    /// choice, 22 Nov 2026); [`NO_MESSAGES`] for one whose history came back with nothing
+    /// said, never while its history is on its way, so a row doesn't say so and then change.
+    /// `None` for a heading, a fold and a row with nothing to say. Every app draws this.
+    pub under: Option<RowUnder>,
     /// When that was, as the list says it ([`ago_short`]): `5m`, `3h`.
     pub when: Option<String>,
     /// When something was last said in it, in milliseconds since 1970.
@@ -179,8 +218,7 @@ impl ListRow {
             direct_kind: None,
             faces: Vec::new(),
             presence: None,
-            preview: None,
-            placeholder: false,
+            under: None,
             when: None,
             latest_ms: None,
             rooms: 0,
@@ -305,8 +343,7 @@ impl Chat {
                     ListKind::Conversation | ListKind::Room | ListKind::GuestRoom
                 );
             if self.says_no_messages(row) {
-                row.preview = Some(NO_MESSAGES.to_owned());
-                row.placeholder = true;
+                row.under = RowUnder::of(None, Some(NO_MESSAGES.to_owned()), true);
             }
         }
         list
@@ -317,8 +354,7 @@ impl Chat {
     /// ([`Chat::nothing_said`]).
     fn says_no_messages(&self, row: &ListRow) -> bool {
         matches!(row.kind, ListKind::Conversation | ListKind::Room)
-            && row.preview.is_none()
-            && row.note.is_none()
+            && row.under.is_none()
             && self.nothing_said(&row.name)
     }
 
@@ -444,7 +480,7 @@ impl Chat {
             starred: self.is_starred(name),
             muted: self.is_muted(name),
             unread: rolled.iter().any(|name| self.is_unread(name)),
-            preview: group.preview.clone(),
+            under: RowUnder::of(None, group.preview.clone(), false),
             when: group.when.clone(),
             latest_ms: group.latest.map(|at| at.timestamp_millis()),
             rooms: count(group.rooms.len()),
@@ -528,7 +564,7 @@ impl Chat {
             when: preview
                 .as_ref()
                 .map(|preview| ago_short(preview.at, (self.clock)())),
-            preview: preview.map(|preview| preview.text),
+            under: RowUnder::of(None, preview.map(|preview| preview.text), false),
             latest_ms: self.last_said(name).map(|at| at.timestamp_millis()),
             ..ListRow::new(kind, part, title)
         }
@@ -556,7 +592,7 @@ impl Chat {
             direct_kind: Some(row.kind),
             faces: row.avatars.iter().map(|avatar| self.face(avatar)).collect(),
             presence: row.presence,
-            preview: row.preview.clone(),
+            under: RowUnder::of(task, row.preview.clone(), false),
             when: row.when.clone(),
             latest_ms: row.latest.map(|at| at.timestamp_millis()),
             mine: row.mine,
