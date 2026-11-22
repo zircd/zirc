@@ -909,6 +909,7 @@ impl Daemon {
         }
         self.restore_leases();
         self.restore_requests();
+        self.restore_missed();
         self.restore_wakes();
         self.restore_awaits();
         self.restore_gotchas();

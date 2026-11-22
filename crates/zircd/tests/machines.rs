@@ -321,6 +321,37 @@ async fn a_watch_that_hung_up_is_noticed_at_once_and_its_news_kept() {
     );
 }
 
+/// What a session missed with no watch open is still told after zircd restarts, as for an
+/// update: it was kept in memory alone, so a stopped session's messages went with it.
+#[tokio::test]
+async fn what_a_session_missed_is_told_after_zircd_restarts() {
+    let ergo = require_ergo!();
+    let (machine, _main, main_root, _login_root) = machine_with_a_session_worktree(&ergo).await;
+    let login = Some("cc-login".to_owned());
+    drop(machine.watch(Some("cc-login")).await);
+    machine
+        .eventually(
+            |status| !status.watching.contains(&login),
+            "the hung-up watch gone",
+        )
+        .await;
+    post(&machine, &main_root, "cc-main", "rebase please, cc-login").await;
+
+    let machine = machine.restart().await;
+    let mut login_hears = machine.watch(Some("cc-login")).await;
+    let said = [
+        next_post_why(&mut login_hears).await.0,
+        next_post_why(&mut login_hears).await.0,
+    ];
+    assert_eq!(
+        said,
+        [
+            "cc-login: while no watch of yours ran, this concerned you:",
+            "rebase please, cc-login"
+        ]
+    );
+}
+
 #[tokio::test]
 async fn a_direct_message_to_a_machine_is_refused() {
     let ergo = require_ergo!();

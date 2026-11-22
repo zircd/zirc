@@ -237,6 +237,13 @@ pub fn wakes(home: &Path) -> PathBuf {
     home.join("wakes.json")
 }
 
+/// What concerned each session while none of its watches was open, told to its next watch
+/// and kept across restarts for as long as zircd keeps it at all.
+#[must_use]
+pub fn missed(home: &Path) -> PathBuf {
+    home.join("missed.json")
+}
+
 /// What sessions wait on (`zirc wait-for`, and the branches zircd follows for them), kept
 /// across restarts.
 #[must_use]

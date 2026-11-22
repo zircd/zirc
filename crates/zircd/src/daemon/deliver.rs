@@ -1,22 +1,27 @@
 //! What each watch hears, and why: deliveries to watching sessions, what's kept for one
 //! that isn't watching, and the reasons a line concerns a session.
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::ops::ControlFlow;
+use std::time::Duration;
 
 use tokio::sync::mpsc;
 use zirc_core::ipc::{Delivery, Response, Why, Worktree};
 use zirc_core::presence::LocalOverlap;
 use zirc_core::sessions::LANDING_KIND;
-use zirc_core::{decisions, presence};
+use zirc_core::{decisions, paths, presence};
 use zirc_irc::Client;
 use zirc_proto::decision::Decision;
 use zirc_proto::{Event, Message};
 
 use super::{
     Daemon, MISSED, MISSED_FOR, Said, WATCHER_SESSION, Watched, answered_concerns, channel_of,
-    direct_concerns, from_guest, lands_under, later, mentions, now, routine, wakes,
+    direct_concerns, from_guest, lands_under, later, mentions, now, read_saved, routine, wakes,
 };
+
+/// What's kept for the sessions with no watch open, as it's saved: by session, each line
+/// with when it was kept, in seconds since the Unix epoch.
+type SavedMissed = BTreeMap<String, Vec<(u64, Response)>>;
 
 impl Daemon {
     /// Tells every watcher, each with why it concerns the session watching, if it does.
@@ -134,6 +139,54 @@ impl Daemon {
         self.say_trips();
     }
 
+    /// Takes in what was kept for sessions with no watch open before zircd last stopped,
+    /// while it's no older than zircd keeps it: a restart, as for an update, lost a stopped
+    /// session's direct messages, though the person who sent them was told nothing (a
+    /// user's review, 22 Nov 2026).
+    pub(super) fn restore_missed(&mut self) {
+        let Some(saved) = read_saved::<SavedMissed>(&paths::missed(&self.org.state)) else {
+            return;
+        };
+        let (at, clock) = (now(), self.clock.now());
+        for (session, kept) in saved {
+            let kept: VecDeque<_> = kept
+                .into_iter()
+                .filter_map(|(then, response)| {
+                    let age = Duration::from_secs(at.saturating_sub(then));
+                    (age < MISSED_FOR).then(|| (clock.checked_sub(age).unwrap_or(clock), response))
+                })
+                .collect();
+            if !kept.is_empty() {
+                self.missed.insert(session, kept);
+            }
+        }
+    }
+
+    /// Saves what's kept for sessions with no watch open, for after a restart: in a file
+    /// only this machine's user reads, as it holds what was said to them.
+    fn save_missed(&self) {
+        let (at, clock) = (now(), self.clock.now());
+        let saved: SavedMissed = self
+            .missed
+            .iter()
+            .filter(|(_, kept)| !kept.is_empty())
+            .map(|(session, kept)| {
+                let kept = kept
+                    .iter()
+                    .map(|(then, response)| {
+                        let age = clock.saturating_duration_since(*then).as_secs();
+                        (at.saturating_sub(age), response.clone())
+                    })
+                    .collect();
+                (session.clone(), kept)
+            })
+            .collect();
+        let json = serde_json::to_string(&saved).expect("what was missed serializes");
+        if let Err(err) = paths::write_private(&paths::missed(&self.org.state), &json) {
+            tracing::warn!("couldn't save what sessions missed: {err}");
+        }
+    }
+
     /// Keeps `response` for each of the `away` sessions it concerns, to tell them when they
     /// watch again.
     pub(super) fn keep_missed(
@@ -143,6 +196,7 @@ impl Daemon {
         away: Vec<String>,
     ) {
         let now = self.clock.now();
+        let mut kept = false;
         for session in away {
             let Some(why) = self.news_why(response, Some(&session), stale) else {
                 continue;
@@ -168,6 +222,10 @@ impl Daemon {
             while missed.len() > MISSED {
                 missed.pop_front();
             }
+            kept = true;
+        }
+        if kept {
+            self.save_missed();
         }
     }
 
@@ -176,10 +234,14 @@ impl Daemon {
     /// and a line after.
     pub(super) fn catch_up(&mut self, heard: &mpsc::Sender<Response>, session: &str) {
         let now = self.clock.now();
-        let missed: Vec<Response> = self
+        let kept = self
             .missed
             .insert(session.to_owned(), VecDeque::new())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if !kept.is_empty() {
+            self.save_missed();
+        }
+        let missed: Vec<Response> = kept
             .into_iter()
             .filter(|(at, _)| now.duration_since(*at) < MISSED_FOR)
             .map(|(_, response)| response)
