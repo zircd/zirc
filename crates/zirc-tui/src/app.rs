@@ -316,6 +316,15 @@ pub enum Side {
     /// The `Channels | Messages` switch under it, as every app shows one half of the list at
     /// a time ([`zirc_core::chat::Chat::tabs`]): a click on a half shows it.
     Tabs(Vec<zirc_core::chat::SidebarTab>),
+    /// A line of what the half shown says while it holds no conversation: `No channels
+    /// yet.`, or `No direct messages yet` and, muted under it, how to start one
+    /// ([`zirc_core::chat::SidebarTab::empty`]).
+    Empty {
+        /// What it says.
+        text: String,
+        /// Whether it's the hint under the line, drawn faint.
+        hint: bool,
+    },
     /// A section's heading: a click folds the section away, or opens it.
     Heading {
         /// What it says, `Channels`.
@@ -479,8 +488,22 @@ impl App {
         if !org.name.is_empty() {
             rows.push(Side::Org(org));
         }
-        rows.push(Side::Tabs(self.chat.tabs()));
+        let tabs = self.chat.tabs();
+        // The half shown with no conversation in it, folded away or not: what zirc-chat says
+        // of it, under its rows, as every app.
+        let empty = tabs
+            .iter()
+            .find(|tab| tab.chosen)
+            .and_then(|tab| tab.empty.clone());
+        rows.push(Side::Tabs(tabs));
         rows.extend(self.sides(Some(self.chat.tab())));
+        if let Some(empty) = empty {
+            rows.push(Side::Empty {
+                text: empty.line,
+                hint: false,
+            });
+            rows.extend(empty.hint.map(|text| Side::Empty { text, hint: true }));
+        }
         rows
     }
 

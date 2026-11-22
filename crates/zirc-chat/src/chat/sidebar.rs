@@ -348,6 +348,12 @@ impl Chat {
     /// session quiet for longer than [`super::ROOM_QUIET_AFTER`] ([`DirectRow::folded`])
     /// isn't listed either: Jump to… and search still find it, and it's back once it's opened
     /// or says something again. The one shown is always listed.
+    /// Whether the sidebar lists no direct message at all, folded away or not
+    /// ([`Self::listed_direct_rows`]).
+    pub(super) fn has_no_listed_directs(&self) -> bool {
+        self.listed_direct_rows().is_empty()
+    }
+
     fn listed_direct_rows(&self) -> Vec<DirectRow> {
         let shown = &self.selected().name;
         let said = |name: &str| {

@@ -169,9 +169,9 @@ pub use lines::{
 };
 pub use list::{
     ActiveCard, Agent, AppMember, AppRow, BADGE_MOST, Badges, ChannelGroup, DirectKind, DirectRow,
-    ENDED_FOLD_AFTER, MachineRow, PersonRow, ROOM_QUIET_AFTER, SHOW_LABEL, Shelf, ShowChoice,
-    SidebarSection, SidebarTab, THREAD_ACTIVE_FOR, Thread, Unseen, badge_label, room_label,
-    room_parts,
+    ENDED_FOLD_AFTER, MachineRow, PersonRow, ROOM_QUIET_AFTER, SHOW_LABEL, SectionEmpty, Shelf,
+    ShowChoice, SidebarSection, SidebarTab, THREAD_ACTIVE_FOR, Thread, Unseen, badge_label,
+    room_label, room_parts,
 };
 pub use members::{MemberMachine, MemberRow, MemberSession};
 pub use more::{CODE_LINES, More, PROSE_LINES, Shown, cut};

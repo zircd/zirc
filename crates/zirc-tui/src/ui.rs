@@ -159,7 +159,7 @@ pub fn target_at(app: &App, area: Rect, column: u16, row: u16) -> Option<Target>
                 let part = (usize::from(column - sidebar.x) / share.max(1)).min(tabs.len() - 1);
                 tabs.get(part).map(|tab| Target::Tab(tab.section))
             }
-            Side::Org(_) => None,
+            Side::Org(_) | Side::Empty { .. } => None,
         };
     }
     if let Some(members) = areas.members.map(|area| members_block().inner(area))
@@ -661,7 +661,7 @@ fn sidebar_width(app: &App) -> u16 {
         .map(|row| match row {
             // The org is cut to fit, and the switch fits the width the rows want, its halves
             // cut to fit.
-            Side::Org(_) | Side::Tabs(_) => 0,
+            Side::Org(_) | Side::Tabs(_) | Side::Empty { .. } => 0,
             Side::Heading { label, .. } => label.width() + FOLDED_MARK.width(),
             // An agent at work wants room for some of its task, which is cut to fit.
             Side::Row {
@@ -890,6 +890,15 @@ fn side_line(app: &App, row: Side, width: usize) -> Line<'static> {
     match row {
         Side::Org(org) => org_line(app, &org, width),
         Side::Tabs(tabs) => tabs_line(app, &tabs, width),
+        // The half's empty line, muted, and its hint faint under it, cut to fit.
+        Side::Empty { text, hint } => Line::styled(
+            format!(" {}", fit(&text, width.saturating_sub(1))),
+            fg(if hint {
+                app.theme.faint
+            } else {
+                app.theme.muted
+            }),
+        ),
         // Folded away, a mark after it says there's more under it.
         Side::Heading { label, open, .. } => Line::styled(
             format!(

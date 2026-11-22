@@ -76,6 +76,21 @@ pub struct SidebarTab {
     pub badge: u32,
     /// The badge's words ([`super::badge_label`]): `3`, `99+`; `None` when it counts nothing.
     pub badge_label: Option<String>,
+    /// What its half of the sidebar says while it holds no conversation, under what it
+    /// lists; `None` while it holds one, folded away or not ([`Chat::tabs`]).
+    pub empty: Option<SectionEmpty>,
+}
+
+/// What a half of the sidebar says while it holds no conversation, in every app
+/// ([`SidebarTab::empty`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct SectionEmpty {
+    /// Its line: `No channels yet.`, `No direct messages yet`.
+    pub line: String,
+    /// Under it, muted, how to start one; `None` for Channels, whose header's + makes one.
+    pub hint: Option<String>,
 }
 
 impl SidebarSection {
@@ -1276,9 +1291,29 @@ impl Chat {
                     unread,
                     badge: u32::try_from(badge).unwrap_or(u32::MAX),
                     badge_label: (badge > 0).then(|| super::badge_label(badge)),
+                    empty: self.section_empty(section),
                 }
             })
             .collect()
+    }
+
+    /// What `section` says while it holds no conversation, folded away or not: Channels
+    /// once connected, as until the server has said which we're in it would say none
+    /// wrongly; Direct messages whenever, as they're kept while offline (the user's choice,
+    /// 22 Nov 2026).
+    fn section_empty(&self, section: SidebarSection) -> Option<SectionEmpty> {
+        match section {
+            SidebarSection::Channels => (self.is_connected()
+                && self.listed_in(SidebarSection::Channels).is_empty())
+            .then(|| SectionEmpty {
+                line: super::NO_CHANNELS.to_owned(),
+                hint: None,
+            }),
+            SidebarSection::Direct => self.has_no_listed_directs().then(|| SectionEmpty {
+                line: super::NO_DIRECTS.to_owned(),
+                hint: Some(super::NO_DIRECTS_HINT.to_owned()),
+            }),
+        }
     }
 }
 

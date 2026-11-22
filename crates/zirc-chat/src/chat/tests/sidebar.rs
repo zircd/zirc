@@ -774,3 +774,41 @@ fn the_messages_tab_counts_only_what_a_row_of_it_shows() {
     assert_eq!(messages_counts(&chat), (2, 2));
     assert_eq!(chat.badge_total(), 2);
 }
+
+#[test]
+fn each_tab_says_when_it_holds_no_conversation_folded_away_or_not() {
+    let empty = |chat: &Chat, section| {
+        chat.tabs()
+            .into_iter()
+            .find(|tab| tab.section == section)
+            .unwrap()
+            .empty
+            .map(|empty| (empty.line, empty.hint))
+    };
+    let mut chat = Chat::new("me", "irc.zirc.test", Vec::new(), Options::default());
+    // Not yet connected: no channel isn't known yet, so Channels says nothing.
+    assert_eq!(empty(&chat, SidebarSection::Channels), None);
+    assert_eq!(
+        empty(&chat, SidebarSection::Direct),
+        Some((NO_DIRECTS.to_owned(), Some(NO_DIRECTS_HINT.to_owned())))
+    );
+
+    chat.connected(link(true));
+    assert_eq!(
+        empty(&chat, SidebarSection::Channels),
+        Some((NO_CHANNELS.to_owned(), None))
+    );
+
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #web",
+            "@time=2026-10-30T11:05:00.000Z :carol!u@h PRIVMSG me :hey",
+        ],
+    );
+    // Folded away, they still hold one.
+    chat.set_collapsed(Shelf::Channels, true);
+    chat.set_collapsed(Shelf::Direct, true);
+    assert_eq!(empty(&chat, SidebarSection::Channels), None);
+    assert_eq!(empty(&chat, SidebarSection::Direct), None);
+}
