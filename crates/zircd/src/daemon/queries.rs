@@ -451,7 +451,7 @@ impl Daemon {
             .client
             .as_ref()
             .map_or_else(String::new, |c| c.nick().to_owned());
-        self.tell_watchers(&Response::Direct(Direct {
+        self.tell_direct(Direct {
             from: me,
             from_session: Some(session.to_owned()),
             session: Some(to.to_owned()),
@@ -463,7 +463,7 @@ impl Daemon {
             why: None,
             id: None,
             org: None,
-        }));
+        });
         Ok(())
     }
 
@@ -500,7 +500,7 @@ impl Daemon {
                 session: session.to_owned(),
             },
         );
-        self.tell_watchers(&Response::Direct(Direct {
+        self.tell_direct(Direct {
             from: me,
             from_session: Some(session.to_owned()),
             session: to,
@@ -512,7 +512,7 @@ impl Daemon {
             why: None,
             id: None,
             org: None,
-        }));
+        });
         Ok(())
     }
 

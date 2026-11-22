@@ -85,7 +85,7 @@ impl Daemon {
         {
             Some(Ok(mut direct)) => {
                 self.remember_direct(&mut direct, line);
-                self.tell_watchers(&Response::Direct(direct));
+                self.tell_direct(direct);
             }
             // The owner named a session that isn't here: say so, rather than drop it.
             Some(Err(notice)) => {
@@ -205,6 +205,7 @@ impl Daemon {
             ("TAGMSG", Some(channel), _) if !ours && zirc_core::presence::asks(line) => {
                 self.someone_joined(channel, false);
             }
+            ("TAGMSG", Some(_), _) if !ours && self.heard_receipt(from, line) => {}
             ("TAGMSG", Some(target), _) if !ours => self.reacted(target, from, line),
             ("PRIVMSG", Some(channel), Some(_)) if channel.starts_with('#') => {
                 let Some((mut delivery, zirc)) = heard(channel, line) else {

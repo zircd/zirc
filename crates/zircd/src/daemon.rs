@@ -47,6 +47,7 @@ mod live;
 mod moved;
 mod ops_kept;
 mod queries;
+mod receipts;
 mod replay;
 mod repos;
 mod requests;

@@ -307,10 +307,11 @@ impl Daemon {
                 n => format!("these {n}"),
             }
         )));
-        for response in missed {
-            let _ = heard.try_send(response);
+        for response in &missed {
+            let _ = heard.try_send(response.clone());
         }
         let _ = heard.try_send(say(format!("{session}: that's what you missed")));
+        self.say_seen(&missed);
     }
 
     /// Which of `paths`, which someone intends to change, touch what `session` on `me` has

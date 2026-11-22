@@ -827,6 +827,93 @@ async fn a_note_reaches_the_one_session_it_names_on_its_machine() {
     assert!(unknown.contains("<machine>/<session>"), "{unknown}");
 }
 
+/// The receipt among `heard`'s lines, as its tag says it, and the message it names.
+async fn next_receipt(heard: &mut zirc_irc::Incoming) -> (String, String) {
+    let line = next_matching(heard, |line| {
+        line.command == "TAGMSG" && line.tag(zirc_proto::receipt::TAG).is_some()
+    })
+    .await;
+    let tag = |key| line.tag(key).unwrap_or_default().to_owned();
+    (tag(zirc_proto::receipt::TAG), tag("+draft/reply"))
+}
+
+/// Until the zircd at `home` has no watch open for `session`.
+async fn hung_up(home: &Path, session: &str) {
+    eventually("the watch to be gone", || async {
+        !connected(home)
+            .await
+            .watching
+            .iter()
+            .any(|watcher| watcher.as_deref() == Some(session))
+    })
+    .await;
+}
+
+/// A person's message to one of their agents is said seen once the agent's watch is told
+/// it, and waiting while the agent has no watch open: until 22 Nov 2026 nothing said
+/// either, so a message to a stopped agent looked delivered.
+#[tokio::test]
+async fn a_message_to_an_agent_is_said_seen_or_waiting() {
+    let ergo = require_ergo!();
+    let machines = three_machines(&ergo).await;
+    let mbp = machines[0].0.path().to_owned();
+    let mut agent = watching(&mbp, "cc-a").await;
+    let (owner, mut owner_in) = logged_in(&ergo, "mattias").await;
+
+    owner.privmsg("mattias-mbp", "cc-a: rebase please").unwrap();
+    let (seen, first) = next_receipt(&mut owner_in).await;
+    assert_eq!(seen, "seen,cc-a");
+    assert_eq!(next_direct(&mut agent).await.id, Some(first));
+
+    drop(agent);
+    hung_up(&mbp, "cc-a").await;
+    owner.privmsg("mattias-mbp", "cc-a: and push").unwrap();
+    let (waiting, second) = next_receipt(&mut owner_in).await;
+    assert_eq!(waiting, "waiting,cc-a");
+
+    // Told what it missed, it's seen: the same message, named again.
+    let _agent = watching(&mbp, "cc-a").await;
+    assert_eq!(
+        next_receipt(&mut owner_in).await,
+        ("seen,cc-a".to_owned(), second)
+    );
+}
+
+/// An agent whose note waits for a session with no watch open is told so by its own
+/// machine, so it doesn't wait on an answer; a note that's seen wakes nobody.
+#[tokio::test]
+async fn an_agent_whose_note_waits_is_told_so() {
+    let ergo = require_ergo!();
+    let machines = three_machines(&ergo).await;
+    let [mbp, mini] = [0, 1].map(|at| machines[at].0.path().to_owned());
+    let mut sender = watching(&mini, "cc-b").await;
+    let agent = watching(&mbp, "cc-a").await;
+
+    notes(&mini, "cc-b", "mattias-mbp/cc-a", "seen at once")
+        .await
+        .unwrap();
+    drop(agent);
+    hung_up(&mbp, "cc-a").await;
+    notes(&mini, "cc-b", "mattias-mbp/cc-a", "landed the login page")
+        .await
+        .unwrap();
+
+    // The first thing its watch hears is of the second note: the first's receipt woke nobody.
+    let told = tokio::time::timeout(WAIT, async {
+        loop {
+            if let Some(Heard::Message(delivery)) = sender.next().await.unwrap() {
+                return delivery.message.event.human_text();
+            }
+        }
+    })
+    .await
+    .expect("told it waits");
+    assert!(
+        told.starts_with("cc-b: mattias-mbp/cc-a has no watch running"),
+        "{told}"
+    );
+}
+
 /// Asks `request` of the zircd at `home`, answered with an error as `Err`.
 async fn ask(home: &Path, request: Request) -> Result<Response, String> {
     ipc::request(&paths::socket(home), &request)
