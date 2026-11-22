@@ -171,10 +171,16 @@ impl Daemon {
             ("PART", Some(channel), _) => self.someone_left(channel, from),
             ("KICK", Some(channel), Some(nick)) if nick == me => self.left_channel(channel),
             ("KICK", Some(channel), Some(nick)) => self.someone_left(channel, nick),
-            // Why the server didn't let us join a channel: tried again in a while.
+            // Why the server didn't let us join a channel: tried again in a while, but for one
+            // its operators purged, which can't come back (Ergo's 403, "This channel was purged
+            // by the server operators…"): a topic it was is forgotten.
             ("403" | "405" | "471" | "473" | "474" | "475" | "477" | "489", _, Some(channel)) => {
                 let why = line.params.last().map_or("", String::as_str);
                 tracing::warn!("couldn't join {channel}: {why}");
+                if purged(why) && self.topics.remove(channel).is_some() {
+                    tracing::info!("forgot the topic {channel}: the server purged it");
+                    self.save_topics();
+                }
             }
             // Joining a channel nobody's in makes us its maker, and Ergo gives a maker ops. A
             // machine shouldn't have them: the organisation's owners get them instead.
@@ -227,5 +233,25 @@ impl Daemon {
             }
             _ => {}
         }
+    }
+}
+
+/// Whether the server refused a join, saying why, because its operators purged the channel.
+fn purged(why: &str) -> bool {
+    why.to_ascii_lowercase().contains("purged")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::purged;
+
+    #[test]
+    fn a_channel_the_operators_purged_is_told_from_one_not_let_in_for_now() {
+        // Ergo 2.19.1's 403 for a purged channel (irc/errors.go, errChannelPurged).
+        assert!(purged(
+            "This channel was purged by the server operators and cannot be used"
+        ));
+        assert!(!purged("Cannot join channel (+i)"));
+        assert!(!purged("No such channel"));
     }
 }
