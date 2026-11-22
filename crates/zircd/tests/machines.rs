@@ -339,17 +339,22 @@ async fn what_a_session_missed_is_told_after_zircd_restarts() {
 
     let machine = machine.restart().await;
     let mut login_hears = machine.watch(Some("cc-login")).await;
-    let said = [
-        next_post_why(&mut login_hears).await.0,
-        next_post_why(&mut login_hears).await.0,
-    ];
-    assert_eq!(
-        said,
-        [
-            "cc-login: while no watch of yours ran, this concerned you:",
-            "rebase please, cc-login"
-        ]
+    // Told once, among whatever else concerned it meanwhile, such as what's replayed.
+    let mut said = Vec::new();
+    while !said
+        .last()
+        .is_some_and(|line: &String| line.ends_with("that's what you missed"))
+    {
+        said.push(next_post_why(&mut login_hears).await.0);
+    }
+    assert!(
+        said[0].starts_with("cc-login: while no watch of yours ran"),
+        "{said:?}"
     );
+    let told = said
+        .iter()
+        .filter(|line| *line == "rebase please, cc-login");
+    assert_eq!(told.count(), 1, "{said:?}");
 }
 
 #[tokio::test]

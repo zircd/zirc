@@ -19,6 +19,15 @@ use super::{
     direct_concerns, from_guest, lands_under, later, mentions, now, read_saved, routine, wakes,
 };
 
+/// The id the server gave what `response` tells of, a message in a channel or a direct one.
+fn said_id(response: &Response) -> Option<&str> {
+    match response {
+        Response::Delivery(delivery) => delivery.id.as_deref(),
+        Response::Direct(direct) => direct.id.as_deref(),
+        _ => None,
+    }
+}
+
 /// What's kept for the sessions with no watch open, as it's saved: by session, each line
 /// with when it was kept, in seconds since the Unix epoch.
 type SavedMissed = BTreeMap<String, Vec<(u64, Response)>>;
@@ -211,6 +220,16 @@ impl Daemon {
             if why == Why::Intent && self.quiet_intent(response, &session) {
                 let dressed = self.dressed(response, Some(why), Some(&session));
                 self.keep_for_later(&session, &dressed, why);
+                continue;
+            }
+            // Kept already: what was said just before a restart is kept from before it, and
+            // comes again in what's replayed after it.
+            if let Some(id) = said_id(response)
+                && self
+                    .missed
+                    .get(&session)
+                    .is_some_and(|missed| missed.iter().any(|(_, kept)| said_id(kept) == Some(id)))
+            {
                 continue;
             }
             let earlier = self.take_later(&session);
