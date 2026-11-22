@@ -124,7 +124,7 @@ pub enum ListKey {
 }
 
 /// What a key does while the composer offers its list of mentions or emoji ([`in_list`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub enum ListDoes {
@@ -159,6 +159,22 @@ pub fn in_list(key: ListKey, pressed: KeyPressed) -> ListDoes {
         ListKey::Up => ListDoes::Previous,
         ListKey::Down => ListDoes::Next,
         ListKey::Tab | ListKey::Enter => ListDoes::Pick,
+    }
+}
+
+/// Which of a list of `len` is chosen once `does` is done with `chosen` chosen: the one above
+/// or below, round the ends, for [`ListDoes::Previous`] and [`ListDoes::Next`]; otherwise
+/// `chosen`, kept inside a list that may have shrunk. 0 for an empty list.
+#[must_use]
+pub fn list_moved(chosen: usize, len: usize, does: ListDoes) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let chosen = chosen.min(len - 1);
+    match does {
+        ListDoes::Previous => (chosen + len - 1) % len,
+        ListDoes::Next => (chosen + 1) % len,
+        ListDoes::Pick | ListDoes::Field => chosen,
     }
 }
 
@@ -198,6 +214,15 @@ mod tests {
             ..plain
         };
         assert_eq!(in_list(ListKey::Enter, on_screen), ListDoes::Field);
+    }
+
+    #[test]
+    fn the_list_moves_round_its_ends_and_keeps_inside_it() {
+        assert_eq!(list_moved(0, 3, ListDoes::Previous), 2);
+        assert_eq!(list_moved(2, 3, ListDoes::Next), 0);
+        assert_eq!(list_moved(1, 3, ListDoes::Next), 2);
+        assert_eq!(list_moved(5, 3, ListDoes::Pick), 2);
+        assert_eq!(list_moved(4, 0, ListDoes::Next), 0);
     }
 
     #[test]
