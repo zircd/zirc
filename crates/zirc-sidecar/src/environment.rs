@@ -40,11 +40,13 @@ pub const HISTORY: &[(&str, &str)] = &[
     // owners any, through the sidecar's operator (crate::trim). Without this Ergo also
     // stops telling clients what was removed.
     ("ERGO__HISTORY__RETENTION__ALLOW_INDIVIDUAL_DELETE", "true"),
-    // Reactions, and taking them back, so a reload shows what's left; and the team's
-    // events in a conversation with a guest (crate::gateway::SUPPORT_TAG).
+    // Reactions, and taking them back, so a reload shows what's left; the team's events
+    // in a conversation with a guest (crate::gateway::SUPPORT_TAG); and a machine's word
+    // on a message to one of its agents (zirc_proto::receipt::TAG: a copy, as this is
+    // Ergo's own configuration, which a test here keeps the same).
     (
         "ERGO__HISTORY__TAGMSG_STORAGE__WHITELIST",
-        r#"["+draft/react", "+react", "+draft/unreact", "+zirc/support"]"#,
+        r#"["+draft/react", "+react", "+draft/unreact", "+zirc/support", "+zirc/receipt"]"#,
     ),
 ];
 
@@ -282,6 +284,16 @@ mod tests {
 
     fn value<'e>(env: &'e [(&str, Value)], name: &str) -> Option<&'e Value> {
         env.iter().find(|(n, _)| *n == name).map(|(_, v)| v)
+    }
+
+    #[test]
+    fn history_keeps_a_machines_word_on_a_message_to_its_agent() {
+        let (_, kept) = HISTORY
+            .iter()
+            .find(|(name, _)| *name == "ERGO__HISTORY__TAGMSG_STORAGE__WHITELIST")
+            .unwrap();
+        let kept: Vec<String> = serde_json::from_str(kept).unwrap();
+        assert!(kept.iter().any(|tag| tag == zirc_proto::receipt::TAG));
     }
 
     #[test]

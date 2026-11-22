@@ -8,10 +8,8 @@
 //! `+draft/reply` naming the message and [`TAG`] saying how it stands. Declared here once:
 //! zircd sends and hears it, and every app reads it through zirc-chat.
 
-/// The client tag a receipt goes in. Its value is [`Receipt::value`]. Servers don't keep it
-/// in history yet (Ergo keeps only the tags its `tagmsg-storage` lists, zirc-sidecar's
-/// `environment`, and changing that restarts every tenant's Ergo): a receipt is heard live,
-/// and an app that reloads says nothing of a message until its machine speaks of it again.
+/// The client tag a receipt goes in. Its value is [`Receipt::value`]. Tenants' servers keep
+/// it in history (zirc-sidecar's `environment`), so a reload still says how a message stands.
 pub const TAG: &str = "+zirc/receipt";
 
 /// How a message to an agent session stands on the session's machine.
