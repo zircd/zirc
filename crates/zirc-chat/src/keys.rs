@@ -107,6 +107,61 @@ pub fn escape(popup: bool, composer: Composing, replying: bool) -> EscapeDoes {
     }
 }
 
+/// A key the list of mentions or emoji over the composer may take ([`in_list`]), as an app
+/// names it from its own key event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum ListKey {
+    /// The up arrow.
+    Up,
+    /// The down arrow.
+    Down,
+    /// Tab.
+    Tab,
+    /// Enter, or Return.
+    Enter,
+}
+
+/// What a key does while the composer offers its list of mentions or emoji ([`in_list`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum ListDoes {
+    /// Chooses the one above, round from the top to the bottom.
+    Previous,
+    /// Chooses the one below, round from the bottom to the top.
+    Next,
+    /// Writes the one chosen into the field, closing the list.
+    Pick,
+    /// Nothing of the list's: the field's own, as with no list (a new line, the caret).
+    Field,
+}
+
+/// What `key`, pressed with `pressed` while the composer offers its list of mentions or
+/// emoji, does: the arrows choose, and Tab or Enter writes the one chosen in, as in Slack.
+/// With a modifier, from a touch screen's keyboard, or while an input method composes, it's
+/// the field's: Shift+Enter still starts a new line. Escape closes the list ([`escape`]).
+/// The same in every app with a keyboard; the desktop app's keymap (`mention::bind_keys`)
+/// declares a copy, as GPUI binds keys ahead: change both together.
+#[must_use]
+pub fn in_list(key: ListKey, pressed: KeyPressed) -> ListDoes {
+    if pressed.composing
+        || pressed.on_screen
+        || pressed.shift
+        || pressed.alt
+        || pressed.ctrl
+        || pressed.meta
+    {
+        return ListDoes::Field;
+    }
+    match key {
+        ListKey::Up => ListDoes::Previous,
+        ListKey::Down => ListDoes::Next,
+        ListKey::Tab | ListKey::Enter => ListDoes::Pick,
+    }
+}
+
 /// Whether `key`, typed while nothing that takes text has the focus, goes into the composer
 /// (focusing it) on a desktop or in a browser: a printable character with no modifier but
 /// Shift. A shortcut (⌘K, Ctrl+F) stays a shortcut, and Space, Enter, the arrows and the
@@ -120,6 +175,30 @@ pub fn types_into_composer(key: &str, pressed: KeyPressed) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_list_takes_the_arrows_tab_and_enter_but_not_with_a_modifier() {
+        let plain = KeyPressed::default();
+        assert_eq!(in_list(ListKey::Up, plain), ListDoes::Previous);
+        assert_eq!(in_list(ListKey::Down, plain), ListDoes::Next);
+        assert_eq!(in_list(ListKey::Tab, plain), ListDoes::Pick);
+        assert_eq!(in_list(ListKey::Enter, plain), ListDoes::Pick);
+        let shift = KeyPressed {
+            shift: true,
+            ..plain
+        };
+        assert_eq!(in_list(ListKey::Enter, shift), ListDoes::Field);
+        let composing = KeyPressed {
+            composing: true,
+            ..plain
+        };
+        assert_eq!(in_list(ListKey::Enter, composing), ListDoes::Field);
+        let on_screen = KeyPressed {
+            on_screen: true,
+            ..plain
+        };
+        assert_eq!(in_list(ListKey::Enter, on_screen), ListDoes::Field);
+    }
 
     #[test]
     fn escape_closes_the_popup_then_stops_an_edit_then_a_reply() {
