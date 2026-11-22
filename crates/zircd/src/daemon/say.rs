@@ -197,8 +197,8 @@ impl Daemon {
                  data or say less"
             );
         }
-        self.publish_message(channel, message);
-        Ok(())
+        self.publish_out(channel, message, None, None)
+            .context("the event wasn't sent")
     }
 
     /// Where `to` goes from the repository containing `repo`, once it's joined: its scope,
@@ -289,6 +289,9 @@ impl Daemon {
                 }
                 if Decision::of(&message.event).is_some() {
                     self.decision_echoed(channel, &message.session);
+                }
+                if zirc_proto::run::StepAction::of(&message.event).is_some() {
+                    self.step_echoed(&message.session);
                 }
                 self.request_echoed(channel, id, &message.event);
                 if let Some(to) = line.tag("+draft/reply") {
@@ -510,6 +513,22 @@ impl Daemon {
         );
     }
 
+    /// Answers the step's action of `session`'s waiting on its echo: the server has it. By
+    /// its session alone, as the channel it was sent to may go out as another
+    /// ([`Daemon::on_wire`]).
+    fn step_echoed(&mut self, session: &str) {
+        let Some(at) = self.asking.iter().position(
+            |asking| matches!(&asking.what, super::Ask::Stepped { session: s, .. } if s == session),
+        ) else {
+            return;
+        };
+        let super::Ask::Stepped { channel, .. } = &self.asking[at].what else {
+            return;
+        };
+        let response = Response::channel(channel.clone());
+        self.finish(at, response);
+    }
+
     /// The link to message `id` in `target`.
     fn message_link(&self, target: &str, id: &str) -> Result<String> {
         let web = self
@@ -728,6 +747,15 @@ impl Daemon {
         let Some(client) = &self.client else {
             anyhow::bail!("not connected to the server");
         };
+        // A decision, or a request being asked, shortened to fit is one no longer: its
+        // session was told "asked", and no answer could ever be on it.
+        let asked = zirc_proto::request::Request::of(&message.event)
+            .is_some_and(|request| request.state == zirc_proto::request::State::Open);
+        if (asked || Decision::of(&message.event).is_some())
+            && !zirc_core::send::goes_whole(client, &message)
+        {
+            anyhow::bail!("it's too long for the server to take whole: say it shorter");
+        }
         tracing::debug!("sending a {} event to {channel}", message.event.kind());
         let nick = client.nick().to_owned();
         // Debug, such as a working set or a lease event, goes out of the channel's history

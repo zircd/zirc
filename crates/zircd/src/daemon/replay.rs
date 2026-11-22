@@ -15,7 +15,10 @@
 //! Chat goes stale, so only a short gap is replayed ([`REPLAYED`]): a dropped connection or
 //! a restart. After a longer one, such as a laptop asleep overnight, the sessions waiting on
 //! something are told that zircd was away and what it may have missed, rather than woken
-//! by every line of it.
+//! by every line of it. The one thing still read after a long gap is the owner's answers to
+//! this machine's open requests ([`Daemon::ask_answers_missed`]): a 👍 given from a phone
+//! while a laptop slept went nowhere, its request left open and nobody told (a user's
+//! review, 22 Nov 2026).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
@@ -27,7 +30,7 @@ use zirc_core::project::ORG_CHANNEL;
 use zirc_irc::Line;
 use zirc_proto::{Event, Message};
 
-use super::{Daemon, WATCHER_SESSION, heard, now, read_saved, vouch};
+use super::{Daemon, WATCHER_SESSION, heard, now, reaction, read_saved, vouch};
 
 /// The longest gap whose messages are told again.
 pub(super) const REPLAYED: Duration = Duration::from_mins(10);
@@ -67,6 +70,10 @@ pub(super) struct Replay {
     /// While joining after a gap short enough to replay: until when a channel joined is
     /// asked for its gap, since when zircd was away, and the channels asked already.
     joining: Option<Joining>,
+    /// After a gap too long to replay: until when `#decisions`, once joined, is asked for
+    /// the answers given meanwhile to this machine's open requests, and since when zircd
+    /// was away, in seconds since the Unix epoch.
+    answers: Option<(Instant, u64)>,
     /// The history asked for and not yet all in.
     asked: Vec<Asked>,
 }
@@ -93,6 +100,9 @@ struct Asked {
     /// The server's name for the batch it comes in, once it starts.
     batch: Option<String>,
     lines: Vec<Line>,
+    /// Whether only the answers to this machine's open requests are taken from it, after a
+    /// gap too long to tell the rest of.
+    answers_only: bool,
 }
 
 /// What to do on connecting after zircd was away from the server for `away` seconds, or
@@ -183,6 +193,7 @@ impl Daemon {
             self.replay.away_since = Some(now());
         }
         self.replay.joining = None;
+        self.replay.answers = None;
         self.replay.asked.clear();
     }
 
@@ -192,6 +203,10 @@ impl Daemon {
         let since = self.replay.away_since.take();
         let away = since.map(|since| now().saturating_sub(since));
         let gap = Gap::of(away);
+        self.replay.answers = match (gap, since) {
+            (Gap::TooLong(_), Some(since)) => Some((self.clock.now() + JOINING, since)),
+            _ => None,
+        };
         self.replay.joining = (gap != Gap::None).then(|| Joining {
             gap,
             until: self.clock.now() + JOINING,
@@ -242,6 +257,9 @@ impl Daemon {
     /// connected.
     pub(super) fn replay_joined(&mut self, channel: &str) {
         let at = self.clock.now();
+        if channel.eq_ignore_ascii_case(zirc_proto::request::CHANNEL) {
+            self.ask_answers_missed();
+        }
         let Some(joining) = &mut self.replay.joining else {
             return;
         };
@@ -289,6 +307,44 @@ impl Daemon {
                 channel: channel.to_owned(),
                 batch: None,
                 lines: Vec::new(),
+                answers_only: false,
+            });
+        }
+    }
+
+    /// `#decisions` is joined after a gap too long to replay: asks what was said there
+    /// meanwhile, for the owner's answers to this machine's open requests alone
+    /// ([`Daemon::tell_replayed`]). Nothing else of it is told, and nothing is asked with
+    /// no request open.
+    fn ask_answers_missed(&mut self) {
+        let Some((until, since)) = self.replay.answers.take() else {
+            return;
+        };
+        if self.clock.now() > until || !self.requests.any_open() {
+            return;
+        }
+        let Some(client) = &self.client else { return };
+        if !client.has_cap("draft/chathistory") || !client.has_cap("batch") {
+            return;
+        }
+        let channel = zirc_proto::request::CHANNEL;
+        let after = self
+            .replay
+            .saved
+            .newest
+            .get(channel)
+            .cloned()
+            .unwrap_or_else(|| zirc_core::time::tag(since));
+        tracing::info!("asking for the answers given to open requests while away");
+        if client
+            .send(after_line(channel, &format!("timestamp={after}")))
+            .is_ok()
+        {
+            self.replay.asked.push(Asked {
+                channel: channel.to_owned(),
+                batch: None,
+                lines: Vec::new(),
+                answers_only: true,
             });
         }
     }
@@ -368,7 +424,12 @@ impl Daemon {
     /// Tells watchers the messages of a page of `asked`'s history, oldest first, and asks
     /// for the page after it if it was full.
     fn tell_replayed(&mut self, asked: Asked) {
-        let Asked { channel, lines, .. } = asked;
+        let Asked {
+            channel,
+            lines,
+            answers_only,
+            ..
+        } = asked;
         let full = lines.len() >= PAGE;
         let last = lines
             .last()
@@ -397,8 +458,14 @@ impl Daemon {
                 .as_deref()
                 .and_then(|source| source.split('!').next())
                 .unwrap_or_default();
-            // This machine said nothing while it was away.
+            // This machine said nothing while it was away, but its own request from just
+            // before, whose echo it never heard, is the one its owner's answer is on.
             if from == me {
+                if let Some(id) = line.tag("msgid")
+                    && let Some((delivery, _)) = heard(&channel, line)
+                {
+                    self.request_found(id, &delivery);
+                }
                 continue;
             }
             if let Some(id) = line.tag("msgid")
@@ -407,6 +474,12 @@ impl Daemon {
                 continue;
             }
             self.heard_in(&channel, line);
+            if answers_only {
+                if reacted && let Some(reaction) = reaction(&channel, from, line) {
+                    self.request_reacted(&reaction);
+                }
+                continue;
+            }
             told += 1;
             if reacted {
                 self.reacted(&channel, from, line);
@@ -436,6 +509,7 @@ impl Daemon {
                 channel,
                 batch: None,
                 lines: Vec::new(),
+                answers_only,
             });
         }
     }

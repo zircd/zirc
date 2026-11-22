@@ -2199,6 +2199,28 @@ async fn a_request_the_server_hasnt_confirmed_isnt_said_as_asked() {
     );
 }
 
+/// A request too long for the server to take whole isn't asked at all: shortened to fit it
+/// lost its data, so its session was told "asked" of what no app showed as a request and
+/// no answer could be on.
+#[tokio::test]
+async fn a_request_too_long_to_send_whole_is_refused() {
+    let ergo = require_ergo!();
+    let asking = Asking::start(&ergo, 0).await;
+    let request = Request::AskOwner {
+        session: "cc-1".into(),
+        question: format!("Rename the bot{}?", ", and its channel".repeat(120)),
+        yes: "it's renamed".into(),
+        no: "it stays".into(),
+        recommend: None,
+        irreversible: false,
+    };
+    let answer = ask(asking.home.path(), request).await;
+    assert!(
+        matches!(&answer, Err(why) if why.contains("too long for the server to take whole")),
+        "{answer:?}"
+    );
+}
+
 /// Forgets the message ids of the open requests saved under `home`, as when zircd never
 /// heard its own echo of them.
 fn forget_request_echoes(home: &Path) {
@@ -2234,7 +2256,9 @@ fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
 async fn the_owners_answer_counts_on_a_request_whose_echo_was_missed() {
     let ergo = require_ergo!();
     let mut asking = Asking::start(&ergo, 0).await;
-    let msgid = asking.ask("Rename the bot?", false).await;
+    // Long enough that the server takes it as several lines, as most requests are.
+    let question = format!("Rename the bot{}?", ", and its channel".repeat(12));
+    let msgid = asking.ask(&question, false).await;
     let Asking {
         home,
         _daemon: daemon,
@@ -2252,6 +2276,56 @@ async fn the_owners_answer_counts_on_a_request_whose_echo_was_missed() {
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     react(&owner, &msgid, "👍", false);
+    let yes = next_answered(&mut hears).await;
+    assert_eq!(
+        (yes.request.id.as_str(), yes.answer),
+        ("mattias-mbp/1", zirc_proto::request::Answer::Yes)
+    );
+}
+
+/// Sets back when the zircd under `home` was last connected by an hour: longer ago than it
+/// replays what was said.
+fn long_away(home: &Path) {
+    let saved = walk(home)
+        .into_iter()
+        .find(|path| path.file_name().is_some_and(|name| name == "replay.json"))
+        .expect("where to replay from");
+    let mut replay: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&saved).unwrap()).unwrap();
+    let alive = replay["alive"]
+        .as_u64()
+        .expect("when it was last connected");
+    replay["alive"] = (alive - 3600).into();
+    std::fs::write(&saved, replay.to_string()).unwrap();
+}
+
+/// The owner's 👍 given while zircd was away for longer than it replays, a laptop asleep
+/// and the answer given from a phone, is heard when it's back: it went nowhere, the request
+/// left open and nobody told (a user's review, 22 Nov 2026).
+#[tokio::test]
+async fn the_owners_answer_given_while_zircd_was_long_away_is_heard() {
+    let ergo = require_ergo!();
+    let mut asking = Asking::start(&ergo, 0).await;
+    let msgid = asking.ask("Rename the bot?", false).await;
+    let Asking {
+        home,
+        _daemon: daemon,
+        _repo,
+        owner,
+        owner_in: _owner_in,
+        ..
+    } = asking;
+    let at = home.path().to_owned();
+    let machine = Machine { home, daemon }
+        .restart_after(async {
+            react(&owner, &msgid, "👍", false);
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            long_away(&at);
+        })
+        .await;
+    connected(machine.home.path()).await;
+    let mut hears = watching(machine.home.path(), "cc-1").await;
+
     let yes = next_answered(&mut hears).await;
     assert_eq!(
         (yes.request.id.as_str(), yes.answer),

@@ -147,6 +147,17 @@ pub fn send_tagged(
     }
 }
 
+/// Whether `message` goes to `client`'s server whole: on one line, or as one multiline
+/// message. One that doesn't is split or shortened ([`fitting_as`]), which leaves a custom
+/// event without its data, and what reads it as a decision or a request then finds none.
+#[must_use]
+pub fn goes_whole(client: &Client, message: &Message) -> bool {
+    match bodies_of(message, client.multiline()) {
+        Bodies::Multiline(_) => true,
+        Bodies::Lines(lines) => lines.len() == 1 && zirc_proto::encode(message).is_ok(),
+    }
+}
+
 /// The PRIVMSG bodies for an event. IRC lines are short, so an event too long for one is
 /// split or shortened rather than dropped: a working set or a post across several lines,
 /// a push down to its newest commit, subjects and summaries cut short with `…`.

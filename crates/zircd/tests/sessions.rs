@@ -1064,6 +1064,43 @@ async fn a_workflows_file_is_sent_only_where_the_server_runs_workflows() {
     );
 }
 
+/// A step's action, such as an approval's answer, is said as sent only once the server
+/// echoes it: zircd answered as soon as the line was queued.
+#[tokio::test]
+async fn a_steps_action_the_server_hasnt_confirmed_isnt_said_as_sent() {
+    use zirc_proto::run::{Act, StepAction};
+    let ergo = require_ergo!();
+    // No time at all for the server's echo, which stands for one that never comes.
+    let hooks = zircd::Hooks {
+        ask_wait: Some(Duration::ZERO),
+        ..zircd::Hooks::default()
+    };
+    let alpha = Machine::hooked(&ergo, "alpha", hooks).await;
+    let repo = clone();
+    alpha
+        .request(Request::RepoAdd {
+            path: repo.path().to_owned(),
+            session: Some("cc-1".into()),
+        })
+        .await;
+    let answer = Request::Workflow {
+        repo: repo.path().to_owned(),
+        session: "cc-1".into(),
+        channel: "#master".into(),
+        event: StepAction {
+            run: "master-1".into(),
+            step: "approve".into(),
+            act: Act::Answer { yes: true },
+        }
+        .event(),
+    };
+    let sent = alpha.try_request(answer).await;
+    assert!(
+        format!("{sent:?}").contains("not known to be sent"),
+        "{sent:?}"
+    );
+}
+
 #[tokio::test]
 async fn starting_to_watch_a_repository_invites_the_machines_owner_to_agents() {
     let ergo = require_ergo!();

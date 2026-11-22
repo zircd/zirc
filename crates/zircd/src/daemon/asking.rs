@@ -489,16 +489,23 @@ impl Daemon {
             self.deploy(&repo, session, &channel, event, answer).await;
             return;
         }
-        let response = self
-            .workflow_send(&repo, &session, &channel, event)
-            .await
-            .map_or_else(
-                |err| Response::Error {
-                    message: format!("{err:#}"),
-                },
-                Response::channel,
-            );
-        let _ = answer.send(response);
+        // A step's action, such as an approval's answer, is sent only once the server echoes
+        // it, as a decision is decided ([`Daemon::decided`]).
+        let confirmed = zirc_proto::run::StepAction::of(&event).is_some()
+            && !zirc_proto::Message::new(session.as_str(), event.clone()).is_live();
+        match self.workflow_send(&repo, &session, &channel, event).await {
+            Ok(channel) if confirmed && self.echoes() => {
+                self.wait(answer, Ask::Stepped { channel, session });
+            }
+            sent => {
+                let _ = answer.send(sent.map_or_else(
+                    |err| Response::Error {
+                        message: format!("{err:#}"),
+                    },
+                    Response::channel,
+                ));
+            }
+        }
     }
 
     /// Sends a workflow's file ([`Request::Workflow`]) once the server says its workflows'
@@ -687,6 +694,13 @@ impl Daemon {
                 message: format!(
                     "not known to be decided: the server didn't confirm it in {channel} within \
                      {}s. `zirc decisions` says whether it's there, before you decide it again",
+                    self.ask_wait.as_secs()
+                ),
+            },
+            Ask::Stepped { channel, .. } => Response::Error {
+                message: format!(
+                    "not known to be sent: the server didn't confirm it in {channel} within \
+                     {}s. `zirc workflow` says how the run stands, before you send it again",
                     self.ask_wait.as_secs()
                 ),
             },

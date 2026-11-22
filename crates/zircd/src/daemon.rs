@@ -169,6 +169,9 @@ enum Ask {
     /// and answered with `response`, as a line written to a connection that has dropped
     /// unnoticed is kept nowhere.
     Requested { id: String, response: Box<Response> },
+    /// The echo of the step's action `session` just sent to a workflow in `channel`, such as
+    /// its answer to an approval: only then is it sent.
+    Stepped { channel: String, session: String },
     /// The private conversations with messages lately, in the batch named `batch` once it
     /// starts.
     Conversations {
@@ -211,6 +214,7 @@ impl Ask {
             | Self::Echo { .. }
             | Self::Decided { .. }
             | Self::Requested { .. }
+            | Self::Stepped { .. }
             | Self::Hosted { .. } => "",
         }
     }
