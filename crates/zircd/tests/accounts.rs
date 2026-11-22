@@ -914,6 +914,44 @@ async fn an_agent_whose_note_waits_is_told_so() {
     );
 }
 
+/// A note for a session that works here but has never watched is kept for it, and said to
+/// wait: it was told nobody, as only sessions that had watched had anything kept, while
+/// its sender was told it was noted.
+#[tokio::test]
+async fn a_note_to_a_session_that_never_watched_waits_for_it() {
+    let ergo = require_ergo!();
+    let machines = three_machines(&ergo).await;
+    let [mbp, mini] = [0, 1].map(|at| machines[at].0.path().to_owned());
+    let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+    let add = Request::RepoAdd {
+        path: repo.path().to_owned(),
+        session: Some("cc-new".to_owned()),
+    };
+    ask(&mbp, add).await.unwrap();
+    let mut sender = watching(&mini, "cc-b").await;
+
+    notes(&mini, "cc-b", "mattias-mbp/cc-new", "start with the API")
+        .await
+        .unwrap();
+    let told = tokio::time::timeout(WAIT, async {
+        loop {
+            if let Some(Heard::Message(delivery)) = sender.next().await.unwrap() {
+                return delivery.message.event.human_text();
+            }
+        }
+    })
+    .await
+    .expect("told it waits");
+    assert!(
+        told.starts_with("cc-b: mattias-mbp/cc-new has no watch running"),
+        "{told}"
+    );
+    let mut new = ipc::watch(&paths::socket(&mbp), Some("cc-new"))
+        .await
+        .unwrap();
+    assert_eq!(next_direct(&mut new).await.text, "start with the API");
+}
+
 /// Asks `request` of the zircd at `home`, answered with an error as `Err`.
 async fn ask(home: &Path, request: Request) -> Result<Response, String> {
     ipc::request(&paths::socket(home), &request)

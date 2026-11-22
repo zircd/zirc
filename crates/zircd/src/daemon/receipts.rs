@@ -24,6 +24,15 @@ fn receipted(direct: &Direct) -> Option<&str> {
 impl Daemon {
     /// Tells the watchers `direct`, then says how it stands to whoever sent it.
     pub(super) fn tell_direct(&mut self, direct: Direct) {
+        // Kept for a session that works here though it has never watched: only sessions that
+        // had watched, or were here when zircd last connected, had anything kept, so a note
+        // to one that had only said what it's changing was told nobody.
+        if let Some(session) = receipted(&direct)
+            && !self.missed.contains_key(session)
+            && self.sessions_here().contains(session)
+        {
+            self.missed.entry(session.to_owned()).or_default();
+        }
         let response = Response::Direct(direct);
         self.tell_watchers(&response);
         let Response::Direct(direct) = response else {
@@ -36,8 +45,6 @@ impl Daemon {
             .watchers
             .iter()
             .any(|watcher| watcher.reachable() && watcher.session.as_deref() == Some(session));
-        // Kept only for a session that has watched: one that never has is told nothing
-        // later either, so nothing is said of it.
         let kept = self.missed.get(session).is_some_and(|kept| {
             kept.iter().any(|(_, kept)| {
                 matches!(kept, Response::Direct(kept)
