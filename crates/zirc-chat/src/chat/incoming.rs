@@ -189,6 +189,9 @@ impl Chat {
         if self.support_tag(line, from, target) {
             return Vec::new();
         }
+        if self.receipt_tag(line, from) {
+            return Vec::new();
+        }
         let (Some(id), Some((emoji, on))) = (
             line.tag(REPLY),
             line.tag(REACT)
@@ -214,6 +217,33 @@ impl Chat {
             self.conversations[at].react(id, from, emoji, on, time);
         }
         Vec::new()
+    }
+
+    /// Takes `line`, a `TAGMSG` from `from`, as a machine's word on a message we sent one
+    /// of its agent sessions, if it is one ([`zirc_proto::receipt`]): kept for that session's
+    /// conversation, in place of any earlier one. Only the machine's own word counts, as the
+    /// conversation is keyed by who sent it; our own machines' receipts to others aren't ours.
+    fn receipt_tag(&mut self, line: &Line, from: &str) -> bool {
+        let Some(value) = line.tag(zirc_proto::receipt::TAG) else {
+            return false;
+        };
+        if let (Some(id), Some(receipt)) =
+            (line.tag(REPLY), zirc_proto::receipt::Receipt::parse(value))
+            && !from.eq_ignore_ascii_case(&self.me)
+        {
+            let name = super::fold(&format!("{from}{SESSION_MARK}{}", receipt.session));
+            if let Some(at) = self.position(&name) {
+                self.conversations[at].touch(id);
+            }
+            self.receipts.insert(name, (id.to_owned(), receipt));
+        }
+        true
+    }
+
+    /// What the agent conversation `name`'s machine last said of a message we sent its
+    /// session, and that message's id.
+    pub(super) fn receipt(&self, name: &str) -> Option<&(String, zirc_proto::receipt::Receipt)> {
+        self.receipts.get(&super::fold(name))
     }
 
     pub(super) fn message(&mut self, line: &Line, history: bool) -> Vec<Line> {

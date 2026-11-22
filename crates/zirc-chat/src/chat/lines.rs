@@ -872,7 +872,36 @@ impl<'a> Layout<'a> {
             line.style = WordStyle::of(line.kind);
             lines.push(line);
         }
+        self.receipt(&mut lines);
         lines
+    }
+
+    /// Puts, under our latest message in a conversation with an agent session, what its
+    /// machine says of it: one quiet line, `Seen by cc-1a2b3c` or `Waiting: cc-1a2b3c isn't
+    /// running` ([`zirc_proto::receipt::Receipt::says`]). Nothing under an older message,
+    /// nor under the latest while the machine has said nothing of it (the user's choices,
+    /// 22 Nov 2026). A note, so every app draws it as it draws any.
+    fn receipt(&mut self, lines: &mut Vec<Line>) {
+        let Some((id, receipt)) = self.chat.receipt(&self.conversation.name) else {
+            return;
+        };
+        let Some(at) = lines
+            .iter()
+            .rposition(|line| line.mine && line.kind == LineKind::Chat)
+        else {
+            return;
+        };
+        if lines[at].id.as_deref() != Some(id.as_str()) {
+            return;
+        }
+        let Some(time) = DateTime::from_timestamp_millis(lines[at].time_ms) else {
+            return;
+        };
+        let key = format!("{}-receipt", lines[at].key);
+        let mut line = self.blank(key, None, time, LineKind::Note);
+        line.text = receipt.says();
+        line.shape = RowShape::of(&line);
+        lines.insert(at + 1, line);
     }
 
     /// `item`'s line; never a day, which is the divider on the line after it.
@@ -2966,5 +2995,68 @@ mod tests {
             "checkout"
         ));
         assert!(!super::names_word("build 1421 failed: e2e", "flaky-e2e"));
+    }
+
+    /// Under our latest message to an agent, what its machine says of it; nothing under an
+    /// older one, nor on anyone else's word.
+    #[test]
+    fn our_latest_to_an_agent_says_whether_its_seen_or_waits() {
+        fn texts(lines: &[Line]) -> Vec<String> {
+            lines.iter().map(|line| line.text.clone()).collect()
+        }
+        let name = "me-mbp/cc-1";
+        let shown = |chat: &Chat| -> Vec<String> {
+            let lines = chat.lines(name, utc(), false);
+            assert_eq!(texts(&chat.agent_lines(name, utc())), texts(&lines));
+            texts(&lines)
+        };
+        // From the machine as its host says whose it is, as every line of its does.
+        let receipt = |state: &str, id: &str, from: &str| {
+            format!("@+zirc/receipt={state},cc-1;+draft/reply={id} :{from} TAGMSG me")
+        };
+        let (machine, bob) = ("me-mbp!u@machine/me", "bob!u@h");
+        let mut chat = chat();
+        feed(&mut chat, &[":me-mbp!u@machine/me JOIN #api"]);
+        let _ = chat.open(name);
+        feed(
+            &mut chat,
+            &[
+                &at(
+                    "09:00:00",
+                    Some("e1"),
+                    ":me!u@h PRIVMSG me-mbp :cc-1 run the tests",
+                ),
+                &receipt("waiting", "e1", machine),
+            ],
+        );
+        assert_eq!(
+            shown(&chat),
+            ["run the tests", "Waiting: cc-1 isn't running"]
+        );
+        let lines = chat.lines(name, utc(), false);
+        assert_eq!(
+            (lines[1].kind, lines[1].shape, lines[1].mine),
+            (LineKind::Note, RowShape::Quiet, false)
+        );
+
+        feed(&mut chat, &[&receipt("seen", "e1", machine)]);
+        assert_eq!(shown(&chat), ["run the tests", "Seen by cc-1"]);
+
+        // A newer message its machine has said nothing of shows nothing, under either; and
+        // only its machine's word counts.
+        feed(
+            &mut chat,
+            &[
+                &at(
+                    "09:01:00",
+                    Some("e2"),
+                    ":me!u@h PRIVMSG me-mbp :cc-1 and push",
+                ),
+                &receipt("seen", "e2", bob),
+            ],
+        );
+        assert_eq!(shown(&chat), ["run the tests", "and push"]);
+        feed(&mut chat, &[&receipt("seen", "e2", machine)]);
+        assert_eq!(shown(&chat), ["run the tests", "and push", "Seen by cc-1"]);
     }
 }

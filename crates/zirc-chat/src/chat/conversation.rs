@@ -793,6 +793,12 @@ impl Conversation {
         self.ids.contains(id)
     }
 
+    /// Notes the message `id` as changed in what's shown under it, as a reaction does, for
+    /// [`Conversation::take_touched`].
+    pub(super) fn touch(&mut self, id: &str) {
+        self.touched.insert(id.to_owned());
+    }
+
     /// Puts `kind`, with `formatted`, in place of what the message with id `id` says, as
     /// `from` corrected it at `at` with the message `by`: only their own message or action,
     /// said no more than [`super::EDIT_WINDOW`] before. Whether it was corrected; when it

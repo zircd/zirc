@@ -651,6 +651,10 @@ pub struct Chat {
     notify: notify::NotifySettings,
     /// Folded nicks of the people the person blocked ([`Chat::set_blocked`]).
     blocked: std::collections::BTreeSet<String>,
+    /// Folded agent conversation (`<machine>/<session>`) → the newest word its machine gave
+    /// on a message we sent the session, and that message's id ([`Chat::receipt`]). Only the
+    /// newest: it's shown under our latest message alone.
+    receipts: HashMap<String, (String, zirc_proto::receipt::Receipt)>,
     /// Folded conversation name → who is typing there ([`Chat::typing`]).
     typing: HashMap<String, Vec<Typist>>,
     /// Folded conversation name → when we last said the person is typing there.
@@ -750,6 +754,7 @@ impl Chat {
             guest_rooms_open: HashMap::new(),
             notify: notify::NotifySettings::default(),
             blocked: std::collections::BTreeSet::new(),
+            receipts: HashMap::new(),
             typing: HashMap::new(),
             sent_typing: HashMap::new(),
             fresh: Vec::new(),
