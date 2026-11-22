@@ -19,12 +19,22 @@ use super::{
     direct_concerns, from_guest, lands_under, later, mentions, now, read_saved, routine, wakes,
 };
 
-/// The id the server gave what `response` tells of, a message in a channel or a direct one.
-fn said_id(response: &Response) -> Option<&str> {
-    match response {
-        Response::Delivery(delivery) => delivery.id.as_deref(),
-        Response::Direct(direct) => direct.id.as_deref(),
-        _ => None,
+/// Whether `kept` and `response` tell of the same thing said: by the id the server gave it
+/// when both have one, and otherwise, for what's said in a channel, by where, who and what.
+/// What this machine's own session says is told here at once, before the server gives it an
+/// id, and comes with one in what's replayed after a restart.
+fn same_said(kept: &Response, response: &Response) -> bool {
+    match (kept, response) {
+        (Response::Delivery(kept), Response::Delivery(said)) => match (&kept.id, &said.id) {
+            (Some(kept), Some(said)) => kept == said,
+            _ => {
+                kept.channel.eq_ignore_ascii_case(&said.channel)
+                    && kept.message.session == said.message.session
+                    && kept.message.event == said.message.event
+            }
+        },
+        (Response::Direct(kept), Response::Direct(said)) => kept.id.is_some() && kept.id == said.id,
+        _ => false,
     }
 }
 
@@ -224,11 +234,10 @@ impl Daemon {
             }
             // Kept already: what was said just before a restart is kept from before it, and
             // comes again in what's replayed after it.
-            if let Some(id) = said_id(response)
-                && self
-                    .missed
-                    .get(&session)
-                    .is_some_and(|missed| missed.iter().any(|(_, kept)| said_id(kept) == Some(id)))
+            if self
+                .missed
+                .get(&session)
+                .is_some_and(|missed| missed.iter().any(|(_, kept)| same_said(kept, response)))
             {
                 continue;
             }
