@@ -1438,6 +1438,41 @@ async fn a_session_waiting_on_a_state_is_woken_once_when_it_changes_level() {
     );
 }
 
+/// A decision is said as decided only once the server echoes it: zircd answered as soon as
+/// the line was queued, so one written to a connection that had dropped unnoticed was said
+/// as decided and kept nowhere (a user's review, 22 Nov 2026).
+#[tokio::test]
+async fn a_decision_the_server_hasnt_confirmed_isnt_said_as_decided() {
+    let ergo = require_ergo!();
+    register(&ergo, "mattias-mbp", "a-passphrase").await;
+    host_machine(&ergo, "mattias-mbp", "mattias").await;
+    // No time at all for the server's echo, which stands for one that never comes.
+    let hooks = zircd::Hooks {
+        ask_wait: Some(Duration::ZERO),
+        ..zircd::Hooks::default()
+    };
+    let config = owned_config(&ergo, "mattias-mbp", "a-passphrase", "mattias", "");
+    let mbp = Machine::spawn_with(&config, hooks);
+    let home = mbp.home.path();
+    connected(home).await;
+    let api = working_in(home, "cc-a", "git@github.com:acme/api.git").await;
+
+    let decide = Request::Decide {
+        repo: api.path().to_owned(),
+        session: None,
+        quote: "yes, add the node".into(),
+        about: "cloud spend".into(),
+        link: None,
+        for_: Vec::new(),
+        replaces: None,
+    };
+    let answer = ask(home, decide).await;
+    assert!(
+        matches!(&answer, Err(why) if why.contains("not known to be decided")),
+        "{answer:?}"
+    );
+}
+
 #[tokio::test]
 async fn decisions_reach_the_sessions_theyre_for_and_say_whose_account_sent_them() {
     use zirc_core::decisions::Provenance;

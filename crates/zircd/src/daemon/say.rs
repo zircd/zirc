@@ -89,8 +89,10 @@ impl Daemon {
         }
         // Once, in #ops: every machine watching a repository is in it, so the sessions it's
         // for hear it there, and a copy in the repository's channel was a second line for
-        // every reader.
-        self.publish(&ops, &sender, event);
+        // every reader. A decision that couldn't be sent is said so, never as decided.
+        let message = self.signed(&sender, event);
+        self.publish_out(&ops, message, None, None)
+            .context("the decision wasn't sent")?;
         Ok(vec![ops])
     }
 
@@ -284,6 +286,9 @@ impl Daemon {
             if let Some(message) = message {
                 if matches!(message.event, Event::Text { .. }) {
                     self.post_echoed(channel, id, &message.session);
+                }
+                if Decision::of(&message.event).is_some() {
+                    self.decision_echoed(channel, &message.session);
                 }
                 self.request_echoed(channel, id, &message.event);
                 if let Some(to) = line.tag("+draft/reply") {
@@ -481,6 +486,30 @@ impl Daemon {
         );
     }
 
+    /// Whether a decision waits for its echo, to be said as decided only once the server has
+    /// it: when the server echoes.
+    pub(super) fn confirms_decisions(&self) -> bool {
+        self.client
+            .as_ref()
+            .is_some_and(|client| client.has_cap("echo-message"))
+    }
+
+    /// Answers the decision from `sender` in `channel` waiting on its echo: the server has it.
+    fn decision_echoed(&mut self, channel: &str, sender: &str) {
+        let Some(at) = self.asking.iter().position(|asking| {
+            matches!(&asking.what, super::Ask::Decided { channel: c, sender: s }
+                if c.eq_ignore_ascii_case(channel) && s == sender)
+        }) else {
+            return;
+        };
+        self.finish(
+            at,
+            Response::Decided {
+                channels: vec![channel.to_owned()],
+            },
+        );
+    }
+
     /// The link to message `id` in `target`.
     fn message_link(&self, target: &str, id: &str) -> Result<String> {
         let web = self
@@ -655,10 +684,29 @@ impl Daemon {
     pub(super) fn publish_sealed(
         &mut self,
         channel: &str,
-        mut message: Message,
+        message: Message,
         reply: Option<&str>,
         sealed: Option<String>,
     ) {
+        if self.client.is_none() {
+            tracing::debug!("not connected, dropping an event for {channel}");
+            return;
+        }
+        if let Err(err) = self.publish_out(channel, message, reply, sealed) {
+            tracing::warn!("{err:#}");
+        }
+    }
+
+    /// [`Daemon::publish_sealed`], saying whether it was sent: an error when this machine
+    /// isn't connected or the line couldn't be sent, and then no watcher here is told of it
+    /// either. Sent is not kept: only the server's echo says that.
+    pub(super) fn publish_out(
+        &mut self,
+        channel: &str,
+        mut message: Message,
+        reply: Option<&str>,
+        sealed: Option<String>,
+    ) -> Result<()> {
         if message.name.is_none() {
             message.name = self.name_of(&message.session);
         }
@@ -678,8 +726,7 @@ impl Daemon {
             self.stop_typing(&message.session, channel);
         }
         let Some(client) = &self.client else {
-            tracing::debug!("not connected, dropping an event for {channel}");
-            return;
+            anyhow::bail!("not connected to the server");
         };
         tracing::debug!("sending a {} event to {channel}", message.event.kind());
         let nick = client.nick().to_owned();
@@ -694,10 +741,8 @@ impl Daemon {
                     .map(|value| (zirc_proto::sealed::TAG.to_owned(), Some(value))),
             )
             .collect();
-        let sent = zirc_core::send::send_tagged(client, channel, &message, &tags);
-        if let Err(err) = sent {
-            tracing::warn!("couldn't send to {channel}: {err}");
-        }
+        zirc_core::send::send_tagged(client, channel, &message, &tags)
+            .with_context(|| format!("couldn't send to {channel}"))?;
         // This machine's own working sets are its worktrees', kept apart.
         if !matches!(message.event, Event::Working { .. }) {
             let default = self.default_branch(scope);
@@ -715,5 +760,6 @@ impl Daemon {
             only_cis_word(&mut delivery);
             self.tell_watchers(&Response::Delivery(delivery));
         }
+        Ok(())
     }
 }

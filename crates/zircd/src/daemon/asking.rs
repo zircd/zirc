@@ -628,8 +628,32 @@ impl Daemon {
         }
     }
 
+    /// Decides as `decide` ([`Request::Decide`]) asks, answering once the server's echo says
+    /// it has the decision ([`Daemon::confirms_decisions`]), or at once where the server
+    /// doesn't echo. zircd used to answer as soon as the line was queued, so a decision
+    /// written to a connection that had dropped unnoticed was said as decided and kept
+    /// nowhere (a user's review, 22 Nov 2026).
+    pub(super) async fn decided(&mut self, decide: Request, answer: oneshot::Sender<Response>) {
+        let Request::Decide { session, .. } = &decide else {
+            return;
+        };
+        let session = session.clone();
+        match self.respond(decide).await {
+            Ok(Response::Decided { channels }) if self.confirms_decisions() => {
+                let sender = session.or_else(|| self.owner.clone()).unwrap_or_default();
+                let channel = channels.into_iter().next().unwrap_or_default();
+                self.wait(answer, Ask::Decided { channel, sender });
+            }
+            response => {
+                let _ = answer.send(response.unwrap_or_else(|err| Response::Error {
+                    message: format!("{err:#}"),
+                }));
+            }
+        }
+    }
+
     /// The request waiting with `token` waited too long: a post went out all the same, and is
-    /// told without its link; the rest fail.
+    /// told without its link; a decision isn't known to be kept, and says so; the rest fail.
     pub(super) fn expired(&mut self, token: u64) {
         let Some(at) = self.asking.iter().position(|a| a.token == token) else {
             return;
@@ -637,6 +661,13 @@ impl Daemon {
         let response = match &self.asking[at].what {
             Ask::Reacted { .. } => return self.fetched(at),
             Ask::Echo { channel, .. } => Response::channel(channel.clone()),
+            Ask::Decided { channel, .. } => Response::Error {
+                message: format!(
+                    "not known to be decided: the server didn't confirm it in {channel} within \
+                     {}s. `zirc decisions` says whether it's there, before you decide it again",
+                    self.ask_wait.as_secs()
+                ),
+            },
             _ => Response::Error {
                 message: format!(
                     "the server didn't answer within {}s",

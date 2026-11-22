@@ -162,6 +162,9 @@ enum Ask {
     },
     /// The echo of what `session` just posted in `channel`, whose id makes the post's link.
     Echo { channel: String, session: String },
+    /// The echo of the decision `sender` just made in `channel`: only then is it decided, as
+    /// a line written to a connection that has dropped unnoticed is kept nowhere.
+    Decided { channel: String, sender: String },
     /// The private conversations with messages lately, in the batch named `batch` once it
     /// starts.
     Conversations {
@@ -200,7 +203,10 @@ impl Ask {
             | Self::Read { target, .. }
             | Self::Listing { target, .. } => target,
             Self::Reacted { reaction, .. } => &reaction.channel,
-            Self::Conversations { .. } | Self::Echo { .. } | Self::Hosted { .. } => "",
+            Self::Conversations { .. }
+            | Self::Echo { .. }
+            | Self::Decided { .. }
+            | Self::Hosted { .. } => "",
         }
     }
 }
@@ -953,6 +959,9 @@ impl Daemon {
             }
             Input::Request(post @ (Request::Post { .. } | Request::SealedPost { .. }), answer) => {
                 self.post(post, answer).await;
+            }
+            Input::Request(decide @ Request::Decide { .. }, answer) => {
+                self.decided(decide, answer).await;
             }
             Input::Request(deploy @ Request::Workflow { .. }, answer) => {
                 self.workflow(deploy, answer).await;
