@@ -1297,11 +1297,13 @@ impl Chat {
             .collect()
     }
 
-    /// What `section` says while it holds no conversation, folded away or not: Channels
-    /// once connected, as until the server has said which we're in it would say none
-    /// wrongly; Direct messages whenever, as they're kept while offline (the user's choice,
-    /// 22 Nov 2026).
-    fn section_empty(&self, section: SidebarSection) -> Option<SectionEmpty> {
+    /// What `section` says while it holds no conversation, folded away or not
+    /// ([`SidebarTab::empty`]): Channels once connected, as until the server has said which
+    /// we're in it would say none wrongly; Direct messages whenever, as they're kept while
+    /// offline (the user's choice, 22 Nov 2026). For an app that draws one half's list
+    /// without its switch.
+    #[must_use]
+    pub fn section_empty(&self, section: SidebarSection) -> Option<SectionEmpty> {
         match section {
             SidebarSection::Channels => (self.is_connected()
                 && self.listed_in(SidebarSection::Channels).is_empty())
@@ -1309,11 +1311,30 @@ impl Chat {
                 line: super::NO_CHANNELS.to_owned(),
                 hint: None,
             }),
-            SidebarSection::Direct => self.has_no_listed_directs().then(|| SectionEmpty {
+            SidebarSection::Direct => (!self.surely_lists_a_direct()
+                && self.has_no_listed_directs())
+            .then(|| SectionEmpty {
                 line: super::NO_DIRECTS.to_owned(),
                 hint: Some(super::NO_DIRECTS_HINT.to_owned()),
             }),
         }
+    }
+
+    /// Whether the sidebar surely lists a direct message, without building its rows: a
+    /// person's or a group's conversation, not a guest's, that was never closed is always
+    /// listed. Asked on every redraw ([`Self::tabs`]), so the whole rule runs only without
+    /// one.
+    fn surely_lists_a_direct(&self) -> bool {
+        self.listed_in(SidebarSection::Direct)
+            .into_iter()
+            .any(|at| {
+                let name = &self.conversations[at].name;
+                matches!(
+                    self.direct_kind(name),
+                    Some(DirectKind::Person | DirectKind::Group)
+                ) && !self.is_guest_conversation(name)
+                    && !self.closed.contains_key(&fold(name))
+            })
     }
 }
 
