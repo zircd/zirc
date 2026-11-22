@@ -61,6 +61,10 @@ const QUOTE: usize = 140;
 const REMEMBER_NANOS: i64 = 86_400 * 1_000_000_000;
 
 /// How long it waits before connecting again, at first and at most.
+/// How long after a push that notifies failed in passing (its endpoint not reached, or
+/// answering that it or the push service is in trouble) it's sent again, each time.
+const AGAIN: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(10)];
+
 const RETRY: Duration = Duration::from_secs(5);
 const RETRY_MOST: Duration = Duration::from_mins(5);
 
@@ -170,6 +174,14 @@ pub(crate) fn decide(
             .push((WHY_TAG.to_owned(), Some(reason.as_str().to_owned())));
         if let (Why::Reaction, Some(said)) = (reason, answered) {
             line.tags.push((QUOTE_TAG.to_owned(), Some(quote(said))));
+        }
+        // A line too long for the push services, as an agent's request with its card
+        // often is, goes as how it starts rather than not at all.
+        let whole = line.to_string().len();
+        if whole > zirc_proto::push::LINE_BYTES
+            && let Some(body) = line.params.get_mut(1)
+        {
+            *body = zirc_proto::push::fitted(body, whole - body.len());
         }
         pushes.push(Push {
             endpoint: phone.subscription.endpoint.clone(),
@@ -654,26 +666,43 @@ impl Running {
                     return;
                 }
             };
-        let sent = self
-            .http
-            .post(&subscription.endpoint)
-            .header("Authorization", authorization)
-            .header("Content-Encoding", "aes128gcm")
-            .header("Content-Type", "application/octet-stream")
-            .header("TTL", TTL.to_string())
-            .header("Urgency", if urgent { "high" } else { "normal" })
-            .timeout(Duration::from_secs(10))
-            .body(body)
-            .send()
-            .await;
-        match sent.map(|response| response.status()) {
-            Ok(status) if status.is_success() => {}
-            Ok(status) if status == 404 || status == 410 => {
-                info!(%status, "a phone's push endpoint is gone: forgetting it");
-                self.forget(&subscription.endpoint).await;
+        // What notifies is tried again when it fails in passing: sent once, a push the
+        // relay couldn't hand to the push service just then was lost, an agent's question
+        // with it (four in two days, 21 and 22 Nov 2026).
+        let mut again = AGAIN.iter();
+        loop {
+            let sent = self
+                .http
+                .post(&subscription.endpoint)
+                .header("Authorization", &authorization)
+                .header("Content-Encoding", "aes128gcm")
+                .header("Content-Type", "application/octet-stream")
+                .header("TTL", TTL.to_string())
+                .header("Urgency", if urgent { "high" } else { "normal" })
+                .timeout(Duration::from_secs(10))
+                .body(body.clone())
+                .send()
+                .await
+                .map(|response| response.status());
+            let passing = match &sent {
+                Ok(status) => status.is_server_error() || *status == 429,
+                Err(_) => true,
+            };
+            if let (true, true, Some(wait)) = (urgent, passing, again.next()) {
+                info!(outcome = ?sent, "a push failed in passing: trying again in {wait:?}");
+                tokio::time::sleep(*wait).await;
+                continue;
             }
-            Ok(status) => warn!(%status, "a push was refused"),
-            Err(error) => warn!(%error, "a push didn't reach its endpoint"),
+            match sent {
+                Ok(status) if status.is_success() => {}
+                Ok(status) if status == 404 || status == 410 => {
+                    info!(%status, "a phone's push endpoint is gone: forgetting it");
+                    self.forget(&subscription.endpoint).await;
+                }
+                Ok(status) => warn!(%status, "a push was refused"),
+                Err(error) => warn!(%error, "a push didn't reach its endpoint"),
+            }
+            return;
         }
     }
 

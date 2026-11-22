@@ -35,6 +35,24 @@ fn decided(path: &Path, from: i64, phones: &[Phone]) -> Vec<(String, String, Str
         .collect()
 }
 
+/// A mention too long for the push services is pushed as how it starts: whole, it went as a
+/// bare "New message", or was refused outright.
+#[test]
+fn a_message_too_long_for_a_push_goes_as_how_it_starts() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = history(dir.path());
+    let long = format!("ada: does it work{}?", ", and the rest".repeat(400));
+    add(&path, "m1", "#api", SECOND, "bob", &long);
+    let pushes = decided(&path, 0, &[phone("ada", &serde_json::json!({}))]);
+    let [(_, _, line)] = pushes.as_slice() else {
+        panic!("one push: {pushes:?}");
+    };
+    assert!(line.len() <= zirc_proto::push::LINE_BYTES, "{}", line.len());
+    let line: Line = line.parse().unwrap();
+    assert!(line.params[1].starts_with("ada: does it work"), "{line:?}");
+    assert!(line.params[1].ends_with('…'), "{line:?}");
+}
+
 #[test]
 fn pushes_mentions_replies_reactions_and_direct_messages_to_whom_they_concern() {
     let dir = tempfile::tempdir().unwrap();
@@ -256,8 +274,12 @@ async fn started_reading(history: PathBuf) {
     .unwrap();
 }
 
-/// A stand-in push endpoint: answers every POST 201, and hands on each one's headers and body.
-async fn endpoint() -> (
+/// A stand-in push endpoint: answers every POST 201, and hands on each one's headers and
+/// body, after answering the first `troubled` of them 502, as zirc.dev's relay does when the
+/// push service doesn't take one, and handing none of those on.
+async fn endpoint(
+    troubled: usize,
+) -> (
     String,
     tokio::sync::mpsc::UnboundedReceiver<(String, Vec<u8>)>,
 ) {
@@ -266,6 +288,7 @@ async fn endpoint() -> (
     let url = format!("http://{}/api/push/ada", listener.local_addr().unwrap());
     let (posted, posts) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
+        let mut troubled = troubled;
         loop {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut request = Vec::new();
@@ -285,6 +308,16 @@ async fn endpoint() -> (
                     break (head, request[end + 4..].to_vec());
                 }
             };
+            if troubled > 0 {
+                troubled -= 1;
+                stream
+                    .write_all(
+                        b"HTTP/1.1 502 Bad Gateway\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                    )
+                    .await
+                    .unwrap();
+                continue;
+            }
             stream
                 .write_all(
                     b"HTTP/1.1 201 Created\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
@@ -316,7 +349,8 @@ async fn pushes_through_a_real_ergo_unless_read_elsewhere_first() {
     zirc_test_irc::register(&ergo, PUSHER, &passphrase).await;
     let (ada, mut ada_hears) = zirc_test_irc::integration(&ergo, "ada").await;
     let (bob, _bob_hears) = zirc_test_irc::integration(&ergo, "bob").await;
-    let (url, mut posts) = endpoint().await;
+    // The first push is refused in passing, and sent again.
+    let (url, mut posts) = endpoint(1).await;
     let pusher = Pusher {
         host: "127.0.0.1".into(),
         port: ergo.port(),

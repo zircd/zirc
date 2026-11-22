@@ -32,6 +32,49 @@ pub const WHY_TAG: &str = "+zirc/push-why";
 /// The tag on a pushed reaction carrying the start of what it reacts to.
 pub const QUOTE_TAG: &str = "+zirc/push-quote";
 
+/// The most bytes of a pushed line. The push services take 4096 bytes a push (APNs' payload,
+/// FCM's data), and zirc.dev's relay sends the line encrypted (RFC 8291's header and tag),
+/// in base64, beside the endpoint's id and the alert shown if the phone can't read it: a
+/// longer line went without what was said, as a bare "New message", or wasn't sent at all.
+pub const LINE_BYTES: usize = 2600;
+
+/// The most characters of what was said in a line shortened to fit ([`fitted`]): more than
+/// a notification shows.
+const FITTED_CHARS: usize = 400;
+
+/// `body`, what a pushed line says, as fits beside the `rest` of the line, in bytes: itself
+/// when it does. Otherwise how it starts: a zirc message without its event's data, which a
+/// notification doesn't show, and its words cut short, or plain words cut short. The app
+/// reads it whole on opening.
+#[must_use]
+pub fn fitted(body: &str, rest: usize) -> String {
+    let room = LINE_BYTES.saturating_sub(rest);
+    if body.len() <= room {
+        return body.to_owned();
+    }
+    let start = |words: &str| -> String {
+        let mut cut: String = words.chars().take(FITTED_CHARS).collect();
+        if cut.len() < words.len() {
+            cut.push('…');
+        }
+        cut
+    };
+    let Ok(Some(mut message)) = crate::decode(body) else {
+        return start(body);
+    };
+    message.event = match message.event {
+        crate::Event::Custom { kind, text, .. } => crate::Event::Custom {
+            kind,
+            data: serde_json::Value::Null,
+            text: start(&text),
+        },
+        event => crate::Event::Text {
+            body: start(&event.human_text()),
+        },
+    };
+    crate::encode_up_to(&message, room).unwrap_or_else(|_| start(&message.event.human_text()))
+}
+
 /// How long a registration lasts without being renewed, as Ergo's did.
 pub const EXPIRY_DAYS: i64 = 14;
 
@@ -156,5 +199,46 @@ mod tests {
     #[test]
     fn its_nick_is_reserved() {
         assert!(crate::names::RESERVED_INTEGRATION_NICKS.contains(&PUSHER));
+    }
+}
+
+#[cfg(test)]
+mod fitted_tests {
+    use super::*;
+
+    #[test]
+    fn a_line_that_fits_goes_as_it_is() {
+        assert_eq!(fitted("lunch?", 200), "lunch?");
+    }
+
+    #[test]
+    fn long_words_are_cut_short() {
+        let cut = fitted(&"word ".repeat(1000), 200);
+        assert!(cut.ends_with('…'), "{cut}");
+        assert!(cut.len() + 200 <= LINE_BYTES, "{}", cut.len());
+    }
+
+    #[test]
+    fn a_long_request_keeps_how_its_question_starts_and_loses_its_data() {
+        let question = format!(
+            "Drop the old sessions table{}?",
+            ", and its index".repeat(80)
+        );
+        let asked = crate::request::Request::open("mbp/1", "cc-1", "alice", question, "yes", "no");
+        let message = crate::Message::new("cc-1", asked.event());
+        let body = crate::encode_up_to(&message, 16_384).unwrap();
+        assert!(body.len() > LINE_BYTES, "{}", body.len());
+
+        let fits = fitted(&body, 200);
+        assert!(fits.len() + 200 <= LINE_BYTES, "{}", fits.len());
+        let read = crate::decode(&fits).unwrap().expect("still a zirc message");
+        assert_eq!(read.session, "cc-1");
+        assert!(
+            read.event
+                .human_text()
+                .contains("Drop the old sessions table"),
+            "{:?}",
+            read.event
+        );
     }
 }
