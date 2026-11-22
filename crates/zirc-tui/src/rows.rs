@@ -8,8 +8,8 @@ use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 use zirc_core::chat::lines::Line;
 use zirc_core::chat::{
     APP_TAG, CellAlign, Chat, EDITED, Face, Icon, LineFile, LineKind, LineReaction, LineSpeaker,
-    RichBlock, RichSpan, RichSpanKind, RowShape, SHOWN_PATHS, SystemBody, SystemLine, link_label,
-    show_more_paths_label,
+    RichBlock, RichSpan, RichSpanKind, RowShape, SHOWN_PATHS, SystemBody, SystemLine, WordStyle,
+    link_label, show_more_paths_label,
 };
 
 use crate::hyperlink::{Link, Links, fragments};
@@ -114,8 +114,6 @@ pub enum Row {
         nick: String,
         /// When, `12:04`.
         time: String,
-        /// How it reads: a message, or a notice.
-        tone: Tone,
         /// What goes dim after the time: in an agent session's conversation, the room it
         /// was said in ([`Line::room`]).
         hint: String,
@@ -205,9 +203,9 @@ fn pill(chat: &Chat, line: &Line, speaker: &LineSpeaker) -> Option<&'static str>
 pub enum Tone {
     /// A message.
     Message,
-    /// An action.
+    /// An action's words, in italics ([`WordStyle::Italic`]).
     Action,
-    /// A notice.
+    /// A notice's words, muted ([`WordStyle::Muted`]).
     Notice,
     /// A card's words, its outcome's icon in front on its first row.
     App(Option<Icon>),
@@ -350,9 +348,6 @@ pub fn line_rows(look: &Look<'_>, line: &Line) -> Vec<Row> {
     }
     let start = rows.len();
     match (line.shape, &line.speaker) {
-        (RowShape::Message, Some(_)) if line.kind == LineKind::Action => {
-            action_rows(look, line, &mut rows);
-        }
         (RowShape::Message, Some(speaker)) => message_rows(look, line, speaker, &mut rows),
         (RowShape::System, Some(speaker)) => system_rows(look, line, speaker, &mut rows),
         (RowShape::Brief | RowShape::Pointer, _) => brief_rows(look, line, &mut rows),
@@ -405,11 +400,6 @@ fn header(look: &Look<'_>, line: &Line, speaker: &LineSpeaker) -> Row {
     Row::Header {
         nick: speaker.name.clone(),
         time: line.clock.clone(),
-        tone: if line.kind == LineKind::Notice {
-            Tone::Notice
-        } else {
-            Tone::Message
-        },
         hint: line.room.clone().unwrap_or_default(),
         id: line_id(line).map(str::to_owned),
         pill: pill(look.chat, line, speaker),
@@ -434,10 +424,11 @@ fn message_rows(look: &Look<'_>, line: &Line, speaker: &LineSpeaker, rows: &mut 
             .row(line, String::new()),
         );
     }
-    let tone = if line.kind == LineKind::Notice {
-        Tone::Notice
-    } else {
-        Tone::Message
+    // An action's words in italics, a notice's muted, as zirc-chat styles them.
+    let tone = match line.style {
+        WordStyle::Plain => Tone::Message,
+        WordStyle::Italic => Tone::Action,
+        WordStyle::Muted => Tone::Notice,
     };
     let mut runs = match &line.file {
         Some(file) => file_runs(file, width),
@@ -446,21 +437,6 @@ fn message_rows(look: &Look<'_>, line: &Line, speaker: &LineSpeaker, rows: &mut 
     edited(line, &mut runs, width);
     rows.extend(runs.into_iter().map(|run| run.row(line, String::new())));
     rows.extend(more_row(line));
-}
-
-/// An action, `/me waves`: one line of its own naming who, `* alice waves`.
-fn action_rows(look: &Look<'_>, line: &Line, rows: &mut Vec<Row>) {
-    let width = look.text_width;
-    let mut runs = wrapped(
-        (format!("{} {}", line.from, line.text), Vec::new()),
-        width,
-        &Tone::Action,
-    );
-    edited(line, &mut runs, width);
-    for (at, run) in runs.into_iter().enumerate() {
-        let nick = if at == 0 { "*" } else { "" };
-        rows.push(run.row(line, nick.to_owned()));
-    }
 }
 
 /// An event, a landing or a card, drawn as a message is: its actor's head unless it carries

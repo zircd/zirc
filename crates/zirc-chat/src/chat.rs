@@ -165,7 +165,7 @@ pub use lines::{
     ANIMATION_PLAYS, CardAction, CardButtons, FileShape, LineActions, LineFile, LineKind, LineMore,
     LineQuote, LineReaction, MEDIA_HEIGHT, MEDIA_WIDTH, MenuEntry, MenuItem, ReplyBar, RowShape,
     SessionName, SystemBody, SystemLine, VIDEO_MAKING, VIDEO_PLAN, VIDEO_UNREACHABLE, VideoPlan,
-    copy_code_label,
+    WordStyle, copy_code_label,
 };
 pub use list::{
     ActiveCard, Agent, AppMember, AppRow, BADGE_MOST, Badges, ChannelGroup, DirectKind, DirectRow,

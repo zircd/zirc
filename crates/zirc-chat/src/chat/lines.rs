@@ -105,6 +105,34 @@ pub enum RowShape {
     Pointer,
 }
 
+/// How a message's words are styled, decided here for every app, which never styles them
+/// from the line's kind: an action (`/me waves`) and a notice are messages in their sender's
+/// run like any other, only their words differ (the user's choice, 22 Nov 2026).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum WordStyle {
+    /// As the body's text.
+    #[default]
+    Plain,
+    /// In italics: what someone did, `/me waves`.
+    Italic,
+    /// Muted: a notice, which a program or the server sends.
+    Muted,
+}
+
+impl WordStyle {
+    /// How the words of a line of `kind` are styled.
+    #[must_use]
+    pub const fn of(kind: LineKind) -> Self {
+        match kind {
+            LineKind::Action => Self::Italic,
+            LineKind::Notice => Self::Muted,
+            _ => Self::Plain,
+        }
+    }
+}
+
 impl RowShape {
     /// The shape of `line`'s row, from what it is.
     fn of(line: &Line) -> Self {
@@ -163,6 +191,8 @@ pub struct Line {
     pub kind: LineKind,
     /// How its row is drawn.
     pub shape: RowShape,
+    /// How a message's words are styled: an action's in italics, a notice's muted.
+    pub style: WordStyle,
     /// Whether it carries on a run from the same sender, so its avatar and name go.
     pub continues: bool,
     /// Who: their nick, which replies, mentions and their card name. Empty for what no one
@@ -839,6 +869,7 @@ impl<'a> Layout<'a> {
             line.day = day.take();
             line.actions = LineActions::of(line.kind, line.id.as_deref(), line.mine, editable);
             line.shape = RowShape::of(&line);
+            line.style = WordStyle::of(line.kind);
             lines.push(line);
         }
         lines
@@ -948,6 +979,7 @@ impl<'a> Layout<'a> {
             day: None,
             kind,
             shape: RowShape::Message,
+            style: WordStyle::Plain,
             continues: false,
             from: entry.map(|entry| entry.from.clone()).unwrap_or_default(),
             speaker: None,

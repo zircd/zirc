@@ -1620,14 +1620,11 @@ fn header_line(
     app: &App,
     (nick, agent): (&str, Option<&rows::Agent>),
     time: &str,
-    (tone, pill): (&Tone, Option<&str>),
+    pill: Option<&str>,
     hint: &str,
 ) -> Line<'static> {
     let theme = app.theme;
-    let style = match tone {
-        Tone::Notice => fg(theme.warning),
-        _ => nick_style(app, nick),
-    };
+    let style = nick_style(app, nick);
     let mut spans = Vec::new();
     // An agent session: its tool's mark in its own colour, its name, then whose it is.
     if let Some(agent) = agent {
@@ -1678,14 +1675,13 @@ fn row_line(app: &App, row: &Row, width: u16) -> Line<'static> {
         Row::Header {
             nick,
             time,
-            tone,
             hint,
             id,
             pill,
             agent,
         } => highlight(
             app,
-            header_line(app, (nick, agent.as_ref()), time, (tone, *pill), hint),
+            header_line(app, (nick, agent.as_ref()), time, *pill, hint),
             picked(id),
         ),
         Row::New => new_line(app, width),
@@ -1860,9 +1856,9 @@ fn text_styles(app: &App, nick: &str, tone: &Tone) -> (Style, Style) {
     let text_style = match tone {
         Tone::Message | Tone::App(_) | Tone::Code => fg(theme.body),
         Tone::Action => fg(theme.body).add_modifier(Modifier::ITALIC),
-        Tone::Notice => fg(theme.warning),
-        // Its marker in the role zirc-chat names ([`lead_spans`]), its words muted.
-        Tone::Lead { .. } | Tone::Status | Tone::Quote => fg(theme.muted),
+        // A notice's words, muted as zirc-chat styles them; a lead's marker is in the role
+        // zirc-chat names ([`lead_spans`]), its words muted.
+        Tone::Notice | Tone::Lead { .. } | Tone::Status | Tone::Quote => fg(theme.muted),
         Tone::Details(role) => fg(theme.role(role).unwrap_or(theme.body)),
         Tone::Path | Tone::More => fg(theme.muted).add_modifier(Modifier::DIM),
         Tone::Heading => fg(theme.text).add_modifier(Modifier::BOLD),

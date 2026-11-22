@@ -145,8 +145,14 @@ async fn chats_with_history_events_and_mentions() {
     assert!(typed(&mut session, "/me waves"));
     let line = next_matching(&mut alice_in, |line| line.command == "PRIVMSG").await;
     assert_eq!(line.params, ["#api", "\x01ACTION waves\x01"]);
+    // A message in our run, as every app draws an action (the user's choice, 22 Nov 2026).
     until(&mut session, "our own action", |app| {
-        screen(app).contains("* tui waves")
+        let shown = screen(app);
+        shown.lines().any(|line| {
+            line.trim_start_matches(['│', ' '])
+                .trim_end_matches(['│', ' '])
+                == "waves"
+        })
     })
     .await;
 

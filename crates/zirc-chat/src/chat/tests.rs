@@ -8935,3 +8935,31 @@ fn the_server_channel_shows_what_irc_clients_show_but_not_the_apps_own_asking() 
         ["WHOIS bob", "bob u h * Bob", "bob End of /WHOIS list"]
     );
 }
+
+#[test]
+fn an_action_and_a_notice_are_messages_in_the_run_their_words_styled() {
+    let mut chat = Chat::new("me", "irc.zirc.test", Vec::new(), Options::default());
+    connected(&mut chat);
+    feed(
+        &mut chat,
+        &[
+            "@time=2026-10-30T11:10:00.000Z :alice!u@h PRIVMSG #api :hi",
+            "@time=2026-10-30T11:10:30.000Z :alice!u@h PRIVMSG #api :\u{1}ACTION waves\u{1}",
+            "@time=2026-10-30T11:11:00.000Z :alice!u@h NOTICE #api :build is green",
+        ],
+    );
+    let lines = chat.lines("#api", chrono::FixedOffset::east_opt(0).unwrap(), false);
+    let said: Vec<(WordStyle, RowShape, bool)> = lines
+        .iter()
+        .filter(|line| line.from == "alice")
+        .map(|line| (line.style, line.shape, line.continues))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            (WordStyle::Plain, RowShape::Message, false),
+            (WordStyle::Italic, RowShape::Message, true),
+            (WordStyle::Muted, RowShape::Message, true),
+        ]
+    );
+}
