@@ -693,14 +693,20 @@ impl Presence {
     /// tool or picture: asked for every agent the lists show, each refresh, so one pass
     /// over every claim rather than a look-up of each channel.
     pub fn claims_of(&self, nick: &str, session: &str) -> impl Iterator<Item = (&str, &str, u64)> {
+        self.every_claim()
+            .filter(move |(_, claim)| {
+                claim.session == session && claim.nick.eq_ignore_ascii_case(nick)
+            })
+            .map(|(channel, claim)| (channel, claim.task.as_str(), claim.since))
+    }
+
+    /// Every session's claims, each with the channel it was said in: for a list that wants
+    /// many sessions' at once, one pass where [`Presence::claims_of`] for each would be one
+    /// each.
+    pub fn every_claim(&self) -> impl Iterator<Item = (&str, &Claim)> {
         self.claims.iter().flat_map(move |(key, claims)| {
             let channel = self.room_of(key);
-            claims
-                .values()
-                .filter(move |claim| {
-                    claim.session == session && claim.nick.eq_ignore_ascii_case(nick)
-                })
-                .map(move |claim| (channel, claim.task.as_str(), claim.since))
+            claims.values().map(move |claim| (channel, claim))
         })
     }
 

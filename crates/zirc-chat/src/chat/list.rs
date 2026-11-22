@@ -439,13 +439,39 @@ impl Chat {
         let (_, task, since) = self
             .presence
             .claims_of(nick, session)
-            .filter(|(channel, _, _)| {
-                self.conversation(channel)
-                    .is_some_and(|c| c.kind == super::Kind::Channel)
-            })
+            .filter(|(channel, _, _)| self.claims_count_in(channel))
             .max_by_key(|&(_, _, since)| since)?;
         let since = DateTime::from_timestamp(i64::try_from(since).ok()?, 0)?;
         Some((task.to_owned(), since))
+    }
+
+    /// What every session last said it's taking on, as [`Chat::claim`] says each's, by its
+    /// machine's nick in ASCII lower case and its id: in one pass over the claims, for a list
+    /// that wants every agent's, where asking each would be a pass each, growing with the
+    /// square of the organisation (Jump to's, build 4708).
+    pub(super) fn tasks(&self) -> HashMap<(String, String), String> {
+        let mut latest: HashMap<(String, String), (u64, &str)> = HashMap::new();
+        for (channel, claim) in self.presence.every_claim() {
+            if !self.claims_count_in(channel) {
+                continue;
+            }
+            let key = (claim.nick.to_ascii_lowercase(), claim.session.clone());
+            let since = latest.get(&key).map(|&(since, _)| since);
+            // The newest, the last of equals, as max_by_key keeps.
+            if since.is_none_or(|since| claim.since >= since) {
+                latest.insert(key, (claim.since, claim.task.as_str()));
+            }
+        }
+        latest
+            .into_iter()
+            .map(|(key, (_, task))| (key, task.to_owned()))
+            .collect()
+    }
+
+    /// Whether what's taken on in `channel` counts: said in one of our channels.
+    fn claims_count_in(&self, channel: &str) -> bool {
+        self.conversation(channel)
+            .is_some_and(|c| c.kind == super::Kind::Channel)
     }
 
     /// The session `session` on the machine `nick`, whose own name is `machine_name`, as a

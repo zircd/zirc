@@ -573,11 +573,17 @@ impl Chat {
                 .map(str::to_owned)
                 .collect();
         }
+        let tasks = self.tasks();
         let mut found: Vec<(u8, bool, usize, &str)> = names
             .enumerate()
             .filter_map(|(at, name)| {
-                let task = self.agent(name).and_then(|agent| agent.task);
-                let rank = switch_rank(query, &self.title(name), task.as_deref())?;
+                // As [`Chat::agent`] has it, for one of the machines we know.
+                let task = agent(name)
+                    .filter(|(nick, _)| self.machine(nick).is_some())
+                    .and_then(|(nick, session)| {
+                        tasks.get(&(nick.to_ascii_lowercase(), session.to_owned()))
+                    });
+                let rank = switch_rank(query, &self.title(name), task.map(String::as_str))?;
                 Some((rank, !self.is_unread(name), at, name))
             })
             .collect();
