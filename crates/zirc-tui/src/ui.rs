@@ -932,12 +932,11 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
         depth,
         pip,
         agent,
-        muted,
         preview,
         placeholder,
         note,
         presence,
-        unread,
+        bold,
         badge,
         fold,
     } = row
@@ -998,8 +997,9 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
         Some(note) => note_columns(&note, room),
         None => preview_columns(preview, room, false),
     };
-    // Unread in bold text with a pip at the edge, read quieter; muted never stands out.
-    let unread = unread && !muted;
+    // Unread in bold text with a pip at the edge, read quieter; muted never stands out
+    // (`ListRow::bold`).
+    let unread = bold;
     let selected = at == app.selected();
     let name_style = if unread || selected {
         fg(theme.text).add_modifier(Modifier::BOLD)

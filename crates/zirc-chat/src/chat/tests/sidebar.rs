@@ -291,7 +291,7 @@ fn a_channels_row_is_bold_for_itself_not_its_rooms_which_are_bold_for_themselves
 }
 
 #[test]
-fn the_unread_pip_marks_channels_and_rooms_never_direct_messages_nor_muted() {
+fn the_unread_pip_marks_channels_and_rooms_never_direct_messages_nor_muted_and_bold_any_unread() {
     let mut chat = busy();
     feed(
         &mut chat,
@@ -303,9 +303,13 @@ fn the_unread_pip_marks_channels_and_rooms_never_direct_messages_nor_muted() {
     let bob = row(&rows, "bob");
     assert!(bob.unread && !bob.pip);
     assert!(!row(&rows, "#web").pip);
+    // Its name bold while unread, a direct message's too; read, a thread's isn't.
+    assert!(row(&rows, "#api/login").bold && bob.bold);
+    assert!(!row(&rows, "#web").bold);
     // Muted, nothing stands out.
     chat.mute("#api/login", Some(Muted::Off));
-    assert!(!row(&chat.sidebar_list(&all()), "#api/login").pip);
+    let login = row(&chat.sidebar_list(&all()), "#api/login").clone();
+    assert!(!login.pip && !login.bold);
 }
 
 fn kept(nick: &str, name: &str) -> KeptGuest {

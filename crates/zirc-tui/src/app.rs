@@ -348,8 +348,6 @@ pub enum Side {
         pip: bool,
         /// For an agent session, its tool's mark and its hue in degrees, drawn in front.
         agent: Option<(&'static str, u16)>,
-        /// Whether its conversation is muted: drawn muted, never bold.
-        muted: bool,
         /// For a person, what was said last and when, as zirc-chat's list says them:
         /// `bob: yeah exactly`, `5m`.
         preview: Option<(String, String)>,
@@ -360,8 +358,9 @@ pub enum Side {
         note: Option<String>,
         /// For a person, their presence, drawn as a mark before their name.
         presence: Option<zirc_core::chat::Presence>,
-        /// Whether anything in it, or for a channel under it, is unread: bold, with a pip.
-        unread: bool,
+        /// Whether its name is bold in the text's colour: unread and not muted, a channel's
+        /// rooms' included, as zirc-chat says (`ListRow::bold`).
+        bold: bool,
         /// What zirc-chat counts for it, in a pill: mentions in a channel, everything in a
         /// direct message.
         badge: u32,
@@ -571,12 +570,11 @@ impl App {
             depth: usize::from(row.depth),
             pip: row.pip,
             agent,
-            muted: row.muted,
             preview,
             placeholder,
             note,
             presence: row.presence.filter(|_| private),
-            unread: row.unread,
+            bold: row.bold,
             badge: row.badge,
             fold: row
                 .open

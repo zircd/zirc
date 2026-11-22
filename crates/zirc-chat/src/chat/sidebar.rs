@@ -144,6 +144,10 @@ pub struct ListRow {
     /// room's while unread and not muted, never a direct message's, which shows unread by its
     /// bold name and badge alone (the user's choice, 20 Nov 2026).
     pub pip: bool,
+    /// Whether its name is bold, in the text's colour: while it's unread and not muted. Every
+    /// other row's name is muted, a thread's and a channel we're not in alike (the user's
+    /// choices, 22 Nov 2026); an app draws the conversation shown in the text's colour too.
+    pub bold: bool,
     /// The count it shows ([`Chat::badge`]), a channel's by the same rule as `unread`, a
     /// fold's what's under it.
     pub badge: u32,
@@ -213,6 +217,7 @@ impl ListRow {
             muted: false,
             unread: false,
             pip: false,
+            bold: false,
             badge: 0,
             badge_label: None,
             direct_kind: None,
@@ -335,8 +340,8 @@ impl Chat {
         }
         for row in &mut list {
             row.settle_names();
-            row.pip = row.unread
-                && !row.muted
+            row.bold = row.unread && !row.muted;
+            row.pip = row.bold
                 && !row.direct
                 && matches!(
                     row.kind,
