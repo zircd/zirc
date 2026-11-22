@@ -486,9 +486,9 @@ impl Daemon {
         );
     }
 
-    /// Whether a decision waits for its echo, to be said as decided only once the server has
-    /// it: when the server echoes.
-    pub(super) fn confirms_decisions(&self) -> bool {
+    /// Whether a decision or a request waits for its echo, to be said as decided or asked
+    /// only once the server has it: when the server echoes.
+    pub(super) fn echoes(&self) -> bool {
         self.client
             .as_ref()
             .is_some_and(|client| client.has_cap("echo-message"))

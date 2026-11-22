@@ -165,6 +165,10 @@ enum Ask {
     /// The echo of the decision `sender` just made in `channel`: only then is it decided, as
     /// a line written to a connection that has dropped unnoticed is kept nowhere.
     Decided { channel: String, sender: String },
+    /// The echo of the request `id` a session just asked its owner: only then is it asked,
+    /// and answered with `response`, as a line written to a connection that has dropped
+    /// unnoticed is kept nowhere.
+    Requested { id: String, response: Box<Response> },
     /// The private conversations with messages lately, in the batch named `batch` once it
     /// starts.
     Conversations {
@@ -206,6 +210,7 @@ impl Ask {
             Self::Conversations { .. }
             | Self::Echo { .. }
             | Self::Decided { .. }
+            | Self::Requested { .. }
             | Self::Hosted { .. } => "",
         }
     }
@@ -962,6 +967,9 @@ impl Daemon {
             }
             Input::Request(decide @ Request::Decide { .. }, answer) => {
                 self.decided(decide, answer).await;
+            }
+            Input::Request(ask @ Request::AskOwner { .. }, answer) => {
+                self.requested(ask, answer).await;
             }
             Input::Request(deploy @ Request::Workflow { .. }, answer) => {
                 self.workflow(deploy, answer).await;

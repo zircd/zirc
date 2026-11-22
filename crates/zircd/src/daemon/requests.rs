@@ -26,7 +26,7 @@ use zirc_core::paths;
 use zirc_irc::Line;
 use zirc_proto::request::{self, Answer, CHANNEL, Request, State};
 
-use super::{Daemon, read_saved};
+use super::{Ask, Daemon, read_saved};
 
 /// The requests this machine has asked and not had a yes or no to, saved across restarts.
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -136,7 +136,10 @@ impl Daemon {
             irreversible,
             ..Request::open(id.clone(), session, by, question, yes, no)
         };
-        self.publish(CHANNEL, session, request.event());
+        // A request that couldn't be sent is said so, never as asked.
+        let message = self.signed(session, request.event());
+        self.publish_out(CHANNEL, message, None, None)
+            .context("the request wasn't sent")?;
         // Taken as recommended at once, on a machine set to, when a yes can be undone: the
         // owner chose it for most of some two hundred go-aheads a day (12 Nov 2026).
         let taken = recommend.filter(|answer| {
@@ -199,6 +202,51 @@ impl Daemon {
             open.msgid = Some(msgid.to_owned());
             self.save_requests();
         }
+        // The command that asked is answered now: the server has it ([`Daemon::requested`]).
+        if let Some(at) = self
+            .asking
+            .iter()
+            .position(|asking| matches!(&asking.what, Ask::Requested { id, .. } if *id == said.id))
+        {
+            let asking = self.asking.remove(at);
+            if let Ask::Requested { response, .. } = asking.what {
+                let _ = asking.answer.send(*response);
+            }
+        }
+    }
+
+    /// Notes the id of a request's message whose echo this machine never heard, as its
+    /// connection dropped just as it asked: `found` is the message with that id, read from
+    /// the server's history because its owner reacted to it ([`Daemon::fetched`]). Without
+    /// it no reaction was ever on the request, which stayed open with nobody told (a user's
+    /// review, 22 Nov 2026). Only what the server says this machine's own account sent,
+    /// asking just what the open request asks, counts: never a nick, nor a card someone
+    /// else posted under its id. Whether it was one.
+    pub(super) fn request_found(&mut self, msgid: &str, found: &Delivery) -> bool {
+        let Some(said) = Request::of(&found.message.event) else {
+            return false;
+        };
+        let ours = found.account.as_deref().is_some_and(|account| {
+            self.account
+                .as_deref()
+                .is_some_and(|mine| mine.eq_ignore_ascii_case(account))
+        });
+        if !ours || found.channel != CHANNEL || said.state != State::Open {
+            return false;
+        }
+        let Some(open) = self.requests.open.get_mut(&said.id) else {
+            return false;
+        };
+        let asked = Request {
+            state: State::Open,
+            ..open.request.clone()
+        };
+        if open.msgid.is_some() || asked != said {
+            return false;
+        }
+        open.msgid = Some(msgid.to_owned());
+        self.save_requests();
+        true
     }
 
     /// Takes `reaction` as its owner's answer to a request, if it's one. Returns whether it

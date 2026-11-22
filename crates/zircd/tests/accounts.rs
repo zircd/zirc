@@ -2169,6 +2169,96 @@ fn request_of(line: &Line) -> Option<zirc_proto::request::Request> {
         .and_then(|message| zirc_proto::request::Request::of(&message.event))
 }
 
+/// A request is said as asked only once the server echoes it, as a decision is as decided.
+#[tokio::test]
+async fn a_request_the_server_hasnt_confirmed_isnt_said_as_asked() {
+    let ergo = require_ergo!();
+    register(&ergo, "mattias-mbp", "right-horse").await;
+    // No time at all for the server's echo, which stands for one that never comes.
+    let hooks = zircd::Hooks {
+        ask_wait: Some(Duration::ZERO),
+        ..zircd::Hooks::default()
+    };
+    let mbp = Machine::spawn_with(&config(&ergo, "mattias-mbp", "right-horse", ""), hooks);
+    let home = mbp.home.path();
+    connected(home).await;
+    let _repo = working_in(home, "cc-1", "git@github.com:acme/api.git").await;
+
+    let request = Request::AskOwner {
+        session: "cc-1".into(),
+        question: "Rename the bot?".into(),
+        yes: "it's renamed".into(),
+        no: "it stays".into(),
+        recommend: None,
+        irreversible: false,
+    };
+    let answer = ask(home, request).await;
+    assert!(
+        matches!(&answer, Err(why) if why.contains("not known to be asked")),
+        "{answer:?}"
+    );
+}
+
+/// Forgets the message ids of the open requests saved under `home`, as when zircd never
+/// heard its own echo of them.
+fn forget_request_echoes(home: &Path) {
+    let saved = walk(home)
+        .into_iter()
+        .find(|path| path.file_name().is_some_and(|name| name == "requests.json"))
+        .expect("the saved requests");
+    let mut requests: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&saved).unwrap()).unwrap();
+    for open in requests["open"].as_object_mut().unwrap().values_mut() {
+        assert!(open.as_object_mut().unwrap().remove("msgid").is_some());
+    }
+    std::fs::write(&saved, requests.to_string()).unwrap();
+}
+
+/// Every file under `dir`.
+fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap().flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            files.extend(walk(&path));
+        } else {
+            files.push(path);
+        }
+    }
+    files
+}
+
+/// The owner's 👍 answers a request whose echo its machine never heard: its approval went
+/// nowhere, the request left open and nobody told (a user's review, 22 Nov 2026).
+#[tokio::test]
+async fn the_owners_answer_counts_on_a_request_whose_echo_was_missed() {
+    let ergo = require_ergo!();
+    let mut asking = Asking::start(&ergo, 0).await;
+    let msgid = asking.ask("Rename the bot?", false).await;
+    let Asking {
+        home,
+        _daemon: daemon,
+        _repo,
+        owner,
+        owner_in: _owner_in,
+        ..
+    } = asking;
+    let at = home.path().to_owned();
+    let machine = Machine { home, daemon }
+        .restart_after(async { forget_request_echoes(&at) })
+        .await;
+    connected(machine.home.path()).await;
+    let mut hears = watching(machine.home.path(), "cc-1").await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    react(&owner, &msgid, "👍", false);
+    let yes = next_answered(&mut hears).await;
+    assert_eq!(
+        (yes.request.id.as_str(), yes.answer),
+        ("mattias-mbp/1", zirc_proto::request::Answer::Yes)
+    );
+}
+
 #[tokio::test]
 async fn a_no_stops_a_held_yes_to_what_cant_be_undone() {
     let ergo = require_ergo!();

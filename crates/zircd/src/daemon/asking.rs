@@ -629,7 +629,7 @@ impl Daemon {
     }
 
     /// Decides as `decide` ([`Request::Decide`]) asks, answering once the server's echo says
-    /// it has the decision ([`Daemon::confirms_decisions`]), or at once where the server
+    /// it has the decision ([`Daemon::echoes`]), or at once where the server
     /// doesn't echo. zircd used to answer as soon as the line was queued, so a decision
     /// written to a connection that had dropped unnoticed was said as decided and kept
     /// nowhere (a user's review, 22 Nov 2026).
@@ -639,10 +639,32 @@ impl Daemon {
         };
         let session = session.clone();
         match self.respond(decide).await {
-            Ok(Response::Decided { channels }) if self.confirms_decisions() => {
+            Ok(Response::Decided { channels }) if self.echoes() => {
                 let sender = session.or_else(|| self.owner.clone()).unwrap_or_default();
                 let channel = channels.into_iter().next().unwrap_or_default();
                 self.wait(answer, Ask::Decided { channel, sender });
+            }
+            response => {
+                let _ = answer.send(response.unwrap_or_else(|err| Response::Error {
+                    message: format!("{err:#}"),
+                }));
+            }
+        }
+    }
+
+    /// Asks this machine's owner as `ask` ([`Request::AskOwner`]) says, answering once the
+    /// server's echo says it has the request ([`Daemon::request_echoed`]), or at once where
+    /// the server doesn't echo: as a decision is ([`Daemon::decided`]), and the more so as
+    /// the echo is what gives the request the id its owner's reaction must be on.
+    pub(super) async fn requested(&mut self, ask: Request, answer: oneshot::Sender<Response>) {
+        match self.respond(ask).await {
+            Ok(response @ Response::Requested { .. }) if self.echoes() => {
+                let Response::Requested { id, .. } = &response else {
+                    return;
+                };
+                let id = id.clone();
+                let response = Box::new(response);
+                self.wait(answer, Ask::Requested { id, response });
             }
             response => {
                 let _ = answer.send(response.unwrap_or_else(|err| Response::Error {
@@ -665,6 +687,17 @@ impl Daemon {
                 message: format!(
                     "not known to be decided: the server didn't confirm it in {channel} within \
                      {}s. `zirc decisions` says whether it's there, before you decide it again",
+                    self.ask_wait.as_secs()
+                ),
+            },
+            // It stays open: if the server has it after all, its echo or its owner's
+            // reaction still finds it, and the answer wakes the session's watch.
+            Ask::Requested { id, .. } => Response::Error {
+                message: format!(
+                    "not known to be asked: the server didn't confirm {id} in {} within {}s. \
+                     If it's there, its answer still wakes your watch: `zirc decisions` says \
+                     whether it is, before you ask again",
+                    zirc_proto::request::CHANNEL,
                     self.ask_wait.as_secs()
                 ),
             },
@@ -701,6 +734,11 @@ impl Daemon {
                     session,
                     Some(about.clone()),
                 );
+                // The request it's on, if this machine never heard its own echo of it:
+                // the reaction is its owner's answer after all.
+                if self.request_found(&reaction.to, &delivery) && self.request_reacted(&reaction) {
+                    return;
+                }
                 reaction.on = Some(about);
             }
             None => self
