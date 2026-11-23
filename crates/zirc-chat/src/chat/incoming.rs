@@ -308,8 +308,10 @@ impl Chat {
         if self.corrected(line, &name, &entry) {
             return Vec::new();
         }
+        // A machine saying which of its sessions are live may name one nothing loaded is with.
+        let mut asked: Vec<Line> = Vec::new();
         if let EntryKind::Zirc(message) = &entry.kind {
-            self.learn_said(&name, &entry.from, entry.time, message);
+            asked.extend(self.learn_said(&name, &entry.from, entry.time, message));
             // Intents and claims count from when they were said. A working set, never in
             // history, is never replaced by an older one, and is never an entry: who is
             // changing what is known from [`Chat::presence`].
@@ -339,28 +341,35 @@ impl Chat {
                     .conversation(&name)
                     .is_none_or(|conversation| conversation.threshold > Level::Debug)
             {
-                return Vec::new();
+                return asked;
             }
         }
         let (entry, session) = self.for_agent(&name, entry);
         if let Some(session) = session {
             let at = self.ensure_agent(&name, &session);
             self.add(at, entry);
-            return Vec::new();
+            return asked;
         }
         let fresh = self.position(&name).is_none();
         let at = self.ensure(&name, kind);
         self.add(at, entry);
         if fresh && kind == Kind::Query {
-            self.ask_read(&name).into_iter().collect()
-        } else {
-            Vec::new()
+            asked.extend(self.ask_read(&name));
         }
+        asked
     }
 
     /// What a zirc `message` from `from` in `name`, said at `time`, tells of its sender: its
     /// session's name, title and what it's doing, and its repository's forge.
-    fn learn_said(&mut self, name: &str, from: &str, time: DateTime<Utc>, message: &Message) {
+    /// It gives what to ask the server for: older history, when a machine says a session is live that
+    /// nothing loaded is with ([`Chat::seek_agents`]).
+    fn learn_said(
+        &mut self,
+        name: &str,
+        from: &str,
+        time: DateTime<Utc>,
+        message: &Message,
+    ) -> Option<Line> {
         // A session's name, picture and title are its own machine's to say: the first nick
         // heard to speak as a session keeps it, so another member can't rename or retitle
         // someone's agent by sending its id.
@@ -388,7 +397,9 @@ impl Chat {
         }
         if let Some(live) = zirc_proto::session::Live::of(&message.event) {
             self.learn_live(from, live, time);
+            return self.seek_agents(from);
         }
+        None
     }
 
     /// `entry`, in the private conversation with `nick`, and the agent session it's with, if

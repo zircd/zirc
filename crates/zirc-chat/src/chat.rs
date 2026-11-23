@@ -329,6 +329,9 @@ enum Ask {
     Around(String),
     /// The page after a [`Conversation::hole`], as the person reaches it ([`Chat::newer`]).
     Newer,
+    /// Older pages of one of our machines' history, for its live agent sessions nothing loaded
+    /// is with ([`Chat::seek_agents`]).
+    Agents,
 }
 
 /// A page of history filling a [`Gap`], as it arrives.
@@ -518,6 +521,9 @@ pub struct Chat {
     /// Folded conversation → the gap being filled since the newest message we had of it,
     /// on connecting again.
     gaps: HashMap<String, Gap>,
+    /// Folded machine → how many older pages its live agent sessions have been looked for in
+    /// ([`Chat::seek_agents`]).
+    sought: HashMap<String, usize>,
     /// Open batches filling a gap: batch reference → what's arrived in it.
     filling: HashMap<String, Page>,
     /// The message a conversation was opened at, while it's looked for ([`Chat::open_at`]).
@@ -687,6 +693,7 @@ impl Chat {
             joins_sent: false,
             history: HashSet::new(),
             gaps: HashMap::new(),
+            sought: HashMap::new(),
             filling: HashMap::new(),
             seeking: None,
             found: None,

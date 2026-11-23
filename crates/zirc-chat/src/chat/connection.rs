@@ -77,7 +77,7 @@ impl Chat {
         if chathistory {
             // Private conversations with history, from the last month.
             let now = (self.clock)();
-            let since = now - chrono::Duration::days(30);
+            let since = now - super::history::TARGETS_SPAN;
             lines.push(Line::new(
                 "CHATHISTORY",
                 [

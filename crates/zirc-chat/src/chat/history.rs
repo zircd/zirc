@@ -9,6 +9,17 @@ use super::{
 /// is known to have met what's held.
 const CATCH_UP_OVERLAP: chrono::Duration = chrono::Duration::seconds(1);
 
+/// How far back the conversations with history are asked for on connecting
+/// (`CHATHISTORY TARGETS`), and so how far back a live agent session is looked for.
+pub(super) const TARGETS_SPAN: chrono::Duration = chrono::Duration::days(30);
+
+/// How many messages a page looking for live agent sessions asks for: Ergo's
+/// `chathistory-maxmessages`, the most it gives at once.
+const AGENTS_PAGE: usize = 1000;
+
+/// How many such pages each machine's history is looked through, at most.
+const AGENTS_PAGES: usize = 5;
+
 impl Chat {
     pub(super) fn next_batch(&mut self) -> String {
         self.sent_batches += 1;
@@ -78,6 +89,13 @@ impl Chat {
                 self.set_hole(&page.target, page.newest.as_deref().filter(|_| !closed));
                 return None;
             }
+            Ask::Agents => {
+                self.gaps.remove(&folded);
+                if page.count < AGENTS_PAGE {
+                    self.began(&page.target);
+                }
+                return self.seek_agents(&page.target);
+            }
             Ask::Catch | Ask::Older => {}
         }
         // A short page of the newest or of older history: there's none before it.
@@ -96,7 +114,7 @@ impl Chat {
             .filter(|_| wanted && page.count >= history && !page.reached && gap.pages < enough);
         let Some(oldest) = oldest else {
             self.gaps.remove(&folded);
-            return None;
+            return self.seek_agents(&page.target);
         };
         gap.pages += 1;
         Some(Line::new(
@@ -106,6 +124,63 @@ impl Chat {
                 &page.target,
                 &format!("msgid={oldest}"),
                 &history.to_string(),
+            ],
+        ))
+    }
+
+    /// Asks for an older page of our machine `nick`'s history while it lists a live agent
+    /// session that nothing loaded is with: after starting again, one that answered us long
+    /// ago, further back than the latest page (the user's choice, 23 Nov 2026). It stops at
+    /// the start of the history, at [`TARGETS_SPAN`] back, or after [`AGENTS_PAGES`] pages.
+    pub(super) fn seek_agents(&mut self, nick: &str) -> Option<Line> {
+        let folded = fold(nick);
+        if !self.link.as_ref().is_some_and(|link| link.chathistory)
+            || !self.ours(nick)
+            || self.gaps.contains_key(&folded)
+            || self.sought.get(&folded).copied().unwrap_or_default() >= AGENTS_PAGES
+        {
+            return None;
+        }
+        let missing = self
+            .live_sessions(|machine| machine.eq_ignore_ascii_case(nick))
+            .iter()
+            .any(|name| self.position(name).is_none());
+        if !missing {
+            return None;
+        }
+        // From the oldest message held of it, once its history has started coming.
+        let held: Vec<&super::Conversation> = self
+            .conversations
+            .iter()
+            .filter(|c| super::target(&c.name).eq_ignore_ascii_case(nick))
+            .collect();
+        if held.iter().any(|c| c.beginning) {
+            return None;
+        }
+        let (oldest, at) = held
+            .iter()
+            .filter_map(|c| c.entries.iter().find(|entry| entry.id.is_some()))
+            .min_by_key(|entry| entry.time)
+            .and_then(|entry| Some((entry.id.clone()?, entry.time)))?;
+        if (self.clock)() - at > TARGETS_SPAN {
+            return None;
+        }
+        *self.sought.entry(folded.clone()).or_default() += 1;
+        self.gaps.insert(
+            folded,
+            Gap {
+                since: None,
+                pages: 1,
+                ask: Ask::Agents,
+            },
+        );
+        Some(Line::new(
+            "CHATHISTORY",
+            [
+                "BEFORE",
+                nick,
+                &format!("msgid={oldest}"),
+                &AGENTS_PAGE.to_string(),
             ],
         ))
     }
