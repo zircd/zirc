@@ -12,6 +12,13 @@ pub const PREVIEW_LINES: usize = 8;
 /// What a text file's card shows after its lines when there's more: `…`.
 pub const PREVIEW_MORE: &str = "…";
 
+/// What an image pasted into the message field is called where it's shared, in every app:
+/// `image.png`, by its format's `extension`, as a pasted image has no name of its own.
+#[must_use]
+pub fn pasted_name(extension: &str) -> String {
+    format!("image.{}", extension.trim_start_matches('.').to_lowercase())
+}
+
 /// What a text file's card shows of `text`, the start zirc.dev previewed (`truncated` when it
 /// cut it short itself): its first [`PREVIEW_LINES`] lines, blank lines at its end dropped,
 /// and whether [`PREVIEW_MORE`] follows them. The one rule every app draws.
@@ -197,6 +204,12 @@ mod tests {
         assert_eq!(shape(&file("text/markdown")), Shape::Text);
         assert_eq!(shape(&file("application/pdf")), Shape::Other);
         assert_eq!(shape(&file("")), Shape::Other);
+    }
+
+    #[test]
+    fn a_pasted_image_is_named_by_its_format() {
+        assert_eq!(pasted_name("png"), "image.png");
+        assert_eq!(pasted_name(".JPEG"), "image.jpeg");
     }
 
     #[test]
