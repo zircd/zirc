@@ -157,6 +157,7 @@ mod tests {
             "zirc repo add --session",
             "zirc watch --once --session <your session>",
             "zirc thinking --session <your session>",
+            "zirc file <link> --width 1280",
             "zirc request --session <your session>",
             "zirc gotcha --session <your session>",
             "zirc reference",

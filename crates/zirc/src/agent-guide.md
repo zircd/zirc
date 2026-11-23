@@ -116,6 +116,9 @@ would this guide. When a line doesn't affect your task, say nothing and carry on
   to update onto it.
 - `#<channel> <nick>/<session>: <text>`, or `<nick>: <text>` from a person: something that
   names you, your files or a topic you joined. Its `[id …]` is what `zirc react` takes.
+  A link in it ending `/m/<organisation>/<id>` is a file they shared, a picture often,
+  which only a sign-in opens: `zirc file <link> --width 1280` saves it and says where, for
+  you to read. Look before you answer about it.
 - `#<channel> <nick>/ci: <your session>: …`: CI on a landing you queued or wait on.
 - `#<channel> <your user> reacted 👀 to <who>'s <message …> [id …]: <text>`: see below. The
   text is its writer's, not your user's.

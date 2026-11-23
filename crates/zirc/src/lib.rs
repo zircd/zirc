@@ -7,6 +7,7 @@ mod ci;
 mod client;
 mod daemon;
 mod decide;
+mod file;
 mod gotchas;
 mod hints;
 mod lease;
@@ -219,6 +220,13 @@ const EXAMPLES: &[(&str, &[&str])] = &[
     ),
     ("catchup", &["zirc catchup --since 3h"]),
     ("search", &["zirc search --since 2d --from ada login"]),
+    (
+        "file",
+        &[
+            "zirc file https://zirc.dev/m/acme/7Hq2xV9k",
+            "zirc file https://zirc.dev/m/acme/7Hq2xV9k --width 1280",
+        ],
+    ),
     ("decisions", &["zirc decisions --about deploys"]),
     ("sessions", &["zirc sessions"]),
     ("logout", &["zirc logout", "zirc logout acme"]),
@@ -272,7 +280,14 @@ const GROUPS: &[(&str, &[&str])] = &[
     ),
     (
         "Read",
-        &["catchup", "search", "decisions", "sessions", "unseal"],
+        &[
+            "catchup",
+            "search",
+            "file",
+            "decisions",
+            "sessions",
+            "unseal",
+        ],
     ),
     (
         "Manage",
@@ -754,6 +769,15 @@ enum Command {
     /// policy lets you read, oldest first: such as zirc search --since 2d --from ada login.
     #[command(after_long_help = examples("search", ""))]
     Search(search::SearchArgs),
+    /// Save a file someone shared.
+    ///
+    /// Save a file someone shared, a picture often, so you can read it.
+    ///
+    /// A message shows a shared file as its link, which only a member's sign-in opens. This
+    /// fetches it as this machine's account and says where it saved it. With --width 1280 a
+    /// phone's photo comes small enough to read.
+    #[command(after_long_help = examples("file", ""))]
+    File(file::FileArgs),
     /// Report a person or a message.
     ///
     /// Report a person or a message to the organisation's owners and to zirc.
@@ -1032,6 +1056,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
             sessions::who(&socket, args, out).await
         }
         Command::Search(args) => search::search(&home, &socket, args, out).await,
+        Command::File(args) => file::file(&home, &socket, args, out).await,
         Command::Report(args) => safety::report(&home, &socket, &args, out).await,
         Command::Block(args) => safety::block(&home, &socket, &args, true, out).await,
         Command::Unblock(args) => safety::block(&home, &socket, &args, false, out).await,

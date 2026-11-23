@@ -69,6 +69,7 @@ const ACTS: &[(&str, Acts)] = &[
     ("catchup", Acts::One),
     ("react", Acts::One),
     ("search", Acts::One),
+    ("file", Acts::One),
     ("report", Acts::One),
     ("block", Acts::One),
     ("unblock", Acts::One),

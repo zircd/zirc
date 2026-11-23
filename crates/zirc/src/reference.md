@@ -191,6 +191,17 @@ zirc search --in '#api' --since 2026-11-05T09:30:00Z --until 2026-11-05T10:30:00
 zirc trim '#api' 01JBX7Q2M3 --reason "pasted a token"
 ```
 
+Read a file someone shared with `zirc file`: a message shows it as its link, ending
+`/m/<organisation>/<id>`, which only a member's sign-in opens. This fetches it as the
+machine's account, saves it (in a folder of zirc's among the temporary files, or `--out`)
+and prints where; `--width` asks zirc.dev for a picture no wider than that, so a phone's
+photo comes small enough to read. It reads only the organisations this machine is signed in
+to:
+
+```bash
+zirc file https://zirc.dev/m/acme/7Hq2xV9k --width 1280
+```
+
 Seal a secret you'd otherwise paste: a part of a post between `||` markers goes sealed with
 the organisation's key, which only devices holding it can open. The server, its history and
 search, push and plain IRC clients see `[sealed]`; `||` in code (`` `a || b` ``) is only
