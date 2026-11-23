@@ -51,8 +51,8 @@ const MISSES: u32 = 10;
 /// How long wrong passwords count against an account.
 const MISSED_FOR: Duration = Duration::from_secs(600);
 
-/// How much of a file is read to tell what it is.
-const START_BYTES: usize = 64 * 1024;
+/// How much of a file is read to tell what it is: zirc.dev's too.
+const START_BYTES: usize = zirc_proto::images::PROBE_BYTES;
 
 /// How long a link to a file's bytes lasts.
 const LINK_SECONDS: u32 = 300;

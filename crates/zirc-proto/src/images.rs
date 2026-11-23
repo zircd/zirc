@@ -17,6 +17,13 @@ pub struct Probed {
     pub height: u32,
 }
 
+/// How much of an upload is read to tell what it is, on zirc.dev and a server of one's own:
+/// a megabyte. A JPEG's size comes after its metadata, and a phone's photo carries more than
+/// 64 KiB of it (a thumbnail, a colour profile, an HDR gain map's notes, each segment up to
+/// 64 KiB): read no further than that, a photo copied from Google Photos was kept as a
+/// file to download (a tester's Pixel, 23 Nov 2026).
+pub const PROBE_BYTES: usize = 1024 * 1024;
+
 /// The image `bytes` start, if they start one we can show; cut short or malformed is `None`.
 #[must_use]
 pub fn probe(bytes: &[u8]) -> Option<Probed> {
@@ -262,6 +269,22 @@ mod tests {
             width,
             height,
         }
+    }
+
+    /// A phone's photo: three full segments of metadata before its size, so past 64 KiB.
+    fn photo_with_a_long_header() -> Vec<u8> {
+        let plain = jpeg_of(4032, 3024, None);
+        let notes = bytes(&[&[0xff, 0xe2], &0xffffu16.to_be_bytes(), &vec![0; 0xfffd]]);
+        bytes(&[&plain[..2], &notes, &notes, &notes, &plain[2..]])
+    }
+
+    #[test]
+    fn a_photo_with_a_long_header_is_an_image_in_what_is_read_of_it() {
+        let photo = photo_with_a_long_header();
+        assert!(photo.len() < PROBE_BYTES);
+        assert_eq!(probe(&photo), Some(of("image/jpeg", 4032, 3024)));
+        // What was read before, too little to reach its size.
+        assert_eq!(probe(&photo[..64 * 1024]), None);
     }
 
     #[test]
