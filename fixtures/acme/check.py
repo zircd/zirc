@@ -68,7 +68,8 @@ for agent, refs in show.get("activity", {}).items():
 for agent, note in show.get("read_only", {}).items():
     assert agent in agents and not agent.startswith(show["me"] + "-"), f"{agent} is ours, not read-only"
     assert note["dm"] in people, f"{agent}'s owner {note['dm']} isn't one of the people"
-for screen in show["screens"]:
+# The store's screenshots (`store`, the home page's team) open what's there too.
+for screen in show["screens"] + show.get("store", []):
     opens = screen.get("open")
     assert opens is None or opens in show["conversations"] or opens in show.get("activity", {}), f"{screen['name']} opens nothing"
 print("showcase: ok")

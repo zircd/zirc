@@ -10,6 +10,8 @@ exports_files(
         # shots (web/art/home-shots.sh).
         "//oss/apps/ios:__subpackages__",
         "//oss/apps/mac:__pkg__",
+        # Both phones' store screenshots play it (its `store` screens).
+        "//oss/apps/android:__pkg__",
         # zirc-app's tests stage it (src/showcase.rs).
         "//crates/zirc-app:__pkg__",
     ],

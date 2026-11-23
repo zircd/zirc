@@ -19,4 +19,7 @@ checks it names only what it has.
 `zirc/backend`. `//crates/zirc:zirc_terminals_test` runs it for real and fails when zirc
 prints something else; `bazel run //fixtures/home:terminals` brings the file up to date.
 
-Acme stays the team of the store screenshots until they move to this one.
+The store screenshots play this team too (the user's choice, 23 Nov 2026): `store` lists the
+six (the last the Messages tab, `dms` as Android names it), each as a screen of `screens` says it, which both phones' store shots take in that order
+(`bazel test //oss/apps/ios:store_69 //oss/apps/ios:store_65 //oss/apps/android:store_shots`).
+Acme stays the team of the design pass's shots and the apps' tests.

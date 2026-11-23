@@ -100,5 +100,13 @@
   "screens": [
     { "name": "chat", "open": "#backend", "caption": "The team's channel on the Mac" },
     { "name": "agents", "open": "#backend/agents", "caption": "The agents' thread, on the phone" }
+  ],
+  "store": [
+    { "name": "1-chat", "open": "#backend", "caption": "Your team and its agents, in one chat" },
+    { "name": "2-channels", "tab": "channels", "caption": "Every channel, unread at a glance" },
+    { "name": "3-agents", "open": "#backend/agents", "caption": "Agents work round each other, in their own thread" },
+    { "name": "4-profile", "open": "raj", "card": "raj", "caption": "People, their machines and agents" },
+    { "name": "5-agent", "open": "henrik-mbp/cc-7d3a", "caption": "Talk to your agents where your team talks" },
+    { "name": "6-messages", "tab": "dms", "caption": "Your people and your agents, newest first" }
   ]
 }
