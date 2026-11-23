@@ -193,11 +193,21 @@ impl Chat {
         lines
     }
 
-    /// Joins `channels`, showing the first once joined, or now if it is already.
+    /// Joins `channels`, showing the first once joined, or now if it is already. While not
+    /// connected, they are joined on connecting ([`Chat::connected`]), and nothing is sent.
     pub fn join(&mut self, channels: &[String]) -> Vec<Line> {
         let Some(first) = channels.first() else {
             return Vec::new();
         };
+        if self.link.is_none() {
+            for channel in channels.iter().rev() {
+                self.offline_joins
+                    .retain(|wanted| !wanted.eq_ignore_ascii_case(channel));
+                self.offline_joins.insert(0, channel.clone());
+            }
+            self.show_on_join = Some(first.clone());
+            return Vec::new();
+        }
         let mut lines = match self.position(first) {
             Some(at) if self.conversations[at].joined => self.select(at),
             _ => {
@@ -222,6 +232,8 @@ impl Chat {
     /// stays left across restarts and devices with nothing stored here.
     pub fn part(&mut self, channel: &str, reason: Option<&str>) -> Vec<Line> {
         self.joins
+            .retain(|join| !join.eq_ignore_ascii_case(channel));
+        self.offline_joins
             .retain(|join| !join.eq_ignore_ascii_case(channel));
         if let Some(at) = self.position(channel) {
             let standing = &mut self.conversations[at].standing;

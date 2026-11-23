@@ -63,6 +63,14 @@ impl Chat {
             let only = self.joins.clone();
             self.join(&only)
         };
+        // What was opened while offline is joined now, ahead of the list: our doing, so a
+        // server that keeps our channels doesn't take it for one it put us back in, and the
+        // latest opened is shown once joined.
+        let offline = std::mem::take(&mut self.offline_joins);
+        if !offline.is_empty() {
+            let joining = self.join(&offline);
+            lines.splice(0..0, joining);
+        }
         if metadata {
             lines.push(Line::new(
                 "METADATA",

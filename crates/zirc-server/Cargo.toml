@@ -24,6 +24,8 @@ clap.workspace = true
 futures-util.workspace = true
 # A certificate of its own, for trying the server out (`--tls self-signed`).
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"] }
+# Asking Ergo to stop (SIGTERM), so it saves what it holds in memory.
+nix = { version = "0.31", default-features = false, features = ["signal"] }
 # Let's Encrypt's certificates (ACME), answered over HTTP on port 80.
 instant-acme = { version = "0.8", default-features = false, features = ["hyper-rustls", "rcgen", "ring"] }
 reqwest = { version = "0.13", default-features = false, features = ["json"] }

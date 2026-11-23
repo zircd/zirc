@@ -532,6 +532,9 @@ pub struct Chat {
     found: Option<String>,
     /// A channel to show once joined, because the person asked to join it.
     show_on_join: Option<String>,
+    /// Channels asked for while not connected, to join on connecting, the latest first: a
+    /// channel opened offline is joined once back, never dropped.
+    offline_joins: Vec<String>,
     /// Whether the channel shown was shown as the first joined, and nothing's been shown
     /// since: one earlier in the order takes its place, whichever the server joins first.
     first_shown: bool,
@@ -699,6 +702,7 @@ impl Chat {
             found: None,
             targets: HashSet::new(),
             show_on_join: None,
+            offline_joins: Vec::new(),
             first_shown: false,
             divider: None,
             divider_seen: None,

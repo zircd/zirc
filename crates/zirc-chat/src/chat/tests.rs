@@ -2095,6 +2095,60 @@ fn a_channel_left_on_another_device_while_away_stays_left() {
 }
 
 #[test]
+fn a_channel_opened_offline_is_joined_on_connecting() {
+    let listed = [
+        ":s 322 me #general 4 :",
+        ":s 322 me #api 3 :",
+        ":s 322 me #ops 2 :",
+        ":s 323 me :End",
+    ];
+    // The server keeps our channels: it puts us in them before we ask for any.
+    let mut chat = chat();
+    chat.connected(link(true));
+    feed(&mut chat, &[":me!u@h JOIN #api"]);
+    assert_eq!(feed(&mut chat, &listed), ["JOIN #extra"]);
+    feed(&mut chat, &[":me!u@h JOIN #extra"]);
+
+    // Opened while the connection is down (the server restarting, say): nothing can go, and
+    // nothing is dropped. It goes first on connecting, as ours, not as one the server kept.
+    chat.disconnected("gone");
+    assert!(chat.open("#ops").is_empty());
+    let sent = texts(&chat.connected(link(true)));
+    assert_eq!(
+        sent.first().map(String::as_str),
+        Some("JOIN #ops"),
+        "{sent:?}"
+    );
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #api",
+            ":me!u@h JOIN #extra",
+            ":me!u@h JOIN #ops",
+        ],
+    );
+    assert!(feed(&mut chat, &listed).is_empty());
+    let ops = chat.conversation("#ops").unwrap();
+    assert!(ops.joined);
+    assert_eq!(ops.standing, Attendance::Fresh);
+    assert_eq!(
+        chat.selected().name,
+        "#ops",
+        "what was opened is shown once joined"
+    );
+
+    // Opened and then left, offline: not joined after all.
+    chat.disconnected("gone");
+    assert!(chat.open("#general").is_empty());
+    let _ = chat.part("#general", None);
+    let sent = texts(&chat.connected(link(true)));
+    assert!(
+        !sent.iter().any(|line| line.contains("#general")),
+        "{sent:?}"
+    );
+}
+
+#[test]
 fn a_server_that_keeps_no_channels_has_them_joined_again() {
     let listed = [":s 322 me #api 3 :", ":s 323 me :End"];
     let mut chat = chat();

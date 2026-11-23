@@ -297,12 +297,34 @@ impl Options {
     }
 }
 
-/// Runs the server until Ergo or the sidecar stops, or it's asked to stop.
+/// How long Ergo has to save what it holds only in memory once asked to stop, before it's
+/// killed: each always-on account's last-seen times and read markers, which it writes every 30
+/// minutes otherwise. Killed without saving them, a person who first connected since comes
+/// back in none of their channels, as Ergo won't keep an account on that it has never seen,
+/// and everyone's read markers go back to the last save. Within Docker's 10 seconds between
+/// its SIGTERM and its SIGKILL; Ergo takes well under one.
+const ERGO_STOPS: std::time::Duration = std::time::Duration::from_secs(8);
+
+/// Runs the server until Ergo or the sidecar stops, or it's asked to stop (SIGTERM or
+/// Ctrl-C).
 ///
 /// # Errors
 ///
 /// When it can't start: its data directory, its certificate, Ergo.
 pub async fn run(options: Options) -> anyhow::Result<()> {
+    run_until(options, zirc_sidecar::stopped()).await
+}
+
+/// Runs the server until Ergo or the sidecar stops, or `stop` resolves, when Ergo is asked to
+/// stop as for [`run`]'s SIGTERM. Dropping the future instead kills Ergo, as a crash does.
+///
+/// # Errors
+///
+/// When it can't start: its data directory, its certificate, Ergo.
+pub async fn run_until(
+    options: Options,
+    stop: impl std::future::Future<Output = ()>,
+) -> anyhow::Result<()> {
     // Ergo takes nothing else as its name, and says only that its config didn't load.
     if !options.host.contains('.') {
         bail!(
@@ -387,15 +409,30 @@ pub async fn run(options: Options) -> anyhow::Result<()> {
                 None => std::future::pending().await,
             }
         } => Err(anyhow::anyhow!("the side for imgproxy and the media worker stopped: {:?}", ended?)),
-        () = zirc_sidecar::stopped() => Ok(()),
+        () = stop => Ok(()),
     };
     if let Some(renewing) = renewing {
         renewing.abort();
     }
-    // Ergo saves its state as it goes; stopping it is enough.
+    stop_ergo(&mut ergo).await;
+    outcome
+}
+
+/// Asks Ergo to stop, as its own container's SIGTERM does on a hosted server, so it saves
+/// what it holds only in memory ([`ERGO_STOPS`]); kills it if it hasn't within that time.
+async fn stop_ergo(ergo: &mut tokio::process::Child) {
+    use nix::sys::signal::{Signal, kill};
+    use nix::unistd::Pid;
+    let asked = ergo
+        .id()
+        .and_then(|pid| i32::try_from(pid).ok())
+        .is_some_and(|pid| kill(Pid::from_raw(pid), Signal::SIGTERM).is_ok());
+    if asked && tokio::time::timeout(ERGO_STOPS, ergo.wait()).await.is_ok() {
+        return;
+    }
+    tracing::warn!("Ergo didn't stop when asked: killing it");
     let _ = ergo.start_kill();
     let _ = ergo.wait().await;
-    outcome
 }
 
 /// The server's certificate, as `--tls` says: from Let's Encrypt (with port 80 answering its
