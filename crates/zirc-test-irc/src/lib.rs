@@ -26,9 +26,23 @@ pub const EVENTUALLY: Duration = Duration::from_secs(15);
 /// When it takes longer than [`EVENTUALLY`].
 pub async fn eventually<P: Probe, F: Future<Output = P>>(
     what: &str,
+    probe: impl FnMut() -> F,
+) -> P::Found {
+    eventually_within(EVENTUALLY, what, probe).await
+}
+
+/// [`eventually`], given `limit` rather than [`EVENTUALLY`]: for what takes longer, such as a
+/// server starting or a phone reconnecting after its backoff.
+///
+/// # Panics
+///
+/// When it takes longer than `limit`.
+pub async fn eventually_within<P: Probe, F: Future<Output = P>>(
+    limit: Duration,
+    what: &str,
     mut probe: impl FnMut() -> F,
 ) -> P::Found {
-    tokio::time::timeout(EVENTUALLY, async {
+    tokio::time::timeout(limit, async {
         loop {
             if let Some(found) = probe().await.found() {
                 return found;
@@ -37,7 +51,7 @@ pub async fn eventually<P: Probe, F: Future<Output = P>>(
         }
     })
     .await
-    .unwrap_or_else(|_| panic!("no {what} in {EVENTUALLY:?}"))
+    .unwrap_or_else(|_| panic!("no {what} in {limit:?}"))
 }
 
 /// A client config for `ergo` as `nick`, without TLS, as the test server listens.
