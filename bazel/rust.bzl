@@ -20,7 +20,7 @@ ERGO_ENV = {
 # And what says where a Bus error in one of them struck (bus_error.c).
 ERGO_DEPS = ["//bazel:bus_error"]
 
-def _tests(name, crate, deps, test_deps, ergo, test_data, test_env, test_size):
+def _tests(name, crate, deps, test_deps, ergo, test_data, test_env, test_size, test_tags = []):
     """The crate's unit tests, and each file in tests/ as an integration test of its own,
     as Cargo builds them. Those that start Ergo are medium-sized: a server and the daemons
     talking to it, besides the test. A crate whose tests start Ergo may start it in a unit
@@ -52,9 +52,10 @@ def _tests(name, crate, deps, test_deps, ergo, test_data, test_env, test_size):
             data = (ERGO_DATA if ergo else []) + test_data,
             env = (ERGO_ENV if ergo else {}) | test_env,
             size = "medium" if ergo else test_size,
+            tags = test_tags,
         )
 
-def zirc_rust_library(name, ergo = False, wasm = False, wasm_bindgen = False, test_data = [], test_env = {}, test_size = None, compile_data = [], **kwargs):
+def zirc_rust_library(name, ergo = False, wasm = False, wasm_bindgen = False, test_data = [], test_env = {}, test_size = None, test_tags = [], compile_data = [], **kwargs):
     """A library crate, its unit tests and its integration tests.
 
     Args:
@@ -70,6 +71,8 @@ def zirc_rust_library(name, ergo = False, wasm = False, wasm_bindgen = False, te
         test_size: the Bazel size of its unit tests and of its integration tests that
             start no Ergo, for a crate whose tests are measured: "small" fails one that hangs
             within a minute, not the five a medium test gets. Those starting Ergo are medium.
+        test_tags: tags for its integration tests, such as "e2e" for those that run on
+            master's schedule rather than in each landing.
         compile_data: more files it includes with include_str! or include_bytes!, besides
             the Markdown in src.
         **kwargs: passed to rust_library.
@@ -87,7 +90,7 @@ def zirc_rust_library(name, ergo = False, wasm = False, wasm_bindgen = False, te
         visibility = ["//visibility:public"],
         **kwargs
     )
-    _tests(name, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size)
+    _tests(name, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size, test_tags)
     if wasm:
         for_wasm(name = name + "_wasm", crate = ":" + name)
     if wasm_bindgen:

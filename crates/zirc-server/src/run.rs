@@ -173,6 +173,51 @@ fn settings() -> Settings {
 }
 
 impl Options {
+    /// A server for tests: `data` its directory, `ergo` and its `ergo_config` the pinned
+    /// release's, behind a proxy (TLS off), on loopback's `ports`, which the caller found free:
+    /// IRC, HTTPS, and inside, the operator's, Ergo's API, metrics, accounts and content.
+    #[must_use]
+    pub fn on_loopback(data: &Path, ergo: PathBuf, ergo_config: PathBuf, ports: [u16; 7]) -> Self {
+        let [irc, https, oper, api, metrics, accounts, content] = ports;
+        let at = |port: u16| SocketAddr::from(([127, 0, 0, 1], port));
+        Self {
+            host: "irc.acme.test".into(),
+            name: Some("acme".into()),
+            data: data.to_owned(),
+            tls: Tls::Off,
+            acme_email: None,
+            acme_directory: String::new(),
+            acme_listen: at(0),
+            irc_listen: Some(format!("127.0.0.1:{irc}")),
+            proxy_protocol: false,
+            proxy_from: vec![],
+            web_listen: Some(at(https)),
+            join_token: None,
+            web: "http://127.0.0.1:1".into(),
+            public_irc_port: irc,
+            debug: false,
+            ergo,
+            ergo_config,
+            s3: crate::store::S3 {
+                bucket: None,
+                endpoint: None,
+                region: "auto".into(),
+                path_style: false,
+            },
+            beside_listen: None,
+            beside_url: "http://127.0.0.1:1".into(),
+            imgproxy: None,
+            media_worker: None,
+            inside: Inside {
+                oper_listen: at(oper),
+                api_listen: at(api),
+                metrics_listen: at(metrics),
+                accounts_listen: at(accounts),
+                content_listen: at(content),
+            },
+        }
+    }
+
     /// What the server tells zirc.dev as it joins with `token`.
     fn join_request(&self, token: String) -> zirc_proto::join::JoinRequest {
         zirc_proto::join::JoinRequest {

@@ -6,13 +6,12 @@
     reason = "each test file says `mod common;` and uses its own part of it"
 )]
 
-use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tokio::task::JoinHandle;
 use zirc_server::admin::{self, Client};
-use zirc_server::run::{Inside, Options, Tls};
+use zirc_server::run::Options;
 use zirc_server::secrets::Secrets;
 use zirc_test_ergo::free_ports;
 
@@ -21,10 +20,6 @@ pub fn ergo() -> Option<(PathBuf, PathBuf)> {
     let ergo = std::env::var_os("ZIRC_ERGO")?;
     let config = std::env::var_os("ZIRC_ERGO_CONFIG")?;
     Some((ergo.into(), config.into()))
-}
-
-fn at(port: u16) -> SocketAddr {
-    (Ipv4Addr::LOCALHOST, port).into()
 }
 
 /// A running server, stopped when it's dropped.
@@ -47,43 +42,7 @@ impl Drop for Running {
 }
 
 pub fn options(data: &Path, ergo: PathBuf, ergo_config: PathBuf) -> Options {
-    let [irc, https, oper, api, metrics, accounts, content] = free_ports();
-    Options {
-        host: "irc.acme.test".into(),
-        name: Some("acme".into()),
-        data: data.to_owned(),
-        tls: Tls::Off,
-        acme_email: None,
-        acme_directory: String::new(),
-        acme_listen: at(0),
-        irc_listen: Some(format!("127.0.0.1:{irc}")),
-        proxy_protocol: false,
-        proxy_from: vec![],
-        web_listen: Some(at(https)),
-        join_token: None,
-        web: "http://127.0.0.1:1".into(),
-        public_irc_port: irc,
-        debug: false,
-        ergo,
-        ergo_config,
-        s3: zirc_server::store::S3 {
-            bucket: None,
-            endpoint: None,
-            region: "auto".into(),
-            path_style: false,
-        },
-        beside_listen: None,
-        beside_url: "http://127.0.0.1:1".into(),
-        imgproxy: None,
-        media_worker: None,
-        inside: Inside {
-            oper_listen: at(oper),
-            api_listen: at(api),
-            metrics_listen: at(metrics),
-            accounts_listen: at(accounts),
-            content_listen: at(content),
-        },
-    }
+    Options::on_loopback(data, ergo, ergo_config, free_ports())
 }
 
 /// Starts a server on a fresh data directory, and answers once it takes requests; `None`
