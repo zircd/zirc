@@ -148,7 +148,7 @@ RestartSec=5
 ## CI machines
 
 A CI build can be steered while it runs by giving it a machine of its own for its length, as
-zirc's CI does (`.buildkite/run.sh`, `start_steering`):
+zirc's CI does (`ci/run.sh`, `start_steering`):
 
 1. Designate one long-lived machine of yours as CI's minter, once: from an owner's or admin's
    machine, `POST https://zirc.dev/api/cli/ci-machine/minter` with `{"machine": "<name>",
