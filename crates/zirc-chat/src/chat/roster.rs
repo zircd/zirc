@@ -254,6 +254,31 @@ impl Chat {
             .is_some_and(|(owner, _)| owner.eq_ignore_ascii_case(&self.me))
     }
 
+    /// What we said to the agent `session` on our machine `nick` while it had no
+    /// conversation, kept with the machine's own, moves to one of its own
+    /// ([`Chat::ensure_agent`]) once we know the session runs there. A session we wrote to is
+    /// listed though it never answered, as it was before the app started again and the
+    /// history gave what we said back to the machine's conversation.
+    pub(super) fn adopt_agent(&mut self, nick: &str, session: &str) {
+        if session.is_empty() || session == zirc_proto::NO_SESSION || !self.ours(nick) {
+            return;
+        }
+        let name = format!("{nick}{SESSION_MARK}{session}");
+        if self.position(&name).is_some() {
+            return;
+        }
+        let Some(plain) = self.position(nick) else {
+            return;
+        };
+        let wrote = self.conversations[plain].entries.iter().any(|entry| {
+            entry.from.eq_ignore_ascii_case(&self.me)
+                && matches!(&entry.kind, EntryKind::Message(text) if for_agent(text, session).is_some())
+        });
+        if wrote {
+            self.ensure_agent(nick, session);
+        }
+    }
+
     /// The conversation with the agent `session` on our machine `nick`, made if there isn't
     /// one. What we said to that session before it was made, kept with the machine's own
     /// conversation, as history from before it answered, moves to it.

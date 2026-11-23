@@ -42,6 +42,7 @@ impl Chat {
             return;
         }
         let sessions: BTreeSet<String> = live.sessions.into_iter().collect();
+        let listed: Vec<String> = sessions.iter().cloned().collect();
         // What it listed before and doesn't now ended now; what's listed again lives on.
         let mut ended = BTreeMap::new();
         if let Some(known) = self.live.get(&key) {
@@ -61,6 +62,21 @@ impl Chat {
                 ended,
             },
         );
+        // A session we wrote to before it answered has its conversation once we know it.
+        for session in listed {
+            self.adopt_agent(nick, &session);
+        }
+    }
+
+    /// Whether the agent session `session` is known to run on the machine `nick`: the
+    /// machine has listed it, live or ended, or it has spoken as from that machine.
+    pub(super) fn known_on(&self, nick: &str, session: &str) -> bool {
+        self.live.get(&fold(nick)).is_some_and(|known| {
+            known.sessions.contains(session) || known.ended.contains_key(session)
+        }) || self
+            .session_from
+            .get(session)
+            .is_some_and(|from| from.eq_ignore_ascii_case(nick))
     }
 
     /// The machine `nick` left the server at `at`: its sessions end once it's been gone

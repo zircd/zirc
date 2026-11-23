@@ -363,6 +363,7 @@ impl Chat {
         // A session's name, picture and title are its own machine's to say: the first nick
         // heard to speak as a session keeps it, so another member can't rename or retitle
         // someone's agent by sending its id.
+        let heard = self.session_from.contains_key(&message.session);
         let theirs = self
             .session_from
             .entry(message.session.clone())
@@ -370,6 +371,10 @@ impl Chat {
             .eq_ignore_ascii_case(from);
         if theirs {
             self.learn_session(message);
+        }
+        // Heard for the first time, anywhere: what we wrote to it before is its.
+        if !heard && theirs {
+            self.adopt_agent(from, &message.session);
         }
         // A repository's forge, from a line in a room every repository shares, is its own.
         let place = crate::names::scope_of(name, message.repo.as_deref());
@@ -402,13 +407,29 @@ impl Chat {
             let EntryKind::Message(text) = &entry.kind else {
                 return (entry, None);
             };
-            let said = self.conversations.iter().find_map(|c| {
-                let (machine, session) = agent(&c.name)?;
-                let rest = for_agent(text, session)?;
-                machine
-                    .eq_ignore_ascii_case(nick)
-                    .then(|| (session.to_owned(), rest.to_owned()))
-            });
+            let said = self
+                .conversations
+                .iter()
+                .find_map(|c| {
+                    let (machine, session) = agent(&c.name)?;
+                    let rest = for_agent(text, session)?;
+                    machine
+                        .eq_ignore_ascii_case(nick)
+                        .then(|| (session.to_owned(), rest.to_owned()))
+                })
+                // Or a session the machine runs that has no conversation yet, as after the
+                // app started again: what we said to it is its.
+                .or_else(|| {
+                    let first = text.trim_start();
+                    let first = first
+                        .strip_prefix("/agent")
+                        .filter(|rest| rest.starts_with(char::is_whitespace))
+                        .unwrap_or(first);
+                    let session = first.split_whitespace().next()?;
+                    let rest = for_agent(text, session)?;
+                    self.known_on(nick, session)
+                        .then(|| (session.to_owned(), rest.to_owned()))
+                });
             let Some((session, rest)) = said else {
                 return (entry, None);
             };

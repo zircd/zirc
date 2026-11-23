@@ -336,3 +336,49 @@ fn an_ended_session_says_so_and_folds_ten_minutes_later_unless_unread() {
     feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-1"]))]);
     assert_eq!(chat.session_ended_at("me-mbp", "cc-1"), None);
 }
+
+/// What we said to `session` on our machine `me-mbp`, at 11:`minute`, as the machine's
+/// history gives it back after the app starts again.
+fn said_to(session: &str, text: &str, minute: u32) -> String {
+    format!(
+        "@time=2026-10-30T11:{minute:02}:00.000Z;msgid=me{minute} :me!u@h PRIVMSG me-mbp :{session} {text}"
+    )
+}
+
+#[test]
+fn a_session_we_wrote_to_is_listed_after_starting_again_though_it_never_answered() {
+    // The iPhone's app started again, as iOS ends it in the background: what we said to a
+    // session that hasn't answered comes back in the machine's history, and the session
+    // dropped out of the list once the machine said it's live (a reviewer's weekend with
+    // 14 agents, 22 Nov 2026: "agents I'd already messaged dropped out of the conversation
+    // list, so I had to search to find them again").
+    let mut chat = with_mbp();
+    feed(&mut chat, &[&said_to("cc-scout", "are you there?", 58)]);
+    feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-scout"]))]);
+    let listed = rows(&chat);
+    let row = find(&listed, "me-mbp/cc-scout").expect("listed, as before starting again");
+    assert_eq!(row.shelf, Shelf::Direct);
+    assert_eq!(
+        said(chat.conversation("me-mbp/cc-scout").unwrap()),
+        ["<me> are you there?"]
+    );
+    assert!(said(chat.conversation("me-mbp").unwrap()).is_empty());
+
+    // The same when the machine says it first and the history comes after.
+    let mut chat = with_mbp();
+    feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-scout"]))]);
+    feed(&mut chat, &[&said_to("cc-scout", "are you there?", 58)]);
+    assert_eq!(
+        said(
+            chat.conversation("me-mbp/cc-scout")
+                .expect("its own conversation")
+        ),
+        ["<me> are you there?"]
+    );
+    // What we said to everyone on the machine stays the machine's.
+    feed(&mut chat, &[&said_to("everyone", "stop", 59)]);
+    assert_eq!(
+        said(chat.conversation("me-mbp").unwrap()),
+        ["<me> everyone stop"]
+    );
+}
