@@ -124,10 +124,12 @@ impl Signal {
         match kind {
             crate::activity::WAKE_KIND => Some(Self::Wake),
             crate::activity::NOTICE_KIND => {
-                let what = data
-                    .and_then(|data| data.get("what"))
-                    .and_then(|w| w.as_str());
-                (what == Some("overlap")).then_some(Self::Overlap)
+                let notice = data.and_then(|data| {
+                    serde_json::from_value::<crate::activity::Notice>(data.clone()).ok()
+                });
+                notice
+                    .is_some_and(|notice| notice.what == crate::activity::Noticed::Overlap)
+                    .then_some(Self::Overlap)
             }
             // What zircd says for a session by itself, or a wake's outcome, isn't the agent.
             crate::activity::WAKE_OUTCOME_KIND
