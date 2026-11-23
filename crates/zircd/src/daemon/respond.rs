@@ -228,7 +228,7 @@ impl Daemon {
             Request::Who => self.who(),
             Request::LocalSessions => self.local_sessions(),
             Request::LiveSessions => {
-                let here: Vec<String> = self.live.sessions();
+                let here: Vec<String> = self.live.sessions(super::now());
                 let (live, gone) = self.elsewhere.now(&here);
                 Response::LiveSessions { live, gone }
             }

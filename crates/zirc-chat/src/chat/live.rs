@@ -1,14 +1,17 @@
-//! Which agent sessions are live, as their machines say ([`zirc_proto::session::Live`]):
-//! one rule every app draws. A session is live while its machine's latest list names it
-//! and the machine is here, or left less than [`LIVE_GRACE_SECS`] ago. A live session is
-//! listed from its first watch, before it says anything; one that ended folds away under
-//! the list's `N ended`, its conversation kept. A machine whose zircd predates the lists
-//! says none, and its sessions fold as they always did, once quiet for a day.
+//! Which agent sessions are online, away or ended, as their machines say
+//! ([`zirc_proto::session::Live`]): one rule every app draws. A session is online strictly
+//! while a `zirc watch` of its is open, and away otherwise (the user's choice, 23 Nov 2026),
+//! with since when and how many people's messages wait for it; its machine leaving the
+//! server makes all its sessions away. One its machine no longer names has ended: away for
+//! [`AWAY_FOLD_SECS`]. A session is listed from its first watch, before it says anything,
+//! and its row folds once its task lands or it's been away 12 hours ([`super::DirectRow::folded`]),
+//! its conversation kept. A machine whose zircd predates `away` says only who's live, with
+//! a grace; one predating the lists says nothing, and its sessions fold once quiet as long.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, TimeDelta, Utc};
-use zirc_proto::session::{LIVE_GRACE_SECS, Live};
+use zirc_proto::session::{AWAY_FOLD_SECS, LIVE_GRACE_SECS, Live};
 
 use super::{Chat, fold, profile::ago_short};
 
@@ -17,48 +20,97 @@ use super::{Chat, fold, profile::ago_short};
 pub(super) struct MachineLive {
     /// The machine's nick, as it said it.
     nick: String,
-    /// Its live sessions.
-    sessions: BTreeSet<String>,
+    /// What it said.
+    live: Live,
     /// When it said so.
     at: DateTime<Utc>,
-    /// Since when it's been gone from the server, or unknown to be here, if it has.
+    /// Since when it's been gone from the server, if it has.
     gone: Option<DateTime<Utc>>,
-    /// The sessions it has stopped listing, each with when its list first left it out.
+    /// Since when we've been unsure it's still as it said, as we connected again without
+    /// hearing from it yet: it holds for [`LIVE_GRACE_SECS`], as the machine says it again
+    /// when we join its channels.
+    unsure: Option<DateTime<Utc>>,
+    /// The sessions it has stopped naming, each with when it last watched: when its list
+    /// said it went away, or else when its list first left it out.
     ended: BTreeMap<String, DateTime<Utc>>,
 }
 
-/// How long after its machine left, or since we connected without hearing from it, its
-/// sessions still count as live.
+/// Whether an agent session is listening, as its machine says ([`Chat::listening`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Listening {
+    /// A `zirc watch` of its is open: a message reaches it at once.
+    Online,
+    /// No watch of its is open, since `since`, with `waiting` messages from people for it.
+    Away {
+        /// When its last watch closed, or its machine left.
+        since: DateTime<Utc>,
+        /// How many messages from people wait for it.
+        waiting: u32,
+    },
+    /// Its machine no longer names it: away [`AWAY_FOLD_SECS`], or it stopped long ago.
+    Ended {
+        /// When it last watched, as far as anyone knows.
+        since: Option<DateTime<Utc>>,
+    },
+}
+
+/// `secs` as a span of time.
+fn secs(secs: u64) -> TimeDelta {
+    TimeDelta::seconds(i64::try_from(secs).unwrap_or(i64::MAX))
+}
+
+/// How long after we connected again a machine's list still holds, unheard.
 fn grace() -> TimeDelta {
-    TimeDelta::seconds(i64::try_from(LIVE_GRACE_SECS).unwrap_or(i64::MAX))
+    secs(LIVE_GRACE_SECS)
+}
+
+/// How long away a session's row stays in Messages: 12 hours.
+pub(super) fn away_fold() -> TimeDelta {
+    secs(AWAY_FOLD_SECS)
+}
+
+/// `at`, seconds since the Unix epoch, as a time.
+fn epoch(at: u64) -> Option<DateTime<Utc>> {
+    DateTime::from_timestamp(i64::try_from(at).ok()?, 0)
 }
 
 impl Chat {
-    /// What the machine `nick` said at `at` of its live sessions: it replaces what it said
+    /// What the machine `nick` said at `at` of its sessions: it replaces what it said
     /// before, unless that was newer.
     pub(super) fn learn_live(&mut self, nick: &str, live: Live, at: DateTime<Utc>) {
         let key = fold(nick);
         if self.live.get(&key).is_some_and(|known| known.at > at) {
             return;
         }
-        let sessions: BTreeSet<String> = live.sessions.into_iter().collect();
-        let listed: Vec<String> = sessions.iter().cloned().collect();
-        // What it listed before and doesn't now ended now; what's listed again lives on.
+        let named = |live: &Live, session: &str| {
+            live.sessions.iter().any(|s| s == session) || live.away.contains_key(session)
+        };
+        // What it named before and doesn't now ended now, last watching when it said it
+        // went away, if it did; what's named again lives on.
         let mut ended = BTreeMap::new();
         if let Some(known) = self.live.get(&key) {
             ended.clone_from(&known.ended);
-            for gone in known.sessions.difference(&sessions) {
-                ended.entry(gone.clone()).or_insert(at);
+            let before = known.live.sessions.iter().chain(known.live.away.keys());
+            for gone in before.filter(|session| !named(&live, session)) {
+                let since = known.live.away.get(gone).and_then(|away| epoch(away.since));
+                ended.entry(gone.clone()).or_insert(since.unwrap_or(at));
             }
         }
-        ended.retain(|session, _| !sessions.contains(session));
+        ended.retain(|session, _| !named(&live, session));
+        let listed: BTreeSet<String> = live
+            .sessions
+            .iter()
+            .chain(live.away.keys())
+            .cloned()
+            .collect();
         self.live.insert(
             key,
             MachineLive {
                 nick: nick.to_owned(),
-                sessions,
+                live,
                 at,
                 gone: None,
+                unsure: None,
                 ended,
             },
         );
@@ -71,40 +123,99 @@ impl Chat {
     /// Whether the agent session `session` is known to run on the machine `nick`: the
     /// machine has listed it, live or ended, or it has spoken as from that machine.
     pub(super) fn known_on(&self, nick: &str, session: &str) -> bool {
-        self.live.get(&fold(nick)).is_some_and(|known| {
-            known.sessions.contains(session) || known.ended.contains_key(session)
-        }) || self
-            .session_from
-            .get(session)
-            .is_some_and(|from| from.eq_ignore_ascii_case(nick))
+        self.live
+            .get(&fold(nick))
+            .is_some_and(|known| known.names(session) || known.ended.contains_key(session))
+            || self
+                .session_from
+                .get(session)
+                .is_some_and(|from| from.eq_ignore_ascii_case(nick))
     }
 
-    /// The machine `nick` left the server at `at`: its sessions end once it's been gone
-    /// [`LIVE_GRACE_SECS`], unless it says its list again.
+    /// The machine `nick` left the server at `at`: its sessions are away from then, as
+    /// nothing reaches them, until it says its list again.
     pub(super) fn live_gone(&mut self, nick: &str, at: DateTime<Utc>) {
         if let Some(known) = self.live.get_mut(&fold(nick)) {
             known.gone.get_or_insert(at);
         }
     }
 
-    /// We connected at `at`: what machines said before is unknown to hold until they say it
-    /// again, as each does when we join its channels.
+    /// We connected at `at`: what machines said before holds for [`LIVE_GRACE_SECS`], as
+    /// each says it again when we join its channels, and after that they count as gone.
     pub(super) fn live_unsure(&mut self, at: DateTime<Utc>) {
         for known in self.live.values_mut() {
-            known.gone.get_or_insert(at);
+            known.unsure.get_or_insert(at);
         }
     }
 
-    /// Whether the agent session `session` on the machine `nick` is live: `Some(true)` while
-    /// its machine says so, `Some(false)` once it has ended, and `None` when its machine has
-    /// never said, as zircds before the lists don't.
+    /// Whether the agent session `session` on the machine `nick` is listening, as its
+    /// machine says: `None` when its machine has never said, as zircds before the lists
+    /// don't. Every app's dot, row line and header read it.
+    #[must_use]
+    pub fn listening(&self, nick: &str, session: &str) -> Option<Listening> {
+        let known = self.live.get(&fold(nick))?;
+        let now = (self.clock)();
+        // Gone from the server, or unheard since we connected again past the grace.
+        let gone = known
+            .gone
+            .into_iter()
+            .chain(
+                known
+                    .unsure
+                    .map(|since| since + grace())
+                    .filter(|end| *end <= now),
+            )
+            .min();
+        if let Some(away) = known.live.away.get(session) {
+            let since = epoch(away.since).unwrap_or(known.at);
+            let since = gone.map_or(since, |gone| since.min(gone));
+            return Some(Listening::Away {
+                since,
+                waiting: away.waiting,
+            });
+        }
+        if known.live.sessions.iter().any(|live| live == session) {
+            return Some(match gone {
+                Some(since) => Listening::Away { since, waiting: 0 },
+                None => Listening::Online,
+            });
+        }
+        Some(Listening::Ended {
+            since: known.ended.get(session).copied(),
+        })
+    }
+
+    /// Whether the agent session `session` on the machine `nick` is known to its machine:
+    /// `Some(true)` while it's online or away ([`Chat::listening`]), `Some(false)` once it
+    /// has ended, and `None` when its machine has never said.
     #[must_use]
     pub fn session_live(&self, nick: &str, session: &str) -> Option<bool> {
-        let known = self.live.get(&fold(nick))?;
-        let here = known
-            .gone
-            .is_none_or(|since| (self.clock)() - since < grace());
-        Some(here && known.sessions.contains(session))
+        self.listening(nick, session)
+            .map(|listening| !matches!(listening, Listening::Ended { .. }))
+    }
+
+    /// When the agent session `session` on the machine `nick` last listened, while it
+    /// isn't: since when it's been away, or when it last watched before it ended. `None`
+    /// while it's online, or when nobody knows.
+    #[must_use]
+    pub fn listened_at(&self, nick: &str, session: &str) -> Option<DateTime<Utc>> {
+        match self.listening(nick, session)? {
+            Listening::Online => None,
+            Listening::Away { since, .. } => Some(since),
+            Listening::Ended { since } => since,
+        }
+    }
+
+    /// What an agent away with messages waiting says, on its row and its header: `Not
+    /// listening for 17 min · 1 message waiting` ([`zirc_proto::session::not_listening`]),
+    /// at once (the user's choice, 23 Nov 2026). `None` while it's online, or nothing waits.
+    #[must_use]
+    pub fn not_listening(&self, nick: &str, session: &str) -> Option<String> {
+        let Some(Listening::Away { since, waiting }) = self.listening(nick, session) else {
+            return None;
+        };
+        let away = u64::try_from(((self.clock)() - since).num_seconds()).unwrap_or(0);
+        (waiting > 0).then(|| zirc_proto::session::not_listening(away, waiting))
     }
 
     /// The nick of the machine that runs the agent session `session`, for a chip naming it
@@ -115,7 +226,7 @@ impl Chat {
     pub fn session_machine(&self, session: &str, here: Option<&str>) -> Option<String> {
         self.live
             .values()
-            .filter(|known| known.sessions.contains(session))
+            .filter(|known| known.names(session))
             .max_by_key(|known| {
                 let live = self.session_live(&known.nick, session) == Some(true);
                 (live, known.at)
@@ -128,24 +239,6 @@ impl Chat {
             })
     }
 
-    /// When the agent session `session` on the machine `nick` ended, as far as its machine
-    /// says: when its list first left it out, or when the machine's grace ran out after it
-    /// left the server. `None` while it's live, or when nobody knows when it ended.
-    #[must_use]
-    pub fn session_ended_at(&self, nick: &str, session: &str) -> Option<DateTime<Utc>> {
-        if self.session_live(nick, session) != Some(false) {
-            return None;
-        }
-        let known = self.live.get(&fold(nick))?;
-        known.ended.get(session).copied().or_else(|| {
-            known
-                .sessions
-                .contains(session)
-                .then(|| known.gone.map(|since| since + grace()))
-                .flatten()
-        })
-    }
-
     /// Whether the agent session `name`, `<machine>/<session>`, has ended
     /// ([`Chat::session_live`]).
     #[must_use]
@@ -154,7 +247,7 @@ impl Chat {
             .is_some_and(|(nick, session)| self.session_live(nick, session) == Some(false))
     }
 
-    /// The live agent sessions of the machines `keep` keeps, each as its conversation is
+    /// The agent sessions online or away of the machines `keep` keeps, each as its conversation is
     /// named, `<machine>/<session>`.
     pub(super) fn live_sessions(&self, keep: impl Fn(&str) -> bool) -> Vec<String> {
         self.live
@@ -162,8 +255,10 @@ impl Chat {
             .filter(|known| keep(&known.nick))
             .flat_map(|known| {
                 known
+                    .live
                     .sessions
                     .iter()
+                    .chain(known.live.away.keys())
                     .filter(|session| self.session_live(&known.nick, session) == Some(true))
                     .map(|session| super::agent_channel(&known.nick, session))
             })
@@ -171,8 +266,9 @@ impl Chat {
     }
 
     /// What an agent's card and header say under its name: `Active now` while it's at work
-    /// or live, `Ended · last heard 3h ago` once it has ended, else when it was last heard.
-    /// With whether it's active, for the here dot.
+    /// or online; away, `Not listening for 17 min · 1 message waiting` while messages wait,
+    /// else `Away · last heard 3h ago`; `Ended · last heard 3h ago` once it has ended; else
+    /// when it was last heard. With whether it's active, for the here dot.
     pub(super) fn heard_line(
         &self,
         nick: &str,
@@ -180,18 +276,23 @@ impl Chat {
         doing: bool,
         now: DateTime<Utc>,
     ) -> (String, bool) {
-        let live = self.session_live(nick, session);
         let last = match self.heard(nick, session) {
             Some(at) if ago_short(at, now) == "now" => Some("last heard just now".to_owned()),
             Some(at) => Some(format!("last heard {} ago", ago_short(at, now))),
             None => None,
         };
-        match live {
-            Some(false) => (
-                last.map_or_else(|| ENDED.to_owned(), |last| format!("{ENDED} · {last}")),
+        let said = |state: &str| {
+            last.clone()
+                .map_or_else(|| state.to_owned(), |last| format!("{state} · {last}"))
+        };
+        match self.listening(nick, session) {
+            Some(Listening::Online) => ("Active now".to_owned(), true),
+            Some(Listening::Away { .. }) => (
+                self.not_listening(nick, session)
+                    .unwrap_or_else(|| said(super::AWAY)),
                 false,
             ),
-            Some(true) => ("Active now".to_owned(), true),
+            Some(Listening::Ended { .. }) => (said(ENDED), false),
             None if doing => ("Active now".to_owned(), true),
             None => (
                 last.map_or_else(
@@ -207,6 +308,14 @@ impl Chat {
                 false,
             ),
         }
+    }
+}
+
+impl MachineLive {
+    /// Whether its list names `session`, online or away.
+    fn names(&self, session: &str) -> bool {
+        self.live.sessions.iter().any(|live| live == session)
+            || self.live.away.contains_key(session)
     }
 }
 

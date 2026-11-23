@@ -56,6 +56,9 @@ impl RowUnder {
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub enum UnderKind {
+    /// An agent session away with messages waiting: `Not listening for 17 min · 1 message
+    /// waiting` ([`Chat::not_listening`]), in the warning colour, in place of anything else.
+    NotListening,
     /// What an agent session at work said it's taking on ([`ListRow::note`]), muted.
     Note,
     /// The newest thing said in it, muted, in the text's colour while it's unread.
@@ -358,9 +361,9 @@ impl Chat {
     /// The direct messages the sidebar lists, newest first: every one of [`Chat::direct_rows`]
     /// a person's or a group's; an agent session's or a machine's own thread only
     /// once something's been said in it, there and not in a channel (the user's choice, 15 Nov 2026), as an agent that exists but never wrote to us is nothing to read. An agent
-    /// session quiet for longer than [`super::ROOM_QUIET_AFTER`] ([`DirectRow::folded`])
+    /// session whose task has landed or that has been away 12 hours ([`DirectRow::folded`])
     /// isn't listed either: Jump to… and search still find it, and it's back once it's opened
-    /// or says something again. The one shown is always listed.
+    /// or something's said with it again. The one shown is always listed.
     fn listed_direct_rows(&self) -> Vec<DirectRow> {
         let shown = &self.selected().name;
         let said = |name: &str| {
@@ -506,7 +509,14 @@ impl Chat {
             direct_kind: Some(row.kind),
             faces: row.avatars.iter().map(|avatar| self.face(avatar)).collect(),
             presence: row.presence,
-            under: RowUnder::of(task, row.preview.clone(), false),
+            under: row
+                .not_listening
+                .clone()
+                .map(|text| RowUnder {
+                    text,
+                    kind: UnderKind::NotListening,
+                })
+                .or_else(|| RowUnder::of(task, row.preview.clone(), false)),
             when: row.when.clone(),
             latest_ms: row.latest.map(|at| at.timestamp_millis()),
             ..ListRow::new(ListKind::Conversation, part, row.label())

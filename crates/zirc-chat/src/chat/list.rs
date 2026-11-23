@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use super::conversation::{EntryKind, Kind, agent, default_threshold, fold, is_channel};
+use super::live::Listening;
 use super::{Chat, is_group};
 use zirc_proto::Level;
 
@@ -730,15 +731,6 @@ pub struct ChannelGroup {
     pub when: Option<String>,
 }
 
-/// How long after an agent session was last active, by anything it or anyone said with it,
-/// it counts as quiet, and leaves the sidebar unless its machine says it's live: see
-/// [`DirectRow::folded`].
-pub const ROOM_QUIET_AFTER: chrono::TimeDelta = chrono::TimeDelta::hours(1);
-
-/// How long after an agent session ended, as its machine says, its direct-message row folds
-/// away, unless something in it is unread (the user's choice, 15 Nov 2026).
-pub const ENDED_FOLD_AFTER: chrono::TimeDelta = chrono::TimeDelta::minutes(10);
-
 /// How long after something was last said in a room under its channel it counts as an
 /// active thread, as Discord archives a quiet thread after a day by default: see
 /// [`Chat::is_quiet_thread`].
@@ -789,13 +781,17 @@ pub struct DirectRow {
     pub preview: Option<String>,
     /// When that was, as the list says it ([`super::ago_short`]): `5m`, `3h`.
     pub when: Option<String>,
-    /// A person's dot ([`Chat::standing`]); `None` for the rest.
+    /// A person's dot ([`Chat::standing`]); an agent session's, here while it's online and
+    /// away while it isn't ([`Chat::listening`]), none once it has ended or while its
+    /// machine hasn't said; `None` for the rest.
     pub presence: Option<super::Presence>,
-    /// Whether it's an agent session quiet for [`ROOM_QUIET_AFTER`], with nothing unread,
-    /// unstarred and not shown: the sidebar leaves it out. One its machine says is live
-    /// ([`Chat::session_live`]) never folds, nor do people and groups. Whether it ended or
-    /// its machine hasn't said yet doesn't matter, so a list drawn before the machine says
-    /// shows what it shows after.
+    /// For an agent session away with messages waiting, what its row says under its name
+    /// in their place: `Not listening for 17 min · 1 message waiting` ([`Chat::not_listening`]).
+    pub not_listening: Option<String>,
+    /// Whether it's an agent session whose task has landed, or that has been away 12 hours
+    /// (the user's choice, 23 Nov 2026), with nothing unread, unstarred and not shown: the
+    /// sidebar leaves it out, and Jump to and search still find it ([`Chat::agent_folds`]).
+    /// People and groups never fold.
     pub folded: bool,
 }
 
@@ -908,14 +904,35 @@ impl Chat {
         })
     }
 
-    /// Whether the conversation `name`, with `unread` and last said in at `latest`, is quiet
-    /// enough to fold away: see [`DirectRow::folded`].
-    fn quiet(&self, name: &str, unread: usize, latest: Option<DateTime<Utc>>) -> bool {
-        let recent = latest.is_some_and(|at| (self.clock)() - at < ROOM_QUIET_AFTER);
-        unread == 0
-            && !recent
-            && !self.is_starred(name)
-            && !self.selected().name.eq_ignore_ascii_case(name)
+    /// Whether the conversation called `name`, with `unread`, is one a row keeps whatever
+    /// else holds: something in it is unread, it's starred, or it's shown.
+    fn kept(&self, name: &str, unread: usize) -> bool {
+        unread > 0 || self.is_starred(name) || self.selected().name.eq_ignore_ascii_case(name)
+    }
+
+    /// Whether the agent session `session` on the machine `nick`, whose conversation was
+    /// last active at `active`, folds out of Messages: once its task has landed (it said
+    /// `done:` after anything was said with it), or once it's been away 12 hours
+    /// ([`super::live::away_fold`]): ended, by its machine's word, or quiet that long when
+    /// its machine has never said. Online, it stays until its task lands.
+    #[must_use]
+    pub fn agent_folds(&self, nick: &str, session: &str, active: Option<DateTime<Utc>>) -> bool {
+        let now = (self.clock)();
+        let landed = self
+            .presence
+            .done_at(nick, session)
+            .and_then(|at| DateTime::from_timestamp(i64::try_from(at).ok()?, 0))
+            .is_some_and(|done| active.is_none_or(|active| done >= active));
+        let long_away = |since: Option<DateTime<Utc>>| {
+            since.is_none_or(|since| now - since >= super::live::away_fold())
+        };
+        landed
+            || match self.listening(nick, session) {
+                Some(Listening::Online) => false,
+                Some(Listening::Away { since, .. }) => long_away(Some(since)),
+                Some(Listening::Ended { since }) => long_away(since.or(active)),
+                None => long_away(active),
+            }
     }
 
     /// Whether the room called `name`, under its channel, is a quiet thread: nothing unread
@@ -1059,6 +1076,7 @@ impl Chat {
             preview,
             when,
             presence: None,
+            not_listening: None,
             folded: false,
             name,
         };
@@ -1076,14 +1094,18 @@ impl Chat {
             row.owner = Some(self.owner_name(&owner));
             // Active is anything it said, anywhere we are, or anything said with it.
             let active = row.latest.max(session.latest).max(heard(nick, session_id));
-            row.folded = self.session_live(nick, session_id) != Some(true)
-                && self.quiet(&row.name, row.unread, active);
-            // Ended, it says so where its time was, and folds soon after.
-            if let Some(ended) = self.session_ended_at(nick, session_id) {
+            row.folded =
+                !self.kept(&row.name, row.unread) && self.agent_folds(nick, session_id, active);
+            let listening = self.listening(nick, session_id);
+            row.presence = match listening {
+                Some(Listening::Online) => Some(super::Presence::Here),
+                Some(Listening::Away { .. }) => Some(super::Presence::Away),
+                Some(Listening::Ended { .. }) | None => None,
+            };
+            row.not_listening = self.not_listening(nick, session_id);
+            // Ended, it says so where its time was.
+            if matches!(listening, Some(Listening::Ended { .. })) {
                 row.when = Some(super::live::ENDED.to_owned());
-                row.folded = row.folded
-                    || (self.quiet(&row.name, row.unread, None)
-                        && (self.clock)() - ended >= ENDED_FOLD_AFTER);
             }
         } else if row.kind == DirectKind::Person {
             row.presence = Some(self.standing(&row.name).presence());

@@ -970,7 +970,14 @@ fn live_list(nick: &str, roles: &[(&str, &str)]) -> zirc_irc::Line {
         .iter()
         .map(|(s, r)| ((*s).to_owned(), vec![(*r).to_owned()]))
         .collect();
-    said_live(nick, &zirc_proto::session::Live { sessions, roles })
+    said_live(
+        nick,
+        &zirc_proto::session::Live {
+            sessions,
+            roles,
+            ..Default::default()
+        },
+    )
 }
 
 /// Machine `nick` saying `sessions` are live on it, in no role.
@@ -980,7 +987,7 @@ fn live_on(nick: &str, sessions: &[&str]) -> zirc_irc::Line {
         nick,
         &zirc_proto::session::Live {
             sessions,
-            roles: BTreeMap::new(),
+            ..Default::default()
         },
     )
 }

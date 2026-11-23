@@ -74,25 +74,65 @@ impl SessionCard {
 /// The custom event kind a machine says which of its sessions are live in: [`Live`].
 pub const LIVE_KIND: &str = "x-zirc/sessions";
 
-/// How long a session stays live after its last `zirc watch` closed, in seconds: as long
-/// as a `zirc watch --once` takes to be started again after it wakes, and then some.
+/// How long a session stays in [`Live::sessions`] after its last `zirc watch` closed, in
+/// seconds: as long as a `zirc watch --once` takes to be started again after it wakes, and
+/// then some. Only for readers from before [`Live::away`] and for the workflows that give a
+/// role's steps to its live sessions: an app shows a session online strictly while a watch
+/// is open ([`Live::online`]).
 pub const LIVE_GRACE_SECS: u64 = 180;
 
-/// Which of a machine's agent sessions are live: those with a `zirc watch` open, or one
-/// closed less than [`LIVE_GRACE_SECS`] ago. Its machine says it as a [`LIVE_KIND`]
-/// event, only true now ([`crate::live`]), in its repositories' channels and the
-/// organisation's, whenever it changes and to whoever joins. It replaces what the
-/// machine said before: a session it no longer names has ended. Apps show a session as
-/// live from its first watch, before it says anything, and fold away those that ended.
+/// How long a session that stopped watching is still said to be away ([`Live::away`]), in
+/// seconds: 12 hours. After that its row folds out of Messages (the user's choice, 23 Nov
+/// 2026: "once its task lands, or after 12 hours away").
+pub const AWAY_FOLD_SECS: u64 = 12 * 60 * 60;
+
+/// How long a session is away, with a message to it waiting, before its machine tells the
+/// owner once ([`not_listening`]), in seconds: 15 minutes (the user's choice, 23 Nov 2026).
+pub const NOT_LISTENING_TELL_SECS: u64 = 15 * 60;
+
+/// A session with no `zirc watch` open, as its machine says: since when, and how many
+/// messages to it wait for its next watch.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct Away {
+    /// When its last watch closed, in seconds since the Unix epoch.
+    pub since: u64,
+    /// How many messages from people to it wait: what a person wrote to it, or about it
+    /// by name, since its watch closed.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    #[ts(as = "Option<u32>", optional)]
+    pub waiting: u32,
+}
+
+/// Whether `n` is nothing, for a count left out when it is.
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if passes a reference"
+)]
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+/// Which of a machine's agent sessions are live, and which are away. A session is online
+/// while a `zirc watch` of its is open, and away otherwise (the user's choice, 23 Nov 2026:
+/// "online strictly while a watch is open"). Its machine says it as a [`LIVE_KIND`] event,
+/// only true now ([`crate::live`]), in the organisation's channels, whenever it changes and
+/// to whoever joins. It replaces what the machine said before: a session it names in neither
+/// list has been away longer than [`AWAY_FOLD_SECS`], or never watched.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 pub struct Live {
-    /// The live sessions' ids, sorted.
+    /// The sessions with a watch open, or one closed less than [`LIVE_GRACE_SECS`] ago,
+    /// sorted: what readers from before [`Live::away`] show as live.
     pub sessions: Vec<String>,
     /// The workflows' roles each live session joined (`zirc role join`), by session: what
     /// the server's workflows give a role's steps to ([`crate::workflow::Who::Role`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[ts(as = "Option<BTreeMap<String, Vec<String>>>", optional)]
     pub roles: BTreeMap<String, Vec<String>>,
+    /// The sessions with no watch open, closed less than [`AWAY_FOLD_SECS`] ago, by session:
+    /// since when, and what waits for them. A machine from before it says none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(as = "Option<BTreeMap<String, Away>>", optional)]
+    pub away: BTreeMap<String, Away>,
 }
 
 impl Live {
@@ -122,6 +162,30 @@ impl Live {
             }
             _ => None,
         }
+    }
+
+    /// Whether this machine says `session` is online: a watch of its is open. A machine
+    /// from before [`Live::away`] says only [`Live::sessions`], with its grace.
+    #[must_use]
+    pub fn online(&self, session: &str) -> bool {
+        self.sessions.iter().any(|live| live == session) && !self.away.contains_key(session)
+    }
+}
+
+/// What an agent away with messages waiting says, on its row, its card and the push its
+/// machine sends its owner: `Not listening for 17 min · 1 message waiting`, or
+/// `Not listening · 2 messages waiting` under a minute. Every app reads it, never its own.
+#[must_use]
+pub fn not_listening(away_secs: u64, waiting: u32) -> String {
+    let waiting = match waiting {
+        1 => "1 message waiting".to_owned(),
+        n => format!("{n} messages waiting"),
+    };
+    let minutes = away_secs / 60;
+    match minutes {
+        0 => format!("Not listening · {waiting}"),
+        1..60 => format!("Not listening for {minutes} min · {waiting}"),
+        _ => format!("Not listening for {} h · {waiting}", minutes / 60),
     }
 }
 
@@ -161,7 +225,7 @@ mod tests {
     fn a_live_list_is_only_true_now() {
         let live = Live {
             sessions: vec!["cc-1".into(), "cc-2".into()],
-            roles: BTreeMap::new(),
+            ..Live::default()
         };
         let event = live.event();
         assert_eq!(Live::of(&event), Some(live.clone()));
@@ -178,6 +242,59 @@ mod tests {
         assert!(crate::live(&event));
         assert_eq!(event.level(), Some(crate::Level::Debug));
         assert_eq!(Live::of(&Event::Text { body: "hi".into() }), None);
+    }
+
+    #[test]
+    fn a_session_is_online_only_while_its_watch_is_open() {
+        let live = Live {
+            sessions: vec!["cc-1".into(), "cc-2".into()],
+            away: BTreeMap::from([(
+                "cc-2".into(),
+                Away {
+                    since: 100,
+                    waiting: 1,
+                },
+            )]),
+            ..Live::default()
+        };
+        assert!(live.online("cc-1"));
+        // In its grace for older readers, but away.
+        assert!(!live.online("cc-2"));
+        assert!(!live.online("cc-3"));
+        assert_eq!(Live::of(&live.event()), Some(live.clone()));
+        let Event::Custom { data, .. } = live.event() else {
+            unreachable!("a live list is a custom event")
+        };
+        assert_eq!(data["away"]["cc-2"]["since"], 100);
+        // Nothing waiting isn't said.
+        let quiet = Live {
+            away: BTreeMap::from([(
+                "cc-2".into(),
+                Away {
+                    since: 100,
+                    waiting: 0,
+                },
+            )]),
+            ..live
+        };
+        let Event::Custom { data, .. } = quiet.event() else {
+            unreachable!("a live list is a custom event")
+        };
+        assert!(data["away"]["cc-2"].get("waiting").is_none());
+        assert_eq!(Live::of(&quiet.event()), Some(quiet));
+    }
+
+    #[test]
+    fn not_listening_says_how_long_and_how_many_wait() {
+        assert_eq!(not_listening(20, 1), "Not listening · 1 message waiting");
+        assert_eq!(
+            not_listening(17 * 60 + 5, 1),
+            "Not listening for 17 min · 1 message waiting"
+        );
+        assert_eq!(
+            not_listening(3 * 3600 + 120, 2),
+            "Not listening for 3 h · 2 messages waiting"
+        );
     }
 
     #[test]

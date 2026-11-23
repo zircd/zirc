@@ -12,7 +12,9 @@ pub enum HeaderLineKind {
     AgentAtWork,
     /// An agent session's, idle: when it was heard, and whose it is.
     Agent,
-    /// A person who's away, in a direct message: `Away: lunch`.
+    /// A person who's away, in a direct message: `Away: lunch`; or an agent session away
+    /// with messages waiting: `Not listening for 17 min · 1 message waiting`
+    /// ([`Chat::not_listening`]), drawn in the warning colour.
     Away,
     /// A channel's people, threads and topic ([`Chat::channel_about`]).
     About,
@@ -40,8 +42,12 @@ impl Chat {
     pub fn header_line(&self, name: &str) -> Option<HeaderLine> {
         let line = |text: String, kind| Some(HeaderLine { text, kind });
         if let Some(header) = self.agent_header(name) {
+            let not_listening = super::agent(name)
+                .is_some_and(|(nick, session)| self.not_listening(nick, session).is_some());
             let kind = if header.active {
                 HeaderLineKind::AgentAtWork
+            } else if not_listening {
+                HeaderLineKind::Away
             } else {
                 HeaderLineKind::Agent
             };

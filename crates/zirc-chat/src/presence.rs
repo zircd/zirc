@@ -323,6 +323,10 @@ pub struct Presence {
     claims: BTreeMap<String, BTreeMap<(String, String), Claim>>,
     /// channel → (nick, session) → what it's about to touch
     intents: BTreeMap<String, BTreeMap<(String, String), Intent>>,
+    /// (nick in ASCII lower case, session) → when it last said its task is done, as zircd
+    /// says for it once its landing lands, until it takes something on again. Kept across
+    /// reconnects: it's what happened.
+    done: BTreeMap<(String, String), u64>,
     /// what a conflict is between → clashing paths already alerted about → since when gone,
     /// if gone. This machine's own, like `alerted_locally`.
     alerted_conflicts: BTreeMap<String, Alerted>,
@@ -569,7 +573,11 @@ impl Presence {
         let claims = self.claims.entry(channel.to_owned()).or_default();
         let key = (nick.to_owned(), session.to_owned());
         let text = text.trim();
+        let done = (nick.to_ascii_lowercase(), session.to_owned());
         if let Some(task) = text.strip_prefix("taking:") {
+            if self.done.get(&done).is_some_and(|&at| at <= now) {
+                self.done.remove(&done);
+            }
             claims.insert(
                 key,
                 Claim {
@@ -583,11 +591,28 @@ impl Presence {
                 },
             );
         } else if zirc_proto::says_finished(text) {
+            if text
+                .get(..5)
+                .is_some_and(|done| done.eq_ignore_ascii_case("done:"))
+            {
+                let at = self.done.entry(done).or_insert(now);
+                *at = (*at).max(now);
+            }
             claims.remove(&key);
             if let Some(intents) = self.intents.get_mut(channel) {
                 intents.remove(&key);
             }
         }
+    }
+
+    /// When the session `session` on the machine `nick` last said its task is done (`done:
+    /// …`, as zircd says once its landing lands), in seconds since the Unix epoch, unless
+    /// it has taken something on since.
+    #[must_use]
+    pub fn done_at(&self, nick: &str, session: &str) -> Option<u64> {
+        self.done
+            .get(&(nick.to_ascii_lowercase(), session.to_owned()))
+            .copied()
     }
 
     /// Records a push to `channel`'s default branch.

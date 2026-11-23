@@ -83,8 +83,8 @@ pub struct AgentHeader {
     /// Whether it's at work right now.
     pub active: bool,
     /// The one line every app's header says under its handle, after the here dot while
-    /// [`Self::active`]: what it's doing while it's at it ([`Self::now`]), else
-    /// [`Self::heard`]; a teammate's agent's says whose it is first, `Maya Chen's agent ·
+    /// [`Self::active`]: what it's doing while it's at it ([`Self::now`]), unless it isn't
+    /// listening with messages waiting, else [`Self::heard`]; a teammate's agent's says whose it is first, `Maya Chen's agent ·
     /// Last heard 3m ago`, where ours needs no `Your agent`: its AGENT tag says it.
     pub line: String,
 }
@@ -227,7 +227,9 @@ impl Chat {
         let now = (self.clock)();
         let doing = self.doing_now(nick, session, now);
         let (heard, active) = self.heard_line(nick, session, doing.active, now);
-        let line = if doing.active {
+        // Not listening with messages waiting says so before what it was doing.
+        let waiting = self.not_listening(nick, session).is_some();
+        let line = if doing.active && !waiting {
             doing.line()
         } else {
             match self.whose(nick) {

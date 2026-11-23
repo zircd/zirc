@@ -1,10 +1,12 @@
-//! Which agent sessions are live, as their machines say ([`Chat::session_live`]): listed
-//! from their first watch, folded away once ended, and as before where a machine's zircd
-//! doesn't say.
+//! Which agent sessions are online, away or ended, as their machines say
+//! ([`Chat::listening`]): listed from their first watch, online strictly while watching,
+//! saying when they aren't listening with messages waiting, folded away once their task
+//! lands or after 12 hours away, and as before where a machine's zircd doesn't say.
 
 use super::*;
 use crate::chat::{ListKind, ListOptions, ListRow};
-use zirc_proto::session::Live;
+use crate::chat::{Listening, UnderKind};
+use zirc_proto::session::{Away, Live};
 
 /// What the machine says of its live sessions, as zircd sends it.
 fn live(sessions: &[&str]) -> Message {
@@ -14,6 +16,30 @@ fn live(sessions: &[&str]) -> Message {
             zirc_proto::NO_SESSION,
             Live {
                 sessions: sessions.iter().map(|&s| s.to_owned()).collect(),
+                ..Default::default()
+            }
+            .event(),
+        )
+    }
+}
+
+/// What the machine says when `away` have no watch open, each since `since` minutes past
+/// noon with `waiting` messages for it, and `live` do.
+fn away(live: &[&str], away: &[(&str, u32, u32)]) -> Message {
+    let at = |minute: u32| (noon() + chrono::Duration::minutes(minute.into())).timestamp();
+    Message {
+        level: Some(zirc_proto::Level::Debug),
+        ..Message::new(
+            zirc_proto::NO_SESSION,
+            Live {
+                sessions: live.iter().map(|&s| s.to_owned()).collect(),
+                away: away
+                    .iter()
+                    .map(|&(session, since, waiting)| {
+                        let since = u64::try_from(at(since)).unwrap();
+                        (session.to_owned(), Away { since, waiting })
+                    })
+                    .collect(),
                 ..Default::default()
             }
             .event(),
@@ -98,9 +124,11 @@ fn a_session_that_ended_leaves_the_list_its_conversation_kept() {
     assert!(chat.session_ended("me-mbp/cc-1"));
     assert!(
         find(&rows(&chat), "me-mbp/cc-1").is_some(),
-        "still listed while it was active within the hour"
+        "still listed within 12 hours of its last watch"
     );
     chat.clock = || noon() + chrono::Duration::minutes(62);
+    assert!(find(&rows(&chat), "me-mbp/cc-1").is_some(), "an hour on");
+    chat.clock = || noon() + chrono::Duration::hours(12);
     assert!(find(&rows(&chat), "me-mbp/cc-1").is_none(), "not listed");
     assert!(
         chat.position("me-mbp/cc-1").is_some(),
@@ -108,7 +136,7 @@ fn a_session_that_ended_leaves_the_list_its_conversation_kept() {
     );
     assert_eq!(
         chat.agent_header("me-mbp/cc-1").unwrap().heard,
-        "Ended · last heard 1h ago"
+        "Ended · last heard 11h ago"
     );
     assert!(!chat.agent_header("me-mbp/cc-1").unwrap().active);
     // An ended session that never said anything leaves the list altogether.
@@ -134,7 +162,7 @@ fn an_ended_session_with_something_unread_stays_until_read() {
             &zirc("me-mbp", &live(&[])),
         ],
     );
-    chat.clock = || noon() + chrono::Duration::hours(2);
+    chat.clock = || noon() + chrono::Duration::hours(13);
     assert!(find(&rows(&chat), "me-mbp/cc-1").is_some());
     let _ = chat.mark_read("me-mbp/cc-1");
     assert!(find(&rows(&chat), "me-mbp/cc-1").is_none());
@@ -191,13 +219,15 @@ fn the_list_is_the_same_before_and_after_a_machine_says_which_sessions_are_live(
     assert_eq!(before, ["me-mbp/cc-new"]);
     feed(&mut chat, &[&zirc("me-mbp", &live(&[]))]);
     assert_eq!(agents(&chat), before);
-    // An hour after it was last active, it goes.
-    chat.clock = || noon() + chrono::Duration::minutes(61);
+    // Twelve hours after it was last active, it goes.
+    chat.clock = || noon() + chrono::Duration::minutes(11 * 60 + 59);
+    assert_eq!(agents(&chat), before);
+    chat.clock = || noon() + chrono::Duration::hours(12);
     assert!(agents(&chat).is_empty());
 }
 
 #[test]
-fn a_machine_that_left_ends_its_sessions_after_the_grace() {
+fn a_machine_that_left_makes_its_sessions_away_at_once() {
     let mut chat = with_mbp();
     feed(
         &mut chat,
@@ -206,12 +236,17 @@ fn a_machine_that_left_ends_its_sessions_after_the_grace() {
             "@time=2026-10-30T12:00:00.000Z :me-mbp!u@machine/me QUIT :restarting",
         ],
     );
-    // A zircd restarting is back well within it.
+    // Nothing reaches it: away, though not ended.
     chat.clock = || noon() + chrono::Duration::seconds(60);
+    assert_eq!(
+        chat.listening("me-mbp", "cc-1"),
+        Some(Listening::Away {
+            since: noon(),
+            waiting: 0
+        })
+    );
     assert_eq!(chat.session_live("me-mbp", "cc-1"), Some(true));
-    chat.clock = || noon() + chrono::Duration::minutes(3);
-    assert_eq!(chat.session_live("me-mbp", "cc-1"), Some(false));
-    // Back, saying its list again, it's here.
+    // Back, saying its list again, it's online.
     feed(
         &mut chat,
         &[
@@ -219,7 +254,7 @@ fn a_machine_that_left_ends_its_sessions_after_the_grace() {
             &zirc("me-mbp", &live(&["cc-1"])),
         ],
     );
-    assert_eq!(chat.session_live("me-mbp", "cc-1"), Some(true));
+    assert_eq!(chat.listening("me-mbp", "cc-1"), Some(Listening::Online));
 }
 
 #[test]
@@ -228,9 +263,12 @@ fn reconnecting_counts_a_list_until_its_machine_says_it_again() {
     feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-1"]))]);
     chat.disconnected("gone");
     connected(&mut chat);
-    assert_eq!(chat.session_live("me-mbp", "cc-1"), Some(true));
+    assert_eq!(chat.listening("me-mbp", "cc-1"), Some(Listening::Online));
     chat.clock = || noon() + chrono::Duration::minutes(3);
-    assert_eq!(chat.session_live("me-mbp", "cc-1"), Some(false));
+    assert!(matches!(
+        chat.listening("me-mbp", "cc-1"),
+        Some(Listening::Away { .. })
+    ));
 }
 
 #[test]
@@ -300,41 +338,195 @@ fn a_session_chip_knows_the_machine_that_runs_it() {
 }
 
 #[test]
-fn an_ended_session_says_so_and_folds_ten_minutes_later_unless_unread() {
+fn an_ended_session_says_so_and_folds_twelve_hours_after_its_last_watch_unless_unread() {
     let mut chat = with_mbp();
     feed(
         &mut chat,
         &[
             &zirc("me-mbp", &live(&["cc-1"])),
-            &dm("me-mbp", "cc-1", "done, have a look", 1),
+            &dm("me-mbp", "cc-1", "have a look", 1),
+            // Its watch closed at 12:02.
+            &zirc("me-mbp", &away(&["cc-1"], &[("cc-1", 2, 0)])),
         ],
     );
-    // Its machine stops listing it at 12:02: ended then.
-    feed(
-        &mut chat,
-        &[&format!(
-            "@time=2026-10-30T12:02:00.000Z {}",
-            zirc("me-mbp", &live(&[]))
-        )],
-    );
+    let two = noon() + chrono::Duration::minutes(2);
+    assert_eq!(chat.listened_at("me-mbp", "cc-1"), Some(two));
+    // Twelve hours on, its machine no longer names it: ended, last watching at 12:02.
+    chat.clock = || noon() + chrono::Duration::minutes(12 * 60 + 2);
+    feed(&mut chat, &[&zirc("me-mbp", &live(&[]))]);
     assert_eq!(
-        chat.session_ended_at("me-mbp", "cc-1"),
-        Some(Utc.with_ymd_and_hms(2026, 10, 30, 12, 2, 0).unwrap())
+        chat.listening("me-mbp", "cc-1"),
+        Some(Listening::Ended { since: Some(two) })
     );
-    chat.clock = || Utc.with_ymd_and_hms(2026, 10, 30, 12, 5, 0).unwrap();
     let listed = rows(&chat);
     let row = find(&listed, "me-mbp/cc-1").expect("listed while unread");
     // Where its time was, it says it ended; ours, it goes by its name alone.
-    assert_eq!(row.when.as_deref(), Some(crate::chat::live::ENDED));
+    assert_eq!(row.when.as_deref(), Some(crate::chat::ENDED));
     assert!(!row.title.contains(" · "), "{}", row.title);
-    // Unread, it stays past the ten minutes; read, it folds.
-    chat.clock = || Utc.with_ymd_and_hms(2026, 10, 30, 12, 13, 0).unwrap();
-    assert!(find(&rows(&chat), "me-mbp/cc-1").is_some());
+    // Read, it folds.
     let _ = chat.mark_read("me-mbp/cc-1");
     assert!(find(&rows(&chat), "me-mbp/cc-1").is_none());
-    // Listed again, it lives on, with no end.
+    // Listed again, it lives on.
     feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-1"]))]);
-    assert_eq!(chat.session_ended_at("me-mbp", "cc-1"), None);
+    assert_eq!(chat.listening("me-mbp", "cc-1"), Some(Listening::Online));
+    assert_eq!(chat.listened_at("me-mbp", "cc-1"), None);
+}
+
+#[test]
+fn a_session_is_online_strictly_while_its_watch_is_open() {
+    let mut chat = with_mbp();
+    feed(
+        &mut chat,
+        &[
+            &zirc("me-mbp", &live(&["cc-1"])),
+            &dm("me-mbp", "cc-1", "on it", 0),
+        ],
+    );
+    let _ = chat.mark_read("me-mbp/cc-1");
+    let row = |chat: &Chat| find(&rows(chat), "me-mbp/cc-1").cloned().expect("listed");
+    assert_eq!(row(&chat).presence, Some(Presence::Here));
+    assert_eq!(
+        chat.agent_header("me-mbp/cc-1").unwrap().heard,
+        "Active now"
+    );
+    // Its --once watch woke: away at once, though readers from before still see it live.
+    feed(
+        &mut chat,
+        &[&zirc("me-mbp", &away(&["cc-1"], &[("cc-1", 0, 0)]))],
+    );
+    assert_eq!(row(&chat).presence, Some(Presence::Away));
+    assert_eq!(
+        row(&chat).under.map(|under| under.kind),
+        Some(UnderKind::Said),
+        "nothing waits: its row previews as ever"
+    );
+    let header = chat.agent_header("me-mbp/cc-1").unwrap();
+    assert_eq!(header.heard, "Away · last heard just now");
+    assert!(!header.active);
+    // Watching again, it's online.
+    feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-1"]))]);
+    assert_eq!(row(&chat).presence, Some(Presence::Here));
+}
+
+#[test]
+fn an_agent_away_with_messages_waiting_says_it_isnt_listening() {
+    let mut chat = with_mbp();
+    feed(
+        &mut chat,
+        &[
+            &zirc("me-mbp", &live(&["cc-1"])),
+            &dm("me-mbp", "cc-1", "on it", 0),
+        ],
+    );
+    let _ = chat.mark_read("me-mbp/cc-1");
+    // Away since 12:00, a message of ours waiting, at once (the user's choice, 23 Nov 2026).
+    feed(
+        &mut chat,
+        &[&zirc("me-mbp", &away(&["cc-1"], &[("cc-1", 0, 1)]))],
+    );
+    let under = |chat: &Chat| {
+        find(&rows(chat), "me-mbp/cc-1")
+            .and_then(|row| row.under.clone())
+            .expect("a line under it")
+    };
+    assert_eq!(
+        (under(&chat).text.as_str(), under(&chat).kind),
+        ("Not listening · 1 message waiting", UnderKind::NotListening)
+    );
+    chat.clock = || noon() + chrono::Duration::minutes(17);
+    assert_eq!(
+        under(&chat).text,
+        "Not listening for 17 min · 1 message waiting"
+    );
+    // Its header says the same.
+    assert_eq!(
+        chat.agent_header("me-mbp/cc-1").unwrap().heard,
+        "Not listening for 17 min · 1 message waiting"
+    );
+    let line = chat.header_line("me-mbp/cc-1").unwrap();
+    assert_eq!(
+        (line.text.as_str(), line.kind),
+        (
+            "Not listening for 17 min · 1 message waiting",
+            crate::chat::HeaderLineKind::Away
+        )
+    );
+    // In its place even of what it's taking on.
+    let taking = Message::new(
+        "cc-1",
+        Event::Text {
+            body: "taking: the login bug".into(),
+        },
+    );
+    feed(&mut chat, &[&zirc("me-mbp", &taking)]);
+    assert_eq!(under(&chat).kind, UnderKind::NotListening);
+}
+
+#[test]
+fn a_row_folds_once_its_task_lands_and_is_back_when_spoken_to() {
+    let mut chat = with_mbp();
+    let said = |session: &str, text: &str, minute: u32| {
+        let message = Message::new(
+            session,
+            Event::Text {
+                body: text.to_owned(),
+            },
+        );
+        format!(
+            "@time=2026-10-30T12:{minute:02}:00.000Z {}",
+            zirc("me-mbp", &message)
+        )
+    };
+    feed(
+        &mut chat,
+        &[
+            &zirc("me-mbp", &live(&["cc-1"])),
+            &said("cc-1", "taking: the login bug", 0),
+            &dm("me-mbp", "cc-1", "on it", 1),
+        ],
+    );
+    let _ = chat.mark_read("me-mbp/cc-1");
+    let listed = |chat: &Chat| find(&rows(chat), "me-mbp/cc-1").is_some();
+    assert!(listed(&chat));
+    // zircd says done: for it once its landing lands: it folds, online or not.
+    feed(&mut chat, &[&said("cc-1", "done: the login bug", 5)]);
+    chat.clock = || noon() + chrono::Duration::minutes(6);
+    assert!(!listed(&chat));
+    assert!(chat.position("me-mbp/cc-1").is_some(), "kept for search");
+    // Dropped isn't landed.
+    feed(
+        &mut chat,
+        &[
+            &said("cc-1", "taking: the logout bug", 7),
+            &said("cc-1", "dropped: the logout bug", 8),
+        ],
+    );
+    assert!(listed(&chat));
+    feed(&mut chat, &[&said("cc-1", "done: the logout bug", 9)]);
+    assert!(!listed(&chat));
+    // Written to again, it's back.
+    feed(&mut chat, &[&dm("me-mbp", "cc-1", "one more thing", 10)]);
+    let _ = chat.mark_read("me-mbp/cc-1");
+    assert!(listed(&chat));
+}
+
+#[test]
+fn a_row_folds_after_twelve_hours_away() {
+    let mut chat = with_mbp();
+    feed(
+        &mut chat,
+        &[
+            &zirc("me-mbp", &live(&["cc-1"])),
+            &dm("me-mbp", "cc-1", "on it", 0),
+            &zirc("me-mbp", &away(&[], &[("cc-1", 30, 0)])),
+        ],
+    );
+    let _ = chat.mark_read("me-mbp/cc-1");
+    let listed = |chat: &Chat| find(&rows(chat), "me-mbp/cc-1").is_some();
+    chat.clock = || noon() + chrono::Duration::minutes(12 * 60 + 29);
+    assert!(listed(&chat), "not after minutes");
+    chat.clock = || noon() + chrono::Duration::minutes(12 * 60 + 30);
+    assert!(!listed(&chat));
 }
 
 /// What we said to `session` on our machine `me-mbp`, at 11:`minute`, as the machine's

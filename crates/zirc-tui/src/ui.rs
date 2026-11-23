@@ -908,6 +908,7 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
         preview,
         placeholder,
         note,
+        warning,
         presence,
         bold,
         badge,
@@ -964,7 +965,11 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
     // What was said last, dimmed after the name, and when, at the right, where there's room.
     let room = width.saturating_sub(lead_width + name.width() + count.width() + 1);
     // The pill pads itself, so the time needs no space before it.
-    let said_style = said_style(theme, placeholder);
+    let said_style = if warning {
+        fg(theme.warning)
+    } else {
+        said_style(theme, placeholder)
+    };
     let (said, when) = match note {
         Some(note) => note_columns(&note, room),
         None => preview_columns(preview, room, false),
@@ -2866,6 +2871,52 @@ mod tests {
         assert_eq!(
             terminal.backend().buffer()[(x + 2, y)].bg,
             colour(app.theme.mention_ground)
+        );
+    }
+
+    #[test]
+    fn says_an_agent_away_with_messages_waiting_isnt_listening_in_the_warning_colour() {
+        let mut app = app();
+        let said = |session: &str, event: zirc_proto::Event, to: &str| {
+            let message = zirc_proto::Message::new(session, event);
+            format!(
+                "@time=2026-10-30T11:40:00.000Z :me-laptop!u@machine/me PRIVMSG {to} :{}",
+                zirc_proto::encode(&message).unwrap()
+            )
+        };
+        let since = u64::try_from((noon() - chrono::Duration::minutes(17)).timestamp()).unwrap();
+        let live = zirc_proto::session::Live {
+            sessions: vec!["cc-1".into()],
+            away: [(
+                "cc-1".to_owned(),
+                zirc_proto::session::Away { since, waiting: 1 },
+            )]
+            .into(),
+            ..Default::default()
+        };
+        for line in [
+            said(
+                "cc-1",
+                zirc_proto::Event::Text {
+                    body: "on it".into(),
+                },
+                "me",
+            ),
+            said(zirc_proto::NO_SESSION, live.event(), "#api"),
+        ] {
+            app.handle(line.parse().unwrap());
+        }
+        app.chat.set_tab(zirc_core::chat::SidebarSection::Direct);
+        let (rows, terminal) = draw(&app, 140, 24);
+        // Cut to the sidebar's width, as a task is.
+        let (x, y) = place_of(&rows, "Not li");
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(x, y)].fg, colour(app.theme.warning));
+        // Its dot says it's away.
+        assert!(
+            rows[usize::from(y)].contains('◐'),
+            "{}",
+            rows[usize::from(y)]
         );
     }
 

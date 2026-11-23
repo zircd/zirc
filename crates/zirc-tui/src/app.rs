@@ -331,8 +331,11 @@ pub enum Side {
         /// Whether `preview` is zirc-chat's `No messages yet`, with no time: drawn faint.
         placeholder: bool,
         /// For an agent session at work, what it's taking on, after its name in place of
-        /// what was said.
+        /// what was said; or, away with messages waiting, that it isn't listening.
         note: Option<String>,
+        /// Whether `note` says an agent session isn't listening: drawn in the warning
+        /// colour (zirc-chat's `UnderKind::NotListening`).
+        warning: bool,
         /// For a person, their presence, drawn as a mark before their name.
         presence: Option<zirc_core::chat::Presence>,
         /// Whether its name is bold in the text's colour: unread and not muted, a channel's
@@ -518,10 +521,14 @@ impl App {
         // (`ListRow::under`): for an agent at work, what it's taking on, else what was said
         // last in it and when, as chat apps list them.
         let private = row.direct_kind.is_some();
+        let warning = row
+            .under
+            .as_ref()
+            .is_some_and(|under| under.kind == UnderKind::NotListening);
         let (preview, note, placeholder) = match row.under {
             Some(RowUnder {
                 text,
-                kind: UnderKind::Note,
+                kind: UnderKind::Note | UnderKind::NotListening,
             }) => (None, Some(text), false),
             Some(RowUnder { text, kind }) => {
                 // Nothing said in it yet: zirc-chat's `No messages yet`, with no time.
@@ -540,6 +547,7 @@ impl App {
             preview,
             placeholder,
             note,
+            warning,
             presence: row.presence.filter(|_| private),
             bold: row.bold,
             badge: row.badge,
