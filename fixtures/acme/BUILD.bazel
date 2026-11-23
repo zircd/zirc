@@ -38,4 +38,8 @@ sh_test(
         "check.py",
         "showcase.json",
     ],
+    tags = [
+        "kind:unit",
+        "surface:app-core",
+    ],
 )

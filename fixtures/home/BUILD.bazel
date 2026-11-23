@@ -27,6 +27,10 @@ sh_test(
         "home.json",
         "//fixtures/acme:check.py",
     ],
+    tags = [
+        "kind:unit",
+        "surface:app-core",
+    ],
 )
 
 # The team's morning as zirc and zircd print it, for zirc.dev's <Terminal>.

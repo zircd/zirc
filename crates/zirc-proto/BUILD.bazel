@@ -4,6 +4,7 @@ load("//bazel:rust.bzl", "zirc_rust_library")
 
 zirc_rust_library(
     name = "zirc-proto",
+    surface = "server",
     # brand.bzl: its PRODUCT_NAME is NAME's copy for Bazel, which a test keeps the same.
     compile_data = ["//bazel:brand.bzl"],
     # The web client runs it.

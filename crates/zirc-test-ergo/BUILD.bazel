@@ -4,6 +4,7 @@ load("//bazel:rust.bzl", "ERGO_DATA", "ERGO_ENV", "zirc_rust_library")
 
 zirc_rust_library(
     name = "zirc-test-ergo",
+    surface = "server",
     # What it stages is sent through a real server (tests/stage.rs).
     ergo = True,
 )

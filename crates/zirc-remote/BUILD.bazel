@@ -2,5 +2,6 @@ load("//bazel:rust.bzl", "zirc_rust_binary")
 
 zirc_rust_binary(
     name = "zirc-remote",
+    surface = "ci",
     ergo = True,
 )

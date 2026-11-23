@@ -20,11 +20,17 @@ ERGO_ENV = {
 # And what says where a Bus error in one of them struck (bus_error.c).
 ERGO_DEPS = ["//bazel:bus_error"]
 
-def _tests(name, crate, deps, test_deps, ergo, test_data, test_env, test_size, test_tags = []):
+def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, test_size, test_tags = []):
     """The crate's unit tests, and each file in tests/ as an integration test of its own,
     as Cargo builds them. Those that start Ergo are medium-sized: a server and the daemons
     talking to it, besides the test. A crate whose tests start Ergo may start it in a unit
-    test too, as for a part that isn't public."""
+    test too, as for a part that isn't public.
+
+    Each says which collection of tests it's in (test-results' collections, by these tags):
+    its crate's surface, and its kind. The crate's own tests are unit tests; a file in
+    tests/ is an integration test, several pieces in one process, unless its crate's tests
+    start Ergo or are tagged e2e: then it's end to end, against a real server."""
+    whole = "kind:e2e" if ergo or "e2e" in test_tags else "kind:integration"
     rust_test(
         name = name + "_test",
         crate = crate,
@@ -37,6 +43,7 @@ def _tests(name, crate, deps, test_deps, ergo, test_data, test_env, test_size, t
         data = ERGO_DATA if ergo else [],
         env = ERGO_ENV if ergo else {},
         size = "medium" if ergo else test_size,
+        tags = ["surface:" + surface, "kind:unit"],
     )
     for src in native.glob(["tests/*.rs"], allow_empty = True):
         rust_test(
@@ -52,14 +59,17 @@ def _tests(name, crate, deps, test_deps, ergo, test_data, test_env, test_size, t
             data = (ERGO_DATA if ergo else []) + test_data,
             env = (ERGO_ENV if ergo else {}) | test_env,
             size = "medium" if ergo else test_size,
-            tags = test_tags,
+            tags = test_tags + ["surface:" + surface, whole],
         )
 
-def zirc_rust_library(name, ergo = False, wasm = False, wasm_bindgen = False, test_data = [], test_env = {}, test_size = None, test_tags = [], compile_data = [], **kwargs):
+def zirc_rust_library(name, surface, ergo = False, wasm = False, wasm_bindgen = False, test_data = [], test_env = {}, test_size = None, test_tags = [], compile_data = [], **kwargs):
     """A library crate, its unit tests and its integration tests.
 
     Args:
         name: the crate's name, as in its Cargo.toml.
+        surface: the part of the product its tests are of, for test-results' collections:
+            ios, android, mac, web-chat, terminal, app-core, cli, daemon, server, site,
+            install or ci (ops/check.sh says when a test names none of them).
         ergo: whether its integration tests start an Ergo server.
         wasm: whether it builds for the browser too, as `<name>_wasm`, which the web
             client needs of the crates it runs.
@@ -90,7 +100,7 @@ def zirc_rust_library(name, ergo = False, wasm = False, wasm_bindgen = False, te
         visibility = ["//visibility:public"],
         **kwargs
     )
-    _tests(name, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size, test_tags)
+    _tests(name, surface, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size, test_tags)
     if wasm:
         for_wasm(name = name + "_wasm", crate = ":" + name)
     if wasm_bindgen:
@@ -117,12 +127,15 @@ def zirc_rust_library(name, ergo = False, wasm = False, wasm_bindgen = False, te
             visibility = ["//visibility:public"],
         )
 
-def zirc_rust_binary(name, ergo = False, test_data = [], test_env = {}, test_size = None, compile_data = [], **kwargs):
+def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {}, test_size = None, compile_data = [], **kwargs):
     """A binary crate and its tests. When it has a src/lib.rs, as Cargo allows, the library
     is `<name>_lib` and the binary is built from src/main.rs on top of it.
 
     Args:
         name: the binary's name, as in its Cargo.toml.
+        surface: the part of the product its tests are of, for test-results' collections:
+            ios, android, mac, web-chat, terminal, app-core, cli, daemon, server, site,
+            install or ci (ops/check.sh says when a test names none of them).
         ergo: whether its integration tests start an Ergo server.
         test_data: more files its integration tests need, such as other binaries.
         test_env: environment for its integration tests, to find test_data by.
@@ -158,7 +171,7 @@ def zirc_rust_binary(name, ergo = False, test_data = [], test_env = {}, test_siz
             visibility = ["//visibility:public"],
             **(common | kwargs)
         )
-        _tests(name, ":" + name + "_lib", deps, test_deps, ergo, test_data, test_env, test_size)
+        _tests(name, surface, ":" + name + "_lib", deps, test_deps, ergo, test_data, test_env, test_size)
     else:
         rust_binary(
             name = name,
@@ -167,4 +180,4 @@ def zirc_rust_binary(name, ergo = False, test_data = [], test_env = {}, test_siz
             visibility = ["//visibility:public"],
             **(common | kwargs)
         )
-        _tests(name, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size)
+        _tests(name, surface, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size)

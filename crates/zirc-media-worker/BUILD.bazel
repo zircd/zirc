@@ -5,5 +5,6 @@ load("//bazel:rust.bzl", "zirc_rust_binary")
 # server, where the worker runs imgproxy beside it (--imgproxy).
 zirc_rust_binary(
     name = "zirc-media-worker",
+    surface = "site",
     test_size = "small",
 )

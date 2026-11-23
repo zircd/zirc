@@ -2,6 +2,7 @@ load("//bazel:rust.bzl", "zirc_rust_binary")
 
 zirc_rust_binary(
     name = "zircd",
+    surface = "daemon",
     ergo = True,
     # Its unit tests take under 10s; each file in tests/ starts Ergo, and takes 35s at most
     # with the Mac's load over 100: medium.

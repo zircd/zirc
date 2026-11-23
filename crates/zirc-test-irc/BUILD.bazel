@@ -1,3 +1,6 @@
 load("//bazel:rust.bzl", "zirc_rust_library")
 
-zirc_rust_library(name = "zirc-test-irc")
+zirc_rust_library(
+    name = "zirc-test-irc",
+    surface = "server",
+)

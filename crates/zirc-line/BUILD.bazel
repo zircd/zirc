@@ -2,6 +2,7 @@ load("//bazel:rust.bzl", "zirc_rust_library")
 
 zirc_rust_library(
     name = "zirc-line",
+    surface = "app-core",
     # Its registration is tested against a real server.
     ergo = True,
     # The web client runs it.

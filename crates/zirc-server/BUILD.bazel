@@ -6,6 +6,7 @@ load("//bazel:rust.bzl", "zirc_rust_binary")
 
 zirc_rust_binary(
     name = "zirc-server",
+    surface = "server",
     ergo = True,
 )
 

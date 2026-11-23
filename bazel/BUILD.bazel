@@ -56,6 +56,10 @@ sh_test(
     args = ["$(rootpath :bus_error_demo)"],
     data = [":bus_error_demo"],
     target_compatible_with = ["@platforms//os:linux"],
+    tags = [
+        "kind:unit",
+        "surface:ci",
+    ],
 )
 
 # What runs a test inside zirc-sandbox (sandbox.bzl).

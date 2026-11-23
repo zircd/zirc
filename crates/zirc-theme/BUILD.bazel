@@ -9,6 +9,7 @@ package(default_visibility = ["//visibility:public"])
 
 zirc_rust_library(
     name = "zirc-theme",
+    surface = "app-core",
     compile_data = [
         "tokens.json",
         "zirc-theme.css",
@@ -161,7 +162,11 @@ compile_pip_requirements(
     name = "requirements",
     src = "requirements.in",
     requirements_txt = "requirements_lock.txt",
-    tags = ["manual"],
+    tags = [
+        "kind:unit",
+        "manual",
+        "surface:app-core",
+    ],
 )
 
 # A web page's stylesheet and the fonts it names relative to itself, and nothing else.
