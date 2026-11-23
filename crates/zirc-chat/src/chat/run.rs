@@ -120,9 +120,9 @@ impl Chat {
         let files = &files[..files.len().min(MAX_FILES)];
         let value = value(files);
         // Their tag takes room a sealed part can't have.
-        self.attaching = TAG.len() + value.len() + 2;
+        self.attached_room = TAG.len() + value.len() + 2;
         let mut ran = self.run(here, Command::Say(text(words, files)));
-        self.attaching = 0;
+        self.attached_room = 0;
         if let Ran::Send(lines) | Ran::Replied(lines) = &mut ran {
             super::sending::tag_opening(lines, TAG, &value);
             self.attach_echo(here.name, files);

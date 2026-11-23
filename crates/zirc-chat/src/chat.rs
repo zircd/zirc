@@ -19,6 +19,7 @@
 mod activity;
 mod agent_activity;
 mod agent_card;
+pub mod attach;
 mod avatar;
 mod block;
 mod body;
@@ -547,7 +548,9 @@ pub struct Chat {
     locked: bool,
     /// The room a message's attached files take in its client tags while it's being said
     /// ([`Chat::say_attached`]): none otherwise.
-    attaching: usize,
+    attached_room: usize,
+    /// The files waiting above each conversation's field ([`attach`]).
+    attaching: attach::Attaching,
     /// The long messages the person opened or cut again ([`Chat::toggle_more`]).
     opened: more::Opened,
     /// The keys for sealed parts, and the parts revealed ([`Chat::set_keys`]).
@@ -697,7 +700,8 @@ impl Chat {
             looking: true,
             in_front: true,
             locked: false,
-            attaching: 0,
+            attached_room: 0,
+            attaching: attach::Attaching::default(),
             opened: more::Opened::default(),
             sealing: sealing::Sealing::default(),
             multiline: Batches::default(),

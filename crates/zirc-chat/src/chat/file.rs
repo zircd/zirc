@@ -81,7 +81,7 @@ pub fn link_shape(url: &str) -> Shape {
 }
 
 /// How a file of the media type `mime` is drawn.
-fn shape_of(mime: &str) -> Shape {
+pub(super) fn shape_of(mime: &str) -> Shape {
     match mime.split('/').next() {
         Some("image") => Shape::Image,
         Some("video") => Shape::Video,
