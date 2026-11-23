@@ -461,7 +461,7 @@ pub fn typescript() -> String {
          // state's types and rules,\n\
          // generated from\n\
          // zirc-proto (crates/zirc-proto/src/login.rs, media.rs, profile.rs, card.rs,\n\
-         // report.rs, workflow.rs, role.rs, names.rs, desired.rs, and lib.rs's, request.rs's and session.rs's message types) by `bazel run //web:zirc_proto_types`, which a test checks.\n\
+         // report.rs, workflow.rs, role.rs, names.rs, desired.rs, onboarding.rs, and lib.rs's, request.rs's and session.rs's message types) by `bazel run //web:zirc_proto_types`, which a test checks.\n\
          // Don't edit: change them there and generate this again.\n",
     );
     for decl in [
@@ -506,6 +506,7 @@ pub fn typescript() -> String {
     .chain(crate::frame_typescript(&config))
     .chain(crate::irc::typescript(&config))
     .chain(crate::desired::typescript(&config))
+    .chain(crate::onboarding::typescript(&config))
     {
         out.push_str("\nexport ");
         out.push_str(&decl);

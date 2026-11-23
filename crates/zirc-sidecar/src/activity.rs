@@ -13,6 +13,11 @@
 //! It keeps a row only as long as the organisation keeps its messages: a history row's goes
 //! when Ergo no longer has the row (retention, a redaction, a trim), and a live record's
 //! once it's older than the oldest message Ergo still keeps ([`prune`]).
+//!
+//! Beside the rows, the first time each onboarding signal it sees was seen from each account
+//! ([`zirc_proto::onboarding::First`], [`firsts`]): an account and a time, kept as long as
+//! the store whatever the organisation keeps of its messages, for zirc.dev to read the steps
+//! its members reached.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -28,8 +33,9 @@ use crate::exporter::{self, PRIVMSG};
 /// The store's format. A file with another is built again from Ergo's history; live
 /// records it held are lost, so a format that only adds is brought up to date in place
 /// ([`migrate`]). 2: a state's level and owner, which 1 missed. 3: whether a working set
-/// says again what its session said earlier in the hour ([`AGAIN`]), from 2 in place.
-pub const VERSION: &str = "3";
+/// says again what its session said earlier in the hour ([`AGAIN`]), from 2 in place. 4: the
+/// onboarding signals' firsts ([`FIRSTS`]), from 3 in place.
+pub const VERSION: &str = "4";
 
 /// An hour, in nanoseconds: how far apart a session's like working sets are both kept.
 const HOUR: i64 = 3_600 * 1_000_000_000;
@@ -75,7 +81,11 @@ pub fn path_for(history: &Path) -> PathBuf {
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     crate::sqlite::made(open_file(path)?, VERSION, |connection, found| {
         if found == Some("2") {
-            return migrate(connection);
+            migrate(connection)?;
+            return add_firsts(connection);
+        }
+        if found == Some("3") {
+            return add_firsts(connection);
         }
         if found.is_some() {
             info!(
@@ -110,6 +120,7 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
              CREATE INDEX rows_time ON rows (nanotime, id);
              CREATE INDEX rows_kind ON rows (kind, nanotime);
              {REPEATS}
+             {FIRSTS}
              INSERT INTO meta VALUES ('version', '{VERSION}'), ('last', '0');"
         ))
     })
@@ -134,11 +145,117 @@ fn migrate(connection: &Connection) -> rusqlite::Result<()> {
                  ) AS nth
                  FROM rows WHERE kind = 'working' AND session IS NOT NULL
              ) WHERE nth > 1
-         );
-         UPDATE meta SET value = '{VERSION}' WHERE key = 'version';"
+         );"
     ))?;
     info!("the activity store marks working sets said again in their hour");
     Ok(())
+}
+
+/// The first time each onboarding signal was seen from each account ([`note_first`]), never
+/// pruned.
+const FIRSTS: &str = "CREATE TABLE firsts (
+    signal TEXT NOT NULL,
+    account TEXT NOT NULL,
+    nanotime INTEGER NOT NULL,
+    PRIMARY KEY (signal, account)
+) WITHOUT ROWID;";
+
+/// Brings a store of format 3 up to [`VERSION`]: the firsts, from the rows it has. Inside
+/// [`open`]'s write transaction, as [`migrate`] is.
+fn add_firsts(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(FIRSTS)?;
+    let mut statement = connection.prepare(
+        "SELECT nanotime, account, agent, direct, kind, data FROM rows ORDER BY nanotime",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, bool>(2)?,
+            row.get::<_, bool>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, Option<String>>(5)?,
+        ))
+    })?;
+    let mut noted = 0;
+    for row in rows {
+        let (nanotime, account, agent, direct, kind, data) = row?;
+        let data = data.and_then(|data| serde_json::from_str(&data).ok());
+        let fact = Fact {
+            account,
+            agent,
+            kind,
+            data,
+            ..Fact::default()
+        };
+        noted += usize::from(note_first(connection, nanotime, direct, &fact)?);
+    }
+    connection.execute(
+        "UPDATE meta SET value = ?1 WHERE key = 'version'",
+        [VERSION],
+    )?;
+    info!(noted, "the activity store keeps onboarding's firsts");
+    Ok(())
+}
+
+/// Keeps `fact`'s onboarding signal, if it gives one, as its account's first of it unless an
+/// earlier one is kept. Whether it gave one.
+fn note_first(
+    connection: &Connection,
+    nanotime: i64,
+    direct: bool,
+    fact: &Fact,
+) -> rusqlite::Result<bool> {
+    let Some(signal) = zirc_proto::onboarding::Signal::of_row(
+        &fact.kind,
+        fact.account.as_deref(),
+        fact.agent,
+        direct,
+        fact.data.as_ref(),
+    ) else {
+        return Ok(false);
+    };
+    let Some(account) = &fact.account else {
+        return Ok(false);
+    };
+    connection
+        .prepare_cached(
+            "INSERT INTO firsts (signal, account, nanotime) VALUES (?1, ?2, ?3)
+             ON CONFLICT (signal, account) DO UPDATE SET nanotime = excluded.nanotime
+             WHERE excluded.nanotime < firsts.nanotime",
+        )?
+        .execute(params![signal.id(), account, nanotime])?;
+    Ok(true)
+}
+
+/// Each onboarding signal's first from each account, for zirc.dev.
+///
+/// # Errors
+///
+/// When the store can't be read.
+pub fn firsts(connection: &Connection) -> rusqlite::Result<Vec<zirc_proto::onboarding::First>> {
+    let mut statement = connection
+        .prepare_cached("SELECT signal, account, nanotime FROM firsts ORDER BY nanotime")?;
+    let firsts = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, i64>(2)?,
+        ))
+    })?;
+    let mut kept = Vec::new();
+    for first in firsts {
+        let (signal, account, nanotime) = first?;
+        // One a newer sidecar kept that this one doesn't know.
+        if let Some(signal) = zirc_proto::onboarding::Signal::from_id(&signal) {
+            kept.push(zirc_proto::onboarding::First {
+                signal,
+                account,
+                at: nanotime / 1_000_000,
+            });
+        }
+    }
+    Ok(kept)
 }
 
 fn open_file(path: &Path) -> rusqlite::Result<Connection> {
@@ -500,6 +617,7 @@ pub(crate) fn insert(
             again,
         ],
     )?;
+    note_first(connection, nanotime, direct, fact)?;
     Ok(())
 }
 
@@ -1074,7 +1192,7 @@ mod tests {
         assert!(record_live(&store, hour + 30 * SECOND, Some("ada-mbp".into()), &wake).unwrap());
         store
             .execute_batch(
-                "DROP INDEX rows_repeats; ALTER TABLE rows DROP COLUMN again;
+                "DROP INDEX rows_repeats; ALTER TABLE rows DROP COLUMN again; DROP TABLE firsts;
                  UPDATE meta SET value = '2' WHERE key = 'version';",
             )
             .unwrap();
@@ -1314,6 +1432,80 @@ mod tests {
             .execute("DELETE FROM history", [])
             .unwrap();
         assert_eq!(prune(&mut store, &path).unwrap(), 1);
+    }
+
+    #[test]
+    fn keeps_each_signals_first_from_each_account_past_pruning() {
+        use zirc_proto::activity::{Notice, Noticed, Watching};
+        use zirc_proto::onboarding::{First, Signal};
+        crate::machines::the_tests_machines();
+        let dir = tempfile::tempdir().unwrap();
+        let path = history(dir.path());
+        add(&path, "m1", "#api", 100 * SECOND, "ada", "hello");
+        let mut store = open(&path_for(&path)).unwrap();
+        catch_up(&mut store, &path).unwrap();
+        let watching = Message::new("cc-1", Watching {}.event());
+        let overlap = Message::new(
+            "cc-1",
+            Notice {
+                what: Noticed::Overlap,
+                overlap: None,
+                local: true,
+                woke: true,
+                escalated: false,
+                with: None,
+            }
+            .event(),
+        );
+        for (at, account, message) in [
+            (60, "ada-mbp", &watching),
+            (40, "ada-mbp", &watching),
+            (70, "bob-mbp", &watching),
+            (80, "ada-mbp", &overlap),
+            // A person's own account isn't an agent's.
+            (90, "ada", &watching),
+        ] {
+            assert!(record_live(&store, at * SECOND, Some(account.into()), message).unwrap());
+        }
+        // Every live record is older than the oldest message, and goes; the firsts stay.
+        assert_eq!(prune(&mut store, &path).unwrap(), 5);
+        let first = |signal, account: &str, at: i64| First {
+            signal,
+            account: account.into(),
+            at: at * 1_000,
+        };
+        assert_eq!(
+            firsts(&store).unwrap(),
+            [
+                first(Signal::Agent, "ada-mbp", 40),
+                first(Signal::Agent, "bob-mbp", 70),
+                first(Signal::Overlap, "ada-mbp", 80),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_store_of_format_3_gets_its_firsts_from_its_rows() {
+        crate::machines::the_tests_machines();
+        let dir = tempfile::tempdir().unwrap();
+        let path = history(dir.path());
+        add(&path, "m1", "#api", 100 * SECOND, "ada-mbp", "on it");
+        add(&path, "m2", "#api", 200 * SECOND, "ada", "thanks");
+        let mut store = open(&path_for(&path)).unwrap();
+        catch_up(&mut store, &path).unwrap();
+        store
+            .execute_batch("DROP TABLE firsts; UPDATE meta SET value = '3' WHERE key = 'version';")
+            .unwrap();
+        drop(store);
+        let store = open(&path_for(&path)).unwrap();
+        assert_eq!(rows(&store, 0, 0, 10, false).unwrap().len(), 2, "rows kept");
+        let firsts = firsts(&store).unwrap();
+        assert_eq!(firsts.len(), 1, "{firsts:?}");
+        assert_eq!(firsts[0].signal, zirc_proto::onboarding::Signal::Agent);
+        assert_eq!(
+            (firsts[0].account.as_str(), firsts[0].at),
+            ("ada-mbp", 100_000)
+        );
     }
 
     #[test]

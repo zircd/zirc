@@ -1097,3 +1097,42 @@ async fn starting_to_watch_a_repository_invites_the_machines_owner_to_agents() {
     .await;
     assert!(again.is_err(), "invited again: {again:?}");
 }
+
+#[tokio::test]
+async fn a_sessions_first_watch_goes_to_the_recorder_once() {
+    use zirc_proto::activity::{HINT_SHOWN_KIND, HintShown, Record, Watching};
+    let ergo = require_ergo!();
+    let (machine, _main, _main_root, _login_root) = machine_with_a_session_worktree(&ergo).await;
+    let (_recorder, mut recorded) =
+        zirc_test_irc::person(&ergo, zirc_proto::activity::RECORDER).await;
+    let next_record = async |recorded: &mut zirc_irc::Incoming| {
+        let line = zirc_test_irc::next_matching(recorded, |line| line.command == "TAGMSG").await;
+        zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG).unwrap()).unwrap()
+    };
+
+    let first = machine.watch(Some("cc-login")).await;
+    let sent = next_record(&mut recorded).await;
+    assert_eq!(sent.session, "cc-login");
+    assert!(sent.is_live(), "never in history");
+    assert_eq!(Watching::of(&sent.event), Some(Watching {}));
+    drop(first);
+
+    // Watching again, as `zirc watch --once` does after each wake, says nothing more: the
+    // next record is the hint that follows it.
+    let _again = machine.watch(Some("cc-login")).await;
+    let shown = HintShown {
+        hint: "0123456789abcdef".into(),
+        kind: "overlap".into(),
+        layer: "repo".into(),
+    };
+    let done = machine
+        .request(Request::Record {
+            session: "cc-login".into(),
+            kind: HINT_SHOWN_KIND.into(),
+            data: serde_json::to_value(&shown).unwrap(),
+        })
+        .await;
+    assert!(matches!(done, Response::Done), "{done:?}");
+    let sent = next_record(&mut recorded).await;
+    assert_eq!(HintShown::of(&sent.event), Some(shown), "{sent:?}");
+}

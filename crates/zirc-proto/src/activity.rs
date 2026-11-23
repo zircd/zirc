@@ -3,7 +3,8 @@
 //! ([`WakeOutcome`]), where each of its prompts came from and what it cost ([`Prompt`]), and
 //! what zircd told it of others changing what it changes ([`Notice`]), and which of the team's
 //! playbook it was shown: a hint under a line ([`HintShown`]) and the gotchas told it
-//! ([`GotchaTold`]), by their ids, for how often each is used. Each goes as a [`crate::Event::Custom`] of one of [`KINDS`], at debug: only
+//! ([`GotchaTold`]), by their ids, for how often each is used, and that a session started
+//! watching ([`Watching`]), for onboarding ([`crate::onboarding`]). Each goes as a [`crate::Event::Custom`] of one of [`KINDS`], at debug: only
 //! true now ([`crate::live`]), so none is a line of any channel's history or chat, and
 //! nothing wakes on one. The tenant's recorder (its sidecar, nick [`RECORDER`]) hears them
 //! as they're sent and keeps a row of each beside the history, as long as the
@@ -36,14 +37,18 @@ pub const HINT_SHOWN_KIND: &str = "x-zirc/hint-shown";
 /// A session was told a gotcha ([`GotchaTold`]).
 pub const GOTCHA_TOLD_KIND: &str = "x-zirc/gotcha-told";
 
+/// A session's watch started, the first time since zircd did ([`Watching`]).
+pub const WATCHING_KIND: &str = "x-zirc/watching";
+
 /// Every kind here: each is live ([`crate::live`]).
-pub const KINDS: [&str; 6] = [
+pub const KINDS: [&str; 7] = [
     WAKE_KIND,
     WAKE_OUTCOME_KIND,
     PROMPT_KIND,
     NOTICE_KIND,
     HINT_SHOWN_KIND,
     GOTCHA_TOLD_KIND,
+    WATCHING_KIND,
 ];
 
 /// The nick a tenant's recorder goes by, to which machines send these events directly
@@ -221,6 +226,12 @@ pub struct GotchaTold {
     pub how: Told,
 }
 
+/// A session's watch started: nothing but that it did, the session being the message's. zircd
+/// sends it the first time each session watches after zircd starts, so a person's agent is
+/// seen set up as it starts listening, before it first says anything.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Watching {}
+
 /// One of these records as the event it goes as.
 pub trait Record: Serialize + for<'de> Deserialize<'de> {
     /// Its kind, one of [`KINDS`].
@@ -274,6 +285,10 @@ impl Record for HintShown {
 
 impl Record for GotchaTold {
     const KIND: &'static str = GOTCHA_TOLD_KIND;
+}
+
+impl Record for Watching {
+    const KIND: &'static str = WATCHING_KIND;
 }
 
 #[cfg(test)]

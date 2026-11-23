@@ -14,7 +14,8 @@
 //! [`zirc_proto::activity::WakeOutcome`]): sent to its nick alone, never kept in history,
 //! and lost when it isn't there. Metadata only: the line's kind, level and id, never its
 //! words. So does each overlap and conflict ahead zircd tells a session of
-//! ([`zirc_proto::activity::Notice`]): what it amounts to, never its paths.
+//! ([`zirc_proto::activity::Notice`]): what it amounts to, never its paths; and, once per
+//! session after zircd starts, that its watch started ([`zirc_proto::activity::Watching`]).
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -333,17 +334,30 @@ impl Daemon {
     }
 
     /// Sends `event`, an activity record of `session`'s, to the tenant's recorder alone, as a
-    /// debug `TAGMSG`: best effort, as it isn't there on every server.
-    pub(super) fn record(&self, session: &str, event: Event) {
+    /// debug `TAGMSG`: best effort, as it isn't there on every server. Whether it was sent.
+    pub(super) fn record(&self, session: &str, event: Event) -> bool {
         let Some(client) = self.client.as_ref() else {
-            return;
+            return false;
         };
         let mut message = self.signed(session, event);
         message.task = self.tasks.on(session).cloned();
-        if let Some(line) = zirc_core::presence::working_line(activity::RECORDER, &message)
-            && let Err(err) = client.send(line)
-        {
-            tracing::debug!("couldn't tell the recorder: {err}");
+        let Some(line) = zirc_core::presence::working_line(activity::RECORDER, &message) else {
+            return false;
+        };
+        client
+            .send(line)
+            .inspect_err(|err| tracing::debug!("couldn't tell the recorder: {err}"))
+            .is_ok()
+    }
+
+    /// Tells the recorder that `session` started watching, the first time since zircd
+    /// started that it could, for onboarding: a person's agent is set up once it listens.
+    pub(super) fn started_watching(&mut self, session: &str) {
+        if self.watching_told.contains(session) {
+            return;
+        }
+        if self.record(session, activity::Watching {}.event()) {
+            self.watching_told.insert(session.to_owned());
         }
     }
 

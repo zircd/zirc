@@ -30,6 +30,7 @@ pub mod logging;
 pub mod login;
 pub mod media;
 pub mod names;
+pub mod onboarding;
 pub mod profile;
 pub mod push;
 pub mod receipt;

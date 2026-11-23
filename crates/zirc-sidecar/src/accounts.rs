@@ -41,6 +41,9 @@
 //!   together: `{"rows": [{"id", "nanotime", "kind", "channel", "account", "session", "level",
 //!   "task", "data", …}]}`, metadata only, never what anyone said; page with the last `id`.
 //!   With `&collapse=true`, a session's working set said again in the same hour is left out.
+//! - `GET /v1/firsts`: the first time each onboarding signal the activity store sees was seen
+//!   from each account (`zirc_proto::onboarding::Firsts`), for zirc.dev to record the steps its
+//!   members reached: `{"firsts": [{"signal", "account", "at"}]}`, never what anyone said.
 //!
 //! - `GET /v1/push`: `{"vapidKey"}`, the key the pusher signs its pushes with
 //!   (`crate::pusher`), for zirc.dev to check the pushes it relays to phones; `null` while
@@ -409,6 +412,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         )
         .route("/v1/messages", get(find_messages))
         .route("/v1/activity", get(read_activity))
+        .route(zirc_proto::onboarding::FIRSTS_PATH, get(read_firsts))
         .route("/v1/say", post(say))
         .route("/v1/push", get(push_key))
         .route("/v1/server", get(describe))
@@ -1198,6 +1202,19 @@ async fn read_activity(
     .await;
     match read {
         Ok(Ok(rows)) => Json(json!({"rows": rows})).into_response(),
+        Ok(Err(failure)) => history_failed(failure),
+        Err(failure) => history_failed(failure),
+    }
+}
+
+async fn read_firsts(State(ergo): State<Arc<Ergo>>) -> Response {
+    let store = crate::activity::path_for(&ergo.history);
+    let read = tokio::task::spawn_blocking(move || {
+        crate::activity::firsts(&crate::activity::open(&store)?)
+    })
+    .await;
+    match read {
+        Ok(Ok(firsts)) => Json(zirc_proto::onboarding::Firsts { firsts }).into_response(),
         Ok(Err(failure)) => history_failed(failure),
         Err(failure) => history_failed(failure),
     }

@@ -637,6 +637,9 @@ pub struct Daemon {
     auto_intents: auto_intents::AutoIntents,
     /// How sessions' watches woke, and whether they acted on it.
     wakes: wakes::Wakes,
+    /// The sessions the recorder was told have started watching, since zircd started
+    /// ([`zirc_proto::activity::Watching`]).
+    watching_told: BTreeSet<String>,
     /// When each sender last woke every session with `@everyone` ([`broadcast`]).
     broadcasts: broadcast::Broadcasts,
     /// What each session waits on ([`awaits`]).
@@ -808,6 +811,7 @@ impl Daemon {
             requests: requests::Requests::default(),
             auto_intents: auto_intents::AutoIntents::default(),
             wakes: wakes::Wakes::default(),
+            watching_told: BTreeSet::new(),
             broadcasts: broadcast::Broadcasts::default(),
             awaits: awaits::Awaits::default(),
             gotchas: gotchas::Kept::default(),
@@ -951,6 +955,7 @@ impl Daemon {
         if let Some(session) = &session {
             self.book.seen(session, now());
             self.catch_up(&heard, session);
+            self.started_watching(session);
         }
         self.watchers.push(Watcher { heard, session });
     }
