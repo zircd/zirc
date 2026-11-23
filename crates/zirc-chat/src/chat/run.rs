@@ -5,7 +5,7 @@
 
 use zirc_line::Line;
 
-use super::{Chat, Kind, is_channel, is_group};
+use super::{Chat, EntryKind, Kind, is_channel, is_group};
 use crate::command::{Command, said};
 use crate::emoji::{self, Newest};
 
@@ -103,6 +103,55 @@ impl Chat {
         // What answers it, whatever it is, shows here too.
         self.raw_until = Some(now + chrono::TimeDelta::seconds(RAW_REPLIES_FOR));
         Ran::Send(vec![line])
+    }
+
+    /// Says `words` in the conversation `here` with `files` attached, already uploaded: one
+    /// message, a reply or with sealed parts as [`Chat::run`] would say the words alone,
+    /// whose text ends with the files' links and whose tag names them
+    /// ([`zirc_proto::attached`]). At most [`zirc_proto::attached::MAX_FILES`] go. What
+    /// [`Chat::run`] answers: nothing was sent unless it's [`Ran::Send`] or [`Ran::Replied`].
+    pub fn say_attached(
+        &mut self,
+        here: &Here<'_>,
+        words: &str,
+        files: &[zirc_proto::File],
+    ) -> Ran {
+        use zirc_proto::attached::{MAX_FILES, TAG, text, value};
+        let files = &files[..files.len().min(MAX_FILES)];
+        let value = value(files);
+        // Their tag takes room a sealed part can't have.
+        self.attaching = TAG.len() + value.len() + 2;
+        let mut ran = self.run(here, Command::Say(text(words, files)));
+        self.attaching = 0;
+        if let Ran::Send(lines) | Ran::Replied(lines) = &mut ran {
+            super::sending::tag_opening(lines, TAG, &value);
+            self.attach_echo(here.name, files);
+        }
+        ran
+    }
+
+    /// Gives our own message just said in `name`, where the server echoes nothing back,
+    /// its `files`, and takes their links out of its words, as one heard would have them.
+    fn attach_echo(&mut self, name: &str, files: &[zirc_proto::File]) {
+        if self.link.as_ref().is_some_and(|link| link.echo) {
+            return;
+        }
+        let me = self.me.clone();
+        let Some(conversation) = self.position(name).map(|at| &mut self.conversations[at]) else {
+            return;
+        };
+        let said = conversation
+            .entries
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.from == me && matches!(entry.kind, EntryKind::Message(_)));
+        if let Some(entry) = said
+            && let EntryKind::Message(text) = &mut entry.kind
+        {
+            *text = zirc_proto::attached::words(text, files).to_owned();
+            entry.formatted = None;
+            entry.files = files.to_vec();
+        }
     }
 
     /// Carries out `command`, typed in the conversation `here`, as every app does.

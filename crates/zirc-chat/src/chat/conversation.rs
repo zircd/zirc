@@ -98,6 +98,9 @@ pub struct Entry {
     /// Its sealed parts, each a `[sealed]` in its text, when it has some
     /// ([`super::Chat::sealed_parts`]).
     pub sealed: Option<super::SealedTag>,
+    /// The files attached to a message, which its text no longer names
+    /// ([`zirc_proto::attached`]): drawn under its words. None on anything else.
+    pub files: Vec<zirc_proto::File>,
 }
 
 /// What a reply answers, as apps show it above the reply, as `↪ bob: first line…`, and jump
@@ -181,6 +184,7 @@ impl Entry {
             formatted: None,
             edited: false,
             sealed: None,
+            files: Vec::new(),
         }
     }
 

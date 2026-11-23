@@ -257,6 +257,7 @@ impl Chat {
                 formatted: None,
                 edited: false,
                 sealed: None,
+                files: Vec::new(),
             };
             hits.push(Hit {
                 kind: ActivityKind::Reaction,

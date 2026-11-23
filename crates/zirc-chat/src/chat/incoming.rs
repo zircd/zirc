@@ -278,7 +278,7 @@ impl Chat {
         } else {
             (from.to_owned(), Kind::Query)
         };
-        let Some((entry, words)) = entry_of(param(1), notice) else {
+        let Some((entry, words, files, body)) = said(line, param(1), notice) else {
             return Vec::new();
         };
         let entry = Entry {
@@ -297,9 +297,10 @@ impl Chat {
                 .tag(REPLY)
                 .filter(|id| !id.is_empty())
                 .map(str::to_owned),
-            formatted: formatted_text(&entry, param(1)),
+            formatted: formatted_text(&entry, body),
             edited: false,
             sealed: super::SealedTag::of(line),
+            files,
             kind: entry,
             history,
         };
@@ -542,6 +543,7 @@ impl Chat {
             formatted: None,
             edited: false,
             sealed: None,
+            files: Vec::new(),
         };
         let max = self.options.max_entries;
         let _ = self.conversations[at].insert(entry, max);
@@ -644,4 +646,27 @@ impl Chat {
             Vec::new()
         }
     }
+}
+
+/// What a PRIVMSG's or NOTICE's `body` is as an entry and the words it says
+/// ([`entry_of`]), with a message's attached files and the body without their links, which
+/// its text ends with for readers that don't know the tag ([`zirc_proto::attached`]).
+fn said<'a>(
+    line: &Line,
+    body: &'a str,
+    notice: bool,
+) -> Option<(EntryKind, String, Vec<zirc_proto::File>, &'a str)> {
+    let files = line
+        .tag(zirc_proto::attached::TAG)
+        .filter(|_| !notice)
+        .map(zirc_proto::attached::parse)
+        .unwrap_or_default();
+    let body = zirc_proto::attached::words(body, &files);
+    let (entry, words) = entry_of(body, notice)?;
+    let files = if matches!(entry, EntryKind::Message(_)) {
+        files
+    } else {
+        Vec::new()
+    };
+    Some((entry, words, files, body))
 }

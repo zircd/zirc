@@ -11,6 +11,7 @@
 //! read by people.
 
 pub mod activity;
+pub mod attached;
 pub mod card;
 pub mod ci;
 pub mod colleagues;

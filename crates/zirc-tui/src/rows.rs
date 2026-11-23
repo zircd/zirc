@@ -419,9 +419,15 @@ fn message_rows(look: &Look<'_>, line: &Line, speaker: &LineSpeaker, rows: &mut 
     };
     let mut runs = match &line.file {
         Some(file) => file_runs(file, width),
+        // Files attached to it and no words: the files alone.
+        None if line.text.is_empty() && !line.files.is_empty() => Vec::new(),
         None => words(look, line, width, &tone),
     };
     edited(line, &mut runs, width);
+    // The files attached to it, under its words, each as a shared file is said.
+    for file in &line.files {
+        runs.extend(file_runs(file, width));
+    }
     rows.extend(runs.into_iter().map(|run| run.row(line, String::new())));
     rows.extend(more_row(line));
 }

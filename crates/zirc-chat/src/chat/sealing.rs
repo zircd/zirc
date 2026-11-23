@@ -623,7 +623,7 @@ impl Chat {
             .as_deref()
             .map_or(0, |client| taken(CLIENT_TAG, client));
         let reply = to.map_or(0, |to| taken(REPLY, to));
-        CLIENT_TAGS_MAX.saturating_sub(client + reply)
+        CLIENT_TAGS_MAX.saturating_sub(client + reply + self.attaching)
     }
 }
 

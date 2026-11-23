@@ -313,6 +313,7 @@ impl Chat {
             formatted: None,
             edited: false,
             sealed: None,
+            files: Vec::new(),
         };
         let mut lines = Vec::new();
         match line.command.as_str() {
@@ -415,6 +416,7 @@ impl Chat {
                     formatted: None,
                     edited: false,
                     sealed: None,
+                    files: Vec::new(),
                 };
                 self.push(at, entry);
             }

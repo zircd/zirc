@@ -231,6 +231,9 @@ pub struct Line {
     pub system: Option<SystemLine>,
     /// For a file, what to draw.
     pub file: Option<LineFile>,
+    /// For a message, the files attached to it, to draw under its words as [`Line::file`]
+    /// is drawn ([`zirc_proto::attached`]): none on any other line.
+    pub files: Vec<LineFile>,
     /// What can be done with it, which its hover bar, menu and long-press sheet offer.
     pub actions: LineActions,
 }
@@ -918,6 +921,12 @@ impl<'a> Layout<'a> {
                     &entry.place(&self.conversation.name),
                 );
                 self.sealed(&mut line, entry);
+                // Its attached files, those the web app hosts: never another address.
+                line.files = entry
+                    .files
+                    .iter()
+                    .filter_map(|file| self.line_file(file))
+                    .collect();
                 line
             }
             Item::Notice {
@@ -1022,6 +1031,7 @@ impl<'a> Layout<'a> {
             more: None,
             system: None,
             file: None,
+            files: Vec::new(),
             actions: LineActions::default(),
         }
     }
@@ -1755,6 +1765,7 @@ mod tests {
             formatted: None,
             edited: false,
             sealed: None,
+            files: Vec::new(),
         };
         chat.conversations[at].entries.push(entry);
     }
@@ -2982,6 +2993,55 @@ mod tests {
             "checkout"
         ));
         assert!(!super::names_word("build 1421 failed: e2e", "flaky-e2e"));
+    }
+
+    /// A message with files attached is one row: its words, without the links its text ends
+    /// with, and its files to draw under them. Said by us, its text has the links and its
+    /// tag the files, as a reply when it answers something.
+    #[test]
+    fn a_message_with_files_attached_is_one_row_of_words_and_files() {
+        let file = |id: &str| zirc_proto::File {
+            url: format!("https://zirc.dev/m/acme/{id}"),
+            name: format!("{id}.png"),
+            mime: "image/png".into(),
+            size: 2048,
+            width: Some(640),
+            height: Some(480),
+            duration_ms: None,
+        };
+        let files = [file("before"), file("after")];
+        let tag = zirc_proto::attached::value(&files);
+        let mut chat = chat();
+        chat.set_picture_site(Some("https://zirc.dev".into()), Some("acme".into()));
+        let heard = format!(
+            "@time=2026-10-30T09:00:00.000Z;msgid=m1;+zirc/files={tag} :alice!u@h PRIVMSG #api :me: before and after {} {}",
+            files[0].url, files[1].url
+        );
+        feed(&mut chat, &[&heard]);
+        let lines = api(&chat);
+        let row = lines.last().unwrap();
+        assert_eq!(
+            (row.kind, row.text.as_str()),
+            (LineKind::Chat, "me: before and after")
+        );
+        assert!(row.mention);
+        let drawn: Vec<_> = row.files.iter().map(|file| file.name.as_str()).collect();
+        assert_eq!(drawn, ["before.png", "after.png"]);
+
+        let here = crate::chat::Here {
+            replying: Some("m1"),
+            ..crate::chat::Here::new("#api", (15, 0))
+        };
+        let crate::chat::Ran::Replied(sent) = chat.say_attached(&here, "the fix", &files[..1])
+        else {
+            panic!("it's a reply");
+        };
+        assert_eq!(sent[0].params[1], "the fix https://zirc.dev/m/acme/before");
+        assert_eq!(
+            sent[0].tag("+zirc/files"),
+            Some(zirc_proto::attached::value(&files[..1]).as_str())
+        );
+        assert_eq!(sent[0].tag("+draft/reply"), Some("m1"));
     }
 
     /// Under our latest message to an agent, what its machine says of it; nothing under an
