@@ -1002,17 +1002,33 @@ pub fn to_agent(session: &str, text: &str) -> String {
     format!("{session} {text}")
 }
 
+/// The conversation with the agent `session` on the machine `nick`: `<machine>/<session>`,
+/// as [`agent`] reads it.
+#[must_use]
+pub fn agent_channel(nick: &str, session: &str) -> String {
+    format!("{nick}{SESSION_MARK}{session}")
+}
+
+/// Whom `text`, said to a machine, names first, and the rest: `<session> …`, with the
+/// `/agent` older apps put before it left out. None for nothing but `/agent`.
+#[must_use]
+pub fn named_session(text: &str) -> Option<(&str, &str)> {
+    let text = text.trim_start();
+    let text = match text.strip_prefix("/agent") {
+        Some(rest) if rest.starts_with(char::is_whitespace) => rest.trim_start(),
+        _ => text,
+    };
+    let (first, rest) = text.split_once(char::is_whitespace).unwrap_or((text, ""));
+    (!first.is_empty()).then(|| (first, rest.trim_start()))
+}
+
 /// What `text`, said to a machine, says to `session` on it, when it's for that session:
 /// `text` without its `<session>` (and the `/agent` older apps put before it).
 #[must_use]
 pub fn for_agent<'a>(text: &'a str, session: &str) -> Option<&'a str> {
-    let text = text.trim_start();
-    let rest = match text.strip_prefix("/agent") {
-        Some(rest) if rest.starts_with(char::is_whitespace) => rest.trim_start(),
-        _ => text,
-    };
-    let rest = rest.strip_prefix(session)?;
-    (rest.is_empty() || rest.starts_with(char::is_whitespace)).then(|| rest.trim_start())
+    named_session(text)
+        .filter(|(first, _)| *first == session)
+        .map(|(_, rest)| rest)
 }
 
 /// Whether `nick` is an integration's ([`zirc_proto::names::is_integration_nick`]), whatever
@@ -1083,6 +1099,16 @@ mod tests {
         assert_eq!(for_agent("/agent cc-2 run it", "cc-1"), None);
         assert_eq!(for_agent("/agentcc-1 run it", "cc-1"), None);
         assert_eq!(for_agent("hello", "cc-1"), None);
+        assert_eq!(
+            named_session("/agent cc-1 run it"),
+            Some(("cc-1", "run it"))
+        );
+        assert_eq!(named_session("  cc-1"), Some(("cc-1", "")));
+        assert_eq!(named_session("/agent "), None);
+        assert_eq!(
+            agent(&agent_channel("me-mbp", "cc-1")),
+            Some(("me-mbp", "cc-1"))
+        );
     }
 
     #[test]

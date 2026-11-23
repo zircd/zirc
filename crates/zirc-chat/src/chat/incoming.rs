@@ -3,7 +3,8 @@
 use super::{
     Attendance, CLIENT_TAG, Chat, DEFAULT_CHANNELS, Entry, EntryKind, Event, Kind, Line, Logged,
     REACT, REPLY, Reading, SESSION_MARK, UNREACT, WHO_TOKEN, agent, by_choice, entry_of, fold,
-    for_agent, formatted_text, is_channel, is_service, joins, nick_of, some, strip_formatting,
+    for_agent, formatted_text, is_channel, is_service, joins, named_session, nick_of, some,
+    strip_formatting,
 };
 use chrono::{DateTime, Utc};
 use zirc_proto::{Level, Message};
@@ -227,7 +228,7 @@ impl Chat {
             (line.tag(REPLY), zirc_proto::receipt::Receipt::parse(value))
             && !from.eq_ignore_ascii_case(&self.me)
         {
-            let name = super::fold(&format!("{from}{SESSION_MARK}{}", receipt.session));
+            let name = super::fold(&super::agent_channel(from, &receipt.session));
             if let Some(at) = self.position(&name) {
                 self.conversations[at].touch(id);
             }
@@ -420,13 +421,7 @@ impl Chat {
                 // Or a session the machine runs that has no conversation yet, as after the
                 // app started again: what we said to it is its.
                 .or_else(|| {
-                    let first = text.trim_start();
-                    let first = first
-                        .strip_prefix("/agent")
-                        .filter(|rest| rest.starts_with(char::is_whitespace))
-                        .unwrap_or(first);
-                    let session = first.split_whitespace().next()?;
-                    let rest = for_agent(text, session)?;
+                    let (session, rest) = named_session(text)?;
                     self.known_on(nick, session)
                         .then(|| (session.to_owned(), rest.to_owned()))
                 });

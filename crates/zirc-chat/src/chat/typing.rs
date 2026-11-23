@@ -159,7 +159,7 @@ impl Chat {
             .map(str::to_owned);
         let name = match (&session, is_channel(to)) {
             (_, true) => to.to_owned(),
-            (Some(session), false) => format!("{from}{SESSION_MARK}{session}"),
+            (Some(session), false) => super::agent_channel(from, session),
             (None, false) => from.to_owned(),
         };
         debug_assert!(session.is_none() || is_channel(to) || agent(&name).is_some());

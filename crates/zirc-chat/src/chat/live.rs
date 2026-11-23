@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use chrono::{DateTime, TimeDelta, Utc};
 use zirc_proto::session::{LIVE_GRACE_SECS, Live};
 
-use super::{Chat, SESSION_MARK, fold, profile::ago_short};
+use super::{Chat, fold, profile::ago_short};
 
 /// What a machine last said of its sessions.
 #[derive(Debug, Clone)]
@@ -165,7 +165,7 @@ impl Chat {
                     .sessions
                     .iter()
                     .filter(|session| self.session_live(&known.nick, session) == Some(true))
-                    .map(|session| format!("{}{SESSION_MARK}{session}", known.nick))
+                    .map(|session| super::agent_channel(&known.nick, session))
             })
             .collect()
     }

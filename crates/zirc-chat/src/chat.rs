@@ -125,8 +125,8 @@ pub use code_ref::{
 };
 pub use conversation::{
     Attendance, CLIENT_TAG, COMMITS_AND_PUSHES_SHOW_AT, Conversation, Entry, EntryKind, Kind,
-    Member, PREFIXES, QUOTE_CHARS, Quote, Reaction, SESSION_MARK, agent, default_threshold, fold,
-    for_agent, is_channel, target, to_agent,
+    Member, PREFIXES, QUOTE_CHARS, Quote, Reaction, SESSION_MARK, agent, agent_channel,
+    default_threshold, fold, for_agent, is_channel, named_session, target, to_agent,
 };
 pub use copied::{CopiedMessage, copied};
 pub use correcting::{

@@ -2,8 +2,8 @@
 
 use super::{
     BACKGROUND_AWAY, BTreeMap, Chat, DateTime, Entry, EntryKind, IDLE_AFTER_SECS, IDLE_AWAY, Kind,
-    LOCKED_AWAY, Line, Message, Person, PersonRow, Presence, PresenceMap, SESSION_MARK, Utc, agent,
-    away_line, conversation, fold, for_agent, nick_of, people, view,
+    LOCKED_AWAY, Line, Message, Person, PersonRow, Presence, PresenceMap, Utc, agent, away_line,
+    conversation, fold, for_agent, nick_of, people, view,
 };
 
 impl Chat {
@@ -214,7 +214,7 @@ impl Chat {
                 && session != zirc_proto::NO_SESSION
                 && (ended_too || self.session_live(nick, session) != Some(false))
             {
-                let name = format!("{nick}{SESSION_MARK}{session}");
+                let name = super::agent_channel(nick, session);
                 agents.entry(fold(&name)).or_insert(name);
             }
         };
@@ -263,7 +263,7 @@ impl Chat {
         if session.is_empty() || session == zirc_proto::NO_SESSION || !self.ours(nick) {
             return;
         }
-        let name = format!("{nick}{SESSION_MARK}{session}");
+        let name = super::agent_channel(nick, session);
         if self.position(&name).is_some() {
             return;
         }
@@ -283,7 +283,7 @@ impl Chat {
     /// one. What we said to that session before it was made, kept with the machine's own
     /// conversation, as history from before it answered, moves to it.
     pub(super) fn ensure_agent(&mut self, nick: &str, session: &str) -> usize {
-        let name = format!("{nick}{SESSION_MARK}{session}");
+        let name = super::agent_channel(nick, session);
         if let Some(at) = self.position(&name) {
             return at;
         }
