@@ -40,13 +40,12 @@ pub const HISTORY: &[(&str, &str)] = &[
     // owners any, through the sidecar's operator (crate::trim). Without this Ergo also
     // stops telling clients what was removed.
     ("ERGO__HISTORY__RETENTION__ALLOW_INDIVIDUAL_DELETE", "true"),
-    // Reactions, and taking them back, so a reload shows what's left; the team's events
-    // in a conversation with a guest (crate::gateway::SUPPORT_TAG); and a machine's word
+    // Reactions, and taking them back, so a reload shows what's left; and a machine's word
     // on a message to one of its agents (zirc_proto::receipt::TAG: a copy, as this is
     // Ergo's own configuration, which a test here keeps the same).
     (
         "ERGO__HISTORY__TAGMSG_STORAGE__WHITELIST",
-        r#"["+draft/react", "+react", "+draft/unreact", "+zirc/support", "+zirc/receipt"]"#,
+        r#"["+draft/react", "+react", "+draft/unreact", "+zirc/receipt"]"#,
     ),
 ];
 
@@ -122,7 +121,7 @@ pub fn token_auth_settings(keys: &[String]) -> Vec<([&'static str; 3], String)> 
         .collect();
     vec![
         (["accounts", "jwt-auth", "enabled"], "true".to_owned()),
-        // Never an account made by a token: guests come in through the gateway, without one.
+        // Never an account made by a token: zirc.dev registers every account.
         (["accounts", "jwt-auth", "autocreate"], "false".to_owned()),
         (["accounts", "jwt-auth", "tokens"], tokens.to_string()),
     ]

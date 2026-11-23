@@ -1,6 +1,5 @@
 //! The sidecar that runs beside each zirc server's Ergo, in its pod: its account endpoint, the
-//! history search, the public channels' gateway, guests, usage counts and metrics. See
-//! README.md.
+//! history search, usage counts and metrics. See README.md.
 
 pub mod accounts;
 pub mod activity;
@@ -8,8 +7,6 @@ pub mod config;
 pub mod environment;
 pub mod ergo;
 pub mod exporter;
-pub mod gateway;
-pub mod guests;
 pub mod hints;
 pub mod history;
 pub mod index;
@@ -28,7 +25,6 @@ pub mod suggestions;
 pub mod teams;
 pub mod trim;
 pub mod usage;
-pub mod visitors;
 pub mod workflows;
 
 /// Everything the sidecar is told, on its command line or in its environment.

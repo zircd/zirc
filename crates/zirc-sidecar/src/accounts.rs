@@ -10,8 +10,6 @@
 //!   again (200, also when there was no such account). zirc.dev does this when a handle
 //!   changes, a member leaves and a machine is revoked: accounts are never locked
 //!   (docs/accounts.md).
-//! - `POST /v1/accounts/<name>/suspend`: it can't log in, and its connections are dropped
-//!   (200). `DELETE` lifts that (200). For banning guests only.
 //! - `PUT /v1/accounts/<name>/keys/<key>` `{"label"}`: lets a device sign in to the account
 //!   with its key (`crate::signin`; `<key>` is its public key, `zirc_proto::device_key`): 201
 //!   when it's new, and the person is told by a message from the server, 200 when it was
@@ -47,21 +45,10 @@
 //! - `GET /v1/push`: `{"vapidKey"}`, the key the pusher signs its pushes with
 //!   (`crate::pusher`), for zirc.dev to check the pushes it relays to phones; `null` while
 //!   push is off.
-//! - `GET /v1/guests`: the organisation's guests (`crate::guests`), most recently there first:
-//!   `{"guests": [{"name", "connected", "lastSeen", "channels"}]}`.
-//! - `GET /v1/guests/unread?text=true|false`: what staff wrote to each guest with an account
-//!   while they were away and that hasn't been mailed, for zirc.dev's reply emails: `{"unread":
-//!   [{"guest", "lines": [{"msgid", "time", "from", "text"}]}]}`, at most 20 lines a guest, each
-//!   cut at 2000 characters; with `text=false`, without the text. Never staff's lines to each
-//!   other, and never logged. `POST /v1/guests/mailed` `{"msgids"}` marks lines mailed, so
-//!   they're never sent twice (204).
-//! - `POST /v1/guests/<name>/forget`: deletes everything of theirs from the history, both sides
-//!   of their conversations, and ends their connection: `{"forgotten", "messages"}`. Fourteen
-//!   days after a guest was last there, the sidecar does it by itself.
 //! - `GET /v1/server`: how the server is now, for its Server tab: `{"version", "startedAt",
 //!   "connections": {"people", "agents", "other"}, "storage": {"usedBytes", "sizeBytes"}}`.
-//!   People and agents are those connected now; `other`, every other client: guests, and
-//!   whoever has only the gate password.
+//!   People and agents are those connected now; `other`, every other client: whoever has
+//!   only the gate password.
 //! - `GET /v1/channels`: the server's channels for its members' dashboard, busiest first:
 //!   `{"channels": [{"name", "users", "messagesLastHour"}]}` (`crate::exporter::channels`).
 //!   Read-only. Channels' names are served from here, never put in metrics: nothing about a
@@ -72,8 +59,7 @@
 //!   all, never the organisation's own rooms (`crate::purge`).
 //!
 //! The same content routes, with people's own tokens rather than this endpoint's, are served at
-//! the server's host name beside the guest gateway, where the server's desired state turns
-//! them on ([`content`]).
+//! the server's host name, where the server's desired state turns them on ([`content`]).
 //!
 //! Errors are `{"error", "message"}`: 400 `invalid`, 401, 404 `not-found`, 409 `reserved`
 //! (a name once unregistered rather than erased, which Ergo doesn't give out again), 502 `ergo`, 503 `starting`
@@ -97,7 +83,7 @@ use tracing::{debug, info, warn};
 
 use crate::ergo::{Api, Operator, OperatorError};
 use crate::history::{self, Conversation, Viewer};
-use crate::{gateway, guests, profiles, say, signin, teams, trim, usage};
+use crate::{profiles, say, signin, teams, trim, usage};
 use zirc_proto::colleagues::Colleagues;
 use zirc_proto::desired::Visibility;
 
@@ -133,9 +119,10 @@ pub struct Options {
     #[arg(long, env = "CONTROLLER_TOKEN", hide_env_values = true)]
     pub controller_token: Option<String>,
 
-    /// Where guests of the public channels connect (`crate::gateway`).
+    /// Where to serve the content API ([`content`]), which the edge sends the server's host
+    /// name to.
     #[arg(long, default_value = "0.0.0.0:9102")]
-    pub guest_listen: SocketAddr,
+    pub content_listen: SocketAddr,
 
     /// The server's host name, which devices' tokens must be for (`crate::signin`). Without
     /// it, no device key signs in.
@@ -179,10 +166,8 @@ struct Ergo {
     visibility: tokio::sync::Mutex<Option<Visibility>>,
     /// Searches running now: a few at once, and the rest told to come back.
     searches: tokio::sync::Semaphore,
-    /// The public channels' guests (`crate::gateway`).
-    gateway: Arc<gateway::Gateway>,
-    /// What's been mailed to guests (`crate::guests`).
-    mailed: tokio::sync::Mutex<guests::Mailed>,
+    /// Whether the server runs workflows, as the controller last said (`crate::workflows`).
+    workflows: Arc<tokio::sync::watch::Sender<bool>>,
     /// People's and machines' names and pictures (`crate::profiles`).
     profiles: tokio::sync::Mutex<profiles::Profiles>,
     /// Devices' keys, and the login log (`crate::signin`).
@@ -224,9 +209,7 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
     let ergo = ergo(&options, api, history);
     tokio::spawn(sweep(ergo.clone()));
     tokio::spawn(note_connected(ergo.clone()));
-    tokio::spawn(forget_guests(ergo.clone()));
     tokio::spawn(keep_profiles(ergo.clone()));
-    tokio::spawn(push_visitors(ergo.clone()));
     tokio::spawn(suggest(ergo.clone()));
     // The recorder of machines' activity records, beside the history (crate::recorder).
     let recorder = crate::recorder::Recorder {
@@ -277,7 +260,7 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
         token: ergo.token.clone(),
         history: ergo.history.clone(),
         machines: ergo.machines.clone(),
-        gateway: ergo.gateway.clone(),
+        on: ergo.workflows.clone(),
         admins: {
             let ergo = ergo.clone();
             Box::new(move || {
@@ -313,20 +296,10 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
             warn!(%error, "can't answer Ergo's logins");
         }
     });
-    // The listener the edge sends the server's host name to: guests, and the content API.
-    let guests = tokio::net::TcpListener::bind(options.guest_listen).await?;
-    let public = gateway::router(ergo.gateway.clone()).merge(content::router(ergo.clone()));
-    tokio::spawn(axum::serve(guests, public).into_future());
+    // The listener the edge sends the server's host name to: the content API.
+    let public = tokio::net::TcpListener::bind(options.content_listen).await?;
+    tokio::spawn(axum::serve(public, content::router(ergo.clone())).into_future());
     axum::serve(tokio::net::TcpListener::bind(listen).await?, routes(ergo)).await
-}
-
-/// Every so often, tells the owners of visitors that waited out the gap (`crate::visitors`).
-async fn push_visitors(ergo: Arc<Ergo>) {
-    let mut every = tokio::time::interval(std::time::Duration::from_secs(30));
-    loop {
-        every.tick().await;
-        ergo.gateway.push_due();
-    }
 }
 
 /// Every so often, gives the owners ops in the channels made since (`teams::sweep`).
@@ -377,12 +350,6 @@ pub fn router(options: &Options, api: Api, history: PathBuf) -> Router {
 }
 
 fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
-    let gateway = gateway::Gateway::new(
-        options.irc,
-        options.gate_password.clone().filter(|p| !p.is_empty()),
-        Some(history.clone()),
-        Some((api.clone(), options.oper_password.clone())),
-    );
     Arc::new(Ergo {
         api,
         operator: Operator {
@@ -400,7 +367,6 @@ fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
         machines: crate::machines::Machines::beside(&history),
         invite_only: tokio::sync::Mutex::default(),
         seen: tokio::sync::Mutex::new(usage::Seen::beside(&history)),
-        mailed: tokio::sync::Mutex::new(guests::Mailed::beside(&history)),
         profiles: tokio::sync::Mutex::new(profiles::Profiles::beside(&history)),
         signin: Arc::new(signin::Signin::beside(
             &history,
@@ -414,7 +380,7 @@ fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
         colleagues: tokio::sync::Mutex::new(None),
         hints: crate::hints::Store::beside(&history),
         searches: tokio::sync::Semaphore::new(SEARCHES),
-        gateway,
+        workflows: Arc::new(tokio::sync::watch::Sender::new(false)),
         history,
         pushing: options.push_subscriber.is_some(),
     })
@@ -441,10 +407,6 @@ fn routes(ergo: Arc<Ergo>) -> Router {
             "/v1/accounts/{name}/keys/{key}",
             put(add_key).delete(remove_key),
         )
-        .route(
-            "/v1/accounts/{name}/suspend",
-            post(suspend).delete(unsuspend),
-        )
         .route("/v1/messages", get(find_messages))
         .route("/v1/activity", get(read_activity))
         .route("/v1/say", post(say))
@@ -457,10 +419,6 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         .route(zirc_proto::workflow::RUNS_PATH, get(workflow_runs))
         .route("/v1/channels", get(list_channels))
         .route("/v1/channels/purge", get(old_channels).post(purge_channels))
-        .route("/v1/guests", get(list_guests))
-        .route("/v1/guests/unread", get(unread_for_guests))
-        .route("/v1/guests/mailed", post(mailed_to_guests))
-        .route("/v1/guests/{name}/forget", post(forget_guest))
         .route("/v1/history", get(read_history))
         .route("/v1/conversations", get(list_conversations))
         .route(
@@ -475,7 +433,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
 
 /// The person `name` is, a machine's being its owner's, and their role by the owners and admins
 /// the server was last told of: for the server's own services, such as a self-hosted server's
-/// files (who may remove one). 404 for an account that's nobody's, such as a guest's.
+/// files (who may remove one). 404 for an account that's nobody's, such as an integration's.
 async fn account_role(State(ergo): State<Arc<Ergo>>, Path(name): Path<String>) -> Response {
     let Some(person) = content::person_of(&name, &ergo.machines) else {
         return error(
@@ -551,9 +509,11 @@ async fn set_teams(
     } else {
         desired.public.keys.clone()
     };
-    ergo.gateway.set(desired.public.clone());
-    ergo.gateway
-        .set_owners(&desired.owners.iter().cloned().collect::<Vec<_>>());
+    ergo.workflows.send_if_modified(|on| {
+        let changed = *on != desired.public.workflows;
+        *on = desired.public.workflows;
+        changed
+    });
     // Whose machines are, as zirc.dev says now; a controller from before them says nothing, and
     // what was said before stands.
     match &desired.machines {
@@ -569,12 +529,6 @@ async fn set_teams(
     match teams::reconcile(&ergo.api, &ergo.operator, &desired).await {
         Ok(outcome) => {
             info!(channels = outcome.len(), "teams set");
-            // Public channels hide their guests from each other (+u).
-            for channel in &desired.public.channels {
-                if let Err(failure) = ergo.operator.modes(channel, "+u").await {
-                    warn!(%failure, "couldn't set a public channel's +u");
-                }
-            }
             *owners = Owners {
                 accounts: desired.owners.clone(),
                 done: outcome
@@ -685,7 +639,6 @@ async fn viewer(ergo: &Ergo, headers: &axum::http::HeaderMap) -> Result<Viewer, 
         machines,
         channels: BTreeSet::new(),
         policy: ergo.visibility.lock().await.unwrap_or_default(),
-        guests: ergo.gateway.has_guests(),
     };
     // Their channels, and their machines', whose agents act for them.
     let accounts = sessions(&ergo.api)
@@ -1504,7 +1457,7 @@ async fn integration_account(ergo: &Ergo, nick: &str, reset: bool) -> Result<(),
 /// `GET /v1/workflows`: the workflows the server runs and their runs that aren't finished
 /// ([`crate::workflows::listed`]), and whether it runs them at all.
 async fn list_workflows(State(ergo): State<Arc<Ergo>>) -> Response {
-    let on = *ergo.gateway.runs_workflows().borrow();
+    let on = *ergo.workflows.borrow();
     let (workflows, refused) = crate::workflows::listed();
     Json(zirc_proto::workflow::Hosting {
         on,
@@ -1523,7 +1476,7 @@ async fn deploy_workflow(
     Json(body): Json<zirc_proto::workflow::Deploying>,
 ) -> Response {
     use zirc_proto::workflow::{CHANNEL, Deploy, Sent};
-    if !*ergo.gateway.runs_workflows().borrow() {
+    if !*ergo.workflows.borrow() {
         return error(
             StatusCode::CONFLICT,
             "off",
@@ -1665,8 +1618,8 @@ async fn upsert(
     // A name Ergo has but can't load is suspended or unregistered: left from when zirc.dev
     // locked accounts, before it freed names (docs/accounts.md). zirc.dev sets only names its
     // records give to this person or machine, so what's left of it is erased, and it's
-    // registered afresh. Never a guest's: a banned guest stays banned.
-    if registered.error_code.as_deref() == Some("ACCOUNT_EXISTS") && !name.starts_with("guest-") {
+    // registered afresh.
+    if registered.error_code.as_deref() == Some("ACCOUNT_EXISTS") {
         match exists(&ergo, &name).await {
             Ok(true) => {}
             Ok(false) => {
@@ -1720,7 +1673,7 @@ async fn upsert(
             info!(account = name, "passphrase set");
             (StatusCode::OK, Json(json!({"name": name}))).into_response()
         }
-        // A guest's, taken once and unregistered: Ergo keeps the name from everyone.
+        // A name unregistered once rather than erased: Ergo keeps it from everyone.
         (false, Some("ACCOUNT_DOES_NOT_EXIST")) => error(
             StatusCode::CONFLICT,
             "reserved",
@@ -1947,7 +1900,11 @@ async fn add_key(
             let text = new_device(body.label.trim());
             if let Err(failure) = ergo
                 .operator
-                .direct(crate::visitors::FROM, std::slice::from_ref(&name), &text)
+                .direct(
+                    zirc_proto::names::SYSTEM,
+                    std::slice::from_ref(&name),
+                    &text,
+                )
                 .await
             {
                 warn!(%failure, account = name, "couldn't tell of a new device");
@@ -2001,49 +1958,6 @@ async fn list_keys(State(ergo): State<Arc<Ergo>>, Path(name): Path<String>) -> R
         })
         .collect();
     Json(json!({"keys": keys})).into_response()
-}
-
-async fn suspend(State(ergo): State<Arc<Ergo>>, Path(name): Path<String>) -> Response {
-    nickserv_on(&ergo, &name, "SUSPEND ADD", "suspended").await
-}
-
-async fn unsuspend(State(ergo): State<Arc<Ergo>>, Path(name): Path<String>) -> Response {
-    nickserv_on(&ergo, &name, "SUSPEND DEL", "unsuspended").await
-}
-
-/// Runs an operator's `NickServ` command on an account that exists.
-async fn nickserv_on(ergo: &Ergo, name: &str, command: &str, done: &str) -> Response {
-    if !valid_name(name) {
-        return error(StatusCode::BAD_REQUEST, "invalid", "not an account name");
-    }
-    // Ergo's API doesn't find a suspended account, so only suspending asks it first; lifting
-    // goes by NickServ's own answer.
-    if command == "SUSPEND ADD" {
-        match exists(ergo, name).await {
-            Ok(true) => {}
-            Ok(false) => return error(StatusCode::NOT_FOUND, "not-found", "no such account"),
-            Err(response) => return *response,
-        }
-    }
-    match ergo.operator.nickserv(&format!("{command} {name}")).await {
-        Ok(reply)
-            if reply.to_lowercase().contains("no such")
-                || reply.to_lowercase().contains("not exist") =>
-        {
-            error(StatusCode::NOT_FOUND, "not-found", "no such account")
-        }
-        // "Successfully suspended account …", or that it already was (or wasn't).
-        Ok(reply)
-            if reply.contains("uccessfully")
-                || reply.contains("not suspended")
-                || reply.contains("already") =>
-        {
-            info!(account = name, "{done}");
-            (StatusCode::OK, Json(json!({"name": name}))).into_response()
-        }
-        Ok(reply) => ergo_failed(reply),
-        Err(failure) => ergo_failed(failure),
-    }
 }
 
 async fn list(State(ergo): State<Arc<Ergo>>) -> Response {
@@ -2302,194 +2216,6 @@ fn hosts_set(answer: &str) -> bool {
     answer.to_ascii_lowercase().contains("success")
 }
 
-/// The organisation's guests, from the history and the gateway, most recently there first.
-async fn guests(ergo: &Ergo) -> Result<Vec<guests::Guest>, String> {
-    let path = ergo.history.clone();
-    let known = tokio::task::spawn_blocking(move || guests::in_history(&path))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-    let (connected, seen) = ergo.gateway.presence();
-    let mut all: std::collections::BTreeMap<String, (i64, BTreeSet<String>)> = known;
-    // Guests with accounts who haven't said anything yet, and when each was last on.
-    let accounts = sessions(&ergo.api).await.map_err(|e| e.to_string())?;
-    let last_on = ergo.seen.lock().await.last();
-    for (name, _) in accounts.iter().filter(|(name, _)| guests::is_guest(name)) {
-        let entry = all.entry(name.clone()).or_default();
-        if let Some(at) = last_on.get(name) {
-            entry.0 = entry.0.max(at.saturating_mul(1_000_000_000));
-        }
-    }
-    for (name, (at, channel)) in &seen {
-        let entry = all.entry(name.clone()).or_default();
-        let at = i64::try_from(at.as_nanosecond()).unwrap_or(i64::MAX);
-        entry.0 = entry.0.max(at);
-        entry.1.insert(channel.clone());
-    }
-    let mut list: Vec<guests::Guest> = all
-        .into_iter()
-        .map(|(name, (at, channels))| guests::Guest {
-            connected: connected.contains(&name),
-            last_seen: (at > 0)
-                .then(|| jiff::Timestamp::from_nanosecond(i128::from(at)).ok())
-                .flatten()
-                .map(|t| t.to_string()),
-            channels,
-            name,
-        })
-        .collect();
-    list.sort_by(|a, b| b.last_seen.cmp(&a.last_seen).then(a.name.cmp(&b.name)));
-    Ok(list)
-}
-
-async fn list_guests(State(ergo): State<Arc<Ergo>>) -> Response {
-    match guests(&ergo).await {
-        Ok(list) => Json(json!({"guests": list})).into_response(),
-        Err(failure) => ergo_failed(failure),
-    }
-}
-
-/// A guest's name from the path, or why it isn't one.
-fn guest_named(name: &str) -> Result<String, Box<Response>> {
-    let name = name.to_lowercase();
-    if guests::is_guest(&name) {
-        Ok(name)
-    } else {
-        Err(Box::new(error(
-            StatusCode::BAD_REQUEST,
-            "invalid",
-            "not a guest's name",
-        )))
-    }
-}
-
-#[derive(Deserialize)]
-struct UnreadQuery {
-    text: Option<bool>,
-}
-
-/// What staff wrote to guests while they were away (`GET /v1/guests/unread`).
-async fn unread_for_guests(
-    State(ergo): State<Arc<Ergo>>,
-    Query(asked): Query<UnreadQuery>,
-) -> Response {
-    let accounts = match sessions(&ergo.api).await {
-        Ok(accounts) => accounts,
-        Err(failure) => return api_failed(failure),
-    };
-    let (connected, here) = ergo.gateway.presence();
-    let last_on = ergo.seen.lock().await.last();
-    let mailed = ergo.mailed.lock().await.ids();
-    let with_text = asked.text.unwrap_or(true);
-    let mut unread = Vec::new();
-    for (guest, sessions) in accounts {
-        if !guests::is_guest(&guest) || sessions > 0 || connected.contains(&guest) {
-            continue;
-        }
-        // Since they were last on, as the sidecar saw: every few minutes, and as they left.
-        let mut since = last_on
-            .get(&guest)
-            .map_or(0, |s| s.saturating_mul(1_000_000_000));
-        if let Some((at, _)) = here.get(&guest) {
-            since = since.max(i64::try_from(at.as_nanosecond()).unwrap_or(i64::MAX));
-        }
-        let (path, who, mailed) = (ergo.history.clone(), guest.clone(), mailed.clone());
-        let lines = tokio::task::spawn_blocking(move || {
-            guests::unread(&path, &who, since, &mailed, with_text)
-        })
-        .await;
-        match lines {
-            Ok(Ok(lines)) if !lines.is_empty() => {
-                unread.push(json!({"guest": guest, "lines": lines}));
-            }
-            Ok(Ok(_)) => {}
-            Ok(Err(failure)) => return history_failed(failure),
-            Err(failure) => return history_failed(failure),
-        }
-    }
-    Json(json!({"unread": unread})).into_response()
-}
-
-#[derive(Deserialize)]
-struct MailedLines {
-    msgids: Vec<String>,
-}
-
-/// Lines zirc.dev mailed (`POST /v1/guests/mailed`).
-async fn mailed_to_guests(
-    State(ergo): State<Arc<Ergo>>,
-    Json(mailed): Json<MailedLines>,
-) -> Response {
-    let now = jiff::Timestamp::now().as_second();
-    match ergo.mailed.lock().await.note(mailed.msgids, now) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(failure) => ergo_failed(failure),
-    }
-}
-
-async fn forget_guest(State(ergo): State<Arc<Ergo>>, Path(name): Path<String>) -> Response {
-    let name = match guest_named(&name) {
-        Ok(name) => name,
-        Err(response) => return *response,
-    };
-    match forget(&ergo, &name).await {
-        Ok(messages) => Json(json!({"forgotten": name, "messages": messages})).into_response(),
-        Err(failure) => ergo_failed(failure),
-    }
-}
-
-/// Forgets `guest`: ends their connection, deletes every message they're party to through
-/// Ergo, and who they talked with. Returns how many messages went.
-async fn forget(ergo: &Ergo, guest: &str) -> Result<usize, String> {
-    ergo.gateway.forget(guest);
-    let (path, who) = (ergo.history.clone(), guest.to_owned());
-    let messages = tokio::task::spawn_blocking(move || guests::messages(&path, &who))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-    let deleted = ergo
-        .operator
-        .delete_messages(&messages)
-        .await
-        .map_err(|e| e.to_string())?;
-    let (path, who) = (ergo.history.clone(), guest.to_owned());
-    tokio::task::spawn_blocking(move || guests::drop_correspondents(&path, &who))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-    // Their account too, if they had one: its always-on client goes with it.
-    if exists(ergo, guest)
-        .await
-        .map_err(|_| "couldn't ask Ergo about the account".to_owned())?
-    {
-        ergo.operator
-            .erase(guest)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    info!(guest, deleted, "forgotten");
-    Ok(deleted)
-}
-
-/// Every [`guests::SWEEP`], forgets the guests last there [`guests::KEPT`] or longer ago.
-async fn forget_guests(ergo: Arc<Ergo>) {
-    loop {
-        tokio::time::sleep(guests::SWEEP).await;
-        let list = match guests(&ergo).await {
-            Ok(list) => list,
-            Err(failure) => {
-                warn!(%failure, "couldn't list the guests to forget");
-                continue;
-            }
-        };
-        for guest in guests::due(&list, jiff::Timestamp::now()) {
-            if let Err(failure) = forget(&ergo, &guest).await {
-                warn!(guest, %failure, "couldn't forget a guest");
-            }
-        }
-    }
-}
-
 /// How the server is now (`GET /v1/server`).
 async fn describe(State(ergo): State<Arc<Ergo>>) -> Response {
     #[derive(Deserialize)]
@@ -2520,7 +2246,7 @@ async fn describe(State(ergo): State<Arc<Ergo>>) -> Response {
     };
     let (people, agents) = (on(true), on(false));
     // Every person's account keeps a client while they're away (always-on), so Ergo's count
-    // has them all; the rest are guests' and the gate's.
+    // has them all; the rest are the gate's.
     let kept: i64 = accounts
         .iter()
         .filter(|(name, _)| is_person(name))

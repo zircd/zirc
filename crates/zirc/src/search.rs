@@ -306,7 +306,6 @@ fn history_message(delivery: &Delivery) -> HistoryMessage {
         },
         text: crate::lines::text_of(delivery),
         zirc: serde_json::to_value(&delivery.message).ok(),
-        support: None,
     }
 }
 

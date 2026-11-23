@@ -37,7 +37,6 @@ fn said(id: &str, time: &str, conversation: &str, nick: &str, text: &str) -> His
         },
         text: text.into(),
         zirc: None,
-        support: None,
     }
 }
 

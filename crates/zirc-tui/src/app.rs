@@ -13,9 +13,9 @@ use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
 use zirc_core::chat::{
-    Chat, Conversation, Details, Face, GuestRequest, Here, Kind, ListKind, ListOptions, ListRow,
-    Options, Ran, RecentSearches, ReplyBar, RowUnder, SearchScreen, Shelf, UnderKind,
-    complete_mention, copy_text, entry_text, first_link, fold, is_channel,
+    Chat, Conversation, Details, Face, Here, Kind, ListKind, ListOptions, ListRow, Options, Ran,
+    RecentSearches, ReplyBar, RowUnder, SearchScreen, Shelf, UnderKind, complete_mention,
+    copy_text, entry_text, first_link, fold, is_channel,
 };
 use zirc_core::keys::EscapeDoes;
 use zirc_irc::Line;
@@ -70,10 +70,6 @@ pub enum Target {
     Shelf(Shelf),
     /// A half of the sidebar's `Channels | Messages` switch, which shows it.
     Tab(zirc_core::chat::SidebarSection),
-    /// A guest's room we aren't in, under its channel: opening it joins it.
-    Open(String),
-    /// The row a channel's guests' rooms fold under when there are many, by the channel.
-    GuestRooms(String),
     /// The scrollback, anywhere else.
     Scrollback,
 }
@@ -105,14 +101,6 @@ pub enum Action {
     /// Ask this machine's zircd what every session is doing, and hand it to
     /// [`App::sessions_answered`].
     Sessions,
-    /// Make this request of zirc.dev's Guests API as an admin, and hand
-    /// [`App::guests_answered`] `done` once it's done, or why not.
-    Guests {
-        /// The request.
-        request: GuestRequest,
-        /// What to say once it's done.
-        done: String,
-    },
     /// Open this page in the browser.
     Open(String),
     /// Press a card's button through zirc.dev, and hand [`App::press_answered`] what came
@@ -129,18 +117,7 @@ pub struct Pressing {
     pub ask: String,
 }
 
-/// What an admin does with a guest through zirc.dev.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Admin {
-    /// Refuse them in every public channel.
-    Ban,
-    /// Let them back.
-    Unban,
-    /// Invite them to join the organisation.
-    Invite,
-}
-
-/// Where an organisation's zirc.dev is, for what its admins do there rather than over IRC.
+/// Where an organisation's zirc.dev is, for what's done there rather than over IRC.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Site {
     /// The web app's address.
@@ -364,9 +341,6 @@ pub enum Side {
         /// What zirc-chat counts for it, in a pill: mentions in a channel, everything in a
         /// direct message.
         badge: u32,
-        /// For a channel with guests' rooms, its name and whether they're open under it: a
-        /// mark at the row's end, `▸` or `▾`, that a click folds or opens.
-        fold: Option<(String, bool)>,
     },
 }
 
@@ -479,7 +453,7 @@ impl App {
     /// switch, for the half shown: what's starred in it, then the channels A–Z, each
     /// repository's with its rooms under it; or the direct
     /// messages (people, groups, agent sessions and our machines' threads) newest first, our
-    /// machines online and, for staff, the conversations with guests, the closed ones folded.
+    /// machines online.
     #[must_use]
     pub fn sidebar(&self) -> Vec<Side> {
         let mut rows = Vec::new();
@@ -525,9 +499,7 @@ impl App {
                     open: row.open != Some(false),
                 };
             }
-            ListKind::Conversation | ListKind::Room | ListKind::GuestRoom => {
-                self.side_target(&row.name)
-            }
+            ListKind::Conversation | ListKind::Room => self.side_target(&row.name),
         };
         // An agent session: its tool's mark in front, in its colour.
         let agent = match row.faces.first() {
@@ -536,12 +508,7 @@ impl App {
             }
             _ => None,
         };
-        // A conversation with a guest assigned to us: a dot after its name.
-        let guest = row.guest && row.kind == ListKind::Conversation;
-        let thread = row.kind == ListKind::Room;
-        let label = if guest && row.mine {
-            format!("{} •", row.title)
-        } else if thread {
+        let label = if row.kind == ListKind::Room {
             // A thread under its channel: a branch mark from it.
             format!("└ {}", row.title)
         } else {
@@ -576,73 +543,7 @@ impl App {
             presence: row.presence.filter(|_| private),
             bold: row.bold,
             badge: row.badge,
-            fold: row
-                .open
-                .filter(|_| row.kind == ListKind::Conversation)
-                .map(|open| (row.name.clone(), open)),
         }
-    }
-
-    /// Carries out what an admin does with a guest through zirc.dev, when
-    /// `command` is one of those in the conversation `here`; `None` for anything else.
-    fn guest_admin(&mut self, command: &Command, here: &str) -> Option<Action> {
-        let shown = self.chat.guest_of(here);
-        let (what, nick) = match command {
-            Command::Ban => (Admin::Ban, shown?),
-            Command::Unban(nick) => (Admin::Unban, nick.clone().or(shown)?),
-            // Alone, `/invite` invites the guest shown; with a nick, a guest or someone to a group.
-            Command::Invite(nicks) => match nicks.as_slice() {
-                [] if shown.is_none() => {
-                    self.note("/invite needs a nick".into());
-                    return Some(Action::Send(Vec::new()));
-                }
-                [] => (Admin::Invite, shown?),
-                [nick] if self.chat.is_guest(nick) => (Admin::Invite, nick.clone()),
-                // A guest is only ever in their own conversation with staff, never a group.
-                nicks if nicks.iter().any(|nick| self.chat.is_guest(nick)) => {
-                    self.note("a guest can't join a group: /invite <guest> alone invites them to the organisation".into());
-                    return Some(Action::Send(Vec::new()));
-                }
-                _ => return None,
-            },
-            _ => return None,
-        };
-        Some(self.admin(what, &nick))
-    }
-
-    /// Asks zirc.dev to do `what` with the guest `nick`, if we're an admin there.
-    fn admin(&mut self, what: Admin, nick: &str) -> Action {
-        let verb = match what {
-            Admin::Ban => "ban",
-            Admin::Unban => "unban",
-            Admin::Invite => "invite",
-        };
-        let refused = if !self.chat.is_admin() {
-            Some(format!("only an admin can {verb} a guest"))
-        } else if self.site.is_none() {
-            Some(format!(
-                "this server isn't zirc.dev's: {verb} guests where it's run"
-            ))
-        } else {
-            None
-        };
-        let slug = self.site.as_ref().map(|site| site.slug.clone());
-        let request = slug.and_then(|slug| match what {
-            Admin::Ban => self.chat.ban_guest(&slug, nick),
-            Admin::Unban => self.chat.unban_guest(&slug, nick),
-            Admin::Invite => self.chat.invite_guest(&slug, nick),
-        });
-        let Some(request) = request.filter(|_| refused.is_none()) else {
-            self.note(refused.unwrap_or_else(|| format!("{nick} isn't a guest here")));
-            return Action::Send(Vec::new());
-        };
-        let name = self.chat.guest_name(nick);
-        let done = match what {
-            Admin::Ban => format!("{name} is banned from every public channel"),
-            Admin::Unban => format!("{name} may come back to the public channels"),
-            Admin::Invite => format!("{name} is invited to join the organisation"),
-        };
-        Action::Guests { request, done }
     }
 
     /// Shows only what people say in the conversation shown, and whatever mentions us, or
@@ -886,17 +787,11 @@ impl App {
         ));
     }
 
-    /// What zirc.dev answered a request of its Guests API: what it did, or why it didn't.
-    pub fn guests_answered(&mut self, answer: Result<String, String>) {
-        self.note(answer.unwrap_or_else(|why| format!("zirc.dev: {why}")));
-    }
-
     /// What a click on the list's row for the conversation called `name` does: shows it,
     /// or opens an agent session's not yet talked in.
     fn side_target(&self, name: &str) -> Option<Target> {
         match self.chat.position(name) {
             Some(at) => Some(Target::Conversation(at)),
-            None if zirc_core::chat::is_guest_room(name) => Some(Target::Open(name.to_owned())),
             None => self
                 .chat
                 .agent(name)
@@ -1087,13 +982,7 @@ impl App {
         let today = self.zone.date((self.chat.clock)());
         let name = &self.current().name;
         let people = self.people_only();
-        let look = rows::Look::new(
-            &self.chat,
-            &self.pressed,
-            self.chat.divider(),
-            width,
-            self.links,
-        );
+        let look = rows::Look::new(&self.pressed, self.chat.divider(), width, self.links);
         self.laid.borrow_mut().stamp((
             fold(name),
             width,
@@ -1996,19 +1885,8 @@ impl App {
             (MouseEventKind::Down(MouseButton::Left), Some(Target::Conversation(at))) => {
                 self.select(at)
             }
-            (
-                MouseEventKind::Down(MouseButton::Left),
-                Some(Target::Agent(name) | Target::Open(name)),
-            ) => self.chat.open(&name),
-            (MouseEventKind::Down(MouseButton::Left), Some(Target::GuestRooms(channel))) => {
-                let folded = self
-                    .chat
-                    .channel_groups()
-                    .into_iter()
-                    .find(|group| group.name.eq_ignore_ascii_case(&channel))
-                    .is_some_and(|group| group.guests.folded);
-                self.chat.set_guest_rooms_open(&channel, folded);
-                Vec::new()
+            (MouseEventKind::Down(MouseButton::Left), Some(Target::Agent(name))) => {
+                self.chat.open(&name)
             }
             (MouseEventKind::Down(MouseButton::Left), Some(Target::Member(nick))) => {
                 self.show_profile(&nick)
@@ -2230,9 +2108,6 @@ impl App {
     /// carries it out ([`Chat::run`]), then this client's own.
     fn run(&mut self, command: Command) -> Action {
         let here = self.current().name.clone();
-        if let Some(action) = self.guest_admin(&command, &here) {
-            return action;
-        }
         let picked = self.reacting_to();
         let replying = self.replying().map(str::to_owned);
         let editing = self.editing_id().map(str::to_owned);
@@ -2291,8 +2166,6 @@ impl App {
             Command::Decide { about, quote } => self.decide(about, quote, here),
             Command::Agents => self.list_agents(),
             Command::Browse => self.browse(),
-            // A guest's, shown or named, is asked of zirc.dev first ([`Self::guest_admin`]).
-            Command::Ban | Command::Unban(_) => self.refuse(said::FOR_GUESTS),
             Command::Who(handle) => self.show_agent(&handle),
             Command::React(None) => {
                 self.open_picker();
@@ -2528,7 +2401,6 @@ mod tests {
     use super::*;
     use chrono::{DateTime, TimeZone as _, Utc};
     use zirc_core::chat::entry_text;
-    use zirc_core::chat::is_group;
     use zirc_irc::multiline::Limits;
 
     fn noon() -> DateTime<Utc> {
@@ -2608,195 +2480,6 @@ mod tests {
     }
 
     #[test]
-    fn assigns_and_closes_a_guest_in_their_room_and_messages_one_there() {
-        let mut app = app();
-        let _ = app.connected(link(true));
-        feed(
-            &mut app,
-            &[
-                ":me!u@h JOIN #lobby",
-                ":guest-7k2q!u@h JOIN #lobby * :Anna",
-                ":guest-9z9z!u@h JOIN #lobby * :",
-                ":dana!u@h JOIN #lobby dana :Dana",
-                ":me!u@h JOIN #lobby/guest-7k2q",
-                "@time=2026-10-30T11:00:00.000Z :guest-7k2q!u@h PRIVMSG #lobby/guest-7k2q :hello?",
-            ],
-        );
-        // Outside a guest's room, there's nothing to assign.
-        let _ = app.select(app.chat.position("#lobby").unwrap());
-        assert!(sent(typed(&mut app, "/assign dana")).is_empty());
-        let _ = app.select(app.chat.position("#lobby/guest-7k2q").unwrap());
-        // Only to someone on staff.
-        assert!(sent(typed(&mut app, "/assign zed")).is_empty());
-        feed(
-            &mut app,
-            &[
-                ":s 353 me = #lobby :@me dana guest-7k2q guest-9z9z",
-                ":s 366 me #lobby :End",
-            ],
-        );
-        assert_eq!(
-            sent(typed(&mut app, "/assign dana")),
-            [
-                "@+zirc/support=assigned:dana TAGMSG #lobby/guest-7k2q",
-                "@+zirc/support=joined:dana TAGMSG #lobby/guest-7k2q",
-            ]
-        );
-        // Banning is for admins.
-        assert!(sent(typed(&mut app, "/ban")).is_empty());
-        assert_eq!(
-            app.current().entries.last().map(entry_text).as_deref(),
-            Some("only an admin can ban a guest")
-        );
-        assert_eq!(
-            sent(typed(&mut app, "/close")),
-            ["@+zirc/support=closed TAGMSG #lobby/guest-7k2q"]
-        );
-        // Still shown: closing resolves it, it doesn't leave the room.
-        assert_eq!(app.current().name, "#lobby/guest-7k2q");
-        // Messaging a guest says it in their room, which opening joins.
-        let lines = sent(typed(&mut app, "/msg guest-9z9z hi"));
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("JOIN #lobby/guest-9z9z")),
-            "{lines:?}"
-        );
-        assert!(
-            lines
-                .last()
-                .unwrap()
-                .ends_with("PRIVMSG #lobby/guest-9z9z hi"),
-            "{lines:?}"
-        );
-    }
-
-    #[test]
-    fn bans_a_guest_through_zirc_dev_as_an_admin_only() {
-        let mut app = app();
-        let _ = app.connected(link(true));
-        feed(
-            &mut app,
-            &[
-                ":me!u@h JOIN #lobby",
-                ":guest-7k2q!u@h JOIN #lobby * :Anna",
-                "@time=2026-10-30T11:00:00.000Z :guest-7k2q!u@h PRIVMSG me :hello?",
-            ],
-        );
-        app.site = Some(Site {
-            web: "https://zirc.dev".into(),
-            slug: "acme".into(),
-            home: None,
-        });
-        let _ = app.select(app.chat.position("guest-7k2q").unwrap());
-        // A member is refused, and nothing's asked of zirc.dev.
-        assert!(sent(typed(&mut app, "/ban")).is_empty());
-        app.chat.set_admin(true);
-        let Action::Guests { request, done } = typed(&mut app, "/ban") else {
-            panic!("an admin bans through zirc.dev");
-        };
-        assert_eq!(
-            (request.method, request.path.as_str()),
-            ("POST", "/api/organisations/acme/guests/guest-7k2q/ban")
-        );
-        // What zirc.dev answers is said where we are.
-        app.guests_answered(Ok(done));
-        app.guests_answered(Err("not an admin of acme".into()));
-        let said: Vec<String> = app
-            .current()
-            .entries
-            .iter()
-            .rev()
-            .take(2)
-            .map(entry_text)
-            .collect();
-        assert_eq!(
-            said,
-            [
-                "zirc.dev: not an admin of acme",
-                "Anna is banned from every public channel"
-            ]
-        );
-    }
-
-    #[test]
-    fn bans_unbans_and_invites_a_guest_through_zirc_dev_as_an_admin() {
-        let mut app = app();
-        let _ = app.connected(link(true));
-        feed(
-            &mut app,
-            &[
-                ":me!u@h JOIN #lobby",
-                ":guest-7k2q!u@h JOIN #lobby * :Anna",
-                "@time=2026-10-30T11:00:00.000Z :guest-7k2q!u@h PRIVMSG me :hello?",
-            ],
-        );
-        app.site = Some(Site {
-            web: "https://zirc.dev".into(),
-            slug: "acme".into(),
-            home: None,
-        });
-        let _ = app.select(app.chat.position("guest-7k2q").unwrap());
-        // A member who's no admin is refused all of it.
-        for typed_in in ["/unban", "/invite"] {
-            assert!(sent(typed(&mut app, typed_in)).is_empty(), "{typed_in}");
-        }
-        app.chat.set_role("admin");
-        let asked = |action: Action| match action {
-            Action::Guests { request, done } => (request.method, request.path, done),
-            other => panic!("asked nothing of zirc.dev: {other:?}"),
-        };
-        assert_eq!(
-            asked(typed(&mut app, "/invite")),
-            (
-                "POST",
-                "/api/organisations/acme/guests/guest-7k2q/invite".to_owned(),
-                "Anna is invited to join the organisation".to_owned()
-            )
-        );
-        // From anywhere, by their nick.
-        let _ = app.select(app.chat.position("#lobby").unwrap());
-        assert_eq!(
-            asked(typed(&mut app, "/unban guest-7k2q")),
-            (
-                "DELETE",
-                "/api/organisations/acme/guests/guest-7k2q/ban".to_owned(),
-                "Anna may come back to the public channels".to_owned()
-            )
-        );
-        assert_eq!(
-            asked(typed(&mut app, "/invite guest-7k2q")).1,
-            "/api/organisations/acme/guests/guest-7k2q/invite"
-        );
-    }
-
-    #[test]
-    fn never_adds_a_guest_to_a_group() {
-        let mut app = app();
-        let _ = app.connected(link(true));
-        feed(
-            &mut app,
-            &[
-                ":me!u@h JOIN #lobby",
-                ":guest-1a2b!u@h JOIN #lobby * :",
-                ":me!u@h JOIN #dm-abc",
-            ],
-        );
-        app.chat.set_role("admin");
-        let _ = app.select(app.chat.position("#dm-abc").unwrap());
-        assert!(is_group(&app.current().name));
-        // Not with others, nor as an admin: a guest is invited to the organisation alone.
-        assert!(sent(typed(&mut app, "/invite bob guest-1a2b")).is_empty());
-        assert_eq!(
-            app.current().entries.last().map(entry_text).as_deref(),
-            Some(
-                "a guest can't join a group: /invite <guest> alone invites them to the organisation"
-            )
-        );
-        assert!(!sent(typed(&mut app, "/invite bob")).is_empty());
-    }
-
-    #[test]
     fn opens_our_account_page_on_zirc_dev() {
         let mut app = app();
         // Not one of zirc.dev's servers: said so, nothing opened.
@@ -2827,7 +2510,6 @@ mod tests {
             Action::Zircd(request) => panic!("asked zircd {request:?}"),
             Action::Org(org) => panic!("asked for organisation {org:?}"),
             Action::Sessions => panic!("asked for the sessions"),
-            Action::Guests { request, .. } => panic!("asked zirc.dev {request:?}"),
             Action::Open(url) => panic!("opened {url}"),
             Action::Press(press) => panic!("pressed {press:?}"),
         }
@@ -3269,62 +2951,6 @@ mod tests {
             .collect();
         let (starred, channels) = (Shelf::Starred.label(), Shelf::Channels.label());
         assert_eq!(listed, [starred, "#web", channels, "#api", "#mid", "#zoo"]);
-    }
-
-    #[test]
-    fn lists_guests_rooms_under_their_channel_for_an_admin_and_joins_one_clicked() {
-        let mut app = app();
-        app.connected(link(true));
-        feed(&mut app, &[":me!u@h JOIN #api"]);
-        app.chat.set_role("admin");
-        let kept = |nick: String| zirc_core::chat::KeptGuest {
-            rooms: Vec::new(),
-            name: (nick == "guest-21042").then(|| "Sam".to_owned()),
-            // Sam's connected, so waiting on us; the rest fold away.
-            connected: nick == "guest-21042",
-            nick,
-            channels: vec!["#api".into()],
-        };
-        app.chat.set_kept_guests(vec![kept("guest-21042".into())]);
-        let labels = |app: &App| -> Vec<(String, usize, Option<Target>)> {
-            app.sidebar()
-                .into_iter()
-                .filter_map(|row| match row {
-                    Side::Row {
-                        label,
-                        depth: 1,
-                        target,
-                        ..
-                    } => Some((label, 1, target)),
-                    _ => None,
-                })
-                .collect()
-        };
-        let click = MouseEventKind::Down(MouseButton::Left);
-        let fold = Target::GuestRooms("#api".into());
-        // Folded under #api's own row by default, which a mark at its end opens.
-        assert!(labels(&app).is_empty());
-        let marked = app.sidebar().into_iter().any(|row| {
-            matches!(row, Side::Row { fold: Some((ref channel, false)), .. } if channel == "#api")
-        });
-        assert!(marked);
-        app.pointer(click, Some(fold.clone()));
-        let room = Target::Open("#api/guest-21042".into());
-        assert_eq!(labels(&app), [("Sam".to_owned(), 1, Some(room.clone()))]);
-        assert_eq!(
-            sent(app.pointer(click, Some(room))),
-            ["JOIN #api/guest-21042"]
-        );
-
-        // However many, they fold and open together.
-        app.chat.set_kept_guests(
-            (0..7)
-                .map(|n| kept(format!("guest-{n}{n}{n}{n}")))
-                .collect(),
-        );
-        assert_eq!(labels(&app).len(), 7);
-        app.pointer(click, Some(fold));
-        assert!(labels(&app).is_empty());
     }
 
     #[test]

@@ -7,7 +7,6 @@ use std::time::Duration;
 
 use ratatui::crossterm::event::{KeyEvent, MouseEventKind};
 use tokio::sync::mpsc;
-use zirc_core::chat::GuestRequest;
 use zirc_core::connection::{self, Event, Nudge, Supervisor};
 use zirc_core::ipc::{Request, Response};
 use zirc_core::login::Client;
@@ -53,16 +52,11 @@ pub struct Session {
 enum Web {
     /// Our role in the organisation.
     Role(zirc_proto::role::Role),
-    /// A request of the Guests API was made, and what to say of it, or why it wasn't.
-    Done(Result<String, String>),
     /// A card's button was pressed, and what the integration said, or why it couldn't be.
     Pressed(zirc_proto::card::Press, Result<Option<String>, String>),
     /// Our account is this handle now: changed elsewhere, as zirc.dev said once the server
     /// refused the old one.
     Renamed(String),
-    /// The guests the organisation keeps, for an owner or admin: whose rooms the channels
-    /// list.
-    Kept(Vec<zirc_core::chat::KeptGuest>),
 }
 
 /// What zircd said every session is doing, or why it couldn't say, and when.
@@ -176,10 +170,6 @@ impl Session {
                 self.ask_sessions();
                 Step::Carry
             }
-            Action::Guests { request, done } => {
-                self.ask_web(request, done);
-                Step::Carry
-            }
             Action::Open(url) => {
                 self.open(&url);
                 Step::Carry
@@ -197,7 +187,6 @@ impl Session {
             Action::Send(lines) | Action::Quit(lines) => self.send(lines),
             Action::Zircd(request) => self.ask_zircd(request),
             Action::Sessions => self.ask_sessions(),
-            Action::Guests { request, done } => self.ask_web(request, done),
             Action::Open(url) => self.open(&url),
             Action::Press(press) => self.press(press),
             Action::Org(_) => {}
@@ -221,8 +210,6 @@ impl Session {
                 self.app.changed();
                 match answer {
                     Web::Role(role) => self.app.chat.set_role(role.as_str()),
-                    Web::Kept(guests) => self.app.chat.set_kept_guests(guests),
-                    Web::Done(answer) => self.app.guests_answered(answer),
                     Web::Pressed(press, answer) => self.app.press_answered(&press, answer),
                     Web::Renamed(handle) => {
                         self.follow(&handle);
@@ -356,22 +343,9 @@ impl Session {
                 return;
             };
             let _ = answers.send(Web::Role(role));
-            // An owner or admin sees every kept guest's room: asked now, and again every
-            // few minutes while the app runs.
-            while role.is_admin() {
-                // Unanswered, the list stays as it was.
-                if let Ok(guests) = client.kept_guests(&account, &site.slug).await
-                    && answers.send(Web::Kept(guests)).is_err()
-                {
-                    return;
-                }
-                tokio::time::sleep(zirc_core::chat::KEPT_GUESTS_EVERY).await;
-            }
         });
     }
 
-    /// Makes `request` of zirc.dev's Guests API without waiting: [`Session::network`] hands
-    /// the app `done`, or why it wasn't.
     /// Presses a card's button through zirc.dev without waiting: [`Session::network`] hands
     /// the app what came of it.
     fn press(&mut self, press: zirc_proto::card::Press) {
@@ -464,23 +438,6 @@ impl Session {
             handle.clone_into(&mut account.name);
         }
         self.supervisor.set_config(config);
-    }
-
-    fn ask_web(&mut self, request: GuestRequest, done: String) {
-        let Some((client, account)) = self.web.clone() else {
-            self.app
-                .guests_answered(Err("there's no zirc.dev account to ask it as".into()));
-            return;
-        };
-        let answers = self.web_answers.0.clone();
-        tokio::spawn(async move {
-            let answer = client
-                .send(&account, &request)
-                .await
-                .map(|()| done)
-                .map_err(|err| err.to_string());
-            let _ = answers.send(Web::Done(answer));
-        });
     }
 
     /// Asks zircd what every session is doing, for the sessions panel.

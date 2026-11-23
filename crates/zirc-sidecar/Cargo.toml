@@ -1,6 +1,6 @@
 [package]
 name = "zirc-sidecar"
-description = "The sidecar that runs beside each zirc server's Ergo: its account endpoint, history search, public-channel gateway, guests, usage counts and metrics."
+description = "The sidecar that runs beside each zirc server's Ergo: its account endpoint, history search, usage counts and metrics."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,7 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "ws"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
 base64.workspace = true
 bcrypt = "0.19"
 clap.workspace = true

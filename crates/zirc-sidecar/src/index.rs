@@ -8,7 +8,7 @@
 //!
 //! It never makes a deleted message findable. A search joins every candidate back to Ergo's
 //! history, so a row Ergo no longer has (redacted by its author, expired by retention, removed
-//! by an owner, a guest forgotten) is never returned, whatever the index still holds; and
+//! by an owner) is never returned, whatever the index still holds; and
 //! [`prune`] takes such rows out of the index too, with `secure_delete` on and its log
 //! emptied, so their words leave the disk as [`crate::trim`] makes them leave Ergo's.
 //!

@@ -1,8 +1,8 @@
-//! The names people, machines and guests have on an organisation's IRC server, said once for
+//! The names people and machines have on an organisation's IRC server, said once for
 //! zirc.dev, the tenant controller, the gateway and zirc (`docs/accounts.md`). A person's
 //! handle names their account and nick; a machine's account is its own name, such as
 //! `m3-mac`, which says nothing of whose it is: its host does ([`machine_host`]), which zircd
-//! relies on (zirc-core's `agents::may_query`); a guest's is [`crate::GUEST_PREFIX`] and an id.
+//! relies on (zirc-core's `agents::may_query`).
 
 /// The longest nick or account name, Ergo's `NICKLEN`.
 pub const NICK_MAX: usize = 32;
@@ -14,27 +14,12 @@ pub const HANDLE_MIN: usize = 2;
 pub const HANDLE_MAX: usize = 24;
 
 /// Handles nobody may take, on any server: `zirc` founds teams' channels (and keeps `zirc-*`
-/// machines free), `guest` and `guests` keep [`crate::GUEST_PREFIX`] for visitors.
-pub const RESERVED_HANDLES: [&str; 3] = ["zirc", "guest", "guests"];
+/// machines free).
+pub const RESERVED_HANDLES: [&str; 1] = ["zirc"];
 
-/// zirc's own system account's nick: what tells owners a guest is waiting or a new device
-/// signed in, and notices a public channel. Every app calls it `zirc`.
+/// zirc's own system account's nick: what tells owners a new device signed in. Every app
+/// calls it `zirc`.
 pub const SYSTEM: &str = "zirc-system";
-
-/// Names a guest may not show as, whatever the case: Zirc's own and the roles a team's people
-/// hold, so no visitor passes for them beside the team. zirc.dev refuses them, and names
-/// starting `zirc-` or [`crate::GUEST_PREFIX`] besides, when a guest names themselves.
-pub const RESERVED_GUEST_NAMES: [&str; 9] = [
-    "zirc",
-    "guest",
-    "guests",
-    "system",
-    "admin",
-    "owner",
-    "staff",
-    "support",
-    "moderator",
-];
 
 /// Nicks of zirc's own integrations (the alert bridge's, CI's, the tenant's recorder's and pusher's), which
 /// no team's integration may post as: the tenant sidecar refuses to post as them, so no
@@ -50,19 +35,8 @@ pub const RESERVED_INTEGRATION_NICKS: [&str; 8] = [
     crate::workflow::HOST,
 ];
 
-/// The fewest characters a guest's id has after [`crate::GUEST_PREFIX`].
-pub const GUEST_ID_MIN: usize = 4;
-
-/// The most.
-pub const GUEST_ID_MAX: usize = 16;
-
-/// How many zirc.dev makes, as digits: `guest-21042`. Guests made before were 8 hex digits,
-/// which [`is_guest_account`] still takes.
-pub const GUEST_ID_MADE: usize = 5;
-
-// A handle and `-<machine>` fit a nick, and zirc.dev makes guest ids anyone takes.
+// A handle and `-<machine>` fit a nick.
 const _: () = assert!(HANDLE_MAX + 1 < NICK_MAX);
-const _: () = assert!(GUEST_ID_MIN <= GUEST_ID_MADE && GUEST_ID_MADE <= GUEST_ID_MAX);
 
 /// A handle, as a regular expression for languages that check one that way: lower case,
 /// starting with a letter, [`HANDLE_MIN`] to [`HANDLE_MAX`] letters, digits and `_`.
@@ -97,26 +71,14 @@ pub fn handle_problem(name: &str) -> Option<String> {
 }
 
 /// Whether `name` is an account name the server takes as a nick: lower case, starting with
-/// a letter, at most [`NICK_MAX`] letters, digits, `_` and `-`. A person's, a machine's and
-/// a guest's all are.
+/// a letter, at most [`NICK_MAX`] letters, digits, `_` and `-`. A person's and a machine's
+/// both are.
 #[must_use]
 pub fn is_account_name(name: &str) -> bool {
     let mut chars = name.chars();
     chars.next().is_some_and(|c| c.is_ascii_lowercase())
         && name.len() <= NICK_MAX
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
-}
-
-/// Whether `name` is a guest's account as zirc.dev names them: [`crate::GUEST_PREFIX`] and
-/// [`GUEST_ID_MIN`] to [`GUEST_ID_MAX`] lowercase letters and digits.
-#[must_use]
-pub fn is_guest_account(name: &str) -> bool {
-    name.strip_prefix(crate::GUEST_PREFIX).is_some_and(|id| {
-        (GUEST_ID_MIN..=GUEST_ID_MAX).contains(&id.len())
-            && id
-                .chars()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
-    })
 }
 
 /// What a machine's host starts with, before its owner's handle: [`machine_host`].
@@ -144,7 +106,7 @@ pub fn client_host(owner: &str) -> String {
 }
 
 /// What the server says an account is, by the host its operator gave it: the one place a
-/// host is read. An account with neither is a person's own, a guest's or an integration's,
+/// host is read. An account with neither is a person's own or an integration's,
 /// as its name says, which only zirc.dev registers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hosted<'a> {
@@ -213,10 +175,6 @@ pub fn integration_nick_pattern() -> String {
 #[must_use]
 pub fn typescript() -> Vec<String> {
     let reserved: Vec<String> = RESERVED_HANDLES.iter().map(|h| format!("{h:?}")).collect();
-    let guest_names: Vec<String> = RESERVED_GUEST_NAMES
-        .iter()
-        .map(|n| format!("{n:?}"))
-        .collect();
     let nicks: Vec<String> = RESERVED_INTEGRATION_NICKS
         .iter()
         .map(|n| format!("{n:?}"))
@@ -232,10 +190,6 @@ pub fn typescript() -> Vec<String> {
             reserved.join(", ")
         ),
         format!(
-            "const RESERVED_GUEST_NAMES: readonly string[] = [{}];",
-            guest_names.join(", ")
-        ),
-        format!(
             "const RESERVED_INTEGRATION_NICKS: readonly string[] = [{}];",
             nicks.join(", ")
         ),
@@ -243,15 +197,6 @@ pub fn typescript() -> Vec<String> {
             "const INTEGRATION_NICK_PATTERN = {:?};",
             integration_nick_pattern()
         ),
-        format!("const GUEST_PREFIX = {:?};", crate::GUEST_PREFIX),
-        format!("const GUEST_LABEL = {:?};", crate::GUEST_LABEL),
-        format!(
-            "const GUEST_LABEL_ID_CHARS = {};",
-            crate::GUEST_LABEL_ID_CHARS
-        ),
-        format!("const GUEST_ID_MIN = {GUEST_ID_MIN};"),
-        format!("const GUEST_ID_MAX = {GUEST_ID_MAX};"),
-        format!("const GUEST_ID_MADE = {GUEST_ID_MADE};"),
     ]
 }
 
@@ -349,23 +294,17 @@ mod tests {
             assert!(!is_handle(bad), "{bad}");
         }
         assert_eq!(
-            handle_problem("guest").as_deref(),
-            Some("guest is zirc's own: choose another handle.")
+            handle_problem("zirc").as_deref(),
+            Some("zirc is zirc's own: choose another handle.")
         );
         assert_eq!(handle_pattern(), "^[a-z][a-z0-9_]{1,23}$");
     }
 
     #[test]
-    fn accounts_and_guests_are_told_by_their_names() {
-        assert!(is_account_name("ada-mbp") && is_account_name("guest-1a2b3c4d"));
+    fn an_account_name_is_a_nick_the_server_takes() {
+        assert!(is_account_name("ada-mbp") && is_account_name("ada"));
         assert!(!is_account_name("Ada") && !is_account_name(&"a".repeat(NICK_MAX + 1)));
-        assert!(is_guest_account("guest-1a2b3c4d") && is_guest_account("guest-7k2q"));
-        assert!(!is_guest_account("guest-7k2") && !is_guest_account("guest-ABCD"));
-        assert!(!is_guest_account(&format!(
-            "guest-{}",
-            "a".repeat(GUEST_ID_MAX + 1)
-        )));
-        // No handle can be a guest's or a machine's: they have no hyphen.
-        assert!(!is_handle("guest-1a2b"));
+        // No handle can be a machine's: handles have no hyphen.
+        assert!(!is_handle("ada-mbp"));
     }
 }

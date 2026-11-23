@@ -99,7 +99,6 @@ impl Chat {
                 machine: self.machine(&nick),
                 op: false,
                 away: self.away(&nick).map(str::to_owned),
-                guest: self.is_guest(&nick),
                 app: self.app_of(&nick),
                 nick,
             },

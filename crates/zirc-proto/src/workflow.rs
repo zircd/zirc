@@ -1188,14 +1188,13 @@ fn name(text: &str, what: &str) -> Result<(), String> {
 }
 
 /// Whether `nick` is one a workflow may run as: an account name, but none of zirc's own
-/// ([`crate::names::RESERVED_HANDLES`], [`crate::names::SYSTEM`]), no integration's and no
-/// guest's. Whether a person or machine already has it is the server's to say.
+/// ([`crate::names::RESERVED_HANDLES`], [`crate::names::SYSTEM`]) and no integration's.
+/// Whether a person or machine already has it is the server's to say.
 #[must_use]
 pub fn is_workflow_nick(nick: &str) -> bool {
     crate::names::is_account_name(nick)
         && !nick.starts_with("zirc")
         && !crate::names::RESERVED_HANDLES.contains(&nick)
-        && !crate::names::is_guest_account(nick)
 }
 
 impl Workflow {

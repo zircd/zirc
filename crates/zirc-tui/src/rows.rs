@@ -1,15 +1,16 @@
 //! A conversation laid out as rows of the scrollback, from the lines zirc-chat gives every
-//! app ([`Chat::lines`]): the core decides each line's shape, its head, whether it carries
-//! on a run, its words as blocks, its quote, its reactions and its card; this lays them out
-//! in rows of the terminal's width, long text wrapped. The UI only has to colour them in.
+//! app ([`zirc_core::chat::Chat::lines`]): the core decides each line's shape, its head,
+//! whether it carries on a run, its words as blocks, its quote, its reactions and its card;
+//! this lays them out in rows of the terminal's width, long text wrapped. The UI only has to
+//! colour them in.
 
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Offset as _, Utc};
 use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 use zirc_core::chat::lines::Line;
 use zirc_core::chat::{
-    APP_TAG, CellAlign, Chat, EDITED, Face, Icon, LineFile, LineKind, LineReaction, LineSpeaker,
-    RichBlock, RichSpan, RichSpanKind, RowShape, SHOWN_PATHS, SystemBody, SystemLine, WordStyle,
-    link_label, show_more_paths_label,
+    CellAlign, EDITED, Face, Icon, LineFile, LineKind, LineReaction, LineSpeaker, RichBlock,
+    RichSpan, RichSpanKind, RowShape, SHOWN_PATHS, SystemBody, SystemLine, WordStyle, link_label,
+    name_pill, show_more_paths_label,
 };
 
 use crate::hyperlink::{Link, Links, fragments};
@@ -119,8 +120,8 @@ pub enum Row {
         hint: String,
         /// The id of its first message.
         id: Option<String>,
-        /// What's marked after the nick, zirc-chat's ([`Chat::name_pill`]): `GUEST` for a
-        /// guest, `APP` for an app.
+        /// What's marked after the nick, zirc-chat's ([`zirc_core::chat::name_pill`]): `APP`
+        /// for an app.
         pill: Option<&'static str>,
         /// When an agent session said it, its mark and whose agent it is.
         agent: Option<Agent>,
@@ -188,16 +189,6 @@ fn agent(speaker: &LineSpeaker) -> Option<Agent> {
     }
 }
 
-/// What's marked after the name heading `line`, as zirc-chat says ([`Chat::name_pill`]): a
-/// guest as outside, an app by its tag.
-fn pill(chat: &Chat, line: &Line, speaker: &LineSpeaker) -> Option<&'static str> {
-    if line.from.is_empty() {
-        speaker.app.then_some(APP_TAG)
-    } else {
-        chat.name_pill(&line.from, speaker.app)
-    }
-}
-
 /// How a row reads, for colouring.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tone {
@@ -252,8 +243,6 @@ impl<F: Fn(&str) -> Option<String>> Pressed for F {
 /// Everything lines are laid out by, but the lines.
 #[derive(Clone, Copy)]
 pub struct Look<'a> {
-    /// The chat the conversation is in, which says who's who: guests and apps.
-    chat: &'a Chat,
     /// What came of our presses.
     pressed: &'a dyn Pressed,
     /// The message the "New" divider goes above.
@@ -265,19 +254,17 @@ pub struct Look<'a> {
 }
 
 impl<'a> Look<'a> {
-    /// Lines in `chat` laid out `width` columns wide, the "New" divider above the message
+    /// Lines laid out `width` columns wide, the "New" divider above the message
     /// `divider`, what came of our presses as `pressed` says, links as the terminal shows
     /// them.
     #[must_use]
     pub fn new(
-        chat: &'a Chat,
         pressed: &'a dyn Pressed,
         divider: Option<&'a str>,
         width: usize,
         links: Links,
     ) -> Self {
         Self {
-            chat,
             pressed,
             divider,
             text_width: width.saturating_sub(INDENT).max(MIN_TEXT_WIDTH),
@@ -396,13 +383,13 @@ impl Run {
 }
 
 /// `line`'s head: who, whose agent or their pill, and when.
-fn header(look: &Look<'_>, line: &Line, speaker: &LineSpeaker) -> Row {
+fn header(line: &Line, speaker: &LineSpeaker) -> Row {
     Row::Header {
         nick: speaker.name.clone(),
         time: line.clock.clone(),
         hint: line.room.clone().unwrap_or_default(),
         id: line_id(line).map(str::to_owned),
-        pill: pill(look.chat, line, speaker),
+        pill: name_pill(speaker.app),
         agent: agent(speaker),
     }
 }
@@ -411,7 +398,7 @@ fn header(look: &Look<'_>, line: &Line, speaker: &LineSpeaker) -> Row {
 /// run: the quote of what it answers, its words, then what's cut from a long one.
 fn message_rows(look: &Look<'_>, line: &Line, speaker: &LineSpeaker, rows: &mut Vec<Row>) {
     if !line.continues {
-        rows.push(header(look, line, speaker));
+        rows.push(header(line, speaker));
     }
     let width = look.text_width;
     if let Some(quote) = &line.quote {
@@ -446,7 +433,7 @@ fn system_rows(look: &Look<'_>, line: &Line, speaker: &LineSpeaker, rows: &mut V
         return quiet_rows(look, line, rows);
     };
     if !line.continues {
-        rows.push(header(look, line, speaker));
+        rows.push(header(line, speaker));
     }
     let width = look.text_width;
     if line.kind == LineKind::Landing {
@@ -1000,7 +987,7 @@ pub fn wrap(text: &str, width: usize) -> Vec<String> {
 mod tests {
     use super::*;
     use chrono::TimeZone as _;
-    use zirc_core::chat::{Link as Linked, Options};
+    use zirc_core::chat::{Chat, Link as Linked, Options};
 
     fn unpressed(_: &str) -> Option<String> {
         None
@@ -1067,7 +1054,7 @@ mod tests {
     }
 
     fn look(chat: &Chat, width: usize, links: Links) -> Look<'_> {
-        Look::new(chat, &unpressed, chat.divider(), width, links)
+        Look::new(&unpressed, chat.divider(), width, links)
     }
 
     fn rows_of(chat: &Chat, name: &str, width: usize) -> Vec<Row> {
@@ -1298,7 +1285,7 @@ mod tests {
             ],
         );
         let lines = chat.lines("#api", utc(), false);
-        let look = Look::new(&chat, &unpressed, Some("a2"), 80, Links::Plain);
+        let look = Look::new(&unpressed, Some("a2"), 80, Links::Plain);
         assert_eq!(
             shown(&layout(&look, &lines)),
             [

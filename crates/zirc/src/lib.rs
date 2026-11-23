@@ -376,7 +376,7 @@ pub struct Cli {
     /// zirc's directory: ~/.zirc unless ZIRC_HOME says otherwise.
     #[arg(long, env = "ZIRC_HOME", global = true, hide = true)]
     home: Option<PathBuf>,
-    /// What your session's called, such as zirc-chat or guests-web: apps show it in place
+    /// What your session's called, such as zirc-chat or signup-web: apps show it in place
     /// of the session's id. `zirc watch`, `zirc join` and `zirc post` set it for the
     /// session; without one, a session goes by the branch it named first.
     #[arg(

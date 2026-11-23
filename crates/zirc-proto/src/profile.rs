@@ -77,8 +77,7 @@ pub struct MeOrg {
     pub name: String,
     /// Their handle there.
     pub handle: String,
-    /// Their role there. Owners and admins manage its guests. A member's from a zirc.dev older
-    /// than roles, which says none.
+    /// Their role there. A member's from a zirc.dev older than roles, which says none.
     #[serde(default, with = "crate::role::lenient")]
     #[ts(as = "crate::role::Role")]
     pub role: crate::role::Role,

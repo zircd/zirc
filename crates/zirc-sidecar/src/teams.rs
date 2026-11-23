@@ -57,9 +57,9 @@ pub struct Desired {
     /// history it serves.
     #[serde(default)]
     pub visibility: zirc_proto::desired::Visibility,
-    /// Its public channels, and the key their guests' tokens are signed with (`gateway`).
+    /// The keys zirc.dev signs browser logins with, and whether the server runs workflows.
     #[serde(default)]
-    pub public: crate::gateway::Public,
+    pub public: Public,
     /// Whether the server answers content requests itself, and as which host name
     /// (`crate::content`); left out, it doesn't.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -76,8 +76,27 @@ pub struct Desired {
     pub clients: Option<BTreeSet<String>>,
 }
 
+/// What the controller tells the sidecar of the organisation beside its channels.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Public {
+    /// The organisation's public keys, PEM (`ZircServerSpec::token_keys`): a browser login's
+    /// token signed with any of them is good, as with Ergo's own logins, so zirc.dev can move
+    /// to a new key without the server hearing of it first.
+    #[serde(default)]
+    pub keys: Vec<String>,
+    /// The first of them, as sidecars from before `keys` read it: the controller sends both,
+    /// as the tenants' sidecar image is pinned apart from its own and may be older. Read only
+    /// when `keys` is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// The server runs its organisation's workflows (`spec.workflows`, `crate::workflows`):
+    /// off unless zirc.dev turns them on, so no other organisation sees their host.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub workflows: bool,
+}
+
 /// The content API's settings (`zirc_proto::desired::DesiredState::content_api`), with the
-/// teams: whom people's tokens must be for, and who looks after guests besides the owners.
+/// teams: whom people's tokens must be for, and who the organisation's admins are.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Content {
     /// The server's host name, such as `acme.irc.zirc.dev`: a token's audience.

@@ -14,7 +14,7 @@ use super::{Avatar, Chat, nick_degrees};
 #[serde(rename_all = "camelCase", tag = "kind")]
 #[ts(rename_all = "camelCase", tag = "kind")]
 pub enum Face {
-    /// A person, or a guest: their photo, round, or their initials on their colour.
+    /// A person: their photo, round, or their initials on their colour.
     #[serde(rename_all = "camelCase")]
     #[ts(rename_all = "camelCase")]
     Person {

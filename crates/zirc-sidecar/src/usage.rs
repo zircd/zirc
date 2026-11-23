@@ -387,7 +387,7 @@ mod tests {
             }),
         );
         add(&path, "m7", "alice-mbp", at(10), "alice", "thanks");
-        add(&path, "m8", "#team", at(10), "*", "a guest");
+        add(&path, "m8", "#team", at(10), "*", "without an account");
         // Three days ago: active in the week only.
         add(&path, "m9", "#team", at(3 * DAY_SECONDS), "bob", "hello");
 
@@ -400,7 +400,7 @@ mod tests {
         assert_eq!(usage.messages_day, split(2, 1));
         assert_eq!(usage.active_day, split(1, 1));
         assert_eq!(usage.active_week, split(2, 1));
-        // The first message: bob's, three days ago, not zircd's events or a guest's.
+        // The first message: bob's, three days ago, not zircd's events or one without an account.
         assert_eq!(
             usage.first_message,
             Some(First {

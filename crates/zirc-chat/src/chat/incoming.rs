@@ -146,7 +146,7 @@ impl Chat {
             }
             // Errors answer what the person did, so they show where the person is looking.
             // Subscribing to profiles is the app's doing, not the person's: a server that
-            // won't, such as the gateway for a guest, has nothing to tell them.
+            // won't has nothing to tell them.
             "FAIL" if param(0) == "METADATA" => {}
             // A link's message the server doesn't have: it shows at the end, unremarked.
             "FAIL" if param(0) == "CHATHISTORY" && self.history_failed(line) => {}
@@ -168,8 +168,7 @@ impl Chat {
         Vec::new()
     }
 
-    /// Reactions, client tags on a TAGMSG naming the message they answer, and what staff do
-    /// with conversations with guests.
+    /// Reactions and client tags on a TAGMSG naming the message they answer.
     pub(super) fn tagmsg(&mut self, line: &Line) -> Vec<Line> {
         // A working set, kept out of history: read as the PRIVMSG it stands for.
         if let Some(privmsg) = crate::presence::as_privmsg(line) {
@@ -186,9 +185,6 @@ impl Chat {
         }
         let from = nick_of(line);
         let target = line.params.first().map_or("", String::as_str);
-        if self.support_tag(line, from, target) {
-            return Vec::new();
-        }
         if self.receipt_tag(line, from) {
             return Vec::new();
         }

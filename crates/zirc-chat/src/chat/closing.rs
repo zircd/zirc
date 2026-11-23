@@ -24,8 +24,7 @@ pub struct Closed {
 
 impl Chat {
     /// Closes the direct message `name`: it leaves the sidebar until something newer than now
-    /// is said in it, or it's opened again. For a suggestion ([`Chat::is_suggestion`]), it
-    /// hides it the same way.
+    /// is said in it, or it's opened again.
     pub fn close_direct(&mut self, name: &str) {
         self.closed.insert(fold(name), (self.clock)());
     }

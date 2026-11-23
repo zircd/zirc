@@ -1405,7 +1405,7 @@
             "string",
             "null"
           ],
-          "description": "What people call its session, such as `zirc-chat` or `guests-web`, which apps show\nin place of an id like `cc-598aa1`: see [`session_name`]. Without it, they show the\nsession."
+          "description": "What people call its session, such as `zirc-chat` or `docs-site`, which apps show\nin place of an id like `cc-598aa1`: see [`session_name`]. Without it, they show the\nsession."
         },
         "tool": {
           "type": [
@@ -2579,12 +2579,12 @@
         {
           "type": "string",
           "const": "members",
-          "description": "The organisation's members, as when a button doesn't say."
+          "description": "The organisation's members: everyone in the channel, as when a button doesn't say."
         },
         {
           "type": "string",
           "const": "anyone",
-          "description": "Anyone in the channel, guests included."
+          "description": "Anyone in the channel: the same as [`Who::Members`], as only members are in its\nchannels. Kept because cards say it."
         },
         {
           "type": "string",

@@ -19,9 +19,8 @@ use crate::jump::{self, Jumping};
 use crate::picker::{self, Picker};
 use crate::rows::{self, Row, Tone, fit, wrap};
 use zirc_core::chat::{
-    AGENT_TAG, APP_TAG, APPS_SECTION, Avatar, COMPOSER_NOTE, GUEST_PILL, HeaderLineKind, Icon,
-    Kind, OrgHeader, Presence, Profile, SearchHit, SearchScreen, away_label, members_label,
-    mentions_label,
+    AGENT_TAG, APP_TAG, APPS_SECTION, Avatar, HeaderLineKind, Icon, Kind, OrgHeader, Presence,
+    Profile, SearchHit, SearchScreen, away_label, members_label, mentions_label,
 };
 use zirc_core::emoji;
 use zirc_theme::{Design, Rgb, Theme, Type};
@@ -146,11 +145,6 @@ pub fn target_at(app: &App, area: Rect, column: u16, row: u16) -> Option<Target>
             .into_iter()
             .nth(usize::from(row - sidebar.y))?
         {
-            // A channel's fold mark is its row's last column.
-            Side::Row {
-                fold: Some((channel, _)),
-                ..
-            } if column + 2 >= sidebar.x + sidebar.width => Some(Target::GuestRooms(channel)),
             Side::Row { target, .. } => target,
             Side::Heading { shelf, .. } => Some(Target::Shelf(shelf)),
             // Each part of the switch takes its share of the width, the last what's left.
@@ -579,11 +573,7 @@ fn header(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let theme = app.theme;
     let buffer = app.current();
     let chat = &app.chat;
-    let guest = chat.guest_header(&buffer.name).is_some();
-    // A guest is from outside, and tinted so.
-    let name = if guest {
-        theme.warning
-    } else if buffer.kind == Kind::Channel {
+    let name = if buffer.kind == Kind::Channel {
         theme.channel
     } else {
         theme.text
@@ -601,12 +591,6 @@ fn header(frame: &mut Frame<'_>, app: &App, area: Rect) {
         spans.push(Span::styled(
             format!(" {AGENT_TAG}"),
             fg(theme.muted).add_modifier(Modifier::BOLD),
-        ));
-    }
-    if guest {
-        spans.push(Span::styled(
-            format!(" {GUEST_PILL}"),
-            fg(theme.warning).add_modifier(Modifier::BOLD),
         ));
     }
     // The core's one line under the name, as every app's header has it
@@ -912,17 +896,6 @@ fn side_line(app: &App, row: Side, width: usize) -> Line<'static> {
     }
 }
 
-/// The last column of a channel's row: the mark that folds its guests' rooms under it, `▾`
-/// while open and `▸` while folded; a space for a row without them.
-fn fold_mark(app: &App, fold: Option<&(String, bool)>) -> Span<'static> {
-    let mark = match fold {
-        Some((_, true)) => "▾",
-        Some((_, false)) => "▸",
-        None => " ",
-    };
-    Span::styled(mark, fg(app.theme.muted))
-}
-
 /// A conversation's row, or a fold's, in the list down the left, `width` columns wide.
 fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
     let theme = app.theme;
@@ -938,7 +911,6 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
         presence,
         bold,
         badge,
-        fold,
     } = row
     else {
         return Line::default();
@@ -1016,7 +988,8 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
         Span::styled(said, said_style),
         Span::styled(when, said_style),
         Span::styled(count, count_style),
-        fold_mark(app, fold.as_ref()),
+        // A column's margin at the right edge.
+        Span::raw(" "),
     ]);
     let line = Line::from(spans);
     if selected {
@@ -1643,14 +1616,9 @@ fn header_line(
             fg(theme.muted).add_modifier(Modifier::DIM),
         ));
     }
-    // A guest is marked as outside; an app's tag is quiet.
+    // An app's tag is quiet.
     if let Some(pill) = pill {
-        let style = if pill == GUEST_PILL {
-            fg(theme.warning).add_modifier(Modifier::BOLD)
-        } else {
-            fg(theme.muted)
-        };
-        spans.push(Span::styled(format!(" {pill}"), style));
+        spans.push(Span::styled(format!(" {pill}"), fg(theme.muted)));
     }
     spans.push(Span::styled(format!("  {time}"), fg(theme.muted)));
     if !hint.is_empty() {
@@ -2066,14 +2034,6 @@ fn status_left(app: &App) -> Line<'static> {
     let theme = app.theme;
     let hint = fg(theme.muted).add_modifier(Modifier::DIM);
     let mut spans = Vec::new();
-    // Writing to a guest, the line says so first, as zirc's other apps say above the
-    // composer.
-    if app.chat.guest_of(&app.current().name).is_some() {
-        spans.push(Span::styled(
-            format!(" {COMPOSER_NOTE} "),
-            fg(theme.warning).add_modifier(Modifier::BOLD),
-        ));
-    }
     // The organisation as signed in to it, else as the server names it, else its server.
     let org = app
         .org
@@ -2286,10 +2246,10 @@ mod tests {
     use chrono::{DateTime, FixedOffset, TimeZone as _, Utc};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
-    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use zirc_core::chat::{
-        BADGE_MOST, BROWSE_CHANNELS, MACHINES, NO_OTHER_CHANNELS, OUTSIDE, PEOPLE_SECTION,
-        SERVER_TITLE, Shelf, badge_label,
+        BADGE_MOST, BROWSE_CHANNELS, MACHINES, NO_OTHER_CHANNELS, PEOPLE_SECTION, SERVER_TITLE,
+        Shelf, badge_label,
     };
 
     fn noon() -> DateTime<Utc> {
@@ -2434,36 +2394,6 @@ mod tests {
         (u16::try_from(x).unwrap(), u16::try_from(y).unwrap())
     }
 
-    /// Staff, with a guest who asked something in their room beside #lobby, and one whose
-    /// room is closed.
-    fn with_guests() -> App {
-        let mut app = App::new("me", "irc.zirc.test", Vec::new());
-        app.chat.clock = noon;
-        app.zone = Zone::Fixed(FixedOffset::east_opt(0).unwrap());
-        app.connected(Link {
-            nick: "me".into(),
-            metadata: false,
-            chathistory: true,
-            echo: true,
-            read_marker: false,
-            trim: true,
-            multiline: None,
-        });
-        for line in [
-            ":me!u@h JOIN #lobby",
-            ":guest-7k2q!u@h JOIN #lobby * :Anna",
-            ":guest-9z9z!u@h JOIN #lobby * :",
-            ":me!u@h JOIN #lobby/guest-7k2q",
-            ":me!u@h JOIN #lobby/guest-9z9z",
-            "@time=2026-10-30T11:00:00.000Z :guest-7k2q!u@h PRIVMSG #lobby/guest-7k2q :hello, is anyone there?",
-            "@time=2026-10-30T10:00:00.000Z :guest-9z9z!u@h PRIVMSG #lobby/guest-9z9z :thanks!",
-            "@time=2026-10-30T10:01:00.000Z;+zirc/support=closed :me!u@h TAGMSG #lobby/guest-9z9z",
-        ] {
-            app.handle(line.parse().unwrap());
-        }
-        app
-    }
-
     #[test]
     fn every_icon_is_coloured_in_a_role_the_theme_has() {
         let theme = zirc_theme::Theme::dark();
@@ -2493,61 +2423,6 @@ mod tests {
         assert_eq!(theme.role(Icon::Conflict.tone()), Some(theme.warning));
         assert_eq!(theme.role(Icon::Overlap.tone()), Some(theme.warning));
         assert_eq!(theme.role(Icon::Intent.tone()), Some(theme.muted));
-    }
-
-    #[test]
-    fn lists_guests_rooms_under_their_channel_the_closed_folded_and_tags_what_they_say() {
-        let mut app = with_guests();
-        // Read, and #lobby shown.
-        let _ = app.select(app.chat.position("#lobby/guest-9z9z").unwrap());
-        let _ = app.select(app.chat.position("#lobby").unwrap());
-        let screen = Rect::new(0, 0, 110, 14);
-        let (rows, _) = draw(&app, screen.width, screen.height);
-        assert!(
-            !rows.iter().any(|row| row.contains("Guests")),
-            "no part of their own"
-        );
-        row_with(&rows, "Anna");
-        // Folded under #lobby's row, guest-9z9z's closed room doesn't show; Anna's, unanswered,
-        // does. The mark at the end of #lobby's row opens them all.
-        let in_list = |rows: &[String], text: &str| {
-            rows.iter()
-                .any(|row| row.split('│').next().unwrap().contains(text))
-        };
-        assert!(!in_list(&rows, "guest-9z9z"));
-        let (y, lobby) = rows
-            .iter()
-            .enumerate()
-            // The list's row, not the title line over everything.
-            .find(|(_, row)| row.contains('│') && row.split('│').next().unwrap().contains("#lobby"))
-            .unwrap();
-        let list = lobby.split('│').next().unwrap();
-        assert!(list.trim_end().ends_with('▸'), "{list:?}");
-        let x = list.trim_end().chars().count() - 1;
-        let target = target_at(
-            &app,
-            screen,
-            u16::try_from(x).unwrap(),
-            u16::try_from(y).unwrap(),
-        );
-        assert_eq!(target, Some(Target::GuestRooms("#lobby".into())));
-        let _ = app.pointer(MouseEventKind::Down(MouseButton::Left), target);
-        let (rows, _) = draw(&app, screen.width, screen.height);
-        assert!(in_list(&rows, "guest-9z9z"));
-
-        let at = app.chat.position("#lobby/guest-7k2q").unwrap();
-        let _ = app.select(at);
-        let (rows, _) = draw(&app, screen.width, screen.height);
-        // The title line says they're a guest from outside, as every app's header does
-        // (`Chat::header_line`); the line over the input that it's a guest we're writing to.
-        assert!(
-            rows[0].starts_with(&format!(" Anna {GUEST_PILL}  {OUTSIDE}")),
-            "{}",
-            rows[0]
-        );
-        row_with(&rows, COMPOSER_NOTE);
-        // The pill every app shows after a guest's name.
-        row_with(&rows, &format!("Anna {GUEST_PILL}  11:00"));
     }
 
     #[test]
@@ -4312,7 +4187,7 @@ mod tests {
     fn zircs_system_account_is_zirc_and_its_messages_take_no_replies() {
         let mut app = app();
         app.handle(
-            ":zirc-system!u@h NOTICE #api :Guests can join #api"
+            ":zirc-system!u@h NOTICE #api :#api is now public"
                 .parse()
                 .unwrap(),
         );
@@ -4321,7 +4196,7 @@ mod tests {
         // Headed by its name, Zirc, as a message is.
         let at = rows
             .iter()
-            .position(|row| row.contains("Guests can join #api"))
+            .position(|row| row.contains("#api is now public"))
             .unwrap();
         assert!(rows[at - 1].contains("Zirc"), "{rows:?}");
         assert!(
@@ -4330,7 +4205,7 @@ mod tests {
         );
 
         app.handle(
-            ":zirc-system!u@h PRIVMSG me :A guest is waiting"
+            ":zirc-system!u@h PRIVMSG me :Your trial ends in 3 days"
                 .parse()
                 .unwrap(),
         );

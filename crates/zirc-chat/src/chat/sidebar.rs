@@ -1,16 +1,13 @@
 //! The sidebar as one flat list of rows, in the order every app draws them
-//! ([`Chat::sidebar_list`]): each part's heading, its conversations, a channel's rooms and
-//! guests' rooms under it, and the folds (a channel's `12 guests`) are all
-//! rows. An app draws them as they come and works
+//! ([`Chat::sidebar_list`]): each part's heading, its conversations and a channel's rooms
+//! under it are all rows. An app draws them as they come and works
 //! out nothing of its own: what's folded away isn't in the list, so moving to the next or
 //! previous row walks the list as it is.
 //!
 //! The parts, in order: Starred (anything starred, there alone); Channels (each channel with
-//! its rooms and its guests' rooms under it); Direct
+//! its rooms under it); Direct
 //! messages (people, groups, agent sessions and machines' own threads, newest first; an
-//! agent session that ended and went quiet isn't listed, till it's opened). A guest is talked
-//! to in their room, under its channel, so there's no part for guests. A part with nothing in
-//! it is left out. The Server channel, Browse channels and New channel have no rows: Jump to
+//! agent session that ended and went quiet isn't listed, till it's opened). A part with nothing in it is left out. The Server channel, Browse channels and New channel have no rows: Jump to
 //! finds the first two, and every app's + makes a channel (the user's choices, 19 Nov 2026).
 
 use std::collections::HashMap;
@@ -21,7 +18,7 @@ use ts_rs::TS;
 use super::conversation::{Kind, fold};
 use super::face::Face;
 use super::list::{ChannelGroup, DirectKind, DirectRow, Shelf, SidebarSection};
-use super::{Attendance, Avatar, Chat, Presence, ago_short, badge_label, room_label};
+use super::{Attendance, Chat, Presence, ago_short, badge_label, room_label};
 
 /// What a channel's, a thread's or a direct message's row says under its name, faint, while
 /// nothing's been said in it ([`UnderKind::Nothing`]).
@@ -75,13 +72,10 @@ pub enum ListKind {
     /// A part's heading, `Channels`: pressing it folds the part away or opens it
     /// ([`Chat::set_collapsed`]).
     Heading,
-    /// A conversation: a repository's channel, a starred room, a direct message or a
-    /// conversation with a guest.
+    /// A conversation: a repository's channel, a starred room, or a direct message.
     Conversation,
     /// A room under its repository's channel.
     Room,
-    /// A guest's room under its channel, by the guest's name: opening it joins it.
-    GuestRoom,
 }
 
 /// What an app asks of the sidebar's list.
@@ -107,18 +101,15 @@ pub struct ListRow {
     pub kind: ListKind,
     /// The part it's in.
     pub shelf: Shelf,
-    /// The conversation it opens ([`Chat::open`]); for a channel's guests' fold, the
-    /// channel, and for a machine's `N earlier`, the machine; empty for a heading and the other
-    /// folds.
+    /// The conversation it opens ([`Chat::open`]); for a machine's `N earlier`, the
+    /// machine; empty for a heading and the other folds.
     pub name: String,
     /// What it says: a heading's part, a room by its own name under its channel, a direct
-    /// message as [`DirectRow::label`] says it, a guest by their name, a fold's words.
+    /// message as [`DirectRow::label`] says it, a fold's words.
     pub title: String,
-    /// How far it's indented: 1 for a room, a guest's room or the guests' fold under their
-    /// channel, and for an agent session or its `N earlier` under its machine, else 0.
+    /// How far it's indented: 1 for a room under its channel, and for an agent session or its `N earlier` under its machine, else 0.
     pub depth: u8,
-    /// Whether it's open: a heading's part (not folded away), a fold, a channel's guests'
-    /// rooms under its row (pressed, [`Chat::set_guest_rooms_open`]); `None` for the rest.
+    /// Whether it's open: a heading's part (not folded away) or a fold; `None` for the rest.
     pub open: Option<bool>,
     /// A line under it: what an agent session at work said it's taking on.
     pub note: Option<String>,
@@ -126,8 +117,8 @@ pub struct ListRow {
     /// we're in has none. Every row that opens one has its menu ([`Chat::row_menu`]), in
     /// every app.
     pub opens: bool,
-    /// Whether it's a direct message, with a person, a group, an agent session, a machine
-    /// or a guest.
+    /// Whether it's a direct message, with a person, a group, an agent session or a
+    /// machine.
     pub direct: bool,
     /// Whether we're in it: a channel we're in (or were in, while the connection's down), a
     /// direct message always.
@@ -136,12 +127,10 @@ pub struct ListRow {
     pub starred: bool,
     /// Whether it's muted: in the muted colour, never bold.
     pub muted: bool,
-    /// Whether anything in it is unread, which an app shows bold: for a channel, in it or in
-    /// its guests' rooms folded out of sight ([`Chat::is_unread`]). Its rooms, and any guest's
-    /// room still listed, are rows of their own, bold for themselves.
+    /// Whether anything in it is unread, which an app shows bold: ([`Chat::is_unread`]). A
+    /// channel's rooms are rows of their own, bold for themselves.
     pub unread: bool,
-    /// Whether it shows the unread pip beside its name: a channel's, a room's or a guest's
-    /// room's while unread and not muted, never a direct message's, which shows unread by its
+    /// Whether it shows the unread pip beside its name: a channel's or a room's while unread and not muted, never a direct message's, which shows unread by its
     /// bold name and badge alone (the user's choice, 20 Nov 2026).
     pub pip: bool,
     /// Whether its name is bold, in the text's colour: while it's unread and not muted. Every
@@ -155,10 +144,10 @@ pub struct ListRow {
     pub badge_label: Option<String>,
     /// For a direct message, what it's with.
     pub direct_kind: Option<DirectKind>,
-    /// For a direct message or a guest, its avatar: the agent's, the person's, a group's
+    /// For a direct message, its avatar: the agent's, the person's, a group's
     /// [`super::GROUP_FACES`], the first drawn in front ([`super::Chat::faces_of`]).
     pub faces: Vec<Face>,
-    /// A person's or a guest's dot, a guest's room's (here while they're connected).
+    /// A person's dot.
     pub presence: Option<Presence>,
     /// The one line under a conversation's name: its note while it has one, else the newest
     /// thing said in it, or under it for a channel, as every list previews it (the user's
@@ -173,24 +162,12 @@ pub struct ListRow {
     pub latest_ms: Option<i64>,
     /// How many rooms a repository's channel has under it.
     pub rooms: u32,
-    /// Whether it's a guest's: a conversation with a guest, or a guest's room.
-    pub guest: bool,
-    /// Who a conversation with a guest is assigned to, `assigned to dana`
-    /// ([`super::assigned_label`]).
-    pub assigned_label: Option<String>,
-    /// For a guest's, that it's assigned to us (a dot); for a direct message, that it's
-    /// with one of our own agents or machines.
-    pub mine: bool,
-    /// For a guest's, that the guest spoke last and nobody on staff has answered.
-    pub unanswered: bool,
-    /// For a guest's, that it's closed: under the Closed fold.
-    pub closed: bool,
     /// Whether it opens a channel, a room under one included ([`super::is_channel`]): what
     /// every app asks before offering a channel's menu, never from its name's first character.
     pub channel: bool,
     /// For a direct message with one person, their face: what a conversation's header shows
-    /// beside their name, with their dot. `None` for a group, an agent, a machine, a guest and
-    /// a channel.
+    /// beside their name, with their dot. `None` for a group, an agent, a machine and a
+    /// channel.
     pub person: Option<Face>,
 }
 
@@ -227,11 +204,6 @@ impl ListRow {
             when: None,
             latest_ms: None,
             rooms: 0,
-            guest: false,
-            assigned_label: None,
-            mine: false,
-            unanswered: false,
-            closed: false,
             channel: false,
             person: None,
         }
@@ -242,7 +214,7 @@ impl ListRow {
     fn settle_names(&mut self) {
         // A group's name is a channel's too, `#dm-abc`: a direct message is never one.
         self.channel = !self.direct && super::is_channel(&self.name);
-        self.person = (self.direct_kind == Some(DirectKind::Person) && !self.guest)
+        self.person = (self.direct_kind == Some(DirectKind::Person))
             .then(|| self.faces.first().cloned())
             .flatten()
             .filter(|face| matches!(face, Face::Person { .. }));
@@ -258,10 +230,7 @@ impl ListRow {
     /// Whether it's a conversation of some kind, which a folded part keeps when it's new or
     /// shown.
     fn is_conversation(&self) -> bool {
-        matches!(
-            self.kind,
-            ListKind::Conversation | ListKind::Room | ListKind::GuestRoom
-        )
+        matches!(self.kind, ListKind::Conversation | ListKind::Room)
     }
 }
 
@@ -343,10 +312,7 @@ impl Chat {
             row.bold = row.unread && !row.muted;
             row.pip = row.bold
                 && !row.direct
-                && matches!(
-                    row.kind,
-                    ListKind::Conversation | ListKind::Room | ListKind::GuestRoom
-                );
+                && matches!(row.kind, ListKind::Conversation | ListKind::Room);
             if self.says_no_messages(row) {
                 row.under = RowUnder::of(None, Some(NO_MESSAGES.to_owned()), true);
             }
@@ -390,7 +356,7 @@ impl Chat {
     }
 
     /// The direct messages the sidebar lists, newest first: every one of [`Chat::direct_rows`]
-    /// a person's, a group's or a guest's; an agent session's or a machine's own thread only
+    /// a person's or a group's; an agent session's or a machine's own thread only
     /// once something's been said in it, there and not in a channel (the user's choice, 15 Nov 2026), as an agent that exists but never wrote to us is nothing to read. An agent
     /// session quiet for longer than [`super::ROOM_QUIET_AFTER`] ([`DirectRow::folded`])
     /// isn't listed either: Jump to… and search still find it, and it's back once it's opened
@@ -455,93 +421,39 @@ impl Chat {
         std::iter::once(heading).chain(rows).collect()
     }
 
-    /// A repository channel's rows: its own, with what's new in its guests' rooms folded out
-    /// of sight rolled up, then its rooms that aren't starred, then its guests' fold and the guests'
-    /// rooms it shows.
+    /// A repository channel's rows: its own, then its rooms that aren't starred.
     fn channel_list_rows(&self, group: &ChannelGroup, part: Shelf) -> Vec<ListRow> {
-        let rooms: Vec<&String> = group
-            .rooms
-            .iter()
-            .filter(|room| !self.is_starred(room))
-            .collect();
-        let guests = &group.guests;
         let name = &group.name;
-        // Its own row is bold for what's new in it, and in its guests' rooms folded out of
-        // sight under it. A room with a row of its own, its rooms and any guest's room still
-        // listed, folded or not, is bold for itself, and its channel isn't for it.
-        let folded_guests = guests
-            .rooms
-            .iter()
-            .filter(|room| !room.shown && !self.is_starred(&room.name))
-            .map(|room| room.name.as_str());
-        let rolled: Vec<&str> = std::iter::once(name.as_str())
-            .chain(folded_guests)
-            .collect();
         let head = ListRow {
             name: name.clone(),
-            open: (!guests.rooms.is_empty()).then_some(!guests.folded),
             opens: self.conversation(name).is_some(),
             joined: self.is_in(name),
             starred: self.is_starred(name),
             muted: self.is_muted(name),
-            unread: rolled.iter().any(|name| self.is_unread(name)),
+            unread: self.is_unread(name),
             under: RowUnder::of(None, group.preview.clone(), false),
             when: group.when.clone(),
             latest_ms: group.latest.map(|at| at.timestamp_millis()),
             rooms: count(group.rooms.len()),
             ..ListRow::new(ListKind::Conversation, part, self.title(name))
         }
-        .counting(rolled.iter().map(|name| self.badge(name)).sum());
+        .counting(self.badge(name));
         let mut rows = vec![head];
         // A room under it is listed while it's an active thread, as Discord lists them: a
         // quiet one is in its channel's threads alone ([`Chat::threads`], the user's choice,
-        // 14 Nov 2026).
+        // 14 Nov 2026). What's starred is under Starred alone.
         rows.extend(
-            rooms
+            group
+                .rooms
                 .iter()
-                .filter(|room| !self.is_quiet_thread(room))
+                .filter(|room| !self.is_starred(room) && !self.is_quiet_thread(room))
                 .map(|room| self.room_list_row(room, part, 1)),
-        );
-        // What's starred is under Starred alone.
-        rows.extend(
-            guests
-                .shown()
-                .filter(|room| !self.is_starred(&room.name))
-                .map(|room| {
-                    ListRow {
-                        name: room.name.clone(),
-                        depth: 1,
-                        opens: true,
-                        joined: room.joined,
-                        muted: self.is_muted(&room.name),
-                        // Unanswered, it's bold as unread is; assigned to us, it has a dot.
-                        unread: room.unread || room.unanswered,
-                        unanswered: room.unanswered,
-                        mine: room.mine,
-                        assigned_label: self
-                            .guest_header(&room.name)
-                            .and_then(|header| header.assignee)
-                            .map(|to| super::assigned_label(&to)),
-                        closed: room.closed,
-                        guest: true,
-                        faces: vec![self.face(&Avatar::Person {
-                            nick: room.guest.clone(),
-                        })],
-                        presence: Some(if room.connected {
-                            Presence::Here
-                        } else {
-                            Presence::Gone
-                        }),
-                        ..ListRow::new(ListKind::GuestRoom, part, room.label.clone())
-                    }
-                    .counting(room.badge)
-                }),
         );
         rows
     }
 
     /// A channel's row on its own, `depth` deep: a room under its channel by its own name,
-    /// or anything starred that isn't a repository's channel, a direct message or a guest's.
+    /// or anything starred that isn't a repository's channel, or a direct message.
     fn room_list_row(&self, name: &str, part: Shelf, depth: u8) -> ListRow {
         let preview = self.preview(name);
         let kind = if depth > 0 {
@@ -549,10 +461,7 @@ impl Chat {
         } else {
             ListKind::Conversation
         };
-        // A guest's room by the guest's name, as under its channel.
-        let title = if let Some((_, guest)) = zirc_proto::guest_room_of(name) {
-            self.guest_room_label(guest)
-        } else if depth > 0 {
+        let title = if depth > 0 {
             room_label(name).unwrap_or_else(|| self.title(name))
         } else {
             self.title(name)
@@ -600,7 +509,6 @@ impl Chat {
             under: RowUnder::of(task, row.preview.clone(), false),
             when: row.when.clone(),
             latest_ms: row.latest.map(|at| at.timestamp_millis()),
-            mine: row.mine,
             ..ListRow::new(ListKind::Conversation, part, row.label())
         }
         .counting(row.badge)

@@ -17,7 +17,7 @@ pub const SEARCH_SETTLE_MS: u32 = 300;
 #[derive(Debug, Clone)]
 pub struct Finding {
     /// The conversation search was opened in, whose control it shows beside Everywhere:
-    /// none for one opened everywhere, and for a fixed one.
+    /// none for one opened everywhere.
     pub opened_in: Option<String>,
     /// The chips: the scope and the filters, with nothing typed.
     pub base: SearchQuery,
@@ -27,8 +27,6 @@ pub struct Finding {
     pub server: Option<ServerSearch>,
     /// Whether every conversation's group shows, not only the first few.
     pub all_groups: bool,
-    /// Whether its scope stays as it started, as a guest's does: their one channel.
-    pub fixed: bool,
 }
 
 impl Finding {
@@ -42,17 +40,6 @@ impl Finding {
             typed: String::new(),
             server: None,
             all_groups: false,
-            fixed: false,
-        }
-    }
-
-    /// A search whose scope, `base`'s, stays: a guest's in their one channel. Nothing widens
-    /// it or takes its scope away.
-    #[must_use]
-    pub fn fixed(base: SearchQuery) -> Self {
-        Self {
-            fixed: true,
-            ..Self::new(base, None)
         }
     }
 
@@ -76,11 +63,8 @@ impl Finding {
             .map(|why| why.to_string())
     }
 
-    /// Changes the chips to `base`, keeping what's typed; a fixed search's scope stays.
-    pub fn rebase(&mut self, mut base: SearchQuery) {
-        if self.fixed {
-            base.scope = self.base.scope.clone();
-        }
+    /// Changes the chips to `base`, keeping what's typed.
+    pub fn rebase(&mut self, base: SearchQuery) {
         self.base = base;
         self.all_groups = false;
     }
@@ -132,7 +116,7 @@ impl Finding {
     }
 
     /// Backspace in an empty box: takes the last chip away, the scope last of all, but never
-    /// a fixed search's scope, nor one the control beside the box holds. Whether one was.
+    /// one the control beside the box holds. Whether one was.
     pub fn backspace(&mut self) -> bool {
         if !self.typed.is_empty() {
             return false;
@@ -147,7 +131,7 @@ impl Finding {
         let Some(chip) = chips
             .iter()
             .rev()
-            .find(|chip| !((self.fixed || held) && chip.token.starts_with("in:")))
+            .find(|chip| !(held && chip.token.starts_with("in:")))
         else {
             return false;
         };
@@ -193,8 +177,8 @@ impl Finding {
     }
 
     /// The segmented control over `screen`, for a search opened in the conversation the
-    /// sidebar names `here`; none for one opened everywhere, whose scope is a chip, and for a
-    /// fixed one ([`search_segments`]).
+    /// sidebar names `here`; none for one opened everywhere, whose scope is a chip
+    /// ([`search_segments`]).
     #[must_use]
     pub fn segments(&self, screen: &SearchScreen, here: Option<String>) -> Option<SearchSegments> {
         search_segments(screen, self.opened_in.as_deref(), here)
@@ -212,17 +196,12 @@ impl Finding {
     }
 
     /// The chips in the box, of `chips` ([`SearchScreen::chips`]): not the scope's when the
-    /// segmented control shows in its place (`segmented`), and a fixed search's scope can't be
-    /// taken away.
+    /// segmented control shows in its place (`segmented`).
     #[must_use]
-    pub fn chips(&self, chips: Vec<ScreenChip>, segmented: bool) -> Vec<ScreenChip> {
+    pub fn chips(chips: Vec<ScreenChip>, segmented: bool) -> Vec<ScreenChip> {
         chips
             .into_iter()
             .filter(|chip| !(chip.scope && segmented))
-            .map(|chip| ScreenChip {
-                removable: !(chip.scope && self.fixed),
-                ..chip
-            })
             .collect()
     }
 }
@@ -278,20 +257,6 @@ mod tests {
         search.take_typed("after:someday");
         assert!(search.problem().is_some());
         assert_eq!(search.query().text, "after:someday");
-    }
-
-    #[test]
-    fn a_fixed_scope_stays_whatever_is_done() {
-        let mut search = Finding::fixed(SearchQuery::parse("", Some("#guests")).unwrap());
-        let scope = search.base.scope.clone();
-        search.widen();
-        search.everywhere(true);
-        search.remove("in:#guests");
-        search.add("in:#api");
-        search.take_typed("from:leo ");
-        assert!(search.backspace(), "takes from:leo away");
-        assert!(!search.backspace(), "never the scope");
-        assert_eq!(search.base.scope, scope);
     }
 
     #[test]

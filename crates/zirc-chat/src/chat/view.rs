@@ -207,9 +207,6 @@ pub enum SenderKind {
     /// One of zirc's own accounts, an app: CI, zirc-alerts. The handle `zirc` is zirc's
     /// alone, so only zirc's accounts are `zirc` or `zirc-…`.
     Integration,
-    /// A guest, from outside the organisation: only [`super::Chat::sender_kind`] tells,
-    /// as it knows who has no account.
-    Guest,
 }
 
 impl SenderKind {
@@ -221,20 +218,16 @@ impl SenderKind {
             Self::Person => Some("PERSON"),
             Self::Agent => None,
             Self::Integration => Some("APP"),
-            Self::Guest => Some(super::GUEST_PILL),
         }
     }
 }
 
 impl super::Chat {
-    /// What `nick` is: a guest when the server let them in as one ([`super::Chat::is_guest`]),
-    /// never by their nick alone; otherwise as [`sender_kind`] says, by whose machine its host
-    /// says it is ([`super::Chat::machine_owner`]).
+    /// What `nick` is: one of zirc's apps, or else as [`sender_kind`] says, by whose machine
+    /// its host says it is ([`super::Chat::machine_owner`]).
     #[must_use]
     pub fn sender_kind(&self, nick: &str) -> SenderKind {
-        if self.is_guest(nick) {
-            SenderKind::Guest
-        } else if self.is_app(nick) {
+        if self.is_app(nick) {
             SenderKind::Integration
         } else {
             sender_kind(nick, self.machine_owner(nick))
@@ -243,16 +236,12 @@ impl super::Chat {
 }
 
 /// What `nick` is: zirc's own accounts are integrations, by their names; a machine, whose
-/// `owner` its host says (`machine/<owner>`), is an agent; anyone else, a guest among them, is
-/// a person. [`super::Chat::sender_kind`] tells guests.
+/// `owner` its host says (`machine/<owner>`), is an agent; anyone else is a person.
 #[must_use]
 pub fn sender_kind(nick: &str, owner: Option<&str>) -> SenderKind {
     let lower = nick.to_ascii_lowercase();
     if lower == "zirc" || lower.starts_with("zirc-") {
         return SenderKind::Integration;
-    }
-    if lower.starts_with(super::GUEST_PREFIX) {
-        return SenderKind::Person;
     }
     if owner.is_some() {
         SenderKind::Agent
@@ -527,8 +516,7 @@ impl Parts {
 
 /// Who `nick` is as a system row says it: one of zirc's apps by its name ([`super::app_name`]),
 /// `CI`; a machine, whose `owner` its host says, as its owner's agent, the owner as
-/// `owner_name` says ([`super::Chat::owner_name`]); anyone else, a guest among them, by
-/// their nick.
+/// `owner_name` says ([`super::Chat::owner_name`]); anyone else by their nick.
 #[must_use]
 pub fn actor(nick: &str, owner: Option<&str>, owner_name: &dyn Fn(&str) -> String) -> String {
     match (sender_kind(nick, owner), owner) {
@@ -1597,7 +1585,6 @@ fn system(entry: &Entry) -> bool {
             | EntryKind::Part(_)
             | EntryKind::Quit(_)
             | EntryKind::Unreadable(_)
-            | EntryKind::Support(_)
             | EntryKind::Info(_)
     )
 }
@@ -1911,10 +1898,6 @@ pub(crate) fn items<'a>(
                 entry,
                 text: text.clone(),
             },
-            EntryKind::Support(event) => Item::Note {
-                entry,
-                text: support_note(from, event, &conversation.name),
-            },
         };
         items.push(item);
     }
@@ -1988,19 +1971,6 @@ pub fn people_only(items: Vec<Item<'_>>) -> Vec<Item<'_>> {
         kept.pop();
     }
     kept
-}
-
-/// A support event's system row, in the conversation called `name`: a guest named as
-/// [`super::guest_label`] does, never by their nick.
-fn support_note(from: &str, event: &zirc_proto::support::Support, name: &str) -> String {
-    let named = |nick: &str| {
-        if nick.to_ascii_lowercase().starts_with(super::GUEST_PREFIX) {
-            super::guest_label(nick)
-        } else {
-            nick.to_owned()
-        }
-    };
-    super::support_text(&named(from), event, &named(name))
 }
 
 /// The session a zirc message is from, if it's one.

@@ -53,16 +53,8 @@ pub enum Command {
     Group(Vec<String>),
     /// `/invite nick…`: let people into the group shown, as its maker.
     Invite(Vec<String>),
-    /// `/close`: stop showing the conversation shown, leaving it if it's a channel; in a
-    /// conversation with a guest, mark it resolved.
+    /// `/close`: stop showing the conversation shown, leaving it if it's a channel.
     Close,
-    /// `/assign nick`: assign the conversation with a guest shown to someone on staff.
-    Assign(String),
-    /// `/ban`: refuse the guest shown in every public channel, for admins.
-    Ban,
-    /// `/unban [guest]`: let the guest named, or shown, back into the public channels, for
-    /// admins.
-    Unban(Option<String>),
     /// `/topic [text]`: show or set the topic of the channel shown.
     Topic(Option<String>),
     /// `/nick name`: change nick.
@@ -130,9 +122,6 @@ impl Command {
             Self::Group(_) => "group",
             Self::Invite(_) => "invite",
             Self::Close => "close",
-            Self::Assign(_) => "assign",
-            Self::Ban => "ban",
-            Self::Unban(_) => "unban",
             Self::Topic(_) => "topic",
             Self::Nick(_) => "nick",
             Self::Away(_) => "away",
@@ -194,7 +183,6 @@ fn bare(name: &str) -> Option<Command> {
     Some(match name.to_ascii_lowercase().as_str() {
         "agents" => Command::Agents,
         "browse" => Command::Browse,
-        "ban" => Command::Ban,
         "back" => Command::Away(None),
         "sessions" => Command::Sessions,
         "people" => Command::People,
@@ -219,11 +207,8 @@ pub mod said {
     pub const JOIN_FIRST: &str = "join a channel first";
     /// `/invite` outside a group.
     pub const NOT_A_GROUP: &str = "/invite adds people to a group: start one with /group";
-    /// `/invite` alone, with no guest shown.
+    /// `/invite` alone.
     pub const INVITE_NEEDS: &str = "/invite needs a nick";
-    /// `/invite` naming a guest among others.
-    pub const GUEST_NOT_IN_GROUP: &str =
-        "a guest can't join a group: /invite <guest> alone invites them to the organisation";
     /// `/part` alone outside a channel.
     pub const PART_NEEDS: &str = "/part from a channel, or name one";
     /// `/topic` alone in a channel with none.
@@ -234,10 +219,6 @@ pub mod said {
     pub const NOTHING_TO_REACT: &str = "nothing here to react to yet";
     /// `/reply` with nothing said yet.
     pub const NOTHING_TO_REPLY: &str = "nothing here to reply to yet";
-    /// `/close` in a guest's conversation that's resolved.
-    pub const CLOSED_ALREADY: &str = "it's closed already";
-    /// `/assign`, `/ban` or `/unban` outside a guest's conversation.
-    pub const FOR_GUESTS: &str = "that's for a conversation with a guest";
     /// `/react` alone, in an app with no picker.
     pub const REACT_NEEDS: &str = "/react needs an emoji";
     /// `/reply` alone, in an app that doesn't start a reply from it.
@@ -247,12 +228,6 @@ pub mod said {
     #[must_use]
     pub fn no_emoji(typed: &str) -> String {
         format!("no emoji called {typed}")
-    }
-
-    /// `/assign <to>` when they aren't on staff.
-    #[must_use]
-    pub fn not_staff(to: &str) -> String {
-        format!("{to} isn't on staff here: assign it to someone who is")
     }
 
     /// A command the terminal client carries out and this app doesn't: `/quote is for
@@ -377,10 +352,6 @@ pub fn parse(input: &str) -> Result<Command, Unread> {
         "group" => nick().map(|_| Command::Group(words())),
         "invite" => Ok(Command::Invite(words())),
         "close" | "wc" => Ok(Command::Close),
-        "assign" => nick().map(Command::Assign),
-        "unban" => Ok(Command::Unban(
-            rest.split_whitespace().next().map(str::to_owned),
-        )),
         "topic" => Ok(Command::Topic(some(rest))),
         "nick" => nick().map(Command::Nick),
         "org" => Ok(Command::Org(some(rest))),
@@ -489,11 +460,7 @@ mod tests {
             Ok(Command::Reply(Some("on it".into())))
         );
         assert_eq!(parse("/r"), Ok(Command::Reply(None)));
-        assert_eq!(parse("/assign dana"), Ok(Command::Assign("dana".into())));
-        assert_eq!(parse("/assign"), Err("/assign needs a nick".into()));
-        assert_eq!(parse("/ban"), Ok(Command::Ban));
         assert_eq!(parse("/profile"), Ok(Command::Profile));
-        assert_eq!(parse("/unban"), Ok(Command::Unban(None)));
         assert_eq!(parse("/invite"), Ok(Command::Invite(Vec::new())));
         assert_eq!(parse("/group"), Err("/group needs a nick".into()));
     }

@@ -78,7 +78,7 @@ pub enum Ran {
     /// Nothing to send: say this, as a note or an error.
     Note(String),
     /// A command zirc-chat leaves to the app: one only some apps carry out (the terminal
-    /// client's picker, `/quote`, `/sessions`…) or one that asks zirc.dev (a guest's ban).
+    /// client's picker, `/quote`, `/sessions`…) or one that asks zirc.dev.
     /// An app that doesn't carry it out says [`said::refused`].
     App(Command),
 }
@@ -161,19 +161,8 @@ impl Chat {
                 }
             }
             Command::Msg { target, text } => Ran::Send(self.msg(&target, &text)),
-            Command::Query(nick) => Ran::Send(self.open(&self.message_target(&nick))),
+            Command::Query(nick) => Ran::Send(self.open(&nick)),
             Command::Group(nicks) => Ran::Send(self.create_group(&nicks)),
-            // A guest's invite asks zirc.dev, as the app's guest card does.
-            Command::Invite(nicks)
-                if (nicks.is_empty() && self.guest_of(name).is_some())
-                    || nicks.iter().any(|n| self.is_guest(n)) =>
-            {
-                if nicks.len() > 1 && nicks.iter().any(|n| self.is_guest(n)) {
-                    note(said::GUEST_NOT_IN_GROUP)
-                } else {
-                    Ran::App(Command::Invite(nicks))
-                }
-            }
             Command::Invite(nicks) if nicks.is_empty() => note(said::INVITE_NEEDS),
             Command::Invite(nicks) if is_group(name) => Ran::Send(self.add_to_group(name, &nicks)),
             Command::Invite(_) => note(said::NOT_A_GROUP),
@@ -185,16 +174,6 @@ impl Chat {
                 }
             }
             Command::Close => self.close_here(name),
-            Command::Assign(to) => match self.guest_of(name) {
-                Some(guest) => {
-                    let staff = self.staff();
-                    match staff.iter().find(|p| p.nick.eq_ignore_ascii_case(&to)) {
-                        Some(person) => Ran::Send(self.assign_guest(&guest, &person.nick)),
-                        None => note(said::not_staff(&to)),
-                    }
-                }
-                None => note(said::FOR_GUESTS),
-            },
             Command::Topic(None) => note(
                 shown
                     .and_then(|c| c.topic.clone())
@@ -220,33 +199,22 @@ impl Chat {
         })
     }
 
-    /// `/msg`: says `text` to `target`, a channel or someone (a guest in their room),
+    /// `/msg`: says `text` to `target`, a channel or someone,
     /// opening the conversation first unless it's a channel we're in.
     fn msg(&mut self, target: &str, text: &str) -> Vec<Line> {
-        let target = self.message_target(target);
-        let joined = self.conversation(&target).is_some_and(|c| c.joined);
-        let mut lines = if is_channel(&target) && joined {
+        let joined = self.conversation(target).is_some_and(|c| c.joined);
+        let mut lines = if is_channel(target) && joined {
             Vec::new()
         } else {
-            self.open(&target)
+            self.open(target)
         };
-        lines.extend(self.say(&target, text, false));
+        lines.extend(self.say(target, text, false));
         lines
     }
 
-    /// `/close` in `name`: a guest's conversation resolved, a channel left and closed, a
-    /// direct conversation closed by the app.
+    /// `/close` in `name`: a channel left and closed, a direct conversation closed by the
+    /// app.
     fn close_here(&mut self, name: &str) -> Ran {
-        if let Some(guest) = self.guest_of(name) {
-            return if self
-                .guest_actions(&guest)
-                .contains(&super::GuestAction::Close)
-            {
-                Ran::Send(self.close_guest(&guest))
-            } else {
-                note(said::CLOSED_ALREADY)
-            };
-        }
         match self.position(name) {
             Some(_) if !is_channel(name) => Ran::CloseDirect(name.to_owned()),
             Some(at) => Ran::Send(self.close(at)),

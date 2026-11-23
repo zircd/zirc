@@ -6,7 +6,7 @@ use std::io::IsTerminal as _;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
-/// Serves one Ergo's account endpoint, history search, guests' gateway and metrics, beside it.
+/// Serves one Ergo's account endpoint, history search and metrics, beside it.
 #[derive(Parser)]
 #[command(version)]
 struct Cli {

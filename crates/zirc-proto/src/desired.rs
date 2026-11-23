@@ -1,6 +1,6 @@
 //! What zirc.dev wants of an organisation's server, as one document: its owners, teams,
-//! settings, who may read what, public channels and the keys browser logins are signed with,
-//! with a generation that grows with each version of it.
+//! settings, who may read what and the keys browser logins are signed with, with a
+//! generation that grows with each version of it.
 //!
 //! zirc.dev owns this state, and the server makes itself match it; what the server has (its
 //! history, who's connected) is never in it. A server applies a document only if its
@@ -44,11 +44,6 @@ pub mod limits {
     /// The longest handle (account name), as zirc.dev, zircd and the gateway hold handles to
     /// it, with room for `-<machine>` within a nick.
     pub const HANDLE_MAX: usize = crate::names::HANDLE_MAX;
-
-    /// Public channels guests may come into.
-    pub const PUBLIC_CHANNELS_MAX: usize = 5;
-    /// A public channel's name.
-    pub const PUBLIC_CHANNEL_PATTERN: &str = r"^#[a-z0-9][a-z0-9_-]{0,48}$";
 
     /// Keys browser logins may be signed with at once, while one replaces another.
     pub const TOKEN_KEYS_MAX: usize = 4;
@@ -101,9 +96,9 @@ pub struct DesiredState {
     #[schemars(length(max = limits::OWNERS_MAX), inner(length(max = limits::HANDLE_MAX)))]
     pub owners: Vec<String>,
 
-    /// The organisation's admins, by their handles: on the server's own pages
-    /// (`DesiredState::content_api`) they look after its guests, as on zirc.dev. Owners
-    /// aren't listed again.
+    /// The organisation's admins, by their handles: the server gives them an admin's role
+    /// on its own pages (`DesiredState::content_api`), as on zirc.dev. Owners aren't listed
+    /// again.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(length(max = limits::OWNERS_MAX), inner(length(max = limits::HANDLE_MAX)))]
     pub admins: Vec<String>,
@@ -143,21 +138,11 @@ pub struct DesiredState {
     #[serde(default, skip_serializing_if = "Visibility::is_default")]
     pub visibility: Visibility,
 
-    /// Channels anyone may come into as a guest, from a "Chat with us" on the organisation's
-    /// site: a token zirc.dev signs lets a visitor into one of these, and only that. The
-    /// team's own use of the server is unchanged.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[schemars(
-        length(max = limits::PUBLIC_CHANNELS_MAX),
-        inner(regex(pattern = limits::PUBLIC_CHANNEL_PATTERN))
-    )]
-    pub public_channels: Vec<String>,
-
     /// The public halves (PEM) of the keys zirc.dev signs this organisation's browser logins
-    /// and guests' tokens with: a JWT naming an account here, over SASL `IRCV3BEARER`. A list,
-    /// so a new key can be added before the old one goes. Each organisation has its own, as
-    /// handles are only unique within one: a token for `ada` here mustn't log in as another
-    /// organisation's `ada`. Without one, there's no JWT login.
+    /// with: a JWT naming an account here, over SASL `IRCV3BEARER`. A list, so a new key can
+    /// be added before the old one goes. Each organisation has its own, as handles are only
+    /// unique within one: a token for `ada` here mustn't log in as another organisation's
+    /// `ada`. Without one, there's no JWT login.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(
         length(max = limits::TOKEN_KEYS_MAX),
@@ -169,7 +154,7 @@ pub struct DesiredState {
     pub token_keys: Vec<String>,
 
     /// The server answers content requests itself, at its own host name
-    /// (`https://<host>/api/v1/…`): history, conversations, messages, guests, export and its
+    /// (`https://<host>/api/v1/…`): history, conversations, messages, export and its
     /// logs, each authorised by the person's own token (a device's, or a browser login's),
     /// with its role and the visibility checked on the server. Off by default; turning it on
     /// restarts nothing.
@@ -273,13 +258,6 @@ pub struct Accounts {
     /// password. Off by default; turn it on once everyone connecting has an account.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub require_sasl: bool,
-
-    /// Each guest gets an always-on account of their own (`guest-…`), which the server makes
-    /// as they first come and logs them in to, so staff can write to them while they're away
-    /// and they get their conversations back. Off until the organisation's apps know a guest
-    /// with an account for one.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub guests: bool,
 
     /// Apps and machines may sign in with a key made on their device ([`crate::device_key`]),
     /// which the server's sidecar checks by itself, so they keep connecting while zirc.dev is
@@ -500,17 +478,14 @@ mod tests {
             },
             accounts: Accounts {
                 require_sasl: true,
-                guests: false,
                 device_keys: true,
             },
             visibility: Visibility::Channels,
-            public_channels: vec!["#help".into()],
             token_keys: vec!["-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n".into()],
             content_api: true,
         };
         let json = serde_json::to_value(&desired).unwrap();
         assert_eq!(json["generation"], 42);
-        assert_eq!(json["publicChannels"], serde_json::json!(["#help"]));
         assert_eq!(json["teams"][0]["inviteOnly"], true);
         assert_eq!(json["accounts"]["requireSasl"], true);
         assert!(json["tokenKeys"].is_array());

@@ -16,32 +16,23 @@ use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::exporter::{self, PRIVMSG, TAGMSG};
+use crate::exporter::{self, PRIVMSG};
 
 mod by_id;
 pub use by_id::by_ids;
 use zirc_proto::desired::Visibility;
 
-/// A conversation: a channel, the direct messages between two accounts (in order), or a
-/// guest's with the organisation's staff, all of them together: the team's.
+/// A conversation: a channel, or the direct messages between two accounts (in order).
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Conversation {
     /// A channel, by its name.
     Channel(String),
     /// A direct conversation between two accounts.
     Direct(String, String),
-    /// A guest's conversation with the team, by the guest's name.
-    Guest(String),
-}
-
-/// A guest's account or nick.
-fn guest(name: &str) -> bool {
-    zirc_proto::named_as_guest(name)
 }
 
 impl Conversation {
-    /// `#channel`, `@account` (the viewer's direct messages with it, or with a guest, the
-    /// team's), or `@a,@b`.
+    /// `#channel`, `@account` (the viewer's direct messages with it), or `@a,@b`.
     #[must_use]
     pub fn parse(text: &str, viewer: &str) -> Option<Self> {
         let text = text.trim().to_lowercase();
@@ -50,7 +41,6 @@ impl Conversation {
         }
         let mut accounts = text.split(',').map(|a| a.trim().strip_prefix('@'));
         match (accounts.next()?, accounts.next(), accounts.next()) {
-            (Some(a), None, None) if guest(a) => Some(Self::Guest(a.to_owned())),
             (Some(a), None, None) => Some(Self::direct(viewer, a)),
             (Some(a), Some(Some(b)), None) => Some(Self::direct(a, b)),
             _ => None,
@@ -72,7 +62,6 @@ impl std::fmt::Display for Conversation {
         match self {
             Self::Channel(name) => f.write_str(name),
             Self::Direct(a, b) => write!(f, "@{a},@{b}"),
-            Self::Guest(name) => write!(f, "@{name}"),
         }
     }
 }
@@ -90,8 +79,6 @@ pub struct Viewer {
     pub channels: BTreeSet<String>,
     /// Who may read what, as the organisation chose.
     pub policy: Visibility,
-    /// The organisation has guests: it has public channels.
-    pub guests: bool,
 }
 
 impl Viewer {
@@ -102,18 +89,8 @@ impl Viewer {
             (Visibility::Participant, Conversation::Channel(name)) => self.channels.contains(name),
             (Visibility::Channels | Visibility::Everything, Conversation::Channel(_))
             | (Visibility::Everything, Conversation::Direct(..)) => true,
-            (_, Conversation::Guest(_)) => self.staff(),
-            (_, Conversation::Direct(a, b)) => {
-                self.owns(a) || self.owns(b) || (self.staff() && (guest(a) || guest(b)))
-            }
+            (_, Conversation::Direct(a, b)) => self.owns(a) || self.owns(b),
         }
-    }
-
-    /// A person on the staff of an organisation with guests, who reads its conversations with
-    /// them as the team's, whoever had them: not a machine, whose agents never talk to guests,
-    /// and nobody whatever the visibility otherwise (`Visibility`) where there are no guests.
-    fn staff(&self) -> bool {
-        self.guests && crate::gateway::person(&self.account)
     }
 
     /// The viewer's own account, or one of their machines'.
@@ -221,10 +198,6 @@ pub struct Message {
     /// and its level ([`zirc_proto::Message::task`], [`zirc_proto::Message::level`]) where
     /// it says them: no event has fields of those names.
     pub zirc: Option<Value>,
-    /// The team's event in a conversation with a guest (`crate::gateway::SUPPORT_TAG`), as
-    /// its tag's value: a TAGMSG's own entry, with no text.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub support: Option<String>,
 }
 
 /// A page of what a viewer may see that a query asks for, newest first, and where the next
@@ -346,10 +319,7 @@ pub fn search(history: &Path, viewer: &Viewer, query: &Query) -> rusqlite::Resul
         Some(Conversation::Channel(name)) => Some(name.clone()),
         _ => None,
     };
-    let direct_only = matches!(
-        query.conversation,
-        Some(Conversation::Direct(..) | Conversation::Guest(_))
-    );
+    let direct_only = matches!(query.conversation, Some(Conversation::Direct(..)));
     let channels = Source {
         connection: &connection,
         sql: format!(
@@ -378,17 +348,6 @@ pub fn search(history: &Path, viewer: &Viewer, query: &Query) -> rusqlite::Resul
         Some(Conversation::Direct(a, b)) => (
             (a.clone(), b.clone()),
             "c.target = ?4 AND c.correspondent = ?5",
-        ),
-        // Every row the guest is in, theirs and each staff member's.
-        Some(Conversation::Guest(name)) => (
-            (name.clone(), String::new()),
-            "(c.target = ?4 OR c.correspondent = ?4) AND ?5 = ?5",
-        ),
-        // The viewer's own, their machines', and the team's with guests.
-        _ if viewer.policy != Visibility::Everything && viewer.staff() => (
-            (viewer.account.clone(), viewer.machines_json()),
-            "(c.target = ?4 OR c.target IN (SELECT value FROM json_each(?5)) \
-             OR c.target LIKE 'guest-%' OR c.correspondent LIKE 'guest-%')",
         ),
         // The viewer's own, and their machines'.
         _ if viewer.policy != Visibility::Everything => (
@@ -433,10 +392,6 @@ fn place(query: &Query) -> ((String, String), &'static str) {
             ((name.clone(), String::new()), "r.channel = ?4 AND ?5 = ?5")
         }
         Some(Conversation::Direct(a, b)) => ((a.clone(), b.clone()), "r.a = ?4 AND r.b = ?5"),
-        Some(Conversation::Guest(name)) => (
-            (name.clone(), String::new()),
-            "(r.a = ?4 OR r.b = ?4) AND ?5 = ?5",
-        ),
         None => (Default::default(), "?4 = ?4 AND ?5 = ?5"),
     }
 }
@@ -481,9 +436,9 @@ fn best(
             i64::try_from(BATCH).unwrap_or(i64::MAX).into(),
         ];
         let mut rows = statement.query(rusqlite::params_from_iter(first.iter().chain(&extra)))?;
-        let mut read = 0;
+        let mut scanned = 0;
         while let Some(row) = rows.next()? {
-            read += 1;
+            scanned += 1;
             skip += 1;
             let (target, other): (String, Option<String>) = (row.get(4)?, row.get(5)?);
             let row = Row {
@@ -499,7 +454,7 @@ fn best(
                 },
             };
             if viewer.may_see(&row.conversation)
-                && let Some(message) = read_row(&row, query)
+                && let Some(message) = read(&row, query)
             {
                 messages.push(message);
                 if messages.len() >= query.limit {
@@ -511,8 +466,8 @@ fn best(
                 }
             }
         }
-        if read < BATCH || skip - query.skip >= SCAN {
-            let more = read == BATCH;
+        if scanned < BATCH || skip - query.skip >= SCAN {
+            let more = scanned == BATCH;
             return Ok(Page {
                 messages,
                 next: more.then(|| format!("b{skip}")),
@@ -520,16 +475,6 @@ fn best(
             });
         }
     }
-}
-
-/// The message in `row` as `query`'s conversation names it.
-fn read_row(row: &Row, query: &Query) -> Option<Message> {
-    let mut message = read(row, query)?;
-    // In the team's view, everyone's lines are the guest's conversation.
-    if let Some(guest @ Conversation::Guest(_)) = &query.conversation {
-        message.conversation = guest.to_string();
-    }
-    Some(message)
 }
 
 /// How many messages `query`'s text finds in each conversation `viewer` may read, most
@@ -678,7 +623,7 @@ fn collect(viewer: &Viewer, query: &Query, mut sources: Vec<Source<'_>>) -> rusq
         scanned += 1;
         if seen.insert(row.at.id)
             && viewer.may_see(&row.conversation)
-            && let Some(message) = read_row(&row, query)
+            && let Some(message) = read(&row, query)
         {
             messages.push(message);
         }
@@ -737,34 +682,6 @@ fn read(row: &Row, query: &Query) -> Option<Message> {
             "person"
         }
     };
-    // The team's events with a guest come back as they are; no other TAGMSG does.
-    if said.kind == TAGMSG {
-        let support = said.tags.get(crate::gateway::SUPPORT_TAG)?.clone();
-        if query.text.is_some()
-            || query
-                .sender
-                .as_ref()
-                .is_some_and(|s| account.as_deref() != Some(s.to_lowercase().as_str()))
-        {
-            return None;
-        }
-        return Some(Message {
-            msgid: row.msgid.clone(),
-            time: Timestamp::from_nanosecond(i128::from(row.at.nanotime))
-                .map(|t| t.to_string())
-                .unwrap_or_default(),
-            conversation: row.conversation.to_string(),
-            sender: Sender {
-                kind: kind_of(&account),
-                account,
-                nick: said.nick,
-            },
-            kind: "tagmsg",
-            text: String::new(),
-            zirc: None,
-            support: Some(support),
-        });
-    }
     let zirc = zirc_proto::decode(&said.text).ok().flatten();
     let kind = match said.kind {
         PRIVMSG if zirc.is_none() && said.text.starts_with("\u{1}ACTION ") => "action",
@@ -822,14 +739,13 @@ fn read(row: &Row, query: &Query) -> Option<Message> {
             event["session"] = Value::String(m.session);
             event
         }),
-        support: None,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::trim::testing::{add, add_direct, add_direct_item, history};
+    use crate::trim::testing::{add, add_direct, history};
 
     const SECOND: i64 = 1_000_000_000;
 
@@ -882,7 +798,6 @@ mod tests {
             machines: [format!("{account}-mbp"), format!("{account}-ci")].into(),
             channels: channels.iter().map(|c| (*c).to_owned()).collect(),
             policy,
-            guests: false,
         }
     }
 
@@ -902,74 +817,6 @@ mod tests {
             .into_iter()
             .map(|m| m.msgid)
             .collect()
-    }
-
-    #[test]
-    fn staff_read_the_team_s_conversations_with_guests() {
-        let (_dir, path) = sample();
-        add_direct(
-            &path,
-            "g1",
-            90 * SECOND,
-            "alice",
-            "guest-7k2q",
-            "how can I help?",
-        );
-        add_direct(
-            &path,
-            "g2",
-            95 * SECOND,
-            "guest-7k2q",
-            "alice",
-            "my build fails",
-        );
-        add_direct(&path, "g3", 99 * SECOND, "bob", "guest-7k2q", "Bob here");
-        // The team's event: Mattias assigns it to Bob. A reaction stays out.
-        let tagged = |msgid: &str, tag: &str, value: &str| {
-            serde_json::json!({
-                "Type": 8, "Nick": "mattias!u@h", "AccountName": "mattias",
-                "Message": {"Message": "", "Msgid": msgid}, "Tags": {tag: value},
-            })
-        };
-        let event = tagged("e1", "+zirc/support", "assigned:bob");
-        add_direct_item(&path, "e1", 97 * SECOND, "mattias", "guest-7k2q", &event);
-        let reaction = tagged("e2", "+draft/react", "👍");
-        add_direct_item(&path, "e2", 98 * SECOND, "mattias", "guest-7k2q", &reaction);
-        // A guest without an account: Ergo keeps only the staff member's row of each.
-        Connection::open(&path)
-            .unwrap()
-            .execute("DELETE FROM conversations WHERE target = 'guest-7k2q'", [])
-            .unwrap();
-        let staff = |account: &str, guests: bool| Viewer {
-            guests,
-            ..viewer(account, &[], Visibility::Participant)
-        };
-        let team = Query {
-            conversation: Conversation::parse("@guest-7k2q", "carol"),
-            ..query()
-        };
-        assert_eq!(
-            ids(&path, &staff("carol", true), &team),
-            ["g3", "e1", "g2", "g1"]
-        );
-        let page = search(&path, &staff("carol", true), &team).unwrap();
-        let event = &page.messages[1];
-        assert_eq!(event.support.as_deref(), Some("assigned:bob"));
-        assert_eq!((event.kind, event.text.as_str()), ("tagmsg", ""));
-        assert!(
-            page.messages
-                .iter()
-                .all(|m| m.conversation == "@guest-7k2q")
-        );
-        // Everything Carol may read has them, but still not others' private messages.
-        let all = ids(&path, &staff("carol", true), &query());
-        assert!(all.contains(&"g1".to_owned()), "{all:?}");
-        assert!(!all.contains(&"d1".to_owned()), "{all:?}");
-        // Never for a machine, whose agents don't talk to guests; nowhere without guests.
-        assert!(ids(&path, &staff("carol-mbp", true), &team).is_empty());
-        assert!(ids(&path, &staff("carol", false), &team).is_empty());
-        let none = ids(&path, &staff("carol", false), &query());
-        assert!(!none.contains(&"g1".to_owned()), "{none:?}");
     }
 
     #[test]

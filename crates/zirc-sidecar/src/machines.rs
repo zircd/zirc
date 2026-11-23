@@ -183,8 +183,7 @@ pub fn owner_in(known: Option<&Owners>, account: &str) -> Option<String> {
 }
 
 /// Every machine any sidecar in this process was told of, for telling agents from people
-/// ([`is_agent`]): in what's counted, and in who's on the staff that talks to guests
-/// ([`crate::gateway::person`]). It only grows, so a test's sidecar telling it of its
+/// ([`is_agent`]) in what's counted. It only grows, so a test's sidecar telling it of its
 /// machines changes no other's counts, and a machine's name stays a machine's.
 static AGENTS: LazyLock<RwLock<BTreeSet<String>>> = LazyLock::new(RwLock::default);
 

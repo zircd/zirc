@@ -122,7 +122,6 @@ mod tests {
             machines: [format!("{account}-mbp")].into(),
             channels: channels.iter().map(|c| (*c).to_owned()).collect(),
             policy,
-            guests: false,
         }
     }
 

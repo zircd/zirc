@@ -29,11 +29,11 @@
 //! people's and machines' accounts.
 //!
 //! Anyone in the organisation may deploy a workflow, from their own account or one of their
-//! machines; guests, integrations and workflows may not. Nothing anyone says is logged: only
+//! machines; integrations and workflows may not. Nothing anyone says is logged: only
 //! which workflow did what.
 //!
 //! Workflows are off unless zirc.dev turns them on for the organisation (`spec.workflows`, as
-//! [`crate::gateway::Public::workflows`]): until then nothing connects, and `zirc workflow
+//! [`crate::teams::Public::workflows`]): until then nothing connects, and `zirc workflow
 //! deploy`, finding no host, sends nothing. On, the host is in `#workflows` alone, and each
 //! workflow's nick connects once its file is.
 
@@ -554,9 +554,7 @@ impl Hosted {
             return Vec::new();
         }
         if let Some(state) = State::of(&message.event) {
-            // How something stands is the team's and its CI's to say. A guest's word for it,
-            // which the gateway passes on as it does any line of theirs, starts no run and
-            // moves none on.
+            // How something stands is the team's and its CI's to say.
             let may = who(account, Some(&message.session)).is_some()
                 || zirc_proto::names::is_integration_nick(account);
             return if may {
@@ -1136,10 +1134,10 @@ fn holds(
 }
 
 /// Who `account` is, for a workflow, as `machines` says: a person's own client is that
-/// person; a machine is its session; guests and zirc's own may not act.
+/// person; a machine is its session; zirc's own may not act.
 #[must_use]
 pub fn actor(machines: &Machines, account: &str, session: Option<&str>) -> Option<Actor> {
-    if account.starts_with("zirc") || zirc_proto::names::is_guest_account(account) {
+    if account.starts_with("zirc") {
         return None;
     }
     if machines.clients().contains(account) {
@@ -1172,8 +1170,8 @@ pub struct Host {
     pub history: PathBuf,
     /// The server's machines, to tell a person from a machine's session.
     pub machines: Machines,
-    /// What the controller says, which turns workflows on and off.
-    pub gateway: std::sync::Arc<crate::gateway::Gateway>,
+    /// Whether the server runs workflows, as the controller last said (`crate::accounts`).
+    pub on: std::sync::Arc<tokio::sync::watch::Sender<bool>>,
     /// The organisation's owners and admins now, who may replace anyone's workflow.
     pub admins: Admins,
 }
@@ -1210,7 +1208,7 @@ type Links = HashMap<String, (BTreeSet<String>, mpsc::UnboundedSender<connection
 
 impl Host {
     /// Runs the server's workflows while the controller says it runs them
-    /// ([`crate::gateway::Public::workflows`]), until the process ends. Off, nothing connects,
+    /// ([`crate::teams::Public::workflows`]), until the process ends. Off, nothing connects,
     /// so an organisation zirc.dev hasn't turned them on for never sees them. `account` makes
     /// sure a nick has an account, made with the derived passphrase if it has none, never
     /// changing one that exists.
@@ -1219,7 +1217,7 @@ impl Host {
         F: Fn(String) -> Fut,
         Fut: std::future::Future<Output = bool>,
     {
-        let mut on = self.gateway.runs_workflows();
+        let mut on = self.on.subscribe();
         loop {
             if on.wait_for(|on| *on).await.is_err() {
                 return;

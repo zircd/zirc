@@ -47,7 +47,7 @@ impl Drop for Running {
 }
 
 pub fn options(data: &Path, ergo: PathBuf, ergo_config: PathBuf) -> Options {
-    let [irc, https, oper, api, metrics, accounts, guest] = free_ports();
+    let [irc, https, oper, api, metrics, accounts, content] = free_ports();
     Options {
         host: "irc.acme.test".into(),
         name: Some("acme".into()),
@@ -81,7 +81,7 @@ pub fn options(data: &Path, ergo: PathBuf, ergo_config: PathBuf) -> Options {
             api_listen: at(api),
             metrics_listen: at(metrics),
             accounts_listen: at(accounts),
-            guest_listen: at(guest),
+            content_listen: at(content),
         },
     }
 }

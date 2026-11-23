@@ -212,7 +212,7 @@ impl Chat {
     /// The keys this device holds of `org`, the organisation whose server this is, the newest
     /// first, which seal: as the app keeps them, in the system's secret store. Any of another
     /// organisation's is passed over, and only `org`'s are taken from a teammate's device. A
-    /// chat never told its organisation, as a guest's isn't, holds, hands out and takes none.
+    /// chat never told its organisation holds, hands out and takes none.
     pub fn set_keys(&mut self, org: &str, keys: Vec<Key>) {
         self.sealing.keys = keys.into_iter().filter(|key| key.org() == org).collect();
         self.sealing.org = Some(org.to_owned());
@@ -293,7 +293,7 @@ impl Chat {
     }
 
     /// Hands the asker the newest key, encrypted to its device: only a member's own device,
-    /// signed in to an account, never a guest or a machine, and only that key.
+    /// signed in to an account, never a machine, and only that key.
     fn answer_ask(&mut self, line: &Line, value: &str) -> Vec<Line> {
         let from = super::nick_of(line);
         let target = line.params.first().map_or("", String::as_str);
@@ -303,7 +303,7 @@ impl Chat {
         let Ok(ask) = serde_json::from_str::<Ask>(value) else {
             return Vec::new();
         };
-        let member = self.sent_by_member(line);
+        let member = sent_by_member(line);
         let now = (self.clock)();
         let lately = self
             .sealing
@@ -335,15 +335,6 @@ impl Chat {
         vec![line]
     }
 
-    /// Whether `line` comes from a member's own device: signed in to an account, never a guest
-    /// or a machine. Only such a one is handed the key, and only such a one may hand it over.
-    fn sent_by_member(&self, line: &Line) -> bool {
-        line.tag("account")
-            .is_some_and(|account| !account.is_empty() && account != "*")
-            && !self.is_guest(super::nick_of(line))
-            && super::owner_by_host(line).is_none()
-    }
-
     /// Keeps the key an answer to our own ask hands this device, saying so once: only from a
     /// member's own device, and only the key it asked for. A grant is encrypted to this
     /// device's public key, which anyone in the channel saw in the ask, so it says nothing
@@ -358,7 +349,7 @@ impl Chat {
             .sealing
             .device
             .as_ref()
-            .filter(|_| to_me && self.sealing.asking && self.sent_by_member(line))
+            .filter(|_| to_me && self.sealing.asking && sent_by_member(line))
         else {
             return;
         };
@@ -634,6 +625,14 @@ impl Chat {
         let reply = to.map_or(0, |to| taken(REPLY, to));
         CLIENT_TAGS_MAX.saturating_sub(client + reply)
     }
+}
+
+/// Whether `line` comes from a member's own device: signed in to an account, never a
+/// machine. Only such a one is handed the key, and only such a one may hand it over.
+fn sent_by_member(line: &Line) -> bool {
+    line.tag("account")
+        .is_some_and(|account| !account.is_empty() && account != "*")
+        && super::owner_by_host(line).is_none()
 }
 
 #[cfg(test)]

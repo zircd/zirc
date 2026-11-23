@@ -223,11 +223,6 @@ impl Chat {
     pub fn part(&mut self, channel: &str, reason: Option<&str>) -> Vec<Line> {
         self.joins
             .retain(|join| !join.eq_ignore_ascii_case(channel));
-        // A guest's room left is hidden too: out of the list till something new is said in
-        // it, as one we never joined is when hidden ([`Chat::close_direct`]).
-        if zirc_proto::guest_room_of(channel).is_some() {
-            self.closed.insert(fold(channel), (self.clock)());
-        }
         if let Some(at) = self.position(channel) {
             let standing = &mut self.conversations[at].standing;
             if *standing == Attendance::Rejoin {

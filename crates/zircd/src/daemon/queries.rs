@@ -9,9 +9,7 @@ use zirc_core::agents::{Queries, Sender, Standing};
 use zirc_core::ipc::{Direct, Response};
 use zirc_proto::Event;
 
-use super::{
-    Asked, Daemon, GUESTS, Queried, WROTE_FOR, is_guest, is_nick, now, query_id, remember,
-};
+use super::{Asked, Daemon, Queried, WROTE_FOR, is_nick, now, query_id, remember};
 
 /// A query's id, the session it's for, if it names one, and what it asks.
 struct Asking {
@@ -333,7 +331,6 @@ impl Daemon {
             is_nick(nick) && target.as_deref().is_none_or(|t| !t.is_empty()),
             "{to:?} isn't <machine>, <machine>/<session> or a person's nick"
         );
-        anyhow::ensure!(!is_guest(nick), "{GUESTS}");
         let me = self.client.as_ref().map(|client| client.nick().to_owned());
         let is_me = |name: &str| {
             me.as_deref()
@@ -418,7 +415,6 @@ impl Daemon {
         anyhow::ensure!(!text.is_empty(), "a note needs something to say");
         let machine = address.machine.as_str();
         anyhow::ensure!(is_nick(machine), "{machine:?} isn't a machine's nick");
-        anyhow::ensure!(!is_guest(machine), "{GUESTS}");
         let here = self
             .client
             .as_ref()

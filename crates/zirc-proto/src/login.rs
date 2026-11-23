@@ -562,10 +562,6 @@ pub struct HistoryMessage {
     /// The zirc event it carries, if it's one, with its session.
     #[serde(default)]
     pub zirc: Option<serde_json::Value>,
-    /// For a `TAGMSG` in a conversation with a guest, its [`crate::support::TAG`]'s value:
-    /// then [`HistoryMessage::text`] is empty.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub support: Option<String>,
 }
 
 /// Who said a message in the organisation's history.

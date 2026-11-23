@@ -10,10 +10,6 @@ use super::list::{Agent, MachineRow, PersonRow};
 use super::{Avatar, BothChanging, BothChangingLine, Chat, Face, Presence, YOU};
 
 /// A person in a conversation, with their machines there under them.
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "each bool is a fact about them, independent of the others, as an app draws it"
-)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
@@ -37,16 +33,13 @@ pub struct MemberRow {
     /// That away, said after their name: `away`, `away: lunch` ([`super::away_label`]);
     /// none when they aren't.
     pub away_label: Option<String>,
-    /// Whether they're a guest, let into a public channel without an account.
-    pub guest: bool,
     /// For one of zirc's integrations, its short name, `ci`, shown in capitals.
     pub app: Option<String>,
     /// Their machines here, by name, each with its agent sessions.
     pub machines: Vec<MemberMachine>,
     /// Their dot: gone when only their machines are here ([`super::Standing`]).
     pub presence: Presence,
-    /// The pill after their name: `APP` for one of zirc's apps, `GUEST` for a guest
-    /// ([`PersonRow::pill`]).
+    /// The pill after their name: `APP` for one of zirc's apps ([`PersonRow::pill`]).
     pub pill: Option<String>,
     /// Their name as shown: `mattias`.
     pub name: String,
@@ -173,7 +166,6 @@ impl Chat {
             me: person.me,
             op: person.op,
             away: person.away,
-            guest: person.guest,
             app: person.app,
         }
     }

@@ -64,7 +64,7 @@ pub fn only_cis(kind: &str) -> bool {
 /// Whether `account`, the account the server says sent something, is one CI's word comes
 /// from: an integration's ([`crate::names::is_integration_nick`]), as [`NICK`] is and the
 /// alerts' that says how the Apple apps built. Only an organisation's owners and admins set
-/// those up, and no person, machine or guest can hold one, so a member's machine saying a
+/// those up, and no person or machine can hold one, so a member's machine saying a
 /// landing landed, or that the default branch broke and who broke it, isn't CI saying so.
 #[must_use]
 pub fn speaks_for_ci(account: Option<&str>) -> bool {
@@ -384,8 +384,8 @@ mod tests {
         assert!(only_cis(LANDING_KIND) && only_cis(DEPLOY_KIND) && only_cis(CHECK_KIND));
         assert!(!only_cis(crate::state::KIND) && !only_cis("acme/build"));
         assert!(speaks_for_ci(Some(NICK)) && speaks_for_ci(Some("Zirc-Alerts")));
-        // A member, their machine, a guest, a nick with no account, or `zirc` itself.
-        for other in ["ada", "ada-mbp", "ci-3", "guest-7k2q", "zirc", "zirc-"] {
+        // A member, their machine, a nick with no account, or `zirc` itself.
+        for other in ["ada", "ada-mbp", "ci-3", "zirc", "zirc-"] {
             assert!(!speaks_for_ci(Some(other)), "{other}");
         }
         assert!(!speaks_for_ci(None));

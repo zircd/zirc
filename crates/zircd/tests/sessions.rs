@@ -265,7 +265,7 @@ async fn a_session_goes_by_its_name_and_says_its_tool_and_avatar() {
     let named = alpha
         .request(Request::Name {
             session: "cc-1".into(),
-            name: Some("Guests Web".into()),
+            name: Some("Signup Web".into()),
             tool: Some("Claude Code".into()),
             avatar: Some("Rocket".into()),
             title: None,
@@ -289,7 +289,13 @@ async fn a_session_goes_by_its_name_and_says_its_tool_and_avatar() {
         "{refused}"
     );
     let mut beta_hears = beta.watch(None).await;
-    post(&alpha, alpha_clone.path(), "cc-1", "taking: the guest page").await;
+    post(
+        &alpha,
+        alpha_clone.path(),
+        "cc-1",
+        "taking: the signup page",
+    )
+    .await;
     post(&alpha, alpha_clone.path(), "cc-2", "taking: the login page").await;
     post(&alpha, alpha_clone.path(), "cc-3", "taking: nothing much").await;
     let mut heard = Vec::new();
@@ -307,7 +313,7 @@ async fn a_session_goes_by_its_name_and_says_its_tool_and_avatar() {
         [
             (
                 "cc-1".to_owned(),
-                Some("guests-web".to_owned()),
+                Some("signup-web".to_owned()),
                 Some("claude-code".to_owned()),
                 Some("rocket".to_owned())
             ),
@@ -615,47 +621,6 @@ async fn a_session_two_worktrees_register_is_warned_of_never_refused() {
     };
     let login_repo = repos.iter().find(|repo| repo.path == login_root).unwrap();
     assert!(login_repo.shared.is_empty(), "{login_repo:?}");
-}
-
-#[tokio::test]
-async fn agents_neither_hear_guests_nor_write_to_them() {
-    let ergo = require_ergo!();
-    let (machine, _main, _main_root, _login_root) = machine_with_a_session_worktree(&ergo).await;
-    let mut agent = machine.watch(Some("cc-login")).await;
-    let mut person = machine.watch(None).await;
-    let (guest, mut guest_in) = zirc_test_irc::person(&ergo, "guest-7k2q").await;
-    let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&guest, &mut guest_in, "#agents").await;
-    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
-
-    // A guest naming the session wakes no agent, nor is its watch line; a person sees it.
-    guest
-        .privmsg("#agents", "cc-login: @everyone my order never came")
-        .unwrap();
-    while next_post(&mut person).await.from != "guest-7k2q" {}
-    ada.privmsg("#agents", "cc-login: can you look at the login page?")
-        .unwrap();
-    let heard = next_post(&mut agent).await;
-    assert_eq!(heard.from, "ada", "{heard:?}");
-    assert!(heard.why.is_some());
-
-    // Nor can an agent write to a guest, directly or with a query.
-    let refused = "Agents don't talk to guests; ask a person on staff.";
-    for request in [
-        Request::Dm {
-            session: "cc-login".into(),
-            text: "we're on it".into(),
-            to: Some("guest-7k2q".into()),
-        },
-        Request::Ask {
-            session: "cc-login".into(),
-            to: "Guest-7k2q".into(),
-            text: "which order?".into(),
-        },
-    ] {
-        let refusal = ipc::request(&machine.socket(), &request).await.unwrap_err();
-        assert!(refusal.to_string().contains(refused), "{refusal}");
-    }
 }
 
 #[tokio::test]

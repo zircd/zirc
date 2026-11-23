@@ -41,7 +41,6 @@ pub mod search;
 pub mod session;
 pub mod state;
 pub mod suggestions;
-pub mod support;
 pub mod telemetry;
 pub mod thread;
 pub mod uploads;
@@ -69,56 +68,6 @@ pub const NAME: &str = "Zirc";
 /// their versions, install, config and logs. Identifiers, the domain and the wordmark are
 /// lowercase too.
 pub const PROGRAM: &str = "zirc";
-
-/// What a guest's nick starts with: someone a team server's guest gateway let into one of
-/// its public channels, without an account. No member's can: handles have no `-`, and
-/// zirc.dev keeps `guest` from being one.
-pub const GUEST_PREFIX: &str = "guest-";
-
-/// What a guest who gave no name shows as, before the start of their id: `Guest 1a2b`.
-pub const GUEST_LABEL: &str = "Guest";
-
-/// How many characters of a guest's id their [`guest_label`] has.
-pub const GUEST_LABEL_ID_CHARS: usize = 4;
-
-/// A guest's name when they gave none: `Guest 1a2b`, from their nick, never the nick itself.
-/// zirc.dev says the same, from [`GUEST_LABEL`] and [`GUEST_LABEL_ID_CHARS`].
-#[must_use]
-pub fn guest_label(nick: &str) -> String {
-    let id: String = nick
-        .get(GUEST_PREFIX.len()..)
-        .unwrap_or_default()
-        .chars()
-        .take(GUEST_LABEL_ID_CHARS)
-        .collect();
-    if id.is_empty() {
-        GUEST_LABEL.to_owned()
-    } else {
-        format!("{GUEST_LABEL} {id}")
-    }
-}
-
-/// Whether `nick` is a guest's, by the account the server says they're logged in to
-/// (`Some(None)` for none, `None` when it hasn't said): a guest's account is named
-/// [`GUEST_PREFIX`]`…`, which no member's can be; one with no account is a guest when their
-/// nick is too, as the gateway's guests were before they had accounts. A nick alone, with
-/// nothing known of its account, never is. Apps mark guests as such, and agents neither hear
-/// guests nor write to them.
-#[must_use]
-pub fn is_guest(nick: &str, account: Option<Option<&str>>) -> bool {
-    match account {
-        Some(Some(account)) => named_as_guest(account),
-        Some(None) => named_as_guest(nick),
-        None => false,
-    }
-}
-
-/// Whether `name`, a nick or an account, is named as a guest's: [`GUEST_PREFIX`]`…`.
-#[must_use]
-pub fn named_as_guest(name: &str) -> bool {
-    name.get(..GUEST_PREFIX.len())
-        .is_some_and(|start| start.eq_ignore_ascii_case(GUEST_PREFIX))
-}
 
 /// The word after `ACTION` that marks a body as zirc's.
 pub const TAG: &str = "ZIRC";
@@ -573,7 +522,7 @@ pub struct Message {
     /// session's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app: Option<String>,
-    /// What people call its session, such as `zirc-chat` or `guests-web`, which apps show
+    /// What people call its session, such as `zirc-chat` or `docs-site`, which apps show
     /// in place of an id like `cc-598aa1`: see [`session_name`]. Without it, they show the
     /// session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1363,21 +1312,6 @@ pub fn is_thread(channel: &str) -> bool {
     })
 }
 
-/// A guest's room of their own beside a public channel, `#support/guest-21042`: only they and
-/// the organisation's staff are in it, so guests never see each other.
-#[must_use]
-pub fn guest_room(channel: &str, guest: &str) -> String {
-    format!("{}/{}", channel.to_lowercase(), guest.to_lowercase())
-}
-
-/// The public channel and the guest a [`guest_room`] is for, if `channel` is one.
-#[must_use]
-pub fn guest_room_of(channel: &str) -> Option<(&str, &str)> {
-    channel
-        .rsplit_once('/')
-        .filter(|(parent, guest)| parent.len() > 1 && names::is_guest_account(guest))
-}
-
 /// What a `/me` says, `\x01ACTION <text>\x01`, if `body` is one and not a zirc message.
 #[must_use]
 pub fn action(body: &str) -> Option<&str> {
@@ -1681,7 +1615,6 @@ mod tests {
             "#monorepo/web-c26b2cc",
             "#monorepo/ops",
             "#/agents",
-            "#support/guest-21042",
         ] {
             assert_eq!(room_header(channel), None, "{channel}");
         }
@@ -1705,17 +1638,6 @@ mod tests {
         assert!(is_thread("#monorepo/ops"));
         assert!(!is_thread("#/x"));
         assert!(!is_thread("#monorepo/"));
-    }
-
-    #[test]
-    fn a_guest_room_is_a_thread_named_for_its_guest() {
-        let room = guest_room("#Support", "Guest-21042");
-        assert_eq!(room, "#support/guest-21042");
-        assert!(is_thread(&room));
-        assert_eq!(guest_room_of(&room), Some(("#support", "guest-21042")));
-        assert_eq!(guest_room_of("#support"), None);
-        assert_eq!(guest_room_of("#support/web-c26b2cc"), None);
-        assert_eq!(guest_room_of("#/guest-21042"), None);
     }
 
     #[test]
@@ -1988,7 +1910,7 @@ mod tests {
     #[test]
     fn a_session_name_is_short_and_plain() {
         assert_eq!(session_name("zirc-chat").as_deref(), Some("zirc-chat"));
-        assert_eq!(session_name("  Guests Web ").as_deref(), Some("guests-web"));
+        assert_eq!(session_name("  Docs Site ").as_deref(), Some("docs-site"));
         assert_eq!(session_name("cc-598aa1/x!").as_deref(), Some("cc-598aa1x"));
         assert_eq!(
             session_name("a-very-long-name-for-a-session-indeed").map(|n| n.len()),
@@ -2019,23 +1941,6 @@ mod tests {
                 .name,
             None
         );
-    }
-
-    #[test]
-    fn a_guest_is_a_guest_account_or_no_account_with_a_guest_nick() {
-        assert!(is_guest("visitor", Some(Some("guest-9x9x"))));
-        assert!(is_guest("Guest-7k2q", Some(None)));
-        assert!(!is_guest("guest-imposter", Some(Some("ada"))));
-        assert!(!is_guest("guest-7k2q", None));
-        assert!(named_as_guest("GUEST-7k2q"));
-        assert!(!named_as_guest("ada"));
-    }
-
-    #[test]
-    fn a_guest_with_no_name_shows_as_guest_and_the_start_of_their_id() {
-        assert_eq!(guest_label("guest-1a2b3c4d"), "Guest 1a2b");
-        assert_eq!(guest_label("guest-7k"), "Guest 7k");
-        assert_eq!(guest_label("guest-"), "Guest");
     }
 
     #[test]

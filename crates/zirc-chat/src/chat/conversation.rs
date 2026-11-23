@@ -4,7 +4,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
-use zirc_proto::support::Support;
 use zirc_proto::{Level, Message};
 
 /// What a conversation is with.
@@ -110,8 +109,8 @@ pub struct Quote {
     /// Who said it: their nick.
     pub from: String,
     /// Who said it, as apps name them: an agent session by its name, the machine itself as
-    /// its owner's agent, an app by its label, a person as they show, a guest by their
-    /// nick ([`super::sender_text`]). Never a machine's nick.
+    /// its owner's agent, an app by its label, and a person as they show
+    /// ([`super::sender_text`]). Never a machine's nick.
     pub name: String,
     /// Its first line, cut to [`QUOTE_CHARS`] characters, ending … when cut.
     pub text: String,
@@ -316,9 +315,6 @@ pub enum EntryKind {
     Topic(String),
     /// Something the client says, such as an error or a lost connection.
     Info(String),
-    /// [`Entry::from`] did something with a conversation with a guest: see
-    /// [`super::guests`].
-    Support(Support),
 }
 
 /// How we attend a channel, besides being in it right now.

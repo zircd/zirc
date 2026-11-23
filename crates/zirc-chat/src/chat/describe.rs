@@ -211,7 +211,6 @@ pub fn entry_text(entry: &Entry) -> String {
         EntryKind::Nick(new) => format!("{from} is now {new}"),
         EntryKind::Topic(topic) => format!("{from} set the topic: {topic}"),
         EntryKind::Info(text) => text.clone(),
-        EntryKind::Support(event) => super::guests::support_text(from, event, from),
     }
 }
 

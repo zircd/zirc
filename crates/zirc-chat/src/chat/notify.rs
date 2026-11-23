@@ -69,8 +69,7 @@ pub mod menu {
     pub const LEAVE: &str = "Leave";
     /// Closes a direct message until something new is said in it.
     pub const CLOSE: &str = "Close";
-    /// Hides a suggestion, a row listed though the person isn't in it, until something new
-    /// is said in it ([`super::Chat::is_suggestion`]).
+    /// Hides an ended conversation.
     pub const HIDE: &str = "Hide";
 }
 
@@ -213,15 +212,6 @@ impl Chat {
         let named = entry.mention && !direct;
         if self.is_muted(name) && !named {
             return false;
-        }
-        if self.is_guest(&entry.from) {
-            // Agents hear nothing from guests.
-            if !self.is_staff() {
-                return false;
-            }
-            if self.is_guest_conversation(name) || zirc_proto::guest_room_of(name).is_some() {
-                return self.guest_notifies(name, entry);
-            }
         }
         self.notify
             .notifies(name, direct, entry.mention, (self.clock)().timestamp())

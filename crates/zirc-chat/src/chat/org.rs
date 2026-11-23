@@ -13,7 +13,7 @@ pub struct OrgHeader {
     pub name: String,
     /// What its mark shows without a picture: `A`, `ZL` ([`crate::orgs::org_initials`]).
     pub initials: String,
-    /// The people in its channels, us included: never machines, agents, apps or guests.
+    /// The people in its channels, us included: never machines, agents or apps.
     pub members: u32,
     /// That, as every app words it: `1 member`, `3 members`.
     pub members_label: String,
@@ -72,8 +72,7 @@ impl Chat {
     }
 
     /// How many people are in the conversation called `name`, as its header counts them:
-    /// never machines, agents, apps or guests, as [`Chat::org_header`] counts, but always us,
-    /// a guest among them, who sees us talking.
+    /// never machines, agents or apps, as [`Chat::org_header`] counts, but always us.
     #[must_use]
     pub fn member_count(&self, name: &str) -> usize {
         self.members_of(name).len()
@@ -84,9 +83,7 @@ impl Chat {
         self.people(name)
             .into_iter()
             .filter(|person| person.machine.is_none() && person.app.is_none())
-            .filter(|person| {
-                person.me || (!person.guest && self.sender_kind(&person.nick) == SenderKind::Person)
-            })
+            .filter(|person| person.me || self.sender_kind(&person.nick) == SenderKind::Person)
             .map(|person| person.nick)
             .collect()
     }

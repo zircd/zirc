@@ -1,18 +1,15 @@
 //! What a person does at zirc.dev rather than over IRC, for every app: learning their role
-//! in each organisation from `/api/me`, for [`crate::chat::Chat::set_role`]; making the
-//! Guests API's requests that [`crate::chat::Chat`] gives an organisation's owners and
-//! admins ([`GuestRequest`]), such as banning a guest; listing the guests it keeps, whose rooms
-//! the channels list for them ([`Client::kept_guests`]); and reading how people show
+//! in each organisation from `/api/me`, for [`crate::chat::Chat::set_role`]; pressing a
+//! card's button; reading how people show
 //! ([`zirc_proto::profile`]); and deleting the account, from the phones. The account is
 //! otherwise edited on zirc.dev's own page (20 Nov 2026). All as the app's own account, which zirc.dev takes by HTTP Basic.
 
-use reqwest::{Method, StatusCode};
+use reqwest::StatusCode;
 use serde::Deserialize;
 use zirc_proto::card;
 use zirc_proto::login::Account;
 use zirc_proto::profile;
 
-use crate::chat::{GuestRequest, KeptGuest};
 use crate::login::{Client, Error};
 
 /// Where the signed-in person's profile is, with their organisations.
@@ -174,56 +171,6 @@ impl Client {
         let pressed: card::Pressed = response.json().await.unwrap_or_default();
         Ok(pressed.message)
     }
-
-    /// Makes `request` of the Guests API as `account`.
-    ///
-    /// # Errors
-    ///
-    /// When the web app can't be reached or refuses, saying why, as for someone who isn't
-    /// an admin: the error's text is for the app to show.
-    pub async fn send(&self, account: &Account, request: &GuestRequest) -> Result<(), Error> {
-        let method =
-            Method::from_bytes(request.method.as_bytes()).map_err(|_| Error::Unavailable {
-                web: self.web.clone(),
-            })?;
-        let response = self
-            .http
-            .request(method, format!("{}{}", self.web, request.path))
-            .basic_auth(&account.name, Some(&account.password))
-            .send()
-            .await?;
-        self.checked(response).await?;
-        Ok(())
-    }
-
-    /// The guests the organisation `org` (its slug) keeps, as zirc.dev lists them to its
-    /// owners and admins ([`crate::chat::KEPT_GUESTS_PATH`]): what lists their rooms
-    /// ([`crate::chat::Chat::set_kept_guests`]). None for anyone else, whom zirc.dev
-    /// refuses.
-    ///
-    /// # Errors
-    ///
-    /// When the web app can't be reached or answers anything else.
-    pub async fn kept_guests(&self, account: &Account, org: &str) -> Result<Vec<KeptGuest>, Error> {
-        let response = self
-            .http
-            .get(format!(
-                "{}{}",
-                self.web,
-                crate::chat::kept_guests_path(org)
-            ))
-            .basic_auth(&account.name, Some(&account.password))
-            .send()
-            .await?;
-        if matches!(
-            response.status(),
-            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED | StatusCode::NOT_FOUND
-        ) {
-            return Ok(Vec::new());
-        }
-        let text = self.checked(response).await?.text().await?;
-        Ok(crate::chat::parse_kept_guests(&text).unwrap_or_default())
-    }
 }
 
 #[cfg(test)]
@@ -332,62 +279,5 @@ mod tests {
         let (web, _served) = zirc_test_ergo::web::serve(vec![(401, "{}".into())]);
         let roles = Client::new(&web).unwrap().roles(&account()).await.unwrap();
         assert_eq!(roles, None);
-    }
-
-    #[tokio::test]
-    async fn lists_the_kept_guests_for_owners_and_admins_alone() {
-        let (web, served) = zirc_test_ergo::web::serve(vec![
-            (
-                200,
-                r##"{"guests":[{"nick":"guest-21042","name":"Sam","channels":["#web"],"connected":true}],"settings":{}}"##.into(),
-            ),
-            (403, r#"{"error":"Your role can't do that here."}"#.into()),
-        ]);
-        let client = Client::new(&web).unwrap();
-        let guests = client.kept_guests(&account(), "acme").await.unwrap();
-        assert_eq!(guests.len(), 1);
-        assert_eq!(guests[0].rooms(), ["#web/guest-21042"]);
-        assert!(
-            client
-                .kept_guests(&account(), "acme")
-                .await
-                .unwrap()
-                .is_empty()
-        );
-        let asked = served.join().unwrap();
-        assert!(
-            asked[0].starts_with("GET /api/organisations/acme/guests "),
-            "{}",
-            asked[0]
-        );
-    }
-
-    #[tokio::test]
-    async fn sends_a_guest_request_and_says_why_it_was_refused() {
-        let (web, served) = zirc_test_ergo::web::serve(vec![
-            (200, "{}".into()),
-            (
-                403,
-                r#"{"error":"Only owners and admins can ban guests."}"#.into(),
-            ),
-        ]);
-        let client = Client::new(&web).unwrap();
-        let ban = GuestRequest {
-            method: "POST",
-            path: "/api/organisations/acme/guests/guest-7k2q/ban".into(),
-        };
-        client.send(&account(), &ban).await.unwrap();
-        let err = client.send(&account(), &ban).await.unwrap_err();
-        assert!(
-            err.to_string()
-                .ends_with("Only owners and admins can ban guests."),
-            "{err}"
-        );
-        let asked = served.join().unwrap();
-        assert!(
-            asked[0].starts_with("POST /api/organisations/acme/guests/guest-7k2q/ban "),
-            "{}",
-            asked[0]
-        );
     }
 }

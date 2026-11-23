@@ -49,10 +49,10 @@ pub const SHOW_LABEL: &str = "Show";
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub enum SidebarSection {
-    /// The server's channels, with their rooms and their guests' rooms.
+    /// The server's channels, with their rooms.
     #[default]
     Channels,
-    /// Direct messages: with people, groups ([`is_group`]), guests, agent sessions
+    /// Direct messages: with people, groups ([`is_group`]), agent sessions
     /// ([`agent`]) and machines' threads.
     Direct,
 }
@@ -690,15 +690,11 @@ impl PersonRow {
         self.person.away.as_deref().map(super::away_label)
     }
 
-    /// The pill after their name: `APP` for one of zirc's apps, `GUEST` for a guest, never
-    /// the app's own label, which the name already says.
+    /// The pill after their name: `APP` for one of zirc's apps, never the app's own label,
+    /// which the name already says.
     #[must_use]
     pub fn pill(&self) -> Option<String> {
-        if self.person.app.is_some() {
-            Some(super::APP_TAG.to_owned())
-        } else {
-            self.person.guest.then(|| super::GUEST_PILL.to_owned())
-        }
+        self.person.app.as_ref().map(|_| super::APP_TAG.to_owned())
     }
 }
 
@@ -717,12 +713,8 @@ impl Chat {
 pub struct ChannelGroup {
     /// The repository's channel, `#api`: a conversation unless only its rooms are joined.
     pub name: String,
-    /// Its rooms' channels, by what was said last, newest first: never a guest's room,
-    /// which is in [`ChannelGroup::guests`].
+    /// Its rooms' channels, by what was said last, newest first.
     pub rooms: Vec<String>,
-    /// Its guests' rooms, for staff: every kept guest's for owners and admins, and those we
-    /// joined ([`super::GuestRooms`]).
-    pub guests: super::GuestRooms,
     /// What's unread in it and its rooms.
     pub unread: usize,
     /// Of that, what mentions us.
@@ -827,10 +819,8 @@ impl DirectRow {
 pub struct Badges {
     /// The channels, and the rooms under them: what mentions us.
     pub channels: u32,
-    /// The direct messages tab's: with people, groups and agent sessions, and with guests.
+    /// The direct messages tab's: with people, groups and agent sessions.
     pub direct: u32,
-    /// Of [`Self::direct`], the conversations with guests.
-    pub guests: u32,
     /// All of them: the app's icon, as [`Chat::badge_total`].
     pub total: u32,
     /// Activity's rows unread ([`Chat::activity_unread`]): its tab's, or the header inbox's.
@@ -862,7 +852,6 @@ impl Chat {
     fn groups(&self, listed: Vec<usize>, only: Option<&str>) -> Vec<ChannelGroup> {
         let wanted = |parent: &str| only.is_none_or(|only| only.eq_ignore_ascii_case(parent));
         let mut groups: Vec<ChannelGroup> = Vec::new();
-        let known = self.known_guest_rooms(only);
         let group_of = |groups: &mut Vec<ChannelGroup>, parent: &str| {
             groups
                 .iter()
@@ -871,7 +860,6 @@ impl Chat {
                     groups.push(ChannelGroup {
                         name: parent.to_owned(),
                         rooms: Vec::new(),
-                        guests: super::GuestRooms::default(),
                         unread: 0,
                         mentions: 0,
                         badge: 0,
@@ -891,10 +879,7 @@ impl Chat {
             let at = group_of(&mut groups, parent);
             let (unread, mentions, latest) = self.counts(name);
             let group = &mut groups[at];
-            let guests_room = known
-                .iter()
-                .any(|(_, room)| room.name.eq_ignore_ascii_case(name));
-            if !name.eq_ignore_ascii_case(parent) && !guests_room {
+            if !name.eq_ignore_ascii_case(parent) {
                 group.rooms.push(name.clone());
             }
             group.unread += unread;
@@ -902,12 +887,7 @@ impl Chat {
             group.badge += self.badge(name);
             group.latest = group.latest.max(latest);
         }
-        // A channel with guests' rooms is listed for them, even while we aren't in it.
-        for (parent, _) in known.iter().filter(|(parent, _)| wanted(parent)) {
-            group_of(&mut groups, parent);
-        }
         for group in &mut groups {
-            group.guests = self.guest_rooms_of(&group.name, &known);
             // Its own: each room previews itself under it, so no line shows twice (the
             // user's choice, 15 Nov 2026).
             (group.preview, group.when) = self.row_preview([group.name.as_str()]);
@@ -961,13 +941,8 @@ impl Chat {
         for (name, _) in self.listed() {
             let under =
                 room_parts(&name).is_some_and(|(parent, _)| parent.eq_ignore_ascii_case(channel));
-            let known = rooms.iter().any(|room| room.eq_ignore_ascii_case(&name))
-                || group
-                    .guests
-                    .rooms
-                    .iter()
-                    .any(|room| room.name.eq_ignore_ascii_case(&name));
-            if under && !known && !super::is_guest_room(&name) {
+            let known = rooms.iter().any(|room| room.eq_ignore_ascii_case(&name));
+            if under && !known {
                 rooms.push(name);
             }
         }
@@ -1007,9 +982,7 @@ impl Chat {
 
     /// The direct messages, one row each, whoever they're with, newest first, starred first
     /// as every list orders them: never a person's agents rolled under them, nor our own
-    /// agents in a group. An old private conversation with a guest is listed only while
-    /// something in it is new, or it's shown: a guest is talked to in their room. A
-    /// machine's own thread, where zircd writes to its owner, is one of them, online or not
+    /// agents in a group. A machine's own thread, where zircd writes to its owner, is one of them, online or not
     /// (the user's choice, 16 Nov 2026): its agents are still talked to one at a time, each
     /// in its own conversation.
     #[must_use]
@@ -1020,13 +993,6 @@ impl Chat {
             .list(SidebarSection::Direct)
             .into_iter()
             .map(|at| self.conversations[at].name.clone())
-            // A guest is talked to in their room: an old private conversation with one is
-            // listed only while something in it is new, or it's shown.
-            .filter(|name| {
-                !self.is_guest_conversation(name)
-                    || self.is_unread(name)
-                    || self.selected().name.eq_ignore_ascii_case(name)
-            })
             .map(|name| {
                 self.direct_row_heard(name, &|nick, session| {
                     heard.get(&(fold(nick), session.to_owned())).copied()
@@ -1127,10 +1093,10 @@ impl Chat {
 
     /// Whose machine `nick` is, and its own name: by its real name once the server has said
     /// it, or else by zirc's naming, `<owner>-<machine>`. For grouping rows only, never for
-    /// trust: anyone can set a real name. A guest's `guest-…` is nobody's machine, nor is
-    /// one of zirc's apps, `zirc-alerts`.
+    /// trust: anyone can set a real name. One of zirc's apps, `zirc-alerts`, is nobody's
+    /// machine.
     pub(super) fn whose(&self, nick: &str) -> Option<(String, String)> {
-        if self.is_guest(nick) || self.is_app(nick) {
+        if self.is_app(nick) {
             return None;
         }
         self.machine(nick)
@@ -1321,7 +1287,7 @@ impl Chat {
     }
 
     /// Whether the sidebar surely lists a direct message, without building its rows: a
-    /// person's or a group's conversation, not a guest's, that was never closed is always
+    /// person's or a group's conversation that was never closed is always
     /// listed. Asked on every redraw ([`Self::tabs`]), so the whole rule runs only without
     /// one.
     fn surely_lists_a_direct(&self) -> bool {
@@ -1332,8 +1298,7 @@ impl Chat {
                 matches!(
                     self.direct_kind(name),
                     Some(DirectKind::Person | DirectKind::Group)
-                ) && !self.is_guest_conversation(name)
-                    && !self.closed.contains_key(&fold(name))
+                ) && !self.closed.contains_key(&fold(name))
             })
     }
 }
@@ -1453,10 +1418,6 @@ impl Chat {
             let count = u32::try_from(self.badge(name)).unwrap_or(u32::MAX);
             match conversation.kind {
                 Kind::Server => continue,
-                _ if self.is_guest_conversation(name) => {
-                    badges.guests = badges.guests.saturating_add(count);
-                    badges.direct = badges.direct.saturating_add(count);
-                }
                 Kind::Channel if !is_group(name) => {
                     badges.channels = badges.channels.saturating_add(count);
                 }

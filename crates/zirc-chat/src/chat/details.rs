@@ -58,7 +58,6 @@ fn kind(entry: &Entry) -> String {
         EntryKind::Nick(_) => "nick".to_owned(),
         EntryKind::Topic(_) => "topic".to_owned(),
         EntryKind::Info(_) => "info".to_owned(),
-        EntryKind::Support(_) => "support".to_owned(),
     }
 }
 

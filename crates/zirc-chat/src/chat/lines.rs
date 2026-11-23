@@ -202,8 +202,6 @@ pub struct Line {
     pub speaker: Option<LineSpeaker>,
     /// Their dot: here in the conversation, away or gone; `None` for a quiet line.
     pub presence: Option<Presence>,
-    /// Whether they're a guest, let into a public channel without an account.
-    pub guest: bool,
     /// What it says, whole, for copying and the menu.
     pub text: String,
     /// What it says as blocks to draw: code, quotes, lists, bold and the like. Empty when
@@ -1013,7 +1011,6 @@ impl<'a> Layout<'a> {
             from: entry.map(|entry| entry.from.clone()).unwrap_or_default(),
             speaker: None,
             presence: None,
-            guest: false,
             text: String::new(),
             rich: Vec::new(),
             link: None,
@@ -1039,7 +1036,6 @@ impl<'a> Layout<'a> {
             continues,
             speaker: (!nick.is_empty()).then(|| self.chat.line_speaker(entry)),
             presence: (!nick.is_empty()).then(|| self.presence(nick)),
-            guest: self.chat.is_guest(nick),
             text: text.to_owned(),
             link: first_link(text).map(str::to_owned),
             mention: self.conversation.highlights(entry),
@@ -1663,7 +1659,6 @@ mod tests {
             &mut chat,
             &[
                 ":s 354 me 42 h bob G bob :Bob",
-                ":guest-7k2q!u@h JOIN #api * :Guest",
                 &at(
                     "09:00:00",
                     Some("m1"),
@@ -1672,11 +1667,6 @@ mod tests {
                 &at("09:01:00", Some("m2"), ":ME!u@h PRIVMSG #api :on it")
                     .replace(";msgid=m2", ";msgid=m2;+zirc.dev/client=desktop"),
                 &at("09:02:00", Some("m3"), ":bob!u@h PRIVMSG #api :fine"),
-                &at(
-                    "09:03:00",
-                    Some("m4"),
-                    ":guest-7k2q!u@h PRIVMSG #api :hello?",
-                ),
                 &at("09:04:00", Some("m5"), ":carol!u@h PRIVMSG #api :drive-by"),
             ],
         );
@@ -1691,10 +1681,7 @@ mod tests {
         let mine = line(&lines, "on it");
         assert!(mine.mine && !mine.mention);
         assert_eq!(line(&lines, "fine").presence, Some(Presence::Away));
-        let guest = line(&lines, "hello?");
-        assert!(guest.guest);
         assert_eq!(line(&lines, "drive-by").presence, Some(Presence::Gone));
-        assert!(!line(&lines, "fine").guest);
     }
 
     #[test]

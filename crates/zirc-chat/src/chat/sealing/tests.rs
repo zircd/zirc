@@ -29,7 +29,7 @@ fn chat(nick: &str, keys: Vec<Key>) -> Chat {
     chat_on(nick, Some("acme"), keys)
 }
 
-/// `nick` on `org`'s server (none told, as a guest's page tells none), holding `keys`.
+/// `nick` on `org`'s server (none told for `None`), holding `keys`.
 fn chat_on(nick: &str, org: Option<&str>, keys: Vec<Key>) -> Chat {
     let mut chat = Chat::new(nick, "irc.zirc.test", Vec::new(), Options::default());
     chat.random = counting;
@@ -366,11 +366,10 @@ fn takes_a_key_only_from_a_members_device_and_only_the_one_it_asked_for() {
         line.tags = vec![(GRANT_TAG.into(), Some(value))];
         from(line, source, account)
     };
-    // While she's asking, a machine's, a guest's or an unsigned answer is passed over: anyone
+    // While she's asking, a machine's or an unsigned answer is passed over: anyone
     // in the channel saw her device's key, and could encrypt a key of their own to it.
     for (source, account) in [
         ("ada-mbp!u@machine/ada", Some("ada-mbp")),
-        ("guest-21042!u@h", Some("guest-21042")),
         ("dan!u@h", None),
     ] {
         carol.receive(granted(&Key::new("acme", [9; KEY_LEN]), source, account));
@@ -430,26 +429,20 @@ fn holds_hands_out_and_takes_only_its_own_organisations_keys() {
 #[test]
 fn a_chat_never_told_its_organisation_hands_out_and_takes_no_key() {
     use zirc_proto::sealed::{ASK_TAG, GRANT_TAG};
-    // A guest's page: told no organisation, it asks for nothing and answers nobody, whatever
-    // keys the browser holds.
-    let mut guest = chat_on("guest-1a2b", None, vec![key()]);
+    // Told no organisation, it asks for nothing and answers nobody, whatever keys the device
+    // holds.
+    let mut erin = chat_on("erin", None, vec![key()]);
     let device = DeviceKey::from_bytes([4; 32]).unwrap();
-    assert!(tagged(guest.set_device(device.clone()), ASK_TAG).is_none());
-    assert!(tagged(in_general(&mut guest), ASK_TAG).is_none());
+    assert!(tagged(erin.set_device(device.clone()), ASK_TAG).is_none());
+    assert!(tagged(in_general(&mut erin), ASK_TAG).is_none());
     let mut staff = chat("dana", Vec::new());
     staff.set_device(DeviceKey::from_bytes([3; 32]).unwrap());
     let ask = tagged(in_general(&mut staff), ASK_TAG).expect("an ask");
-    assert!(
-        tagged(
-            guest.receive(from(ask, "dana!u@h", Some("dana"))),
-            GRANT_TAG
-        )
-        .is_none()
-    );
+    assert!(tagged(erin.receive(from(ask, "dana!u@h", Some("dana"))), GRANT_TAG).is_none());
     // Nor does it take a key pressed on it.
     let value = crate::sealed::grant(&key(), &device.public(), [5; 32], [6; 12]).unwrap();
-    let mut pressed = Line::new("TAGMSG", ["guest-1a2b"]);
+    let mut pressed = Line::new("TAGMSG", ["erin"]);
     pressed.tags = vec![(GRANT_TAG.into(), Some(value))];
-    guest.receive(from(pressed, "dana!u@h", Some("dana")));
-    assert!(guest.take_received_keys().is_empty());
+    erin.receive(from(pressed, "dana!u@h", Some("dana")));
+    assert!(erin.take_received_keys().is_empty());
 }

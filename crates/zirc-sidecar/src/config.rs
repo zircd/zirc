@@ -159,8 +159,7 @@ pub const KEEP_EVERYTHING: &str = "0";
 /// person with a desktop, a phone and agent sessions, but not for one address to take the
 /// server. In the file because Ergo can't take them from its environment: `server.ip-limits`
 /// embeds an unexported struct, which its overrides can't reach, so they never applied and
-/// Ergo's defaults did (16 at once, 32 new in 10 minutes). The guest gateway connects from
-/// the pod's loopback, which they exempt, and limits its guests itself (`crate::gateway`).
+/// Ergo's defaults did (16 at once, 32 new in 10 minutes).
 const IP_LIMITS: &[(&[&str], &str)] = &[
     (&["server", "ip-limits", "count"], "true"),
     (
@@ -238,13 +237,6 @@ pub fn file(default_yaml: &str, settings: &Settings, held: &Held) -> String {
         ),
     ]
     .into_iter()
-    // Ergo keeps names like its guest template (`Guest-*`) from being registered: zirc.dev's
-    // guests' accounts are `guest-…` (`crate::gateway`), so it gets one of its own, which it
-    // only gives clients it has to rename.
-    .chain([(
-        &["accounts", "nick-reservation", "guest-nickname-format"][..],
-        "\"Unregistered-*\"".to_owned(),
-    )])
     .chain(
         IP_LIMITS
             .iter()
@@ -408,9 +400,6 @@ mod tests {
     max-line-len: 512
     ip-limits:
         count: false
-accounts:
-    nick-reservation:
-        guest-nickname-format: \"Guest-*\"
 channels:
     operator-only-creation: false
 limits:
@@ -460,10 +449,6 @@ history:
         assert_eq!(
             config["server"]["ip-limits"]["max-concurrent-connections"],
             1024
-        );
-        assert_eq!(
-            config["accounts"]["nick-reservation"]["guest-nickname-format"],
-            "Unregistered-*"
         );
     }
 

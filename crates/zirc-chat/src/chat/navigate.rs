@@ -14,10 +14,8 @@ impl Chat {
         self.sidebar_list(&options)
             .into_iter()
             .filter(|row| {
-                matches!(
-                    row.kind,
-                    ListKind::Conversation | ListKind::Room | ListKind::GuestRoom
-                ) && row.opens
+                matches!(row.kind, ListKind::Conversation | ListKind::Room)
+                    && row.opens
                     && row.joined
                     && !row.name.is_empty()
             })

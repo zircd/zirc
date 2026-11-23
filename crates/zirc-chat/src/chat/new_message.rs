@@ -74,7 +74,7 @@ pub fn pick_people(people: &[Pickable], query: &str, chosen: &[String]) -> Vec<P
 impl Chat {
     /// Who New message can take, in the order it offers them: the people we have direct
     /// messages with, as the list orders them, then everyone else in the channels we're in,
-    /// each saying where. Never us, a machine, an app or a guest.
+    /// each saying where. Never us, a machine or an app.
     #[must_use]
     pub fn pickable_people(&self) -> Vec<Pickable> {
         let mut people: Vec<Pickable> = Vec::new();
@@ -106,7 +106,7 @@ impl Chat {
         {
             for row in self.people_rows(&channel.name) {
                 let person = &row.person;
-                if row.here && !person.guest && person.app.is_none() {
+                if row.here && person.app.is_none() {
                     add(self, &person.nick, Some(in_label(&channel.name)));
                 }
             }

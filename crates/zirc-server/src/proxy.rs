@@ -54,7 +54,7 @@ pub fn router(
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
     let backends = Arc::new(Backends {
-        content: format!("http://{}", inside.guest_listen),
+        content: format!("http://{}", inside.content_listen),
         sidecar: format!("http://{}", inside.accounts_listen),
         http: zirc_sidecar::http(),
     });

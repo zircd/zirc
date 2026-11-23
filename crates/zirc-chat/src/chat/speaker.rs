@@ -8,7 +8,7 @@ use super::{Chat, SenderKind, ZIRC_LABEL, app_label, nick_degrees};
 /// What a row's avatar shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Avatar {
-    /// A person, or a guest: their photo, or their initials.
+    /// A person: their photo, or their initials.
     Person {
         /// Their nick, to find their photo and initials by.
         nick: String,
@@ -131,7 +131,7 @@ pub fn agent_label(session: Option<&str>, owner: &str) -> String {
 /// name `message` gives, or else as `session_name` says ([`Chat::session_label`], or its id with
 /// no [`Chat`] to ask), the machine itself (or a plain line from it) by its name, the owner as
 /// `owner_name` says ([`Chat::owner_name`], or their nick with no [`Chat`] to ask), an app by
-/// its label, a person as `owner_name` says too, as they show, and a guest by their nick.
+/// its label, and a person as `owner_name` says too, as they show.
 #[must_use]
 pub fn sender_text(
     nick: &str,
@@ -161,7 +161,6 @@ pub fn sender_text(
             }
         }
         SenderKind::Person => owner_name(nick),
-        SenderKind::Guest => nick.to_owned(),
     }
 }
 
@@ -192,8 +191,7 @@ impl Chat {
     /// What a message's head calls whoever said something, [`Speaker::name`], by their
     /// `nick` and the agent `session` it came from, for where there's no message to ask,
     /// such as a search's match from the organisation's history: an agent session by its
-    /// name, an app by its, a person as they show and a guest by their name. Never a
-    /// machine's nick.
+    /// name, an app by its and a person as they show. Never a machine's nick.
     #[must_use]
     pub fn sender_name(&self, nick: &str, session: Option<&str>) -> String {
         match self.sender_kind(nick) {
@@ -210,14 +208,13 @@ impl Chat {
                 )
                 .0
             }
-            SenderKind::Guest => self.guest_name(nick),
             SenderKind::Person => self.shown_name(nick),
         }
     }
 
     /// What a row's avatar shows for whoever said something, by their `nick`, where there's
     /// no message to ask, as [`Chat::sender_name`] names them: an app's glyph in its square,
-    /// an agent session's owner, a person or guest themselves.
+    /// an agent session's owner, a person themselves.
     #[must_use]
     pub fn sender_avatar(&self, nick: &str) -> Avatar {
         match self.sender_kind(nick) {
@@ -231,7 +228,7 @@ impl Chat {
             SenderKind::Agent => Avatar::Person {
                 nick: self.owner_of(nick).to_owned(),
             },
-            SenderKind::Guest | SenderKind::Person => Avatar::Person {
+            SenderKind::Person => Avatar::Person {
                 nick: nick.to_owned(),
             },
         }
@@ -344,18 +341,6 @@ impl Chat {
                     name,
                     detail,
                     label,
-                    is_app: false,
-                }
-            }
-            SenderKind::Guest => {
-                let name = self.guest_name(nick);
-                Speaker {
-                    avatar: Avatar::Person {
-                        nick: nick.to_owned(),
-                    },
-                    label: format!("{name}, guest"),
-                    name,
-                    detail: None,
                     is_app: false,
                 }
             }

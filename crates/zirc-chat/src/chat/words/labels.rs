@@ -25,31 +25,15 @@ pub const CREATE_OR_JOIN: &str = "Create or join one";
 /// What follows [`CREATE_OR_JOIN`].
 pub const THEN_COME_BACK: &str = ", then come back.";
 
-/// Why a card's button can't be pressed by a guest.
+/// Why a card's button can't be pressed.
 pub const CARD_NEEDS_MEMBER: &str = "Only a member signed in to the organisation can press it.";
 
 /// Why something that needs the server can't be done now.
 pub const NOT_CONNECTED: &str = "Not connected.";
 
-/// What a screen reader calls a guest's room's note, in their own room.
-pub const ROOM_PRIVATE: &str = "Private";
-
-/// A guest's own room's note: who reads it.
-pub const ROOM_PRIVATE_NOTE: &str =
-    "Only you and the team see what you write here. Please don't share passwords.";
-
-/// What a screen reader calls a public room's note.
-pub const ROOM_PUBLIC: &str = "Public";
-
-/// A public room's note: who reads it.
-pub const ROOM_PUBLIC_NOTE: &str = "Everyone in this room sees what you write here, so please don't share passwords or private details.";
-
 /// What a screen reader calls the line over the first unread message, and the bar that
 /// jumps to it.
 pub const NEW_MESSAGES: &str = "New messages";
-
-/// What a screen reader calls the note over a composer that writes to a guest.
-pub const WRITING_TO_GUEST: &str = "Writing to a guest";
 
 /// What a screen reader calls the line of who's typing.
 pub const TYPING: &str = "Typing";
@@ -81,31 +65,9 @@ pub const CLOSE_VIEWER: &str = "Close viewer";
 /// What opens what [`VIEWER`] shows in a tab of its own.
 pub const OPEN_IN_NEW_TAB: &str = "Open in a new tab";
 
-/// When a guest page's captcha can't load.
-pub const CAPTCHA_FAILED: &str = "The captcha couldn't load.";
-
-/// What signs in: a link on a guest's page, and the one button on the phones' first screen and
-/// in the desktop's Account, which opens zirc.dev's sign-in, where the person picks how (a code
+/// What signs in: the one button on the phones' first screen and in the desktop's Account, which opens zirc.dev's sign-in, where the person picks how (a code
 /// by email, Google or GitHub), so no app names one way.
 pub const SIGN_IN: &str = "Sign in";
-
-/// After [`SIGN_IN`] on a guest's page.
-pub const TO_CHAT_AS_YOURSELF: &str = "to chat as yourself.";
-
-/// A guest's name field while it's empty.
-pub const GUEST_NAME_HINT: &str = "How the team will see you";
-
-/// A guest's name field's label: `Your name (optional)`.
-#[must_use]
-pub fn your_name_optional() -> String {
-    format!("{} (optional)", super::YOUR_NAME)
-}
-
-/// While a guest joins.
-pub const JOINING: &str = "Joining…";
-
-/// What a guest joins with.
-pub const START_CHATTING: &str = "Start chatting";
 
 /// What a screen reader calls the composer's reply line.
 pub const REPLYING: &str = "Replying";
@@ -122,15 +84,6 @@ pub const SEARCH_MESSAGES: &str = "Search messages";
 /// What a screen reader calls a search's filters.
 pub const FILTERS: &str = "Filters";
 
-/// The list of who a guest's conversation can be assigned to; its button says it with `…`.
-pub const ASSIGN_TO: &str = "Assign to";
-
-/// [`ASSIGN_TO`] on the button that asks who, as a guest's header has it.
-pub const ASSIGN_TO_LABEL: &str = "Assign to…";
-
-/// The button that opens what else an admin can do to a guest.
-pub const MORE_GUEST_ACTIONS: &str = "More guest actions";
-
 /// What a screen reader calls the list of conversations.
 pub const CONVERSATIONS: &str = "Conversations";
 
@@ -139,9 +92,6 @@ pub const SIDEBAR: &str = "Sidebar";
 
 /// What a screen reader calls the list of messages.
 pub const MESSAGES: &str = "Messages";
-
-/// The dot on a guest's conversation assigned to the person.
-pub const ASSIGNED_TO_YOU: &str = "Assigned to you";
 
 /// When a file's upload fails.
 pub const UPLOAD_FAILED: &str = "The upload didn't go through.";
@@ -396,11 +346,9 @@ mod tests {
     #[test]
     fn the_functions_say_what_goes_in_them() {
         assert_eq!(open_in_label("#web"), "Open in #web");
-        assert_eq!(your_name_optional(), "Your name (optional)");
         assert_eq!(sign_in_to_zirc(), "Sign in to Zirc");
         assert_eq!(with_shortcut(super::super::JUMP_TO, "⌘K"), "Jump to (⌘K)");
         assert_eq!(file_size_download("2 MB"), "2 MB · Download");
-        assert_eq!(ASSIGN_TO_LABEL, format!("{ASSIGN_TO}…"));
         assert_eq!(
             sign_in_to_block(false),
             "Sign in with zirc.dev to unblock people."

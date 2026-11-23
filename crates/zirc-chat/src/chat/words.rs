@@ -116,9 +116,6 @@ pub const EDIT_PROFILE: &str = "Edit profile";
 /// waits.
 pub const GO_TO_NEWEST: &str = "Go to the newest";
 
-/// What a screen reader calls a guest's row of actions in their conversation's header.
-pub const GUEST_ACTIONS: &str = "Guest actions";
-
 /// The first tab on a phone, and its page's title.
 pub const HOME: &str = "Home";
 
@@ -215,9 +212,7 @@ pub const TURN_ON_NOTIFICATIONS: &str = "Turn on notifications";
 /// The label of the app's version, in About.
 pub const VERSION: &str = "Version";
 
-/// What a name's field says before one is given, and what a screen reader calls the note
-/// of the name a guest got. The web page types it too on its guest form, drawn before its
-/// wasm is loaded (`oss/web/src/guest.tsx`).
+/// What a name's field says before one is given.
 pub const YOUR_NAME: &str = "Your name";
 
 /// The person's own page and its tab, and the row that stands for them. A preview's
@@ -318,15 +313,6 @@ pub fn details_label(title: &str) -> String {
 #[must_use]
 pub fn profile_label(name: &str) -> String {
     format!("Profile of {name}")
-}
-
-/// What a screen reader says of the mark that folds a channel's guests' rooms under its row,
-/// or shows them: `Show #api's guests` while folded, `Hide #api's guests` while open (the
-/// user's choice, 17 Nov 2026).
-#[must_use]
-pub fn guests_label(title: &str, open: bool) -> String {
-    let verb = if open { "Hide" } else { "Show" };
-    format!("{verb} {title}'s guests")
 }
 
 /// The app's version as About shows it beside [`VERSION`]: `0.1.2`, and with the build
@@ -508,8 +494,6 @@ mod tests {
         assert_eq!(mentions_label(140), "99+ mentions");
         assert_eq!(details_label("#api"), "Details of #api");
         assert_eq!(profile_label("Sam"), "Profile of Sam");
-        assert_eq!(guests_label("#api", false), "Show #api's guests");
-        assert_eq!(guests_label("#api", true), "Hide #api's guests");
         assert_eq!(version_label("0.1.2", Some("25")), "0.1.2 (25)");
         assert_eq!(version_label("0.1.2", None), "0.1.2");
         assert_eq!(version_label("0.1.2", Some("")), "0.1.2");
@@ -719,8 +703,6 @@ pub struct Words {
     pub editing: String,
     /// The button back to a conversation's end, for a screen reader: `Go to the newest`.
     pub go_to_newest: String,
-    /// A guest's row of actions, for a screen reader: `Guest actions`.
-    pub guest_actions: String,
     /// The first tab on a phone, and its page's title: `Home`.
     pub home: String,
     /// The quick switcher's name: `Jump to`.
@@ -825,22 +807,12 @@ pub struct Words {
     pub then_come_back: String,
     /// The title over a failed sign-in: `Couldn't sign in`.
     pub couldnt_sign_in: String,
-    /// Why a guest can't press a card's button.
+    /// Why a card's button can't be pressed.
     pub card_needs_member: String,
     /// Why what needs the server can't be done now: `Not connected.`.
     pub not_connected: String,
-    /// A guest's own room's note, for a screen reader: `Private`.
-    pub room_private: String,
-    /// A guest's own room's note.
-    pub room_private_note: String,
-    /// A public room's note, for a screen reader: `Public`.
-    pub room_public: String,
-    /// A public room's note.
-    pub room_public_note: String,
     /// The line over the first unread message, for a screen reader: `New messages`.
     pub new_messages: String,
-    /// The note over a composer writing to a guest, for a screen reader.
-    pub writing_to_guest: String,
     /// The line of who's typing, for a screen reader: `Typing`.
     pub typing: String,
     /// What shuts the people list: `Close people`.
@@ -861,20 +833,8 @@ pub struct Words {
     pub close_viewer: String,
     /// What opens what `viewer` shows in a tab: `Open in a new tab`.
     pub open_in_new_tab: String,
-    /// When a guest page's captcha can't load.
-    pub captcha_failed: String,
     /// What signs in, as a link: `Sign in`.
     pub sign_in: String,
-    /// After `sign_in` on a guest's page.
-    pub to_chat_as_yourself: String,
-    /// A guest's name field while it's empty.
-    pub guest_name_hint: String,
-    /// A guest's name field's label: `Your name (optional)`.
-    pub your_name_optional: String,
-    /// While a guest joins: `Joining…`.
-    pub joining: String,
-    /// What a guest joins with: `Start chatting`.
-    pub start_chatting: String,
     /// The composer's reply line, for a screen reader: `Replying`.
     pub replying: String,
     /// The composer's completions, for a screen reader: `Suggestions`.
@@ -885,18 +845,12 @@ pub struct Words {
     pub search_messages: String,
     /// A search's filters, for a screen reader: `Filters`.
     pub filters: String,
-    /// Who a guest's conversation can be assigned to: `Assign to`.
-    pub assign_to: String,
-    /// What opens what else an admin can do to a guest.
-    pub more_guest_actions: String,
     /// The list of conversations, for a screen reader: `Conversations`.
     pub conversations: String,
     /// The sidebar's tabs, for a screen reader: `Sidebar`.
     pub sidebar: String,
     /// The list of messages, for a screen reader: `Messages`.
     pub messages: String,
-    /// The dot on a guest's conversation assigned to the person.
-    pub assigned_to_you: String,
     /// When a file's upload fails.
     pub upload_failed: String,
     /// When zirc.dev's web app can't be reached.
@@ -909,8 +863,6 @@ pub struct Words {
     pub sign_in_to_zirc: String,
     /// The button that signs in in the browser: `Sign in with zirc.dev`.
     pub sign_in_with_zirc_dev: String,
-    /// The button that asks who a guest's conversation goes to: `Assign to…`.
-    pub assign_to_label: String,
     /// A message's menu item that opens the emoji to react with: `React…`.
     pub react_prompt: String,
     /// The menu bar's: `Sign Out of Everything…`.
@@ -1014,7 +966,6 @@ pub fn words() -> Words {
         edited: super::EDITED.to_owned(),
         editing: super::EDITING.to_owned(),
         go_to_newest: GO_TO_NEWEST.to_owned(),
-        guest_actions: GUEST_ACTIONS.to_owned(),
         home: HOME.to_owned(),
         jump_to: JUMP_TO.to_owned(),
         jump_to_prompt: JUMP_TO_PROMPT.to_owned(),
@@ -1068,12 +1019,7 @@ pub fn words() -> Words {
         couldnt_sign_in: super::COULDNT_SIGN_IN.to_owned(),
         card_needs_member: labels::CARD_NEEDS_MEMBER.to_owned(),
         not_connected: labels::NOT_CONNECTED.to_owned(),
-        room_private: labels::ROOM_PRIVATE.to_owned(),
-        room_private_note: labels::ROOM_PRIVATE_NOTE.to_owned(),
-        room_public: labels::ROOM_PUBLIC.to_owned(),
-        room_public_note: labels::ROOM_PUBLIC_NOTE.to_owned(),
         new_messages: labels::NEW_MESSAGES.to_owned(),
-        writing_to_guest: labels::WRITING_TO_GUEST.to_owned(),
         typing: labels::TYPING.to_owned(),
         close_people: labels::CLOSE_PEOPLE.to_owned(),
         close_profile: labels::CLOSE_PROFILE.to_owned(),
@@ -1084,31 +1030,21 @@ pub fn words() -> Words {
         viewer: labels::VIEWER.to_owned(),
         close_viewer: labels::CLOSE_VIEWER.to_owned(),
         open_in_new_tab: labels::OPEN_IN_NEW_TAB.to_owned(),
-        captcha_failed: labels::CAPTCHA_FAILED.to_owned(),
         sign_in: labels::SIGN_IN.to_owned(),
-        to_chat_as_yourself: labels::TO_CHAT_AS_YOURSELF.to_owned(),
-        guest_name_hint: labels::GUEST_NAME_HINT.to_owned(),
-        your_name_optional: labels::your_name_optional(),
-        joining: labels::JOINING.to_owned(),
-        start_chatting: labels::START_CHATTING.to_owned(),
         replying: labels::REPLYING.to_owned(),
         suggestions: labels::SUGGESTIONS.to_owned(),
         emoji: labels::EMOJI.to_owned(),
         search_messages: labels::SEARCH_MESSAGES.to_owned(),
         filters: labels::FILTERS.to_owned(),
-        assign_to: labels::ASSIGN_TO.to_owned(),
-        more_guest_actions: labels::MORE_GUEST_ACTIONS.to_owned(),
         conversations: labels::CONVERSATIONS.to_owned(),
         sidebar: labels::SIDEBAR.to_owned(),
         messages: labels::MESSAGES.to_owned(),
-        assigned_to_you: labels::ASSIGNED_TO_YOU.to_owned(),
         upload_failed: labels::UPLOAD_FAILED.to_owned(),
         web_app_unreachable: labels::WEB_APP_UNREACHABLE.to_owned(),
         account: settings_list::SETTINGS_ACCOUNT.to_owned(),
         esc_closes: labels::ESC_CLOSES.to_owned(),
         sign_in_to_zirc: labels::sign_in_to_zirc(),
         sign_in_with_zirc_dev: labels::SIGN_IN_WITH_ZIRC_DEV.to_owned(),
-        assign_to_label: labels::ASSIGN_TO_LABEL.to_owned(),
         react_prompt: labels::REACT_PROMPT.to_owned(),
         menu_sign_out_everything: menu_bar::SIGN_OUT_EVERYTHING.to_owned(),
         muted: labels::MUTED.to_owned(),

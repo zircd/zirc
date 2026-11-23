@@ -12,7 +12,7 @@
 //!   server's `tokenKeys`), and only one that names this server as its audience.
 //!
 //! A machine's token (`<handle>-<machine>`) asks as its person, as zirc.dev's proxies did.
-//! Guests and integrations are refused. What the person may read is the history's own rule
+//! Integrations are refused. What the person may read is the history's own rule
 //! (`history::Viewer`), with the organisation's visibility; what they may change, their role:
 //!
 //! - anyone: `GET /me` (`{"account", "person", "role", "server"}`), `GET /history` and `GET
@@ -26,7 +26,6 @@
 //!   /playbook/usage` how often each hint and gotcha was used lately, by id, and `GET
 //!   /playbook/uses?hint=<id>` (or `gotcha=<message id>`) one's uses: how many each day,
 //!   and a page of them.
-//! - owners and admins: `GET /guests` and `POST /guests/<name>/forget`.
 //! - owners: `GET /messages?q=`, `DELETE /messages/<msgid>`, `GET /export` (newline-delimited
 //!   JSON: a header, every message the owner may read, newest first, and an end line) and `GET
 //!   /log` (`{"logins", "access"}`: the login log and this API's access log, newest first).
@@ -49,18 +48,18 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get};
 use axum::{Extension, Json, Router};
 use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
-    Ergo, error, find_messages, forget_guest, list_conversations, list_gotchas, list_guests,
-    playbook_usage, playbook_uses, read_history, remove_message, valid_name, viewer,
+    Ergo, error, find_messages, list_conversations, list_gotchas, playbook_usage, playbook_uses,
+    read_history, remove_message, valid_name, viewer,
 };
-use crate::{gateway, history, signin, teams};
+use crate::{history, signin, teams};
 
 /// Where the routes are, on the server's host name.
 pub const PREFIX: &str = "/api/v1";
@@ -86,7 +85,7 @@ pub struct Caller {
 pub enum Role {
     /// Anyone in the organisation.
     Member,
-    /// An admin: guests too.
+    /// An admin.
     Admin,
     /// An owner: everything.
     Owner,
@@ -156,14 +155,11 @@ pub fn browser_account(
         .decode(signature)
         .map_err(|_| "not a token")?;
     let signed = &token[..token.len() - token.rsplit('.').next().unwrap_or_default().len() - 1];
-    let good = keys
-        .iter()
-        .filter_map(|k| gateway::public_key(k))
-        .any(|key| {
-            ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, key)
-                .verify(signed.as_bytes(), &signature)
-                .is_ok()
-        });
+    let good = keys.iter().filter_map(|k| public_key(k)).any(|key| {
+        ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, key)
+            .verify(signed.as_bytes(), &signature)
+            .is_ok()
+    });
     if !good {
         return Err("not signed for this server");
     }
@@ -185,14 +181,23 @@ pub fn browser_account(
     Ok(claims.account.to_lowercase())
 }
 
+/// The raw Ed25519 key in a PEM `PUBLIC KEY` (`SubjectPublicKeyInfo`).
+fn public_key(pem: &str) -> Option<Vec<u8>> {
+    let body: String = pem
+        .lines()
+        .filter(|l| !l.starts_with("-----"))
+        .collect::<Vec<_>>()
+        .concat();
+    let der = STANDARD.decode(body.trim()).ok()?;
+    // 12 bytes of algorithm identifier, then the 32-byte key.
+    (der.len() == 44).then(|| der[12..].to_vec())
+}
+
 /// The person an account belongs to, if it's a person's or one of the `machines`': never a
-/// guest's or an integration's.
+/// an integration's.
 #[must_use]
 pub fn person_of(account: &str, machines: &crate::machines::Machines) -> Option<String> {
-    if !valid_name(account)
-        || zirc_proto::names::is_guest_account(account)
-        || zirc_proto::names::is_integration_nick(account)
-    {
+    if !valid_name(account) || zirc_proto::names::is_integration_nick(account) {
         return None;
     }
     if let Some(owner) = machines.owner(account) {
@@ -231,10 +236,6 @@ pub(super) fn router(ergo: Arc<Ergo>) -> Router {
         .route(&at("/gotchas"), get(list_gotchas))
         .route(&at("/playbook/usage"), get(playbook_usage))
         .route(&at("/playbook/uses"), get(playbook_uses));
-    let staff = Router::new()
-        .route(&at("/guests"), get(list_guests))
-        .route(&at("/guests/{name}/forget"), post(forget_guest))
-        .route_layer(middleware::from_fn(|r, n| at_least(Role::Admin, r, n)));
     let owners = Router::new()
         .route(&at("/messages"), get(find_messages))
         .route(&at("/messages/{msgid}"), delete(remove_message))
@@ -242,7 +243,6 @@ pub(super) fn router(ergo: Arc<Ergo>) -> Router {
         .route(&at("/log"), get(log))
         .route_layer(middleware::from_fn(|r, n| at_least(Role::Owner, r, n)));
     anyone
-        .merge(staff)
         .merge(owners)
         .route_layer(middleware::from_fn_with_state(ergo.clone(), audit))
         .route_layer(middleware::from_fn_with_state(ergo.clone(), authenticate))
@@ -688,18 +688,15 @@ mod tests {
             "not signed for this server"
         );
         assert_eq!(refused("a.b"), "not a token");
-        // A guest's token has no account.
+        // A token for no account.
         assert_eq!(
-            refused(&token(
-                &key,
-                &json!({"guest": "guest-1", "channel": "#help", "aud": SERVER, "exp": 200})
-            )),
+            refused(&token(&key, &json!({"aud": SERVER, "exp": 200}))),
             "not a token"
         );
     }
 
     #[test]
-    fn machines_ask_as_their_person_and_guests_and_integrations_not_at_all() {
+    fn machines_ask_as_their_person_and_integrations_not_at_all() {
         let none = crate::machines::Machines::default();
         assert_eq!(person_of("ada", &none), Some("ada".into()));
         // A machine is its owner's as the server was told, never by its name.
@@ -707,7 +704,6 @@ mod tests {
         let told = crate::machines::Machines::default();
         told.add("m3-mac", "ada");
         assert_eq!(person_of("m3-mac", &told), Some("ada".into()));
-        assert_eq!(person_of("guest-21042", &none), None);
         assert_eq!(person_of("zirc-github", &none), None);
         assert_eq!(person_of("Not A Name", &none), None);
     }

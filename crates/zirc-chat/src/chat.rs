@@ -46,8 +46,6 @@ mod finding;
 mod flat;
 mod forge;
 mod group;
-mod guest_rooms;
-mod guests;
 mod header_line;
 mod history;
 mod incoming;
@@ -70,6 +68,7 @@ mod preview;
 mod profile;
 pub mod push;
 mod rich;
+mod role;
 mod roster;
 mod row_menu;
 mod run;
@@ -151,14 +150,6 @@ pub use flat::{
 };
 pub use forge::{branch_link, commit_link, link_blocks, link_words};
 pub use group::{GROUP_FACES, GROUP_PREFIX, is_group};
-pub use guest_rooms::{
-    GuestRoom, GuestRooms, KEPT_GUESTS_EVERY, KEPT_GUESTS_PATH, KeptGuest, is_guest_room,
-    kept_guests_path, parse_kept_guests,
-};
-pub use guests::{
-    COMPOSER_NOTE, GATEWAY_REALNAME, GUEST_PILL, GuestAction, GuestHeader, GuestRequest, OUTSIDE,
-    SIGNED_IN_KEY, assigned_label, guest_label, support_text,
-};
 pub use header_line::{HeaderLine, HeaderLineKind};
 pub use layout::{ClockAt, Heading, row_heading};
 pub use lines::{
@@ -182,9 +173,9 @@ pub use names::{
 pub use new_message::{PEOPLE_OFFERED, Pickable, Started, TO, TYPE_A_NAME, pick_people};
 pub use notify::{Level, Muted, NotifySettings, menu as conversation_menu};
 pub use org::{OrgHeader, members_label, threads_label};
-pub use people::{GUEST_PREFIX, Person, is_guest, machine_label, runs_on};
+pub use people::{Person, machine_label, runs_on};
 pub use plain::{
-    APPS_SECTION, NO_OTHER_CHANNELS, PEOPLE_SECTION, QUOTE_MARK, ReactionChip, TO_MARK, UNASSIGNED,
+    APPS_SECTION, NO_OTHER_CHANNELS, PEOPLE_SECTION, QUOTE_MARK, ReactionChip, TO_MARK, name_pill,
 };
 pub use preview::Preview;
 pub use profile::{
@@ -239,13 +230,13 @@ pub use words::{
     BACK_TO_RESULTS, BROWSE_CHANNELS, CANCEL, CHANNEL_NAME, CHECK_THE_CODE, CHOOSE_A_SERVER, CLEAR,
     CLOSE_SEARCH, CONNECTION, CONVERSATION_OPTIONS, COPY, COPY_CODE, COPY_LINK, COPY_MESSAGE_LINK,
     COPY_TEXT, COULDNT_SIGN_IN, DELETE, DELETE_MY_ACCOUNT, DISMISS, DONE, DOWNLOAD,
-    EARLIER_MESSAGE, EARLIER_REPLY, EDIT_PROFILE, EVERYWHERE, GO_TO_NEWEST, GUEST_ACTIONS, HOME,
-    JUMP_TO, JUMP_TO_PROMPT, MACHINES, MORE, MORE_PEOPLE_ONLY, NEW_CHANNEL, NEW_MESSAGE, NEW_TAG,
+    EARLIER_MESSAGE, EARLIER_REPLY, EDIT_PROFILE, EVERYWHERE, GO_TO_NEWEST, HOME, JUMP_TO,
+    JUMP_TO_PROMPT, MACHINES, MORE, MORE_PEOPLE_ONLY, NEW_CHANNEL, NEW_MESSAGE, NEW_TAG,
     NO_CHANNELS, NO_DIRECTS, NO_DIRECTS_HINT, NOT_NOW, NOTHING_YET, NOTIFICATION_CHANNEL,
     PEOPLE_ONLY, PICK_A_CONVERSATION, PROFILE, REACT_LABEL, REPLY_LABEL, REPLYING_TO, RESULTS,
     RETRY, SAID_BY, SAVE, SEARCH, SEARCH_IN, SEND, SENDING, SETTINGS_ALL, SHOWN_PATHS, SIGNED_IN,
     STOP_REPLYING, THREADS, TRY_AGAIN, TURN_ON_NOTIFICATIONS, VERSION, Words, YOU_PAGE, YOUR_NAME,
-    activity_empty, couldnt_label, details_label, guests_label, in_label, mentions_label, menu_bar,
+    activity_empty, couldnt_label, details_label, in_label, mentions_label, menu_bar,
     more_paths_label, new_label, nothing_called, profile_label, react_with_label, reacted_by_label,
     removed_label, scope_label, sharing_label, show_more_paths_label, signin_failed, version_label,
     words,
@@ -302,8 +293,7 @@ pub const SETNAME_CAP: &str = "setname";
 /// What an app that keeps a [`Chat`] asks for on top of zirc-line's capabilities:
 /// `echo-message`, so its own messages come back with the server's id and time (without it,
 /// reactions to them have nothing to name); `extended-join`, so a join says the account and
-/// real name, where a zirc machine names its owner and a guest who comes in later is known as
-/// one; metadata, for how people show and whether a guest is signed in to zirc.dev;
+/// real name, where a zirc machine names its owner; metadata, for how people show;
 /// `setname`, for real names that change; and `chghost`, for a machine's host, which says whose
 /// it is, set while it's on. Every app asks for these, the web client included.
 pub const APP_CAPS: &[&str] = &[
@@ -380,7 +370,7 @@ pub struct Link {
     /// What the server takes in one multiline message, when it takes them.
     pub multiline: Option<Limits>,
     /// Whether the server tells metadata it's asked to follow (`draft/metadata-2`), such as
-    /// whether a guest is signed in to zirc.dev.
+    /// how people show.
     pub metadata: bool,
 }
 
@@ -572,11 +562,8 @@ pub struct Chat {
     /// `CHGHOST`. A person, or a machine whose host doesn't say, isn't here.
     machines: HashMap<String, String>,
     /// Folded nick → the account they're logged in to, `None` for none, as extended-join,
-    /// WHOX and messages' account tags say: what tells a guest from a member.
+    /// WHOX and messages' account tags say.
     accounts: HashMap<String, Option<String>>,
-    /// Folded guest nick → whether they're signed in to a zirc.dev account, as the
-    /// organisation's server tells the app.
-    guest_accounts: HashMap<String, bool>,
     /// How people show, as their profiles say ([`Chat::shown_name`]).
     names: names::Names,
     /// Folded nicks already asked of zirc.dev's profiles ([`Chat::profiles_to_ask`]).
@@ -641,12 +628,6 @@ pub struct Chat {
     tab: list::SidebarSection,
     /// Folded direct message name → when the person closed it ([`Chat::close_direct`]).
     closed: HashMap<String, DateTime<Utc>>,
-    /// The organisation's kept guests, as zirc.dev lists them to owners and admins
-    /// ([`Chat::set_kept_guests`]).
-    kept_guests: Vec<guest_rooms::KeptGuest>,
-    /// Folded channel → whether the person opened its folded guests' rooms
-    /// ([`Chat::set_guest_rooms_open`]).
-    guest_rooms_open: HashMap<String, bool>,
     /// How much each conversation notifies ([`Chat::level`]).
     notify: notify::NotifySettings,
     /// Folded nicks of the people the person blocked ([`Chat::set_blocked`]).
@@ -722,7 +703,6 @@ impl Chat {
             realnames: HashMap::new(),
             machines: HashMap::new(),
             accounts: HashMap::new(),
-            guest_accounts: HashMap::new(),
             names: names::Names::new(),
             asked_profiles: std::collections::HashSet::new(),
             session_from: HashMap::new(),
@@ -750,8 +730,6 @@ impl Chat {
             collapsed: std::collections::HashSet::new(),
             tab: list::SidebarSection::Channels,
             closed: HashMap::new(),
-            kept_guests: Vec::new(),
-            guest_rooms_open: HashMap::new(),
             notify: notify::NotifySettings::default(),
             blocked: std::collections::BTreeSet::new(),
             receipts: HashMap::new(),

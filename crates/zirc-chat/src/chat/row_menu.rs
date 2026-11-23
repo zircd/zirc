@@ -3,7 +3,6 @@
 
 use super::Chat;
 use super::conversation::{Kind, is_channel};
-use super::guest_rooms::is_guest_room;
 use super::notify::{Level, menu as words};
 
 /// How long a [`RowMenu`] offers to mute for.
@@ -32,8 +31,7 @@ pub struct LevelChoice {
 
 /// What a conversation's menu offers, in every app's words, in order: Star, Mark as read
 /// while something's unread, Mute (or Unmute), how much it notifies, then Leave for a channel
-/// the person is in, Close for a direct message, or Hide for a guest's room the person isn't
-/// in (the user's choice, 17 Nov 2026: every app draws all of it).
+/// the person is in, or Close for a direct message (the user's choice, 17 Nov 2026: every app draws all of it).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
@@ -58,8 +56,7 @@ pub struct RowMenu {
     pub levels: Vec<LevelChoice>,
     /// `Leave`, for a channel the person is in: it asks first.
     pub leave: Option<String>,
-    /// `Close`, for a direct message, not a guest's; `Hide`, for a suggestion listed though
-    /// the person isn't in it. Either closes it until something new is said in it.
+    /// `Close`, for a direct message: it closes it until something new is said in it.
     pub close: Option<String>,
 }
 
@@ -100,12 +97,7 @@ impl Chat {
                 })
                 .collect(),
             leave: (!direct && joined && is_channel(name)).then(|| words::LEAVE.to_owned()),
-            close: if is_guest_room(name) && !joined {
-                Some(words::HIDE.to_owned())
-            } else {
-                (direct && !self.is_guest_conversation(name) && !is_channel(name))
-                    .then(|| words::CLOSE.to_owned())
-            },
+            close: (direct && !is_channel(name)).then(|| words::CLOSE.to_owned()),
         }
     }
 }

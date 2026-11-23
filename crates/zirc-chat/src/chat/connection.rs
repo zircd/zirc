@@ -1,8 +1,8 @@
 //! The connection - registering, losing it and coming back, and taking in each line the server sends.
 
 use super::{
-    Attendance, Batches, Chat, Connection, Kind, Line, Link, Status, away_line, fold, guests,
-    names, nick_of, stamp, target,
+    Attendance, Batches, Chat, Connection, Kind, Line, Link, Status, away_line, fold, names,
+    nick_of, stamp, target,
 };
 
 impl Chat {
@@ -66,13 +66,7 @@ impl Chat {
         if metadata {
             lines.push(Line::new(
                 "METADATA",
-                [
-                    "*",
-                    "SUB",
-                    guests::SIGNED_IN_KEY,
-                    names::NAME_KEY,
-                    names::AVATAR_KEY,
-                ],
+                ["*", "SUB", names::NAME_KEY, names::AVATAR_KEY],
             ));
         }
         // The server forgets a connection's away with it: this app is away again.

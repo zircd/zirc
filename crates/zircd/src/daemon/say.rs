@@ -19,8 +19,8 @@ use crate::git;
 
 use super::book::Field;
 use super::{
-    Daemon, GUESTS, Seen, TYPING_EVERY, Typing, Which, Wrote, is_guest, is_nick, now,
-    only_cis_word, reaction, remember, vouch,
+    Daemon, Seen, TYPING_EVERY, Typing, Which, Wrote, is_nick, now, only_cis_word, reaction,
+    remember, vouch,
 };
 
 impl Daemon {
@@ -229,7 +229,6 @@ impl Daemon {
         let to = match to {
             Some(to) => {
                 anyhow::ensure!(is_nick(&to), "{to:?} isn't a person's nick or account");
-                anyhow::ensure!(!is_guest(&to), "{GUESTS}");
                 anyhow::ensure!(
                     !self.is_machine(&to),
                     "{to} is a machine: its agents hear only its owner, so this wouldn't reach \

@@ -282,9 +282,7 @@ line. To react, `/react tada` (or `/react 🎉`) reacts to the newest message; S
 Shift-↓ pick another, and Alt-R or `/react` alone opens a picker to search. `/trim`
 removes the message picked, or the newest, from the server's history, once you've said
 `y`: yours, or anyone's in a channel you operate. `/away lunch`
-says you're away, and `/away` alone that you're back. Guests, visitors to a public channel,
-have a section of their own, their conversations shared with your team: in one, `/assign
-dana` hands it to dana, `/close` resolves it, and an admin of the organisation can `/ban` them from every public channel, `/unban` them and `/invite` them to join.
+says you're away, and `/away` alone that you're back.
 These commands do the same in every zirc app, the web chat, desktop and phones included,
 as zirc-chat carries them out (`Chat::run`); those only the terminal client has, such as
 the picker, `/trim` and `/quote`, the others say are its.

@@ -35,7 +35,7 @@ who = "mattias"
 says = "Ship {fix.cause}?"
 "##;
 
-/// People are themselves; `m3-mac` and `evil-mac` are machines; guests and zirc's own may not act.
+/// People are themselves; `m3-mac` and `evil-mac` are machines; zirc's own may not act.
 fn who(account: &str, session: Option<&str>) -> Option<Actor> {
     match account {
         "m3-mac" | "evil-mac" => Some(Actor {
@@ -43,7 +43,6 @@ fn who(account: &str, session: Option<&str>) -> Option<Actor> {
             session: session.map(str::to_owned),
             person: false,
         }),
-        "guest-abcd" => None,
         a if a.starts_with("zirc") => None,
         a => Some(Actor::person(a)),
     }
@@ -145,12 +144,6 @@ fn installed(hosted: &mut Hosted, outs: Vec<Out>) -> Vec<Out> {
 #[test]
 fn a_deploy_is_checked_then_runs_as_its_nick() {
     let mut hosted = Hosted::default();
-    assert!(
-        hosted
-            .take(&deploy("guest-abcd", MASTER), true, &who, 0)
-            .is_empty(),
-        "a guest deploys nothing"
-    );
     let bad = hosted.take(&deploy("mattias", "name = 1"), true, &who, 0);
     assert_eq!(said(&bad)[0].0, workflow::HOST);
     assert!(
@@ -398,20 +391,16 @@ fn a_mention_starts_a_run_from_any_client() {
 }
 
 #[test]
-fn a_guests_state_starts_no_run_and_cis_and_a_machines_do() {
+fn a_machines_state_starts_a_run() {
     let mut hosted = Hosted::default();
     let outs = hosted.take(&deploy("mattias", MASTER), true, &who, 0);
     installed(&mut hosted, outs);
-    let guests = zirc("#ops", "guest-abcd", "web", broken("cc-8b60f7"));
-    assert!(hosted.take(&guests, true, &who, 1).is_empty());
-    // Read back when the sidecar starts, it's no state either.
-    assert!(hosted.take(&guests, false, &who, 1).is_empty());
     let machines = zirc("#ops", "m3-mac", "cc-1", broken("cc-8b60f7"));
     assert!(!said(&hosted.take(&machines, true, &who, 2)).is_empty());
 }
 
 #[test]
-fn an_integrations_event_naming_the_workflow_starts_a_run_and_a_guests_doesnt() {
+fn an_integrations_event_naming_the_workflow_starts_a_run_and_a_machines_doesnt() {
     let mut hosted = Hosted::default();
     let outs = hosted.take(&deploy("mattias", MASTER), true, &who, 0);
     installed(&mut hosted, outs);
@@ -431,7 +420,6 @@ fn an_integrations_event_naming_the_workflow_starts_a_run_and_a_guests_doesnt() 
         said(&hosted.take(&flaky("zirc-ci"), true, &who, 1))[0].2,
         "started `master-1` for zirc-ci"
     );
-    assert!(hosted.take(&flaky("guest-abcd"), true, &who, 2).is_empty());
     assert!(hosted.take(&flaky("m3-mac"), true, &who, 2).is_empty());
 }
 
@@ -587,7 +575,6 @@ fn a_persons_words_start_a_run_where_the_workflow_listens_and_nobody_elses_do() 
     let line =
         |channel: &str, account: &str| row(channel, account, PRIVMSG, "search is broken again");
     assert!(started(&hosted.take(&line("#elsewhere", "ada"), true, &who, 0)).is_empty());
-    assert!(started(&hosted.take(&line("#ops", "guest-abcd"), true, &who, 0)).is_empty());
     // A machine's session saying it, as agents do all day: nothing.
     let session = zirc(
         "#ops",
@@ -615,7 +602,7 @@ fn a_persons_words_start_a_run_where_the_workflow_listens_and_nobody_elses_do() 
 fn a_persons_reaction_starts_a_run_with_the_words_of_the_message_it_heard() {
     let mut hosted = Hosted::default();
     deploys(&mut hosted, "mattias", BUGS);
-    let mut heard = row("#ops", "guest-abcd", PRIVMSG, "the app crashes on launch");
+    let mut heard = row("#ops", "linus", PRIVMSG, "the app crashes on launch");
     heard.msgid = "crash-1".into();
     hosted.take(&heard, true, &who, 0);
     let react = |account: &str, reaction: &str| {
@@ -630,11 +617,6 @@ fn a_persons_reaction_starts_a_run_with_the_words_of_the_message_it_heard() {
     assert!(
         hosted
             .take(&react("m3-mac", "🐛"), true, &who, 1)
-            .is_empty()
-    );
-    assert!(
-        hosted
-            .take(&react("guest-abcd", "🐛"), true, &who, 1)
             .is_empty()
     );
     let outs = hosted.take(&react("ada", "🐛"), true, &who, 1);
@@ -1070,11 +1052,6 @@ says = "hello from the workflow"
 
 /// A host on `ergo` with workflows on, keeping what it keeps in `dir`.
 fn host_on(ergo: &zirc_test_ergo::Ergo, dir: &std::path::Path) -> Host {
-    let gateway = crate::gateway::Gateway::new("127.0.0.1:1".parse().unwrap(), None, None, None);
-    gateway.set(crate::gateway::Public {
-        workflows: true,
-        ..crate::gateway::Public::default()
-    });
     Host {
         host: "127.0.0.1".into(),
         port: ergo.port(),
@@ -1082,7 +1059,7 @@ fn host_on(ergo: &zirc_test_ergo::Ergo, dir: &std::path::Path) -> Host {
         token: "token".into(),
         history: dir.join("history.db"),
         machines: Machines::default(),
-        gateway,
+        on: std::sync::Arc::new(tokio::sync::watch::Sender::new(true)),
         admins: Box::new(|| Box::pin(async { std::collections::BTreeSet::new() })),
     }
 }

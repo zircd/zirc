@@ -6,7 +6,6 @@ mod agent_activity;
 mod busy;
 mod drafts;
 mod finder;
-mod guest_rooms;
 mod list_order;
 mod live;
 mod navigate;
@@ -131,12 +130,10 @@ fn source(nick: &str) -> String {
 
 /// `nick`'s host, as the server gives it. These tests name their machines `<owner>-<name>`,
 /// and a machine's host says whose it is (`machine/<owner>`, which only the server sets): its
-/// name alone never does. A person's, a guest's and zirc's own accounts' hosts say nothing.
+/// name alone never does. A person's and zirc's own accounts' hosts say nothing.
 fn host(nick: &str) -> String {
     match nick.split_once('-') {
-        Some((owner, _)) if !["guest", "zirc"].contains(&owner) => {
-            zirc_proto::names::machine_host(owner)
-        }
+        Some((owner, _)) if owner != "zirc" => zirc_proto::names::machine_host(owner),
         _ => "h".to_owned(),
     }
 }
@@ -1986,7 +1983,7 @@ fn says_nothing_of_a_server_that_wont_share_profiles() {
         &mut chat,
         &[
             "@msgid=m1 :alice!u@h PRIVMSG #api :hi",
-            ":s FAIL METADATA KEY_NO_PERMISSION * :Guests can talk only in #support, and answer whoever wrote to them",
+            ":s FAIL METADATA KEY_NO_PERMISSION * :You can't subscribe to metadata here",
         ],
     );
     assert_eq!(said(api(&chat)), ["<alice> hi"]);
@@ -3059,8 +3056,7 @@ fn a_machine_without_a_name_goes_by_its_nick_and_away_is_worded_once() {
     alice.person.away = Some("lunch".to_owned());
     assert_eq!(alice.away_label().as_deref(), Some("away: lunch"));
     assert_eq!(alice.standing().presence(), crate::chat::Presence::Away);
-    alice.person.guest = true;
-    assert_eq!(alice.pill().as_deref(), Some("GUEST"));
+    assert_eq!(alice.pill(), None);
     alice.person.app = Some("ci".to_owned());
     assert_eq!(alice.pill().as_deref(), Some("APP"));
 }
@@ -3421,8 +3417,8 @@ fn zircs_system_account_is_zirc_everywhere_and_its_messages_take_no_replies() {
     feed(
         &mut chat,
         &[
-            ":zirc-system!u@h PRIVMSG me :A guest is waiting in #api",
-            ":zirc-system!u@h NOTICE #api :Guests can join #api",
+            ":zirc-system!u@h PRIVMSG me :Your trial ends in 3 days",
+            ":zirc-system!u@h NOTICE #api :#api is now public",
         ],
     );
     let system = zirc_proto::names::SYSTEM;
@@ -4741,519 +4737,6 @@ fn says_a_short_message_on_several_lines_as_one_or_a_line_each() {
 }
 
 #[test]
-fn tells_guests_from_members_by_nick_and_account() {
-    let mut chat = Scene::in_api();
-    feed(
-        &mut chat,
-        &[
-            ":guest-7k2q!g@h JOIN #api * :zirc.dev guest",
-            ":guest-imposter!g@h JOIN #api imposter :Someone",
-            ":s 353 me = #api :@me guest-7k2q guest-imposter",
-            ":s 366 me #api :End",
-        ],
-    );
-    assert!(chat.is_guest("guest-7k2q"));
-    assert!(chat.is_guest("GUEST-7K2Q"));
-    // A member's account is never a guest, whatever the nick.
-    assert!(!chat.is_guest("guest-imposter"));
-    assert!(!chat.is_guest("me"));
-    // Nothing known of its account: a nick alone isn't a guest.
-    assert!(!chat.is_guest("guest-unknown"));
-    let people = chat.people("#api");
-    let guest = people.iter().find(|p| p.nick == "guest-7k2q").unwrap();
-    assert!(guest.guest && guest.machine.is_none(), "{guest:?}");
-    // WHOX says the account: 0 for none.
-    feed(
-        &mut chat,
-        &[":s 354 me 42 h guest-imposter H 0 :zirc.dev guest"],
-    );
-    assert!(chat.is_guest("guest-imposter"));
-    // A guest's always-on account is named for them, whatever nick it's using.
-    feed(
-        &mut chat,
-        &[
-            ":guest-9z9z!g@h JOIN #api guest-9z9z :Anna",
-            "@account=guest-1a2b3c4d :anna!g@h PRIVMSG #api :hi",
-            "@account=bob :guest-bob!g@h PRIVMSG #api :hi",
-        ],
-    );
-    assert!(chat.is_guest("guest-9z9z"));
-    assert!(chat.is_guest("anna"));
-    assert!(!chat.is_guest("guest-bob"));
-    assert_eq!(chat.sender_kind("guest-9z9z"), SenderKind::Guest);
-    assert_eq!(chat.sender_kind("guest-bob"), SenderKind::Person);
-}
-
-#[test]
-fn a_guest_with_an_account_is_never_staff() {
-    let mut chat = Chat::new(
-        "guest-1a2b",
-        "irc.zirc.test",
-        Vec::new(),
-        Options::default(),
-    );
-    chat.clock = noon;
-    chat.connected(Link {
-        nick: "guest-1a2b".into(),
-        metadata: false,
-        ..link(true)
-    });
-    feed(&mut chat, &[":guest-1a2b!u@h JOIN #lobby guest-1a2b :Anna"]);
-    assert!(chat.is_guest("guest-1a2b"));
-    assert!(!chat.is_staff());
-}
-
-#[test]
-fn a_guest_sees_their_own_room_as_the_public_channel_beside_it() {
-    let mut chat = Chat::new(
-        "guest-1a2b",
-        "irc.zirc.test",
-        Vec::new(),
-        Options::default(),
-    );
-    chat.clock = noon;
-    chat.connected(Link {
-        nick: "guest-1a2b".into(),
-        metadata: false,
-        ..link(true)
-    });
-    feed(
-        &mut chat,
-        &[":guest-1a2b!u@h JOIN #web/guest-1a2b guest-1a2b :Anna"],
-    );
-    assert_eq!(chat.title("#web/guest-1a2b"), "#web");
-    assert_eq!(chat.short_title("#web/guest-1a2b"), "#web");
-    assert_eq!(
-        chat.intro("#web/guest-1a2b").unwrap()[0],
-        "This is the start of #web."
-    );
-    // Another guest's room keeps its name: it's not ours.
-    assert_eq!(chat.short_title("#web/guest-9z9z"), "#web/guest-9z9z");
-    // Its header counts the guest too, as both are talking in it.
-    feed(&mut chat, &[":priya!u@h JOIN #web/guest-1a2b priya :Priya"]);
-    assert_eq!(chat.member_count("#web/guest-1a2b"), 2);
-}
-
-/// A chat on staff, in #lobby with a guest who wrote to us, signed in as Anna.
-fn with_guest() -> Chat {
-    let mut chat = Scene::in_api();
-    feed(
-        &mut chat,
-        &[
-            ":me!u@h JOIN #lobby",
-            ":guest-7k2q!u@h JOIN #lobby * :Anna",
-            ":guest-1a2b3c4d!u@h JOIN #lobby * :zirc.dev guest",
-            // Anna's room of her own beside #lobby, where she's talked to.
-            ":me!u@h JOIN #lobby/guest-7k2q",
-            ":guest-7k2q!u@h JOIN #lobby/guest-7k2q * :Anna",
-            "@time=2026-10-30T11:00:00.000Z :guest-7k2q!u@h PRIVMSG #lobby/guest-7k2q :hello, is anyone there?",
-            "@time=2026-10-30T11:01:00.000Z :bob!u@h PRIVMSG me :hi",
-        ],
-    );
-    chat.into_chat()
-}
-
-fn support(from: &str, to: &str, value: &str, time: &str) -> String {
-    format!(
-        "@time={time};+zirc/support={value} :{} TAGMSG {to}",
-        source(from)
-    )
-}
-
-#[test]
-fn a_guest_is_talked_to_in_their_room_under_its_channel_with_no_part_of_their_own() {
-    let chat = with_guest();
-    let rows = chat.sidebar_list(&ListOptions::default());
-    let shelves: Vec<Shelf> = rows
-        .iter()
-        .filter(|row| row.kind == ListKind::Heading)
-        .map(|row| row.shelf)
-        .collect();
-    assert_eq!(shelves, [Shelf::Channels, Shelf::Direct]);
-    // Anna's room, under #lobby: unanswered, so bold as unread is.
-    let room = rows
-        .iter()
-        .find(|row| row.name == "#lobby/guest-7k2q")
-        .unwrap();
-    assert_eq!(
-        (room.kind, room.depth, room.title.as_str()),
-        (ListKind::GuestRoom, 1, "Anna")
-    );
-    assert!(
-        room.unread && room.unanswered && !room.mine && !room.closed,
-        "{room:?}"
-    );
-    assert!(
-        !chat
-            .direct_rows()
-            .iter()
-            .any(|row| row.name.starts_with("guest"))
-    );
-}
-
-#[test]
-fn names_a_guest_by_their_name_then_their_email_never_their_nick() {
-    let mut chat = with_guest();
-    assert_eq!(chat.guest_name("guest-7k2q"), "Anna");
-    // The gateway's real name is no name.
-    assert_eq!(chat.guest_name("guest-1a2b3c4d"), "Guest 1a2b");
-    feed(
-        &mut chat,
-        &[&support(
-            "me",
-            "guest-1a2b3c4d",
-            "email:ada@example.com",
-            "2026-10-30T11:02:00.000Z",
-        )],
-    );
-    assert_eq!(chat.guest_name("guest-1a2b3c4d"), "ada@example.com");
-    assert_eq!(guest_label("guest-"), "Guest");
-}
-
-#[test]
-fn tells_a_guest_by_their_lack_of_an_account_not_their_nick_alone() {
-    let mut chat = with_guest();
-    feed(
-        &mut chat,
-        &[
-            ":guest-imposter!g@h JOIN #lobby imposter :Someone",
-            ":me-mbp!u@machine/me JOIN #lobby me-mbp :me",
-        ],
-    );
-    assert_eq!(chat.sender_kind("guest-7k2q"), SenderKind::Guest);
-    assert_eq!(chat.sender_kind("guest-imposter"), SenderKind::Person);
-    assert_eq!(chat.sender_kind("bob"), SenderKind::Person);
-    assert_eq!(chat.sender_kind("me-mbp"), SenderKind::Agent);
-    assert_eq!(SenderKind::Guest.pill(), Some("GUEST"));
-    assert_eq!(SenderKind::Agent.pill(), None);
-}
-
-#[test]
-fn folds_what_staff_do_in_a_guests_room_into_its_row_and_header() {
-    const ROOM: &str = "#lobby/guest-7k2q";
-    let mut chat = with_guest();
-    let room = |chat: &Chat| {
-        chat.sidebar_list(&ListOptions::default())
-            .into_iter()
-            .find(|row| row.name == ROOM)
-    };
-    feed(
-        &mut chat,
-        &[
-            "@time=2026-10-30T11:03:00.000Z :me!u@h PRIVMSG #lobby/guest-7k2q :hi Anna",
-            &support("me", ROOM, "assigned:me", "2026-10-30T11:04:00.000Z"),
-            // What the guest is told isn't staff's to show.
-            &support("me", ROOM, "joined:me", "2026-10-30T11:04:00.000Z"),
-        ],
-    );
-    let row = room(&chat).unwrap();
-    assert!(row.mine && !row.unanswered && !row.closed, "{row:?}");
-    let header = chat.guest_header(ROOM).unwrap();
-    assert_eq!(header.nick, "guest-7k2q");
-    assert_eq!(header.account_line(), None);
-    assert_eq!(
-        header.actions(false),
-        [GuestAction::Assign, GuestAction::Close]
-    );
-    chat.set_guest_account("guest-7k2q", true);
-    let header = chat.guest_header(ROOM).unwrap();
-    assert_eq!(header.account_line(), Some("has a zirc.dev account"));
-    // The line under the guest's name, as every app says it.
-    assert_eq!(
-        header.about(),
-        "has a zirc.dev account · outside your organisation · assigned to me"
-    );
-    assert_eq!(assigned_label("dana"), "assigned to dana");
-    // Only a guest's room has one: not #lobby, nor a person, nor the guest's nick.
-    for name in ["#lobby", "bob", "guest-7k2q"] {
-        assert!(chat.guest_header(name).is_none(), "{name}");
-    }
-
-    // Closed, it folds under #lobby's guests till the guest speaks again.
-    feed(
-        &mut chat,
-        &[&support("me", ROOM, "closed", "2026-10-30T11:05:00.000Z")],
-    );
-    // Read, and something else shown.
-    let _ = chat.select(chat.position(ROOM).unwrap());
-    let _ = chat.select(chat.position("#lobby").unwrap());
-    assert!(room(&chat).is_none());
-    assert_eq!(
-        chat.guest_header(ROOM).unwrap().actions(true),
-        [
-            GuestAction::Assign,
-            GuestAction::Ban,
-            GuestAction::Unban,
-            GuestAction::Invite
-        ]
-    );
-    let conversation = chat.conversation(ROOM).unwrap();
-    let notes: Vec<String> = chat
-        .items(conversation, |time| time.date_naive())
-        .iter()
-        .filter_map(|item| match item {
-            Item::Note { text, .. } => Some(text.clone()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(notes, ["me assigned this to me", "me closed this"]);
-
-    // What the guest says next opens it again.
-    feed(
-        &mut chat,
-        &[
-            "@time=2026-10-30T11:06:00.000Z :guest-7k2q!u@h PRIVMSG #lobby/guest-7k2q :one more thing",
-        ],
-    );
-    let row = room(&chat).unwrap();
-    assert!(!row.closed && row.unanswered && row.unread, "{row:?}");
-}
-
-#[test]
-fn says_what_staff_do_in_a_guests_room() {
-    let chat = with_guest();
-    // By the guest's nick or their room's name, said in the room.
-    for name in ["guest-7k2q", "#lobby/guest-7k2q"] {
-        assert_eq!(
-            texts(&chat.assign_guest(name, "bob")),
-            [
-                "@+zirc/support=assigned:bob TAGMSG #lobby/guest-7k2q",
-                "@+zirc/support=joined:bob TAGMSG #lobby/guest-7k2q"
-            ]
-        );
-        assert_eq!(
-            texts(&chat.close_guest(name)),
-            ["@+zirc/support=closed TAGMSG #lobby/guest-7k2q"]
-        );
-    }
-    // Only a guest whose room we're in.
-    assert!(chat.assign_guest("bob", "me").is_empty());
-    assert!(chat.close_guest("guest-1a2b3c4d").is_empty());
-    assert_eq!(chat.ban_guest("acme", "bob"), None);
-}
-
-#[test]
-fn notifies_of_guests_assigned_to_us_and_otherwise_as_their_channel_does() {
-    let mut chat = with_guest();
-    let line = |text: &str| Entry {
-        from: "guest-7k2q".into(),
-        owner: None,
-        mention: true,
-        kind: EntryKind::Message(text.into()),
-        ..Entry::info(noon(), String::new())
-    };
-    // Unassigned, at the channel's default, Mentions: only what names us.
-    assert!(!chat.notifies("guest-7k2q", &line("hello?")));
-    assert!(chat.notifies("guest-7k2q", &line("me, are you there?")));
-    chat.set_level("#lobby", Level::All);
-    assert!(chat.notifies("guest-7k2q", &line("hello?")));
-    chat.set_level("#lobby", Level::Nothing);
-    assert!(!chat.notifies("guest-7k2q", &line("me, are you there?")));
-    // Assigned to us: everything.
-    feed(
-        &mut chat,
-        &[&support(
-            "me",
-            "guest-7k2q",
-            "assigned:me",
-            "2026-10-30T11:04:00.000Z",
-        )],
-    );
-    assert!(chat.notifies("guest-7k2q", &line("hello?")));
-}
-
-#[test]
-fn offers_only_people_on_staff_to_assign_a_guest_to() {
-    let mut chat = with_guest();
-    feed(
-        &mut chat,
-        &[
-            ":bob!u@h JOIN #lobby bob :Bob",
-            ":bob-mbp!u@machine/bob JOIN #lobby bob-mbp :bob",
-            ":zirc-alerts!u@h JOIN #lobby zirc-alerts :zirc",
-            ":anna!u@h JOIN #api anna :Anna",
-            ":s 353 me = #lobby :@me bob bob-mbp zirc-alerts guest-7k2q",
-            ":s 366 me #lobby :End",
-        ],
-    );
-    let staff: Vec<String> = chat.staff().into_iter().map(|p| p.nick).collect();
-    assert_eq!(staff, ["me", "anna", "bob"]);
-    assert!(chat.assign_guest("guest-7k2q", "bob-mbp").is_empty());
-    assert!(chat.assign_guest("guest-7k2q", "guest-1a2b3c4d").is_empty());
-    assert_eq!(chat.assign_guest("guest-7k2q", "anna").len(), 2);
-}
-
-#[test]
-fn only_admins_ban_or_forget_guests_through_zirc_dev() {
-    let mut chat = with_guest();
-    assert!(!chat.is_admin());
-    assert_eq!(
-        chat.guest_actions("guest-7k2q"),
-        [GuestAction::Assign, GuestAction::Close]
-    );
-    assert_eq!(chat.ban_guest("acme", "guest-7k2q"), None);
-    assert_eq!(chat.unban_guest("acme", "guest-7k2q"), None);
-    assert_eq!(chat.invite_guest("acme", "guest-7k2q"), None);
-    assert_eq!(chat.forget_guest("acme", "guest-7k2q"), None);
-    chat.set_role("member");
-    assert!(!chat.is_admin());
-    chat.set_role("owner");
-    assert!(chat.is_admin());
-    assert_eq!(
-        chat.guest_actions("guest-7k2q"),
-        [
-            GuestAction::Assign,
-            GuestAction::Close,
-            GuestAction::Ban,
-            GuestAction::Unban,
-            GuestAction::Invite
-        ]
-    );
-    let request = |method, path: &str| {
-        Some(GuestRequest {
-            method,
-            path: format!("/api/organisations/acme/guests/guest-7k2q{path}"),
-        })
-    };
-    assert_eq!(
-        chat.unban_guest("acme", "guest-7k2q"),
-        request("DELETE", "/ban")
-    );
-    assert_eq!(
-        chat.invite_guest("acme", "guest-7k2q"),
-        request("POST", "/invite")
-    );
-    assert_eq!(
-        chat.ban_guest("acme", "guest-7k2q"),
-        Some(GuestRequest {
-            method: "POST",
-            path: "/api/organisations/acme/guests/guest-7k2q/ban".into(),
-        })
-    );
-    assert_eq!(
-        chat.forget_guest("acme", "guest-7k2q"),
-        Some(GuestRequest {
-            method: "DELETE",
-            path: "/api/organisations/acme/guests/guest-7k2q".into(),
-        })
-    );
-    assert_eq!(chat.ban_guest("acme", "bob"), None);
-    assert!(chat.guest_actions("bob").is_empty());
-}
-
-#[test]
-fn follows_whether_guests_are_signed_in_to_zirc_dev() {
-    let mut chat = chat();
-    let subscribe = "METADATA * SUB zirc.dev/signed-in display-name avatar";
-    let without = texts(&chat.connected(link(true)));
-    assert!(!without.iter().any(|line| line == subscribe), "{without:?}");
-    let with = texts(&chat.connected(Link {
-        metadata: true,
-        ..link(true)
-    }));
-    assert!(with.iter().any(|line| line == subscribe), "{with:?}");
-    feed(
-        &mut chat,
-        &[
-            ":me!u@h JOIN #lobby",
-            ":guest-7k2q!u@h JOIN #lobby * :Anna",
-            ":guest-1a2b!u@h JOIN #lobby * :zirc.dev guest",
-            ":me!u@h JOIN #lobby/guest-7k2q",
-            ":me!u@h JOIN #lobby/guest-1a2b",
-            ":guest-7k2q!u@h PRIVMSG #lobby/guest-7k2q :hello",
-            ":guest-1a2b!u@h PRIVMSG #lobby/guest-1a2b :hi",
-        ],
-    );
-    assert_eq!(
-        chat.guest_header("#lobby/guest-7k2q").unwrap().account,
-        None
-    );
-    feed(
-        &mut chat,
-        &[
-            ":s METADATA guest-7k2q zirc.dev/signed-in * :1",
-            ":s 761 me guest-1a2b zirc.dev/signed-in * :0",
-            ":s METADATA guest-1a2b other/key * :1",
-        ],
-    );
-    let header = |room| chat.guest_header(room).unwrap().account_line();
-    assert_eq!(header("#lobby/guest-7k2q"), Some("has a zirc.dev account"));
-    assert_eq!(header("#lobby/guest-1a2b"), Some("no account"));
-}
-
-#[test]
-fn agents_never_see_guest_conversations_or_hear_of_guests() {
-    let mut chat = Chat::new("me-mbp", "irc.zirc.test", Vec::new(), Options::default());
-    chat.clock = noon;
-    chat.connected(Link {
-        nick: "me-mbp".into(),
-        metadata: false,
-        ..link(true)
-    });
-    feed(
-        &mut chat,
-        &[
-            ":me-mbp!u@machine/me JOIN #lobby",
-            ":guest-7k2q!u@h JOIN #lobby * :Anna",
-            ":guest-7k2q!u@h PRIVMSG me-mbp :hello",
-        ],
-    );
-    assert!(!chat.is_staff());
-    assert!(
-        !chat
-            .sidebar_list(&ListOptions::default())
-            .iter()
-            .any(|row| row.guest)
-    );
-    let entry = Entry {
-        from: "guest-7k2q".into(),
-        owner: None,
-        mention: true,
-        kind: EntryKind::Message("me-mbp hello".into()),
-        ..Entry::info(noon(), String::new())
-    };
-    assert!(!chat.notifies("#lobby", &entry));
-    assert!(!chat.notifies("guest-7k2q", &entry));
-}
-
-#[test]
-fn a_guest_keeps_only_what_they_are_told() {
-    let mut chat = Chat::new(
-        "guest-7k2q",
-        "irc.zirc.test",
-        Vec::new(),
-        Options::default(),
-    );
-    chat.clock = noon;
-    chat.connected(Link {
-        nick: "guest-7k2q".into(),
-        metadata: false,
-        ..link(true)
-    });
-    feed(
-        &mut chat,
-        &[
-            // Without an account, as the server's extended-join says: a guest.
-            ":guest-7k2q!u@h JOIN #lobby/guest-7k2q * :Anna",
-            &support(
-                "bob",
-                "guest-7k2q",
-                "assigned:bob",
-                "2026-10-30T11:04:00.000Z",
-            ),
-            &support(
-                "bob",
-                "guest-7k2q",
-                "joined:bob",
-                "2026-10-30T11:04:00.000Z",
-            ),
-        ],
-    );
-    let said = said(chat.conversation("bob").unwrap());
-    assert_eq!(said, ["bob joined"]);
-}
-
-#[test]
 fn searches_what_is_loaded_then_asks_the_server_for_older() {
     use zirc_proto::login::{HistoryMessage, HistoryPage, HistorySender};
     let mut chat = Scene::in_api();
@@ -5293,7 +4776,6 @@ fn searches_what_is_loaded_then_asks_the_server_for_older() {
         },
         text: "deploy notes".into(),
         zirc: session.map(|s| serde_json::json!({ "session": s })),
-        support: None,
     };
     search.take_page(&HistoryPage {
         policy: "channels".into(),
@@ -5545,7 +5027,6 @@ fn a_search_view_is_everywhere_or_one_conversation_with_the_history_merged() {
         },
         text: "deploy notes".into(),
         zirc: None,
-        support: None,
     };
     older.take_page(&HistoryPage {
         policy: "channels".into(),
@@ -5593,7 +5074,6 @@ fn searches_direct_messages_and_an_agents_own_lines_on_the_server() {
         },
         text: "tests pass".into(),
         zirc: Some(serde_json::json!({ "session": session })),
-        support: None,
     };
     agent.take_page(&HistoryPage {
         policy: "participant".into(),
@@ -5864,7 +5344,7 @@ fn comings_and_goings_never_end_a_run_but_events_do() {
     let push = Message::new(
         "cc-1",
         Event::Push {
-            branch: "guests-page".into(),
+            branch: "login-page".into(),
             head: "abc1234".into(),
             forced: false,
             subjects: Vec::new(),
@@ -6348,7 +5828,6 @@ fn tells_people_agents_and_integrations_apart() {
     // A machine by its host, which says whose it is, never by its name.
     assert_eq!(sender_kind("m3-mac", Some("carol")), SenderKind::Agent);
     assert_eq!(sender_kind("carol-mbp", None), SenderKind::Person);
-    assert_eq!(sender_kind("guest-7k2q", None), SenderKind::Person);
     assert_eq!(sender_kind("dana", None), SenderKind::Person);
     // An integration's short name: its own, its session's, or its nick's.
     let mut post = ci_post(
@@ -6377,7 +5856,6 @@ fn tells_people_agents_and_integrations_apart() {
     assert_eq!(actor("zirc-alerts", None, &named), "Alerts");
     assert_eq!(actor("zirc-ci", None, &named), "CI");
     assert_eq!(actor("m3-mac", Some("carol"), &named), "Carol's agent");
-    assert_eq!(actor("guest-7k2q", None, &named), "guest-7k2q");
     assert_eq!(actor("dana", None, &named), "dana");
 }
 
@@ -6445,7 +5923,6 @@ fn lays_out_the_sidebar_starred_channels_then_direct_messages() {
                         .1
                         .push(format!("{indent}{}", row.name));
                 }
-                ListKind::GuestRoom => {}
             }
         }
         shelves
@@ -7569,7 +7046,7 @@ fn agents_talking() -> Chat {
                 &says(
                     "cc-1",
                     "zirc-chat",
-                    "cc-5d2b10: can you move **is_guest** into zirc-proto?\nIt's needed by both."
+                    "cc-5d2b10: can you move **is_machine** into zirc-proto?\nIt's needed by both."
                 )
             )
         ),
@@ -8075,7 +7552,7 @@ fn counts_each_tab_as_badge_counts_each_conversation() {
     );
     // A channel counts what mentions us; a direct message everything unread.
     let badges = chat.badges();
-    assert_eq!((badges.channels, badges.direct, badges.guests), (1, 3, 0));
+    assert_eq!((badges.channels, badges.direct), (1, 3));
     assert_eq!(usize::try_from(badges.total), Ok(chat.badge_total()));
     // A direct message set to notify nothing counts nothing, on its tab and its row too.
     chat.set_level("bob", Level::Nothing);
@@ -8739,10 +8216,6 @@ fn a_typed_line_is_said_and_a_command_carried_out_as_every_app_does() {
     assert_eq!(
         ran(&mut chat, "#api", "/invite ada"),
         Ran::Note(said::NOT_A_GROUP.into())
-    );
-    assert_eq!(
-        ran(&mut chat, "#api", "/ban"),
-        Ran::App(crate::command::Command::Ban)
     );
     assert_eq!(
         said::refused(&crate::command::Command::Quote("x".into())),

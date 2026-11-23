@@ -1,9 +1,9 @@
-//! Who is here - people and their machines, agent sessions, who is a guest, and who is away.
+//! Who is here - people and their machines, agent sessions, and who is away.
 
 use super::{
     BACKGROUND_AWAY, BTreeMap, Chat, DateTime, Entry, EntryKind, IDLE_AFTER_SECS, IDLE_AWAY, Kind,
     LOCKED_AWAY, Line, Message, Person, PersonRow, Presence, PresenceMap, SESSION_MARK, Utc, agent,
-    away_line, conversation, fold, for_agent, is_guest, nick_of, people, view,
+    away_line, conversation, fold, for_agent, nick_of, people, view,
 };
 
 impl Chat {
@@ -18,7 +18,6 @@ impl Chat {
                     &self.me,
                     |nick| self.machine_owner(nick).map(str::to_owned),
                     |nick| self.away(nick).map(str::to_owned),
-                    |nick| self.is_guest(nick),
                     |nick| self.shown_name(nick),
                     |nick| self.app_of(nick),
                 )
@@ -110,18 +109,6 @@ impl Chat {
     #[must_use]
     pub fn is_app(&self, nick: &str) -> bool {
         self.app_of(nick).is_some()
-    }
-
-    /// Whether `nick` is a guest's, by its nick and any account the server has said it's
-    /// logged in to: see [`is_guest`].
-    #[must_use]
-    pub fn is_guest(&self, nick: &str) -> bool {
-        is_guest(
-            nick,
-            self.accounts
-                .get(&fold(nick))
-                .map(|account| account.as_deref()),
-        )
     }
 
     /// Who is changing which files, from the working sets heard live.

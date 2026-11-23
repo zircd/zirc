@@ -38,7 +38,7 @@ pub(super) type Names = HashMap<String, Shown>;
 /// What kind of someone a [`Mention`] is, in the order the composer lists them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MentionKind {
-    /// A person, or a guest.
+    /// A person.
     Person,
     /// An agent session.
     Agent,
@@ -88,7 +88,6 @@ impl Chat {
         for nick in people {
             let (name, kind) = match self.sender_kind(nick) {
                 super::SenderKind::Person => (self.shown_name(nick), MentionKind::Person),
-                super::SenderKind::Guest => (self.guest_name(nick), MentionKind::Person),
                 // Agents are offered by session, apps by their rows' names, below.
                 super::SenderKind::Agent | super::SenderKind::Integration => continue,
             };
@@ -168,8 +167,7 @@ impl Chat {
 
     /// The name `nick` shows as: the one their profile gives them in the organisation; else
     /// a person's real name, which their apps send from their profile, unless it's their nick
-    /// or they're a machine (whose real name is its owner) or a guest (named as
-    /// [`Chat::guest_name`] says); else their nick.
+    /// or they're a machine (whose real name is its owner); else their nick.
     #[must_use]
     pub fn shown_name(&self, nick: &str) -> String {
         if let Some(name) = self
@@ -182,7 +180,7 @@ impl Chat {
         self.realname(nick)
             .map(str::trim)
             .filter(|real| !real.is_empty() && !real.eq_ignore_ascii_case(nick))
-            .filter(|_| self.machine_owner(nick).is_none() && !self.is_guest(nick))
+            .filter(|_| self.machine_owner(nick).is_none())
             .map_or_else(|| nick.to_owned(), str::to_owned)
     }
 
@@ -240,26 +238,22 @@ impl Chat {
         nicks
     }
 
-    /// A profile key the server says of `target`: its name or picture, `value` none when
-    /// it's gone. Whether it was one of those.
-    pub(super) fn profile_metadata(
-        &mut self,
-        target: &str,
-        key: &str,
-        value: Option<&str>,
-    ) -> bool {
-        if key != NAME_KEY && key != AVATAR_KEY {
-            return false;
+    /// Metadata the server tells, as `target`, `key`, visibility and maybe a value: how
+    /// someone shows, their name or picture, `value` none when it's gone.
+    pub(super) fn metadata(&mut self, params: &[String]) -> Vec<zirc_line::Line> {
+        if let [target, key, _visibility, rest @ ..] = params
+            && (key == NAME_KEY || key == AVATAR_KEY)
+        {
+            let value = rest.first().filter(|value| !value.is_empty()).cloned();
+            let shown = self.names.entry(fold(target)).or_default();
+            if key == NAME_KEY {
+                shown.name = value;
+            } else {
+                shown.avatar = value;
+                shown.avatar_told = true;
+            }
         }
-        let value = value.filter(|value| !value.is_empty()).map(str::to_owned);
-        let shown = self.names.entry(fold(target)).or_default();
-        if key == NAME_KEY {
-            shown.name = value;
-        } else {
-            shown.avatar = value;
-            shown.avatar_told = true;
-        }
-        true
+        Vec::new()
     }
 
     /// Forgets that `nicks` were asked about, so [`Chat::profiles_to_ask`] gives them again:

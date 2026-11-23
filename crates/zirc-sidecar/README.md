@@ -7,14 +7,12 @@ loopback.
 What it does:
 
 - **Accounts** (`accounts`): the account endpoint zirc.dev's web app and the server's controller
-  call: registering people's and machines' accounts, teams' channels, profiles, guests, settings.
+  call: registering people's and machines' accounts, teams' channels, profiles, settings.
 - **Signing in** (`signin`): checks devices' own keys for Ergo (its auth-script, over a Unix
   socket), so apps and agents sign in without zirc.dev, and keeps the server's login log on its
   own disk.
 - **History** (`history`, `trim`): searches Ergo's own SQLite history on someone's behalf, under
   the organisation's choice of who may read what, and scrubs what was removed off the disk.
-- **Gateway** (`gateway`, `guests`, `visitors`): a WebSocket for the public channels' guests,
-  who aren't IRC users.
 - **Push** (`pusher`): what reaches people's phones while their app is closed, decided here by
   zirc-chat's push rule (mentions, replies, reactions, direct messages, and conversations set to
   All, by each phone's own levels and mutes), sent encrypted for the phone to zirc.dev, which

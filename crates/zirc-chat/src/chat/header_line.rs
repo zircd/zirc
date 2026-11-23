@@ -3,7 +3,7 @@
 use super::Chat;
 
 /// What a conversation's header line is, for how an app draws it: an agent's at work after a
-/// green dot, a guest's on the outside tint, the rest muted.
+/// green dot, the rest muted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
@@ -12,8 +12,6 @@ pub enum HeaderLineKind {
     AgentAtWork,
     /// An agent session's, idle: when it was heard, and whose it is.
     Agent,
-    /// A guest's: their account, that they're outside, and whose they are.
-    Guest,
     /// A person who's away, in a direct message: `Away: lunch`.
     Away,
     /// A channel's people, threads and topic ([`Chat::channel_about`]).
@@ -36,8 +34,7 @@ pub struct HeaderLine {
 impl Chat {
     /// The one line under the name of the conversation `name` in its header, the first of
     /// these there is, in every app (the user's choice, 17 Nov 2026): an agent session's, what
-    /// it's doing or when it was heard; a guest's, `no account · outside your organisation ·
-    /// assigned to dana`; that the person in a direct message is away, `Away: lunch`; a
+    /// it's doing or when it was heard; that the person in a direct message is away, `Away: lunch`; a
     /// channel's people, threads and topic; its topic alone. `None` when there's none.
     #[must_use]
     pub fn header_line(&self, name: &str) -> Option<HeaderLine> {
@@ -49,9 +46,6 @@ impl Chat {
                 HeaderLineKind::Agent
             };
             return line(header.line, kind);
-        }
-        if let Some(guest) = self.guest_header(name) {
-            return line(guest.about(), HeaderLineKind::Guest);
         }
         if !super::is_channel(name)
             && let Some(why) = self.away(name)

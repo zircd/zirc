@@ -97,18 +97,11 @@ impl Chat {
     /// a person by the name they show as, `Carol Danvers`, as their messages are headed
     /// ([`Chat::shown_name`]), one of our machines as its owner and its own name,
     /// `mattias · mbp`; one of our agent sessions by what it goes by, `checkout`, and a
-    /// teammate's by that and whose, `checkout · Maya Chen`; a guest as [`Chat::guest_name`] names them; and, to its guest, their
-    /// room of their own as the public channel beside it ([`Chat::our_room_beside`]).
+    /// teammate's by that and whose, `checkout · Maya Chen`.
     #[must_use]
     pub fn title(&self, name: &str) -> String {
         if self.is_server(name) {
             return SERVER_TITLE.to_owned();
-        }
-        if let Some(parent) = self.our_room_beside(name) {
-            return parent;
-        }
-        if self.is_guest_conversation(name) {
-            return self.guest_name(name);
         }
         let machine = |nick: &str| match self.machine(nick) {
             Some((owner, machine)) => machine_label(&owner, &machine),
@@ -214,30 +207,22 @@ impl Chat {
         }
     }
 
-    /// What every app's header calls the conversation called `name`: a guest's room, to staff,
-    /// by the guest's label ([`Chat::guest_header`]); anything else by its short title
+    /// What every app's header calls the conversation called `name`: its short title
     /// ([`Chat::short_title`]), an agent session by what it goes by (the user's choice, 20 Nov
     /// 2026).
     #[must_use]
     pub fn header_title(&self, name: &str) -> String {
-        self.guest_header(name)
-            .map_or_else(|| self.short_title(name), |guest| guest.label)
+        self.short_title(name)
     }
 
     /// The conversation called `name` as a composer names it, `Message <short title>`: a
     /// channel as named, an agent session as it goes by ([`Chat::session_label`]), a group
-    /// by who's in it, a guest as [`Chat::guest_name`] names them, a machine as its owner and
+    /// by who's in it, a machine as its owner and
     /// its own name, and a person by the name they show as. Every app's composer says this.
     #[must_use]
     pub fn short_title(&self, name: &str) -> String {
         if self.is_server(name) {
             return SERVER_TITLE.to_owned();
-        }
-        if let Some(parent) = self.our_room_beside(name) {
-            return parent;
-        }
-        if self.is_guest_conversation(name) {
-            return self.guest_name(name);
         }
         match agent(name) {
             Some((_, session)) => self.session_label(session),

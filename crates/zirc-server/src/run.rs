@@ -142,9 +142,9 @@ pub struct Inside {
     /// The sidecar's account endpoint.
     #[arg(long, env = "ZIRC_ACCOUNTS_LISTEN", hide = true, default_value = ACCOUNTS_LISTEN)]
     pub accounts_listen: SocketAddr,
-    /// The sidecar's guest gateway.
+    /// The sidecar's content API.
     #[arg(long, hide = true, default_value = "127.0.0.1:9102")]
-    pub guest_listen: SocketAddr,
+    pub content_listen: SocketAddr,
 }
 
 /// What a self-hosted server's settings come to: a paid hosted server's defaults, with all
@@ -412,7 +412,7 @@ fn sidecar_options(options: &Options, data: &Path, secrets: &Secrets) -> zirc_si
             oper_password: secrets.oper.password.clone(),
             gate_password: Some(secrets.gate.password.clone()),
             controller_token: Some(secrets.controller_token.clone()),
-            guest_listen: inside.guest_listen,
+            content_listen: inside.content_listen,
             server_name: Some(options.host.clone()),
             auth_socket: Some(data.join(AUTH_SOCKET)),
             // zirc.dev relays its pushes to people's phones, as a hosted server's.

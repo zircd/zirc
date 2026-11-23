@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn said_picks_a_message_saying_it_in_any_case() {
         let says = |body: &str| {
-            json!({"channel": "#web/guest-1a2b", "from": "guest-1a2b",
+            json!({"channel": "#web", "from": "alice",
                    "message": {"v": 1, "session": "", "event": {"type": "text", "body": body}}})
         };
         let ping = Filter::said("ping");

@@ -8,7 +8,7 @@ use zirc_proto::card::{Action, Card};
 
 use super::conversation::{Conversation, Quote};
 use super::view::{Icon, Landing, Parts};
-use super::{APP_TAG, Block, GUEST_PILL, SpanKind, each_span};
+use super::{APP_TAG, Block, SpanKind, each_span};
 
 /// What a list of people heads zirc's apps with, CI and the like, under the people.
 pub const APPS_SECTION: &str = "Apps";
@@ -18,9 +18,6 @@ pub const PEOPLE_SECTION: &str = "People";
 
 /// What the channel browser says when there's no channel left to join.
 pub const NO_OTHER_CHANNELS: &str = "No other channels to join";
-
-/// What a guest's conversation says while nobody on staff has taken it.
-pub const UNASSIGNED: &str = "unassigned";
 
 /// What marks a post addressed to an agent session, before its name: `→ zirc-chat …`.
 pub const TO_MARK: &str = "→";
@@ -55,6 +52,13 @@ impl Conversation {
     }
 }
 
+/// The pill after the name heading a line: an app's [`APP_TAG`] when its speaker is one
+/// (`app`, [`super::Speaker::is_app`]); a person and an agent have none.
+#[must_use]
+pub fn name_pill(app: bool) -> Option<&'static str> {
+    app.then_some(APP_TAG)
+}
+
 impl super::Chat {
     /// The buttons of `card` we're shown ([`super::Chat::shows_action`]), in order.
     #[must_use]
@@ -63,18 +67,6 @@ impl super::Chat {
             .iter()
             .filter(|action| self.shows_action(card, action))
             .collect()
-    }
-
-    /// The pill after the name heading what `nick` said: a guest's [`GUEST_PILL`], as
-    /// outside, or an app's [`APP_TAG`] when its speaker is one (`app`,
-    /// [`super::Speaker::is_app`]); a person and an agent have none.
-    #[must_use]
-    pub fn name_pill(&self, nick: &str, app: bool) -> Option<&'static str> {
-        if self.is_guest(nick) {
-            Some(GUEST_PILL)
-        } else {
-            app.then_some(APP_TAG)
-        }
     }
 
     /// `parts` of a post addressed to an agent session ([`Parts::to`]) with whom it's
@@ -397,18 +389,6 @@ mod tests {
     }
 
     #[test]
-    fn pills_a_guest_and_an_app_and_nobody_else() {
-        let mut chat = chat();
-        // A guest is one the server says has no account.
-        for line in [":me!u@h JOIN #api", ":guest-21042!u@h JOIN #api * :Sam"] {
-            let _ = chat.receive(line.parse().unwrap());
-        }
-        assert_eq!(chat.name_pill("guest-21042", false), Some(GUEST_PILL));
-        assert_eq!(chat.name_pill("zirc-ci", true), Some(APP_TAG));
-        assert_eq!(chat.name_pill("alice", false), None);
-    }
-
-    #[test]
     fn says_whom_a_post_is_addressed_to_first() {
         let chat = chat();
         let mut post = parts(Icon::Post, "", "", "can you look?", &[]);
@@ -454,9 +434,8 @@ mod tests {
     }
 
     #[test]
-    fn names_the_apps_part_the_browser_and_the_unassigned_as_every_app_does() {
+    fn names_the_apps_part_and_the_browser_as_every_app_does() {
         assert_eq!(APPS_SECTION, "Apps");
         assert_eq!(NO_OTHER_CHANNELS, "No other channels to join");
-        assert_eq!(UNASSIGNED, "unassigned");
     }
 }

@@ -10,8 +10,6 @@ use super::list::{MachineRow, PersonRow};
 /// The statuses that count as operator or higher.
 const OPERATORS: &str = "~&@";
 
-pub use zirc_proto::{GUEST_PREFIX, is_guest};
-
 /// Someone in a conversation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Person {
@@ -28,8 +26,6 @@ pub struct Person {
     /// Why they're away, when they are: their away message, which may be empty. A person
     /// none of whose apps is connected is away.
     pub away: Option<String>,
-    /// Whether they're a guest: see [`is_guest`].
-    pub guest: bool,
     /// For one of zirc's integrations, its short name, shown in place of a generic app
     /// badge: `alerts` for `zirc-alerts`. See [`super::app_label`].
     pub app: Option<String>,
@@ -89,7 +85,6 @@ pub(super) fn rows(
                             nick: owner,
                             machine: None,
                             op: false,
-                            guest: false,
                             app: None,
                         },
                         here: false,
@@ -134,14 +129,12 @@ pub fn runs_on(owner: Option<&str>, realname: Option<&str>) -> Option<String> {
 
 /// The people in `conversation`: operators first, then by name, each machine after its
 /// owner. A machine is one whose host says whose it is (`owner`, `machine/<owner>`, which only
-/// the server sets), and goes by its nick; a guest is no one's machine. Who's away is from
-/// `away`.
+/// the server sets), and goes by its nick. Who's away is from `away`.
 pub(super) fn people(
     conversation: &Conversation,
     me: &str,
     owner: impl Fn(&str) -> Option<String>,
     away: impl Fn(&str) -> Option<String>,
-    guest: impl Fn(&str) -> bool,
     shown: impl Fn(&str) -> String,
     app: impl Fn(&str) -> Option<String>,
 ) -> Vec<Person> {
@@ -149,10 +142,7 @@ pub(super) fn people(
         .members
         .values()
         .map(|Member { nick, prefix }| {
-            let guest = guest(nick);
-            let machine = owner(nick)
-                .filter(|_| !guest)
-                .map(|owner| (owner, nick.clone()));
+            let machine = owner(nick).map(|owner| (owner, nick.clone()));
             Person {
                 nick: nick.clone(),
                 name: shown(nick),
@@ -160,7 +150,6 @@ pub(super) fn people(
                 op: prefix.is_some_and(|p| OPERATORS.contains(p)),
                 me: nick.eq_ignore_ascii_case(me),
                 away: away(nick),
-                guest,
                 app: app(nick),
             }
         })
@@ -213,7 +202,6 @@ mod tests {
             "mattias",
             owner,
             |_| None,
-            |_| false,
             name,
             |nick| crate::chat::app_label(nick, None),
         )

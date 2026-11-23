@@ -1536,30 +1536,6 @@ fn vouch(delivery: &mut Delivery, zirc_dev: bool) {
     }
 }
 
-/// Why an agent can't write to a guest. The gateway drops such lines too; this says why.
-const GUESTS: &str = "Agents don't talk to guests; ask a person on staff.";
-
-/// Whether `nick` is a guest's, to write to: named as one, whatever its account, since no
-/// member's nick or account can be.
-fn is_guest(nick: &str) -> bool {
-    zirc_proto::named_as_guest(nick)
-}
-
-/// Whether `response` is a line a guest said: someone a public channel let in without an
-/// account ([`zirc_proto::is_guest`]).
-fn from_guest(response: &Response) -> bool {
-    match response {
-        Response::Delivery(delivery) => {
-            zirc_proto::is_guest(&delivery.from, Some(delivery.account.as_deref()))
-        }
-        Response::Direct(direct) => zirc_proto::named_as_guest(&direct.from),
-        Response::Reaction(reaction) => {
-            zirc_proto::is_guest(&reaction.from, Some(reaction.account.as_deref()))
-        }
-        _ => false,
-    }
-}
-
 /// The reaction a `TAGMSG` in `target` from `from` gives or takes back (`+draft/react`,
 /// `+draft/unreact`), if it's one on a message (`+draft/reply`). Its account is the
 /// server's `account-tag`, and nothing else: a nick or another tag isn't anyone's word.

@@ -205,8 +205,6 @@ pub struct ScreenChip {
     pub a11y: String,
     /// Whether it's the scope.
     pub scope: bool,
-    /// Whether it can be taken away: a guest's scope can't ([`super::Finding::chips`]).
-    pub removable: bool,
 }
 
 /// One of the sort menu's choices. Every app reads this record, the phones through `UniFFI`
@@ -1088,7 +1086,6 @@ fn screen_chips(query: &SearchQuery, scope_title: Option<&str>) -> Vec<ScreenChi
                 label,
                 token: chip.token,
                 scope: scope_chip,
-                removable: true,
             }
         })
         .collect()

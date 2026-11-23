@@ -2,10 +2,10 @@
 //! report a message or a person to the organisation's owners and to zirc, and block a person
 //! so their messages, direct messages and pushes don't reach them.
 //!
-//! - `POST /api/organisations/<slug>/reports` with a [`Report`], as the signed-in member or
-//!   guest, files it: `201 {"id": …}`. Owners and zirc are told; the reported text isn't
-//!   sent, only where it is: the owners read it on their dashboard, as the organisation's
-//!   Visibility allows them.
+//! - `POST /api/organisations/<slug>/reports` with a [`Report`], as the signed-in member,
+//!   files it: `201 {"id": …}`. Owners and zirc are told; the reported text isn't sent, only
+//!   where it is: the owners read it on their dashboard, as the organisation's Visibility
+//!   allows them.
 //! - `GET /api/organisations/<slug>/blocks` answers the account's [`BlockList`] there.
 //! - `PUT` and `DELETE /api/organisations/<slug>/blocks/<account>` block and unblock one.
 //!

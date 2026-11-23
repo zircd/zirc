@@ -16,7 +16,7 @@ use zirc_proto::{Event, Message};
 
 use super::{
     Daemon, MISSED, MISSED_FOR, Said, WATCHER_SESSION, Watched, answered_concerns, channel_of,
-    direct_concerns, from_guest, lands_under, later, mentions, now, read_saved, routine, wakes,
+    direct_concerns, lands_under, later, mentions, now, read_saved, routine, wakes,
 };
 
 /// Whether `kept` and `response` tell of the same thing said: by the id the server gave it
@@ -46,19 +46,6 @@ impl Daemon {
     /// Tells every watcher, each with why it concerns the session watching, if it does.
     pub(super) fn tell_watchers(&mut self, response: &Response) {
         self.keep_said(response);
-        // Agents don't hear guests: a guest's line wakes no session and is no session's
-        // watch line, even with `--all`. Only a watch with no session, a person's, sees it.
-        // (A guest's message to this machine never gets here: guests have no account.)
-        if from_guest(response) {
-            self.watchers.retain(|watcher| {
-                watcher.session.is_some()
-                    || !matches!(
-                        watcher.heard.try_send(response.clone()),
-                        Err(mpsc::error::TrySendError::Closed(_))
-                    )
-            });
-            return;
-        }
         // An intent's renewal is only noted as told, to whomever it touches: it's no news
         // to anyone, no watch's line, and wakes nobody (zirc_proto::renewal).
         if let Response::Delivery(delivery) = response

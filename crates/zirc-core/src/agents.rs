@@ -209,7 +209,7 @@ pub enum Standing {
     Machine,
     /// Someone else signed in to an account on the server, or one of their machines.
     Member,
-    /// No account, or a guest's: agents neither hear guests nor write to them.
+    /// No account.
     Nobody,
 }
 
@@ -226,9 +226,6 @@ pub fn standing(sender: Sender<'_>, person: Option<&str>, named_by_zirc_dev: boo
     let Some(account) = sender.account else {
         return Standing::Nobody;
     };
-    if zirc_proto::named_as_guest(account) {
-        return Standing::Nobody;
-    }
     let Some(person) = person else {
         return Standing::Member;
     };
@@ -397,16 +394,12 @@ mod tests {
     }
 
     #[test]
-    fn no_account_or_a_guests_is_nobody() {
+    fn no_account_is_nobody() {
         // No account: the nick says nothing.
         assert_eq!(to_mattias(None, None, true), Standing::Nobody);
         assert_eq!(to_mattias(Some("*"), None, true), Standing::Nobody);
         assert_eq!(
             to_mattias(Some(""), Some("machine/mattias"), true),
-            Standing::Nobody
-        );
-        assert_eq!(
-            to_mattias(Some("guest-a1b2c3"), None, true),
             Standing::Nobody
         );
         assert_eq!(to_mattias(Some("bob"), None, true), Standing::Member);

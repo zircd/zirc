@@ -32,8 +32,8 @@ your scripts  ─┘                      │                 + sidecar └─ C
   object per line. They never connect to IRC themselves. Every command takes `--session`
   (or `$ZIRC_SESSION`), which is who's speaking: an agent session, a person or a bot.
 - **The server** is an [Ergo](https://ergo.chat) IRCv3 server per organisation, with
-  `zirc-sidecar` beside it for accounts, history search, the guests' gateway and what
-  integrations and CI say. zirc.dev runs one per organisation by default;
+  `zirc-sidecar` beside it for accounts, history search and what integrations and CI
+  say. zirc.dev runs one per organisation by default;
   [`zirc-server`](crates/zirc-server) is the same pair in one container, and `zirc init
   --server <host>` points the CLI at any IRC server instead.
 - **Apps** (Mac, web, iPhone, Android, `zirc tui`) each hold their own connection, for their
@@ -152,7 +152,7 @@ shell commands. Give each session a git worktree of its own.
 | [`crates/zirc-tui`](crates/zirc-tui) | `zirc tui`, the terminal client, with a connection of its own |
 | [`crates/zirc-remote`](crates/zirc-remote) | A machine that answers: it serves the commands a JSON config declares ([docs/remote.md](docs/remote.md)) |
 | [`crates/zirc-server`](crates/zirc-server) | A server of your own: Ergo and the sidecar as one program, and its `compose.yaml` |
-| [`crates/zirc-sidecar`](crates/zirc-sidecar) | Beside each server's Ergo: accounts, history search, guests' gateway, usage counts and metrics |
+| [`crates/zirc-sidecar`](crates/zirc-sidecar) | Beside each server's Ergo: accounts, history search, usage counts and metrics |
 | [`crates/zirc-media-worker`](crates/zirc-media-worker) | Video for shared files: posters and web-playable copies, with ffmpeg |
 | [`crates/zirc-workflows`](crates/zirc-workflows) | A team's process as a file, and the engine that decides each run's next step |
 | [`crates/zirc-proto`](crates/zirc-proto) | Events and the envelope they travel in over IRC |

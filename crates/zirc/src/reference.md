@@ -363,7 +363,7 @@ zirc role leave fixers --session cc-1a2b3c
 
 A `said` or `reaction` trigger counts where the workflow's file says it listens, its
 `channel` and those it `follow`s, and only for the organisation's people (and, for `said`, its
-integrations): never a guest's or an agent session's. A reaction to a message from before the
+integrations): never an agent session's. A reaction to a message from before the
 workflow was listening can't give its text. A `landed` trigger needs CI to say which paths a
 landing changed (`changed` in its landing event's data).
 

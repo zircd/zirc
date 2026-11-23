@@ -162,10 +162,11 @@ pub struct Action {
 #[serde(rename_all = "lowercase")]
 #[ts(rename = "CardWho")]
 pub enum Who {
-    /// The organisation's members, as when a button doesn't say.
+    /// The organisation's members: everyone in the channel, as when a button doesn't say.
     #[default]
     Members,
-    /// Anyone in the channel, guests included.
+    /// Anyone in the channel: the same as [`Who::Members`], as only members are in its
+    /// channels. Kept because cards say it.
     Anyone,
     /// The person the card is about: the owner of its `about` session, or that nick.
     About,

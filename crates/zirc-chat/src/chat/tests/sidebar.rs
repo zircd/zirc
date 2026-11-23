@@ -2,7 +2,7 @@
 //! nests under a channel, the folds and the rows that end a part.
 
 use super::*;
-use crate::chat::{KeptGuest, ListKind, ListOptions, ListRow, RowUnder, SidebarSection, UnderKind};
+use crate::chat::{ListKind, ListOptions, ListRow, RowUnder, SidebarSection, UnderKind};
 
 fn all() -> ListOptions {
     ListOptions::default()
@@ -53,13 +53,13 @@ fn quiet_agent(chat: &mut Chat, machine: &str, session: &str) {
     let _ = chat.mark_read(&format!("{machine}/{session}"));
 }
 
-/// `#api` with its room `#api/login`, `#web`, and direct messages with bob and carol, a
-/// conversation with the guest Anna in `#lobby`.
+/// `#api` with its room `#api/login`, `#web`, and direct messages with bob and carol.
 fn busy() -> Chat {
-    let mut chat = with_guest();
+    let mut chat = Scene::in_api().into_chat();
     feed(
         &mut chat,
         &[
+            "@time=2026-10-30T11:01:00.000Z :bob!u@h PRIVMSG me :hi",
             ":me!u@h JOIN #web",
             ":me!u@h JOIN #api/login",
             // Said in today, so an active thread, which the sidebar lists.
@@ -71,7 +71,7 @@ fn busy() -> Chat {
 }
 
 #[test]
-fn lists_starred_then_channels_with_guests_rooms_then_direct_messages() {
+fn lists_starred_then_channels_with_their_rooms_then_direct_messages() {
     let mut chat = busy();
     chat.star("carol", true);
     let rows = chat.sidebar_list(&all());
@@ -87,8 +87,6 @@ fn lists_starred_then_channels_with_guests_rooms_then_direct_messages() {
             "Heading Channels Channels",
             "Conversation Channels #api",
             "  Room Channels login",
-            "Conversation Channels #lobby",
-            "  GuestRoom Channels Anna",
             "Conversation Channels #web",
             "Heading Direct Direct messages",
             "Conversation Direct bob",
@@ -105,9 +103,6 @@ fn lists_starred_then_channels_with_guests_rooms_then_direct_messages() {
     assert_eq!(bob.faces.len(), 1);
     assert_eq!(said(bob.under.as_ref()), Some("hi"));
     assert!(bob.latest_ms.is_some() && bob.when.is_some());
-    // A guest's room says whether it's answered, and whether it's ours.
-    let anna = row(&rows, "#lobby/guest-7k2q");
-    assert!(anna.guest && anna.unanswered && !anna.closed && !anna.mine);
 }
 
 #[test]
@@ -215,7 +210,6 @@ fn whats_starred_is_under_starred_alone_a_channel_with_its_rooms() {
     let mut chat = busy();
     chat.star("#api", true);
     chat.star("bob", true);
-    chat.star("#lobby/guest-7k2q", true);
     let rows = chat.sidebar_list(&all());
     assert_eq!(
         lines(&rows),
@@ -224,9 +218,7 @@ fn whats_starred_is_under_starred_alone_a_channel_with_its_rooms() {
             "Conversation Starred #api",
             "  Room Starred login",
             "Conversation Starred bob",
-            "Conversation Starred Anna",
             "Heading Channels Channels",
-            "Conversation Channels #lobby",
             "Conversation Channels #web",
             "Heading Direct Direct messages",
             "Conversation Direct carol",
@@ -312,96 +304,6 @@ fn the_unread_pip_marks_channels_and_rooms_never_direct_messages_nor_muted_and_b
     assert!(!login.pip && !login.bold);
 }
 
-fn kept(nick: &str, name: &str) -> KeptGuest {
-    KeptGuest {
-        nick: nick.into(),
-        name: Some(name.into()),
-        channels: vec!["#web".into()],
-        rooms: Vec::new(),
-        connected: false,
-    }
-}
-
-#[test]
-fn a_channels_guests_rooms_nest_under_it_folded_on_its_row() {
-    let mut chat = busy();
-    chat.set_role("admin");
-    chat.set_kept_guests(vec![kept("guest-1111", "Sam")]);
-    let web = |rows: &[ListRow]| rows.iter().find(|r| r.name == "#web").cloned().unwrap();
-    // Folded by default, on #web's own row.
-    let rows = chat.sidebar_list(&all());
-    assert_eq!(web(&rows).open, Some(false));
-    assert!(
-        !rows
-            .iter()
-            .any(|r| r.kind == ListKind::GuestRoom && r.name.starts_with("#web/"))
-    );
-    chat.set_guest_rooms_open("#web", true);
-    let rows = chat.sidebar_list(&all());
-    assert_eq!(web(&rows).open, Some(true));
-    let sam = row(&rows, "#web/guest-1111");
-    assert_eq!(
-        (sam.kind, sam.depth, sam.title.as_str()),
-        (ListKind::GuestRoom, 1, "Sam")
-    );
-    assert!(sam.guest && sam.opens && !sam.joined);
-    assert_eq!(sam.presence, Some(Presence::Gone));
-    // Right under #web: no row for the fold.
-    let at = rows.iter().position(|r| r.name == "#web").unwrap();
-    assert_eq!(rows[at + 1].name, "#web/guest-1111");
-
-    // However many, they fold.
-    chat.set_guest_rooms_open("#web", false);
-    let many: Vec<KeptGuest> = (1..=6)
-        .map(|n| kept(&format!("guest-{n}{n}{n}{n}"), &format!("Guest {n}")))
-        .collect();
-    chat.set_kept_guests(many);
-    let rows = chat.sidebar_list(&all());
-    assert_eq!(web(&rows).open, Some(false));
-    assert!(
-        !rows
-            .iter()
-            .any(|r| r.kind == ListKind::GuestRoom && r.name.starts_with("#web/"))
-    );
-    chat.set_guest_rooms_open("#web", true);
-    let rows = chat.sidebar_list(&all());
-    assert_eq!(
-        rows.iter()
-            .filter(|r| r.kind == ListKind::GuestRoom && r.name.starts_with("#web/"))
-            .count(),
-        6
-    );
-
-    // Folded, a room with something new still shows, bold for itself, and its channel isn't.
-    chat.set_guest_rooms_open("#web", false);
-    feed(
-        &mut chat,
-        &[
-            ":me!u@h JOIN #web/guest-1111",
-            "@time=2026-10-30T11:20:00.000Z :guest-1111!u@h PRIVMSG #web/guest-1111 :me: hi",
-        ],
-    );
-    let rows = chat.sidebar_list(&all());
-    let shown: Vec<_> = rows
-        .iter()
-        .filter(|r| r.kind == ListKind::GuestRoom && r.name.starts_with("#web/"))
-        .map(|r| r.name.as_str())
-        .collect();
-    assert_eq!(shown, ["#web/guest-1111"]);
-    assert!(row(&rows, "#web/guest-1111").unread);
-    let web = row(&rows, "#web");
-    assert!(!web.unread);
-    assert_eq!(web.badge, 0);
-
-    // Open, the room is bold for itself, and its channel isn't.
-    chat.set_guest_rooms_open("#web", true);
-    let rows = chat.sidebar_list(&all());
-    assert!(row(&rows, "#web/guest-1111").unread);
-    let web = row(&rows, "#web");
-    assert!(!web.unread);
-    assert_eq!(web.badge, 0);
-}
-
 #[test]
 fn no_server_browse_or_new_channel_rows() {
     // The user's choices, 19 Nov 2026: Jump to finds the Server channel and the channels to
@@ -410,10 +312,10 @@ fn no_server_browse_or_new_channel_rows() {
     let rows = chat.sidebar_list(&all());
     let channels: Vec<&ListRow> = rows.iter().filter(|r| r.shelf == Shelf::Channels).collect();
     assert!(
-        channels.iter().skip(1).all(|r| matches!(
-            r.kind,
-            ListKind::Conversation | ListKind::Room | ListKind::GuestRoom
-        )),
+        channels
+            .iter()
+            .skip(1)
+            .all(|r| matches!(r.kind, ListKind::Conversation | ListKind::Room)),
         "{channels:?}"
     );
     assert!(rows.iter().all(|r| r.title != crate::chat::SERVER_TITLE));
@@ -471,16 +373,13 @@ fn a_folded_part_keeps_whats_new_and_whats_shown() {
         .filter(|r| r.shelf == Shelf::Channels)
         .map(|r| (r.kind, r.name.as_str()))
         .collect();
-    // #api's room is new, under #api; Anna's room is unanswered, under #lobby; #web is
-    // shown; Browse channels folds away.
+    // #api's room is new, under #api; #web is shown; Browse channels folds away.
     assert_eq!(
         channels,
         [
             (ListKind::Heading, ""),
             (ListKind::Conversation, "#api"),
             (ListKind::Room, "#api/login"),
-            (ListKind::Conversation, "#lobby"),
-            (ListKind::GuestRoom, "#lobby/guest-7k2q"),
             (ListKind::Conversation, "#web"),
         ]
     );
@@ -541,7 +440,6 @@ fn an_agent_at_work_that_wrote_to_us_has_its_direct_row_with_its_task() {
         rows.iter()
             .all(|r| r.kind != ListKind::Heading || r.under.is_none())
     );
-    assert!(ours.mine);
     assert_eq!(ours.faces.len(), 1);
     // A teammate's agent at work that never wrote to us isn't listed, nor is its machine.
     assert!(!listed(&chat, "bob-laptop/cc-9"));
