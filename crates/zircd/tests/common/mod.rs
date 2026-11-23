@@ -312,7 +312,15 @@ pub async fn two_machines(ergo: &Ergo) -> [(Machine, TempDir); 2] {
 }
 
 pub async fn machine_with_a_session_worktree(ergo: &Ergo) -> (Machine, TempDir, PathBuf, PathBuf) {
-    let machine = Machine::start(ergo, "solo").await;
+    machine_with_a_session_worktree_and(ergo, "").await
+}
+
+/// Like [`machine_with_a_session_worktree`], with `settings` in the machine's `config.toml`.
+pub async fn machine_with_a_session_worktree_and(
+    ergo: &Ergo,
+    settings: &str,
+) -> (Machine, TempDir, PathBuf, PathBuf) {
+    let machine = Machine::start_with(ergo, "solo", settings).await;
     // A session's worktree inside the checkout, where Claude Code keeps them.
     let main = clone();
     git(

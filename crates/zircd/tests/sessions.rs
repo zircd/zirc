@@ -656,7 +656,12 @@ async fn a_person_typing_in_any_irc_client_reaches_the_session_they_name() {
 #[tokio::test]
 async fn a_reaction_to_a_sessions_message_reaches_it_as_who_gave_it() {
     let ergo = require_ergo!();
-    let (machine, _main, _main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
+    // With a web app to link to, a post is answered once the server has echoed it, and so
+    // once zircd knows it's cc-login's. Without one it's answered as it's sent, and Ada could
+    // react before that echo came: Ergo sends the sender's echo once it's done with the
+    // message, after the channel's others have it.
+    let (machine, _main, _main_root, login_root) =
+        machine_with_a_session_worktree_and(&ergo, "web = \"https://zirc.dev\"\n").await;
     let mut login_hears = machine.watch(Some("cc-login")).await;
     let mut main_hears = machine.watch(Some("cc-main")).await;
     let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
