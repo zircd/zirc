@@ -227,6 +227,23 @@ pub const STEPS: [Step; 8] = [
     },
 ];
 
+impl Step {
+    /// When it was reached, by when each signal was `first` seen: when the last of its
+    /// signals was, once all were.
+    pub fn reached_at<T: Ord + Copy>(&self, first: impl Fn(Signal) -> Option<T>) -> Option<T> {
+        self.signals
+            .iter()
+            .map(|signal| first(*signal))
+            .try_fold(None, |last: Option<T>, at| Some(last.max(Some(at?))))
+            .flatten()
+    }
+}
+
+/// From when zirc.dev records steps as they're reached, in RFC 3339: one reached before then is
+/// history, which a backfill records as filled in, so the funnel counts only those who went
+/// through getting started.
+pub const RECORDED_FROM: &str = "2026-11-24T00:00:00Z";
+
 /// The step numbered `number`, if there's one.
 #[must_use]
 pub fn step(number: u8) -> Option<&'static Step> {
@@ -351,6 +368,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Signal::decl(config),
         Step::decl(config),
         format!("const STEPS: readonly OnboardingStep[] = {steps};"),
+        format!("const STEPS_RECORDED_FROM = {RECORDED_FROM:?};"),
         format!(
             "const RECORDED_SIGNALS: readonly StepSignal[] = [{}];",
             Signal::ALL
@@ -401,6 +419,27 @@ mod tests {
         assert_eq!(next(&[1, 2, 5]).map(|s| s.id), Some("agent"));
         assert_eq!(next(&[1, 2, 3]).map(|s| s.id), Some("phone"));
         assert_eq!(next(&[1, 2, 3, 4, 5, 6, 7, 8]), None);
+    }
+
+    #[test]
+    fn a_step_is_reached_when_the_last_of_its_signals_was() {
+        let phone = step(4).unwrap();
+        let seen = |phone_at, direct_at| {
+            move |signal| match signal {
+                Signal::Phone => phone_at,
+                Signal::AgentDirect => direct_at,
+                _ => None,
+            }
+        };
+        assert_eq!(phone.reached_at(seen(Some(3), Some(5))), Some(5));
+        assert_eq!(phone.reached_at(seen(Some(7), Some(5))), Some(7));
+        assert_eq!(phone.reached_at(seen(Some(7), None)), None);
+        assert!(chrono_like(RECORDED_FROM));
+    }
+
+    /// Whether `text` reads as an RFC 3339 time in UTC, as the web app and ops parse it.
+    fn chrono_like(text: &str) -> bool {
+        text.len() == 20 && text.ends_with('Z') && text.as_bytes()[10] == b'T'
     }
 
     #[test]
