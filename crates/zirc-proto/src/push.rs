@@ -15,10 +15,52 @@
 //! - Every app says what its person read ([`Said::Read`]) as it tells the server
 //!   (`MARKREAD`), so a push waiting for something already read on another device isn't
 //!   sent, and the phone's notification for one already sent goes.
+//!
+//! What zirc.dev's relay hands the phone beside the push's alert ([`PAYLOAD_KEY`],
+//! [`ENDPOINT_KEY`], [`PUSH_ID_KEY`]), and what the phone says back when one arrives
+//! ([`Arrived`], to its endpoint's [`ARRIVED_PATH`]), are declared here once: the relay and
+//! its route read them as TypeScript, the apps' core as Rust.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+/// The key of a push's encrypted line, base64, in what the push service hands the app.
+pub const PAYLOAD_KEY: &str = "zirc";
+
+/// The key of the id of the endpoint a push came to, which the app maps to its organisation.
+pub const ENDPOINT_KEY: &str = "ep";
+
+/// The key of a push's own random id, on a push that notifies: what the phone says arrived.
+pub const PUSH_ID_KEY: &str = "pid";
+
+/// Where under its endpoint's address a phone says a push arrived, sending an [`Arrived`] there.
+/// zirc.dev's route lives at this path (`app/api/push/[id]/arrived`), as Next.js routes by
+/// directory.
+pub const ARRIVED_PATH: &str = "/arrived";
+
+/// A phone saying a push arrived: its id ([`PUSH_ID_KEY`]), and when, in milliseconds since
+/// the epoch by the phone's clock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct Arrived {
+    /// The push's id.
+    pub pid: String,
+    /// When it arrived, by the phone's clock.
+    pub at: u64,
+}
+
+/// The push contract's types and constants as TypeScript, for zirc.dev's relay.
+#[must_use]
+pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
+    vec![
+        Arrived::decl(config),
+        format!("const PUSH_PAYLOAD_KEY = {PAYLOAD_KEY:?};"),
+        format!("const PUSH_ENDPOINT_KEY = {ENDPOINT_KEY:?};"),
+        format!("const PUSH_ID_KEY = {PUSH_ID_KEY:?};"),
+        format!("const PUSH_ARRIVED_PATH = {ARRIVED_PATH:?};"),
+    ]
+}
 
 /// The nick the tenant's pusher goes by.
 pub const PUSHER: &str = "zirc-pusher";
