@@ -583,9 +583,6 @@ pub fn team(home: &Path, repo: &Repo) -> (Team, Option<String>) {
     )
 }
 
-/// Among what a session has seen: that its person's next step was asked for.
-const NEXT_ASKED: &str = "next";
-
 /// The hints `zirc watch` shows under what wakes a session: each the first time its kind
 /// does, and again only when its text changes, remembered per session in
 /// `$ZIRC_HOME/hints-seen/<session>.json` across `--once` watches.
@@ -694,12 +691,8 @@ impl Watch {
     /// ([`zirc_proto::onboarding::Step::id`]), the first time it's asked for as it is now
     /// (`zirc watch` asks as it starts): none for a step an agent has nothing to say about.
     pub fn at_next(&mut self, step: &str) -> Option<Shown> {
-        let kind = kind::next(step);
-        // Asked once a session, whatever the step: a later watch of it asks no more.
-        self.shown.entry(NEXT_ASKED.to_owned()).or_default();
-        self.save();
         let seen = Seen {
-            kind: kind?,
+            kind: kind::next(step)?,
             channel: self
                 .repos
                 .first()
@@ -723,10 +716,14 @@ impl Watch {
         Some(shown)
     }
 
-    /// Whether the session's person's next step was asked for already ([`Watch::at_next`]).
+    /// Whether a step's hint ([`Watch::at_next`]) is still to show the session: once each has
+    /// been, its watches needn't ask zirc.dev what's next any more.
     #[must_use]
-    pub fn next_asked(&self) -> bool {
-        self.shown.contains_key(NEXT_ASKED)
+    pub fn nexts_left(&self) -> bool {
+        zirc_proto::onboarding::STEPS
+            .iter()
+            .filter_map(|step| step.agent_hint)
+            .any(|kind| !self.shown.contains_key(kind))
     }
 
     /// Keeps what the session has seen. Best effort: at worst, a hint is shown again.
@@ -757,10 +754,10 @@ mod tests {
     }
 
     #[test]
-    fn a_sessions_first_watch_gets_its_persons_next_steps_hint_once() {
+    fn a_session_gets_each_new_next_steps_hint_once() {
         let home = tempfile::tempdir().unwrap();
         let mut watch = Watch::load(home.path(), Some("cc-1"), &[]).0;
-        assert!(!watch.next_asked());
+        assert!(watch.nexts_left());
         let shown = watch.at_next("phone").expect("the phone's hint");
         assert_eq!(
             (shown.kind.as_str(), shown.layer),
@@ -768,14 +765,18 @@ mod tests {
         );
         assert!(shown.text.contains("zirc.dev/app"), "{}", shown.text);
         assert_eq!(watch.take_shown().len(), 1, "for its usage record");
-        // The next watch of the session knows it was asked, and says it no more.
+        // A later watch of the session says the phone's no more, but the next step's once.
         let mut again = Watch::load(home.path(), Some("cc-1"), &[]).0;
-        assert!(again.next_asked());
         assert_eq!(again.at_next("phone"), None);
-        // A step an agent has nothing to say about is asked once all the same.
-        let mut other = Watch::load(home.path(), Some("cc-2"), &[]).0;
-        assert_eq!(other.at_next("teammate"), None);
-        assert!(Watch::load(home.path(), Some("cc-2"), &[]).0.next_asked());
+        assert_eq!(again.at_next("teammate"), None, "nothing to say of it");
+        assert_eq!(
+            again.at_next("ci").map(|it| it.kind),
+            Some(kind::NEXT_CI.to_owned())
+        );
+        assert!(again.nexts_left(), "the first wake's is still to come");
+        assert!(again.at_next("first_wake").is_some());
+        // Once each has been shown, there's nothing left to ask zirc.dev for.
+        assert!(!Watch::load(home.path(), Some("cc-1"), &[]).0.nexts_left());
     }
 
     #[test]
