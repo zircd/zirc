@@ -46,6 +46,10 @@ pub const MOST_BYTES: u64 = 16 * 1024 * 1024;
 /// The longest account name an attempt keeps, in characters: a token names any it likes.
 pub const ACCOUNT_CHARS: usize = 64;
 
+/// How many logins wait to be heard ([`Signin::logins`]): past it the oldest go, and the
+/// next look for machines come on (`crate::profiles::EVERY`) catches them.
+const LOGINS_HELD: usize = 256;
+
 /// Where Ergo reaches the sidecar, beside its history on the disk they share.
 #[must_use]
 pub fn socket_beside(history: &Path) -> PathBuf {
@@ -375,6 +379,9 @@ pub struct Signin {
     used: std::sync::Mutex<HashMap<String, u64>>,
     /// The login log.
     pub log: Log,
+    /// Each account logging in, as Ergo asks: let in by a device key, or by a passphrase
+    /// Ergo checks itself, so perhaps not in after all ([`Self::logins`]).
+    logins: tokio::sync::broadcast::Sender<String>,
 }
 
 impl Signin {
@@ -386,7 +393,16 @@ impl Signin {
             keys: tokio::sync::Mutex::new(Keys::beside(history)),
             used: std::sync::Mutex::default(),
             log: Log::beside(history, now),
+            logins: tokio::sync::broadcast::channel(LOGINS_HELD).0,
         }
+    }
+
+    /// Each account's name, lower-case, as it logs in from now on: what sets a machine's
+    /// name and picture once it's on (`crate::accounts`), as no other word of a login reaches
+    /// the sidecar. A passphrase's account may yet be refused, by Ergo.
+    #[must_use]
+    pub fn logins(&self) -> tokio::sync::broadcast::Receiver<String> {
+        self.logins.subscribe()
     }
 
     /// Answers one of Ergo's questions at `now` (seconds since the epoch), and logs it.
@@ -443,6 +459,15 @@ impl Signin {
             .account
             .map(|account| account.chars().take(ACCOUNT_CHARS).collect());
         self.log.add(&attempt);
+        let logging_in = match (&output.account_name, &input.passphrase) {
+            (Some(account), _) if output.success => Some(account),
+            (_, Some(_)) => input.account_name.as_ref(),
+            _ => None,
+        };
+        if let Some(account) = logging_in {
+            // Nobody listening, as before the sidecar has started, is fine.
+            let _ = self.logins.send(account.to_lowercase());
+        }
         output
     }
 
@@ -733,6 +758,34 @@ mod tests {
         assert!(!text.contains("hunter2"), "{text}");
         assert_eq!(signin.log.read()[0].result, "ergo");
         assert_eq!(signin.log.read()[0].method, "passphrase");
+    }
+
+    #[tokio::test]
+    async fn each_account_logging_in_is_told_but_not_a_refused_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let signin = signin(&dir);
+        let mut logins = signin.logins();
+        let phone = Device::new();
+        signin
+            .keys
+            .lock()
+            .await
+            .add("ada", &phone.key(), "Ada's phone", 1)
+            .unwrap();
+
+        signin.answer(&with(&phone.login("ada", "one")), NOW).await;
+        signin.answer(&with(&phone.login("bob", "two")), NOW).await;
+        let passphrase = Input {
+            account_name: Some("Ada-MBP".into()),
+            passphrase: Some("hunter2hunter2".into()),
+            ..Input::default()
+        };
+        signin.answer(&passphrase, NOW).await;
+
+        assert_eq!(logins.try_recv().unwrap(), "ada");
+        // Ergo checks a passphrase itself: told, as it may let it in.
+        assert_eq!(logins.try_recv().unwrap(), "ada-mbp");
+        assert!(logins.try_recv().is_err(), "bob's refused key was told");
     }
 
     #[test]

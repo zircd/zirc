@@ -20,8 +20,14 @@ pub const NAME: &str = "display-name";
 /// The METADATA key of a picture.
 pub const AVATAR: &str = "avatar";
 
-/// How often the sidecar looks for machines come on, to give them theirs.
-pub const EVERY: Duration = Duration::from_secs(30);
+/// How often the sidecar looks for accounts come on, to give them theirs: a backstop, as a
+/// machine's is set as it logs in (`crate::signin::Signin::logins`), and for servers without
+/// device keys, whose Ergo doesn't tell the sidecar of logins.
+pub const EVERY: Duration = Duration::from_mins(10);
+
+/// The longest a machine's login takes to give it its profile: a look a second for its client
+/// to be on, as it registers.
+pub const ON_LOGIN: Duration = Duration::from_secs(15);
 
 /// One account's, as zirc.dev says.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -2175,68 +2175,130 @@ async fn set_profile(
     }
 }
 
-/// How many [`profiles::EVERY`]s go by between setting every machine's again, for those that
-/// came back on between two looks, whose new client hasn't them.
-const PROFILES_AGAIN: u32 = 10;
-
-/// Every so often, gives accounts that have come on what zirc.dev last said of them: a
-/// machine's as it connects, and anything that couldn't be set before. Who's on is Ergo's
-/// API's to say, which opens no IRC session; setting them takes the operator's one.
+/// Gives accounts that come on what zirc.dev last said of them: a machine's as it logs in, which
+/// Ergo tells the sidecar of ([`signin::Signin::logins`]), and every [`profiles::EVERY`] every
+/// account that's on, for a login missed and anything that couldn't be set before. Who's on is
+/// Ergo's API's to say, which opens no IRC session; setting them takes the operator's one.
 async fn keep_profiles(ergo: Arc<Ergo>) {
+    let mut every = tokio::time::interval(profiles::EVERY);
+    let mut logins = ergo.signin.logins();
+    loop {
+        tokio::select! {
+            _ = every.tick() => look_for_profiles(&ergo).await,
+            login = logins.recv() => match login {
+                Ok(account) => {
+                    tokio::spawn(profile_on_login(ergo.clone(), account));
+                }
+                // Logins missed: the next look catches them.
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            },
+        }
+    }
+    loop {
+        every.tick().await;
+        look_for_profiles(&ergo).await;
+    }
+}
+
+/// Sets every account that's on its profile, again: once a [`profiles::EVERY`], where logins
+/// set each as it comes ([`profile_on_login`]).
+async fn look_for_profiles(ergo: &Ergo) {
+    // Only an account Ergo has can be on. `said` keeps every account zirc.dev ever named,
+    // machines long gone too: a whois each was some thousand calls every 30 s, nearly all of
+    // Ergo's API's work, where it had 26 accounts (24 Nov 2026).
+    let registered: BTreeSet<String> = match registered(&ergo.api).await {
+        Ok(names) => names.iter().map(|name| name.to_lowercase()).collect(),
+        Err(failure) => {
+            warn!(%failure, "couldn't list Ergo's accounts");
+            host_machines(ergo).await;
+            return;
+        }
+    };
+    let (said, set) = {
+        let profiles = ergo.profiles.lock().await;
+        (profiles.said.clone(), profiles.set.clone())
+    };
+    let mut due = Vec::new();
+    for (account, profile) in said {
+        // A person's always-on account keeps them once set; a machine's goes when it does.
+        if set.contains(&account) && is_person(&account) {
+            continue;
+        }
+        let on = registered.contains(&account) && whois(&ergo.api, &account).await.is_some();
+        if on {
+            due.push((account, profile));
+        } else {
+            ergo.profiles.lock().await.set.remove(&account);
+        }
+    }
+    set_profiles(ergo, &due).await;
+    host_machines(ergo).await;
+}
+
+/// `account` is logging in: once its new client is on, gives it its host if it has none yet,
+/// and what zirc.dev last said of it. Nothing for a person's account already set, which is
+/// always-on and keeps it, nor for an account zirc.dev said nothing of.
+async fn profile_on_login(ergo: Arc<Ergo>, account: String) {
+    let profile = {
+        let profiles = ergo.profiles.lock().await;
+        if profiles.set.contains(&account) && is_person(&account) {
+            return;
+        }
+        profiles.said.get(&account).cloned()
+    };
+    let Some(profile) = profile else {
+        return;
+    };
+    // A machine already on with another client is on now: wait for one more client, which
+    // is this login's, or for the looks to run out, when it's set on what there is.
+    let before = whois(&ergo.api, &account).await.unwrap_or(0);
+    let mut on = false;
+    // Ergo asks the sidecar while the client is still registering, before Ergo has it on.
+    for _ in 0..profiles::ON_LOGIN.as_secs() {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        match whois(&ergo.api, &account).await {
+            Some(clients) if clients > before => {
+                on = true;
+                break;
+            }
+            Some(_) => on = true,
+            None => on = false,
+        }
+    }
+    if on {
+        host_machines(&ergo).await;
+        set_profiles(&ergo, &[(account, profile)]).await;
+    }
+}
+
+/// Sets each of `due` its profile, as Ergo's operator, in one login.
+async fn set_profiles(ergo: &Ergo, due: &[(String, profiles::Profile)]) {
+    if due.is_empty() {
+        return;
+    }
+    let keys: Vec<(String, crate::ergo::Metadata<'_>)> = due
+        .iter()
+        .map(|(account, profile)| (account.clone(), profile.keys().to_vec()))
+        .collect();
+    match ergo.operator.set_metadata(&keys).await {
+        Ok(set) => ergo.profiles.lock().await.set.extend(set),
+        Err(failure) => warn!(%failure, "couldn't set profiles"),
+    }
+}
+
+/// How many clients `account` has on, if it's on: none for an always-on account that's
+/// away. `None` when it isn't on, or Ergo doesn't answer.
+async fn whois(api: &Api, account: &str) -> Option<i64> {
     #[derive(Deserialize)]
     struct Whois {
         #[serde(default)]
         present: bool,
+        #[serde(default)]
+        session_count: Option<i64>,
     }
-    let mut every = tokio::time::interval(profiles::EVERY);
-    let mut ticks: u32 = 0;
-    loop {
-        every.tick().await;
-        ticks = ticks.wrapping_add(1);
-        let again = ticks.is_multiple_of(PROFILES_AGAIN);
-        // Only an account Ergo has can be on. `said` keeps every account zirc.dev ever named,
-        // machines long gone too: a whois each was some thousand calls every 30 s, nearly all
-        // of Ergo's API's work, where it had 26 accounts (24 Nov 2026).
-        let registered: BTreeSet<String> = match registered(&ergo.api).await {
-            Ok(names) => names.iter().map(|name| name.to_lowercase()).collect(),
-            Err(failure) => {
-                warn!(%failure, "couldn't list Ergo's accounts");
-                host_machines(&ergo).await;
-                continue;
-            }
-        };
-        let (said, set) = {
-            let profiles = ergo.profiles.lock().await;
-            (profiles.said.clone(), profiles.set.clone())
-        };
-        let mut due = Vec::new();
-        for (account, profile) in said {
-            // A person's always-on account keeps them once set; a machine's goes when it does.
-            if set.contains(&account) && is_person(&account) {
-                continue;
-            }
-            let present = registered.contains(&account)
-                && ergo
-                    .api
-                    .call::<Whois>("whois", json!({"nickname": account}))
-                    .await
-                    .is_ok_and(|w| w.present);
-            if !present {
-                ergo.profiles.lock().await.set.remove(&account);
-            } else if again || !set.contains(&account) {
-                due.push((account, profile));
-            }
-        }
-        let keys: Vec<(String, crate::ergo::Metadata<'_>)> = due
-            .iter()
-            .map(|(account, profile)| (account.clone(), profile.keys().to_vec()))
-            .collect();
-        match ergo.operator.set_metadata(&keys).await {
-            Ok(set) => ergo.profiles.lock().await.set.extend(set),
-            Err(failure) => warn!(%failure, "couldn't set profiles"),
-        }
-        host_machines(&ergo).await;
-    }
+    let whois: Whois = api.call("whois", json!({"nickname": account})).await.ok()?;
+    whois.present.then(|| whois.session_count.unwrap_or(0))
 }
 
 /// Gives each machine whose host doesn't say whose it is yet its host, `machine/<owner>`, or
