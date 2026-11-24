@@ -65,6 +65,10 @@ pub(super) struct Live {
     seen: BTreeMap<String, u64>,
     /// Channel → the list last said there, since joining it.
     said: BTreeMap<String, session::Live>,
+    /// The list last told the tenant's recorder, and when: told again when it changes, and
+    /// every [`zirc_proto::working::TELL_EVERY_SECS`], as a recorder that started since
+    /// heard nothing.
+    recorded: Option<(session::Live, u64)>,
     /// When the times were last saved.
     saved_at: u64,
     /// The sessions whose owner was told they aren't listening, each with since when it's
@@ -194,6 +198,7 @@ impl Daemon {
         }
         let Some(client) = &self.client else {
             self.live.said.clear();
+            self.live.recorded = None;
             return;
         };
         // Said in the organisation's channels a machine's in: never a repository's scope, which
@@ -223,6 +228,14 @@ impl Daemon {
             roles,
             away,
         };
+        // The tenant's recorder hears it too, for zirc.dev's dashboard, which is in no channel
+        // ([`zirc_proto::working`]): best effort, as every record to it is.
+        let told = self.live.recorded.as_ref().is_some_and(|(said, at)| {
+            *said == list && now.saturating_sub(*at) < zirc_proto::working::TELL_EVERY_SECS
+        });
+        if !told && self.record(WATCHER_SESSION, list.event()) {
+            self.live.recorded = Some((list.clone(), now));
+        }
         for channel in channels {
             if self.live.said.get(&channel) == Some(&list) {
                 continue;

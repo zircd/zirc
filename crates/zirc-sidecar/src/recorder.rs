@@ -22,6 +22,33 @@ use zirc_proto::activity::RECORDER;
 const RETRY: Duration = Duration::from_secs(5);
 const RETRY_MOST: Duration = Duration::from_mins(5);
 
+/// What each machine last told the recorder of its live sessions ([`zirc_proto::working`]),
+/// by its account, with when it was heard in seconds since the epoch. Only true now: kept
+/// here while the process runs, never in the store.
+static LIVE: std::sync::LazyLock<
+    std::sync::RwLock<std::collections::BTreeMap<String, (zirc_proto::session::Live, u64)>>,
+> = std::sync::LazyLock::new(std::sync::RwLock::default);
+
+/// Keeps what `account`'s machine said of its live sessions at `now`.
+fn heard_live(account: String, live: zirc_proto::session::Live, now: u64) {
+    LIVE.write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(account, (live, now));
+}
+
+/// What each machine said of its live sessions less than
+/// [`zirc_proto::working::STALE_SECS`] before `now`, by its account: older, a machine that
+/// left without saying so would still be taken at its word.
+#[must_use]
+pub fn live(now: u64) -> std::collections::BTreeMap<String, zirc_proto::session::Live> {
+    LIVE.read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .filter(|(_, (_, at))| now.saturating_sub(*at) < zirc_proto::working::STALE_SECS)
+        .map(|(account, (live, _))| (account.clone(), live.clone()))
+        .collect()
+}
+
 /// What the recorder needs to connect: Ergo's loopback address, its gate password, and the
 /// endpoint's token its passphrase is derived from.
 #[derive(Clone)]
@@ -105,6 +132,14 @@ impl Recorder {
             let Some((account, nanotime, message)) = record_in(&line) else {
                 continue;
             };
+            // A machine's live sessions are only true now: kept in memory, never a row.
+            if let Some(live) = zirc_proto::session::Live::of(&message.event) {
+                if let Some(account) = account {
+                    let now = u64::try_from(nanotime / 1_000_000_000).unwrap_or_default();
+                    heard_live(account, live, now);
+                }
+                continue;
+            }
             let store = store.clone();
             let kept = tokio::task::spawn_blocking(move || {
                 let connection = crate::activity::open(&store)?;
@@ -162,5 +197,19 @@ mod tests {
         let mut plain = tagged("zirc-recorder", &outcome);
         plain.command = "PRIVMSG".into();
         assert!(record_in(&plain).is_none());
+    }
+
+    #[test]
+    fn keeps_what_a_machine_last_said_of_its_live_sessions_while_it_is_fresh() {
+        let said = zirc_proto::session::Live {
+            sessions: vec!["cc-1".into()],
+            ..zirc_proto::session::Live::default()
+        };
+        heard_live("live-test-mbp".into(), said.clone(), 1_000);
+
+        assert_eq!(live(1_000 + 60).get("live-test-mbp"), Some(&said));
+        // A machine that left without a word isn't taken at its word for long.
+        let stale = 1_000 + zirc_proto::working::STALE_SECS;
+        assert_eq!(live(stale).get("live-test-mbp"), None);
     }
 }

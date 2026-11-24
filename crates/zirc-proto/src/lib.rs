@@ -48,6 +48,7 @@ pub mod thread;
 pub mod uploads;
 pub mod woke;
 pub mod workflow;
+pub mod working;
 
 use std::collections::BTreeMap;
 

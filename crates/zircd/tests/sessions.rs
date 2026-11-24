@@ -430,6 +430,29 @@ async fn a_session_no_repository_was_added_with_hears_only_what_names_it() {
 }
 
 #[tokio::test]
+async fn the_recorder_is_told_which_sessions_are_live_for_readers_in_no_channel() {
+    let ergo = require_ergo!();
+    let (_recorder, mut recorded) =
+        zirc_test_irc::person(&ergo, zirc_proto::activity::RECORDER).await;
+    let (machine, _main, _main_root, _login_root) = machine_with_a_session_worktree(&ergo).await;
+
+    let _agent = machine.watch(Some("cc-login")).await;
+
+    let live = loop {
+        let line =
+            zirc_test_irc::next_matching(&mut recorded, |line| line.command == "TAGMSG").await;
+        let message = zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG).unwrap()).unwrap();
+        if let Some(live) = zirc_proto::session::Live::of(&message.event)
+            && live.online("cc-login")
+        {
+            assert!(message.is_live(), "never in history");
+            break live;
+        }
+    };
+    assert!(live.away.is_empty());
+}
+
+#[tokio::test]
 async fn a_wake_and_what_the_session_did_go_to_the_recorder_alone() {
     use zirc_proto::activity::{Acted, Record, Wake, WakeOutcome};
     let ergo = require_ergo!();

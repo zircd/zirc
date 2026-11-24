@@ -413,6 +413,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         .route("/v1/messages", get(find_messages))
         .route("/v1/activity", get(read_activity))
         .route(zirc_proto::onboarding::FIRSTS_PATH, get(read_firsts))
+        .route(zirc_proto::working::PATH, get(sessions_standing))
         .route("/v1/say", post(say))
         .route("/v1/push", get(push_key))
         .route("/v1/server", get(describe))
@@ -1218,6 +1219,30 @@ async fn read_firsts(State(ergo): State<Arc<Ergo>>) -> Response {
         Ok(Err(failure)) => history_failed(failure),
         Err(failure) => history_failed(failure),
     }
+}
+
+/// `GET /v1/sessions`: how each machine's agent sessions stand now, online or away, by what
+/// the machines connected now last told the recorder ([`zirc_proto::working`]). A machine
+/// that isn't connected says nothing here, whatever it said last.
+async fn sessions_standing(State(ergo): State<Arc<Ergo>>) -> Response {
+    let connected: std::collections::BTreeSet<String> = match sessions(&ergo.api).await {
+        Ok(accounts) => accounts
+            .into_iter()
+            .filter(|(_, clients)| *clients > 0)
+            .map(|(name, _)| name)
+            .collect(),
+        Err(failure) => {
+            return error(
+                StatusCode::BAD_GATEWAY,
+                "ergo",
+                format!("Ergo didn't say who's connected: {failure}"),
+            );
+        }
+    };
+    let now = jiff::Timestamp::now().as_second().unsigned_abs();
+    let mut machines = crate::recorder::live(now);
+    machines.retain(|account, _| connected.contains(account));
+    Json(zirc_proto::working::standing(&machines, now)).into_response()
 }
 
 async fn remove_message(State(ergo): State<Arc<Ergo>>, Path(msgid): Path<String>) -> Response {
