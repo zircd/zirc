@@ -482,17 +482,11 @@ async fn registered(
     url: &str,
 ) -> (p256::SecretKey, [u8; 16]) {
     // The phone's keys, and its registration, until the pusher is there to answer it.
-    let phone = p256::SecretKey::from_slice(&[7; 32]).unwrap();
-    let public = phone.public_key();
-    let p256dh = base64::Engine::encode(
-        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-        p256::elliptic_curve::sec1::ToEncodedPoint::to_encoded_point(&public, false).as_bytes(),
-    );
-    let auth = [9_u8; 16];
+    let (phone, auth, p256dh, auth_said) = phone_keys();
     let register = Said::Register {
         endpoint: url.to_owned(),
         p256dh,
-        auth: base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, auth),
+        auth: auth_said,
         settings: serde_json::json!({}),
     };
     let answered = |line: &Line| {
@@ -525,4 +519,124 @@ async fn registered(
         .await
         .expect("the pusher to take the phone");
     (phone, auth)
+}
+
+/// A phone's key pair and auth secret, and both as a registration says them, base64url.
+fn phone_keys() -> (p256::SecretKey, [u8; 16], String, String) {
+    let phone = p256::SecretKey::from_slice(&[7; 32]).unwrap();
+    let public = phone.public_key();
+    let p256dh = base64::Engine::encode(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+        p256::elliptic_curve::sec1::ToEncodedPoint::to_encoded_point(&public, false).as_bytes(),
+    );
+    let auth = [9_u8; 16];
+    let said = base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, auth);
+    (phone, auth, p256dh, said)
+}
+
+/// The phone zirc.dev registers for ada at `endpoint` (zirc-proto's `push::FanOut`): its
+/// keys as [`phone_keys`] makes them.
+fn fanned(endpoint: &str) -> zirc_proto::push::Phone {
+    let (_, _, p256dh, auth) = phone_keys();
+    zirc_proto::push::Phone {
+        account: "Ada".into(),
+        endpoint: endpoint.to_owned(),
+        p256dh,
+        auth,
+        settings: serde_json::json!({}),
+    }
+}
+
+/// How many phones the pusher at `history` keeps.
+fn phones_kept(history: &Path) -> usize {
+    store::all(&store::open(&store::path_for(history)).unwrap())
+        .unwrap()
+        .len()
+}
+
+/// A phone showing another organisation never connects here: zirc.dev registers it for ada
+/// (`add_phone`), and a direct message to her is pushed to it all the same; taken away, by
+/// her account alone, it hears no more.
+#[tokio::test]
+async fn pushes_to_a_phone_zirc_dev_registered_until_taken_away() {
+    let Some(ergo) = zirc_test_ergo::Ergo::start_with(crate::environment::HISTORY) else {
+        return;
+    };
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+    let token = "token";
+    let config = crate::say::config("127.0.0.1", ergo.port(), None, token, PUSHER);
+    let passphrase = config.sasl.as_ref().unwrap().password.clone();
+    zirc_test_irc::register(&ergo, PUSHER, &passphrase).await;
+    let (_ada, _ada_hears) = zirc_test_irc::integration(&ergo, "ada").await;
+    let (bob, _bob_hears) = zirc_test_irc::integration(&ergo, "bob").await;
+    let (url, mut posts) = endpoint(0).await;
+    let subscriber = url.strip_suffix("api/push/ada").unwrap().to_owned();
+    let pusher = Pusher {
+        host: "127.0.0.1".into(),
+        port: ergo.port(),
+        gate: None,
+        token: token.into(),
+        history: ergo.history(),
+        api: crate::ergo::Api::new("http://127.0.0.1:1", "unused"),
+        subscriber: subscriber.clone(),
+        delay: Duration::from_millis(200),
+    };
+    tokio::spawn(pusher.run(|_| async { true }));
+    started_reading(ergo.history()).await;
+    add_phone(&ergo.history(), &subscriber, fanned(&url))
+        .await
+        .unwrap();
+
+    bob.privmsg("ada", "lunch?").unwrap();
+    let (_, body) = tokio::time::timeout(Duration::from_secs(20), posts.recv())
+        .await
+        .expect("a push")
+        .unwrap();
+    let (phone, auth, _, _) = phone_keys();
+    let line: Line = String::from_utf8(webpush::decrypt(&phone, &auth, &body).unwrap())
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(line.params, ["ada", "lunch?"]);
+
+    remove_phone(&ergo.history(), "bob", &url).await.unwrap();
+    assert_eq!(
+        phones_kept(&ergo.history()),
+        1,
+        "only her account takes it away"
+    );
+    remove_phone(&ergo.history(), "ada", &url).await.unwrap();
+    bob.privmsg("ada", "still there?").unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(3), posts.recv())
+            .await
+            .is_err(),
+        "a phone taken away isn't pushed to"
+    );
+}
+
+/// Only a phone of the relay's, with its keys, for an account, is kept; and erasing the
+/// account, as when she leaves, forgets it.
+#[tokio::test]
+async fn keeps_only_a_relayed_phone_and_forgets_an_erased_accounts() {
+    let dir = tempfile::tempdir().unwrap();
+    let history = dir.path().join("history.db");
+    let subscriber = "https://zirc.test/";
+    let url = "https://zirc.test/api/push/ada";
+    let elsewhere = fanned("https://elsewhere.test/api/push/ada");
+    assert!(add_phone(&history, subscriber, elsewhere).await.is_err());
+    let keyless = zirc_proto::push::Phone {
+        auth: String::new(),
+        ..fanned(url)
+    };
+    assert!(add_phone(&history, subscriber, keyless).await.is_err());
+    let nameless = zirc_proto::push::Phone {
+        account: "not a name".into(),
+        ..fanned(url)
+    };
+    assert!(add_phone(&history, subscriber, nameless).await.is_err());
+    add_phone(&history, subscriber, fanned(url)).await.unwrap();
+    assert_eq!(phones_kept(&history), 1);
+    forget_phones(&history, "ada").await;
+    assert_eq!(phones_kept(&history), 0);
 }

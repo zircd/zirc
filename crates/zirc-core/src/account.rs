@@ -39,11 +39,6 @@ use crate::signin::{self, SignIn, SignIns};
 /// The most organisations an app holds.
 pub const MAX_ORGANISATIONS: usize = 8;
 
-/// How long an organisation's push registration is trusted before a phone makes a short
-/// connection to renew it ([`Account::needs_touch`]): well inside zirc.dev's 60-day sweep of
-/// idle endpoints. An assumption (7 days) from the plan.
-pub const TOUCH_AFTER_SECS: i64 = 7 * 24 * 60 * 60;
-
 /// Whether signing out of the last organisation also signs out of zirc.dev (the browser's
 /// session used for signing in), as Mattias decided on 7 Nov 2026 ("Always also signs out of
 /// zirc.dev, with no question and no checkbox"). A constant so a per-organisation variant can
@@ -192,8 +187,8 @@ pub struct PushEndpoint {
     pub token: Option<String>,
     /// Whether this organisation's server (through its zirc.dev) has the token.
     pub registered: bool,
-    /// When (unix seconds) it last took the registration, which a phone renews with a short
-    /// connection when old ([`Account::needs_touch`]).
+    /// When (unix seconds) it last took the registration: the phone's own, or zirc.dev's for
+    /// it while another organisation is shown.
     pub registered_at: Option<i64>,
     /// The id of the endpoint zirc.dev made for it (the last part of the endpoint's URL):
     /// pushes carry only this, as nothing about organisations goes to Apple or Google, and
@@ -536,8 +531,8 @@ pub enum Connections {
     /// Every one, while in the foreground: desktop and web.
     All,
     /// Only the organisation shown, as on a phone (decided 7 Nov 2026): switching closes one
-    /// and opens the next, catching up from history. The others get their unread from push
-    /// and are touched now and then to keep their push registration ([`Account::needs_touch`]).
+    /// and opens the next, catching up from history. The others get their unread from push,
+    /// zirc.dev registering the phone with them as it registers with the one shown.
     Selected,
 }
 
@@ -966,30 +961,6 @@ impl<T: AsRef<Chat> + AsMut<Chat>> Account<T> {
             );
         }
         live
-    }
-
-    /// The organisations a phone makes a short connection to, to register for push and close
-    /// again: those not live whose registration is missing or older than
-    /// [`TOUCH_AFTER_SECS`] at `now` (unix seconds), and whose access hasn't ended. None for
-    /// [`Connections::All`], which is connected anyway and registers on connecting.
-    #[must_use]
-    pub fn needs_touch(&self, now: i64) -> Vec<String> {
-        if self.policy.connections == Connections::All {
-            return Vec::new();
-        }
-        let selected = self.orgs.selected().map(|(org, _)| org);
-        self.orgs
-            .iter()
-            .filter(|(org, session)| {
-                Some(*org) != selected
-                    && session.state != OrgState::AccessEnded
-                    && session
-                        .push
-                        .registered_at
-                        .is_none_or(|at| now - at > TOUCH_AFTER_SECS)
-            })
-            .map(|(org, _)| org.to_owned())
-            .collect()
     }
 
     /// The organisation whose push endpoint has the id `ep`, as a push carries it.

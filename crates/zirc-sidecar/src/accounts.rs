@@ -48,6 +48,10 @@
 //! - `GET /v1/push`: `{"vapidKey"}`, the key the pusher signs its pushes with
 //!   (`crate::pusher`), for zirc.dev to check the pushes it relays to phones; `null` while
 //!   push is off.
+//! - `PUT /v1/push/phones` (`zirc_proto::push::PHONES_PATH`) with a `zirc_proto::push::Phone`:
+//!   registers a phone with the pusher for an account, as zirc.dev does for each organisation
+//!   on a phone other than the one it shows (204; 404 while push is off). `DELETE` with the
+//!   same takes it away again. Erasing an account forgets its phones too.
 //! - `GET /v1/server`: how the server is now, for its Server tab: `{"version", "startedAt",
 //!   "connections": {"people", "agents", "other"}, "storage": {"usedBytes", "sizeBytes"}}`.
 //!   People and agents are those connected now; `other`, every other client: whoever has
@@ -187,8 +191,8 @@ struct Ergo {
     colleagues: tokio::sync::Mutex<Option<Colleagues>>,
     /// The team's own hints (`crate::hints`).
     hints: crate::hints::Store,
-    /// Whether the pusher runs (`crate::pusher`).
-    pushing: bool,
+    /// The relay the pusher pushes through, while it runs (`crate::pusher`).
+    push_subscriber: Option<String>,
 }
 
 #[derive(Default)]
@@ -385,7 +389,7 @@ fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
         searches: tokio::sync::Semaphore::new(SEARCHES),
         workflows: Arc::new(tokio::sync::watch::Sender::new(false)),
         history,
-        pushing: options.push_subscriber.is_some(),
+        push_subscriber: options.push_subscriber.clone(),
     })
 }
 
@@ -416,6 +420,10 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         .route(zirc_proto::working::PATH, get(sessions_standing))
         .route("/v1/say", post(say))
         .route("/v1/push", get(push_key))
+        .route(
+            zirc_proto::push::PHONES_PATH,
+            put(add_phone).delete(remove_phone),
+        )
         .route("/v1/server", get(describe))
         .route(
             zirc_proto::workflow::LIST_PATH,
@@ -1870,7 +1878,7 @@ async fn exists(ergo: &Ergo, name: &str) -> Result<bool, Box<Response>> {
 }
 
 async fn push_key(State(ergo): State<Arc<Ergo>>) -> Response {
-    if !ergo.pushing {
+    if ergo.push_subscriber.is_none() {
         return Json(json!({"vapidKey": null})).into_response();
     }
     let history = ergo.history.clone();
@@ -1891,6 +1899,46 @@ async fn push_key(State(ergo): State<Arc<Ergo>>) -> Response {
     }
 }
 
+/// Registers a phone with the pusher, as zirc.dev does for an organisation on the phone
+/// other than the one it shows (`crate::pusher::add_phone`). 404 while push is off.
+async fn add_phone(
+    State(ergo): State<Arc<Ergo>>,
+    Json(phone): Json<zirc_proto::push::Phone>,
+) -> Response {
+    let Some(subscriber) = &ergo.push_subscriber else {
+        return error(StatusCode::NOT_FOUND, "not-found", "push is off");
+    };
+    match crate::pusher::add_phone(&ergo.history, subscriber, phone).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(crate::pusher::PhoneRefused::Invalid(why)) => {
+            error(StatusCode::BAD_REQUEST, "invalid", why)
+        }
+        Err(crate::pusher::PhoneRefused::Store) => error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "starting",
+            "the pusher's store can't be written",
+        ),
+    }
+}
+
+/// Takes a phone zirc.dev registered away from its account (`crate::pusher::remove_phone`).
+async fn remove_phone(
+    State(ergo): State<Arc<Ergo>>,
+    Json(phone): Json<zirc_proto::push::Phone>,
+) -> Response {
+    match crate::pusher::remove_phone(&ergo.history, &phone.account, &phone.endpoint).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(crate::pusher::PhoneRefused::Invalid(why)) => {
+            error(StatusCode::BAD_REQUEST, "invalid", why)
+        }
+        Err(crate::pusher::PhoneRefused::Store) => error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "starting",
+            "the pusher's store can't be written",
+        ),
+    }
+}
+
 /// Erases an account, which frees its name. Never the founder, which the server's channels
 /// need.
 async fn erase(State(ergo): State<Arc<Ergo>>, Path(name): Path<String>) -> Response {
@@ -1900,6 +1948,9 @@ async fn erase(State(ergo): State<Arc<Ergo>>, Path(name): Path<String>) -> Respo
     match ergo.operator.erase(&name).await {
         Ok(()) => {
             ergo.signin.keys.lock().await.forget(&name);
+            if ergo.push_subscriber.is_some() {
+                crate::pusher::forget_phones(&ergo.history, &name).await;
+            }
             info!(account = name, "erased");
             (StatusCode::OK, Json(json!({"name": name}))).into_response()
         }

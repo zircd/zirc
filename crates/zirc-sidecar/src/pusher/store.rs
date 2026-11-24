@@ -81,6 +81,31 @@ pub fn register(
     Ok(())
 }
 
+/// Keeps `subscription` as [`register`] does, once what wasn't renewed in
+/// [`zirc_proto::push::EXPIRY_DAYS`] before `now` is gone: how a phone's registration is
+/// kept, whether the phone said it or zirc.dev did for it.
+///
+/// # Errors
+///
+/// When the store can't be written.
+pub fn keep(
+    connection: &Connection,
+    subscription: &Subscription,
+    now: i64,
+) -> rusqlite::Result<()> {
+    expire(connection, now - zirc_proto::push::EXPIRY_DAYS * 86_400)?;
+    register(connection, subscription, now)
+}
+
+/// Forgets every phone of `account`, as when it's erased.
+///
+/// # Errors
+///
+/// When the store can't be written.
+pub fn forget_account(connection: &Connection, account: &str) -> rusqlite::Result<usize> {
+    connection.execute("DELETE FROM subscriptions WHERE account = ?1", [account])
+}
+
 /// Forgets the endpoint, but only `account`'s: no one unregisters another's phone.
 ///
 /// # Errors

@@ -357,7 +357,7 @@ fn a_phone_connects_only_the_organisation_shown() {
 }
 
 #[test]
-fn a_phone_touches_organisations_whose_push_registration_is_old() {
+fn an_organisations_push_registration_is_kept_with_when() {
     let home = home();
     let hosts: Vec<_> = (0..4)
         .map(|n| {
@@ -372,24 +372,13 @@ fn a_phone_touches_organisations_whose_push_registration_is_old() {
     let mut phone = account_with(&home, Policy::phone().with_several(true), &hosts);
     let now = 10_000_000;
     phone.get_mut("o1").unwrap().registered(now - 60);
-    phone
-        .get_mut("o2")
-        .unwrap()
-        .registered(now - TOUCH_AFTER_SECS - 1);
-    let s = phone.get_mut("o3").unwrap();
-    let generation = s.reconnect();
-    s.set_state(generation, OrgState::AccessEnded);
-    // o0 is shown; o1 is fresh; o2 is old; o3's access ended.
-    assert_eq!(phone.needs_touch(now), ["o2"]);
+    phone.get_mut("o2").unwrap().registered(now - 86_400);
     let store = phone.store().clone();
     phone.get("o2").unwrap().save(&store).unwrap();
     assert_eq!(
         home.secrets.get("zirc-push-registered:o2").as_deref(),
-        Some((now - TOUCH_AFTER_SECS - 1).to_string().as_str())
+        Some((now - 86_400).to_string().as_str())
     );
-    // A desktop is connected to all and touches none.
-    let desktop = account_with(&self::home(), several(), &hosts);
-    assert!(desktop.needs_touch(now).is_empty());
 }
 
 #[test]

@@ -32,7 +32,7 @@ use tracing::{info, warn};
 use zirc_chat::chat::NotifySettings;
 use zirc_chat::chat::push::{Heard, why};
 use zirc_irc::Line;
-use zirc_proto::push::{EXPIRY_DAYS, PUSHER, QUOTE_TAG, Said, TAG, WHY_TAG, Why};
+use zirc_proto::push::{PUSHER, QUOTE_TAG, Said, TAG, WHY_TAG, Why};
 
 use crate::exporter::{NOTICE, PRIVMSG, TAGMSG};
 use kept::{Kept, Place};
@@ -97,6 +97,95 @@ pub struct Pusher {
     pub subscriber: String,
     /// How long a push waits for the person to read it elsewhere: [`DELAY`].
     pub delay: Duration,
+}
+
+/// Why a phone zirc.dev hands the pusher isn't kept or taken away.
+#[derive(Debug)]
+pub enum PhoneRefused {
+    /// What's wrong with it.
+    Invalid(&'static str),
+    /// The store can't be written.
+    Store,
+}
+
+/// Keeps a phone zirc.dev registered for `phone.account` (zirc-proto's `push::FanOut`), as
+/// the phone's own [`Said::Register`] would be kept: an organisation on the phone it doesn't
+/// show hears it so, the phone being connected only to the one it shows. Only an endpoint on
+/// `subscriber`'s relay, as for any phone.
+///
+/// # Errors
+///
+/// When the phone isn't one, or the store can't be written.
+pub async fn add_phone(
+    history: &Path,
+    subscriber: &str,
+    phone: zirc_proto::push::Phone,
+) -> Result<(), PhoneRefused> {
+    let account = phone.account.to_lowercase();
+    if !crate::accounts::valid_name(&account) {
+        return Err(PhoneRefused::Invalid("not an account name"));
+    }
+    if !relayed(&phone.endpoint, subscriber) || phone.p256dh.is_empty() || phone.auth.is_empty() {
+        return Err(PhoneRefused::Invalid("not a relayed phone with its keys"));
+    }
+    let subscription = Subscription {
+        account,
+        endpoint: phone.endpoint,
+        p256dh: phone.p256dh,
+        auth: phone.auth,
+        settings: phone.settings.to_string(),
+    };
+    let store = store::path_for(history);
+    let now = jiff::Timestamp::now().as_second();
+    let kept =
+        tokio::task::spawn_blocking(move || store::keep(&store::open(&store)?, &subscription, now))
+            .await;
+    if matches!(kept, Ok(Ok(()))) {
+        Ok(())
+    } else {
+        warn!("the pusher couldn't keep a phone zirc.dev registered");
+        Err(PhoneRefused::Store)
+    }
+}
+
+/// Takes the phone at `endpoint` away from `account`, as zirc.dev does when the phone leaves
+/// this organisation or signs out: only that account's.
+///
+/// # Errors
+///
+/// When `account` isn't one, or the store can't be written.
+pub async fn remove_phone(
+    history: &Path,
+    account: &str,
+    endpoint: &str,
+) -> Result<(), PhoneRefused> {
+    let account = account.to_lowercase();
+    if !crate::accounts::valid_name(&account) {
+        return Err(PhoneRefused::Invalid("not an account name"));
+    }
+    let (store, endpoint) = (store::path_for(history), endpoint.to_owned());
+    let kept = tokio::task::spawn_blocking(move || {
+        store::unregister(&store::open(&store)?, &account, &endpoint)
+    })
+    .await;
+    if matches!(kept, Ok(Ok(()))) {
+        Ok(())
+    } else {
+        warn!("the pusher couldn't forget a phone zirc.dev took away");
+        Err(PhoneRefused::Store)
+    }
+}
+
+/// Forgets every phone of `account`, as it's erased: someone who leaves the organisation
+/// hears nothing more from it.
+pub async fn forget_phones(history: &Path, account: &str) {
+    let (store, account) = (store::path_for(history), account.to_lowercase());
+    let gone =
+        tokio::task::spawn_blocking(move || store::forget_account(&store::open(&store)?, &account))
+            .await;
+    if !matches!(gone, Ok(Ok(_))) {
+        warn!("the pusher couldn't forget an erased account's phones");
+    }
 }
 
 /// Whether `endpoint` is one the web app's relay made for a phone, `<subscriber>api/push/<id>`,
@@ -430,9 +519,7 @@ impl Running {
                 let store = self.store.clone();
                 let now = jiff::Timestamp::now().as_second();
                 let kept = tokio::task::spawn_blocking(move || {
-                    let connection = store::open(&store)?;
-                    store::expire(&connection, now - EXPIRY_DAYS * 86_400)?;
-                    store::register(&connection, &subscription, now)
+                    store::keep(&store::open(&store)?, &subscription, now)
                 })
                 .await;
                 match kept {

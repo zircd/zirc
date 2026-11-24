@@ -16,6 +16,12 @@
 //!   (`MARKREAD`), so a push waiting for something already read on another device isn't
 //!   sent, and the phone's notification for one already sent goes.
 //!
+//! A phone reaches only the server it shows, so zirc.dev registers it with the other
+//! organisations on the phone ([`ME_PUSH_PATH`], [`FanOut`]): it makes each one's endpoint
+//! and hands each server's pusher the registration ([`PHONES_PATH`], [`Phone`]), as the
+//! user chose on 24 Nov 2026. A phone registered with one organisation then hears every other
+//! on it, and leaving one, or signing out, takes it away ([`FannedOut`]).
+//!
 //! What zirc.dev's relay hands the phone beside the push's alert ([`PAYLOAD_KEY`],
 //! [`ENDPOINT_KEY`], [`PUSH_ID_KEY`]), and what the phone says back when one arrives
 //! ([`Arrived`], to its endpoint's [`ARRIVED_PATH`]), are declared here once: the relay and
@@ -50,11 +56,107 @@ pub struct Arrived {
     pub at: u64,
 }
 
+/// Where a phone asks zirc.dev to register it with the other organisations on it: `PUT` a
+/// [`FanOut`], answered with [`FannedOut`]; `DELETE` a [`FanOut`] whose `orgs` name each it
+/// leaves, or with none, every one, as it signs out. With HTTP Basic, the account and
+/// passphrase it signs in to the organisation it shows with, as the other `/api/me` reads.
+pub const ME_PUSH_PATH: &str = "/api/me/push";
+
+/// Where zirc.dev hands a server's pusher a phone it registered there (`PUT` a [`Phone`]),
+/// or takes one away (`DELETE` a [`Phone`], whose keys and settings go unread): the
+/// sidecar's accounts API, which only zirc.dev reaches.
+pub const PHONES_PATH: &str = "/v1/push/phones";
+
+/// What a phone asks zirc.dev at [`ME_PUSH_PATH`]: its push token on its platform, its keys,
+/// and each other organisation on it, by its server, with how much each of its conversations
+/// notifies there. The organisation it shows isn't among them: it registers there itself.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(rename = "PushFanOut")]
+pub struct FanOut {
+    /// `ios` or `android`.
+    pub platform: String,
+    /// The push token, as the platform wrote it.
+    pub token: String,
+    /// APNs' sandbox, for builds signed for development.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sandbox: Option<bool>,
+    /// The phone's public key, base64url; empty when it's taking registrations away.
+    #[serde(default)]
+    pub p256dh: String,
+    /// Its auth secret, base64url; empty when it's taking registrations away.
+    #[serde(default)]
+    pub auth: String,
+    /// The organisations, by their server.
+    #[serde(default)]
+    pub orgs: Vec<FanOutOrg>,
+}
+
+/// One organisation of a [`FanOut`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(rename = "PushFanOutOrg")]
+pub struct FanOutOrg {
+    /// Its server's host, as `acme.irc.zirc.dev`.
+    pub server: String,
+    /// How much each conversation there notifies on the phone: zirc-chat's `NotifySettings`.
+    #[serde(default)]
+    #[ts(type = "unknown")]
+    pub settings: serde_json::Value,
+}
+
+/// What zirc.dev answers a [`FanOut`]: the endpoint it made on each server it registered
+/// the phone with, which the phone maps to that organisation as a push comes. A server
+/// the person isn't a member of, or that doesn't push, isn't among them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(rename = "PushFannedOut")]
+pub struct FannedOut {
+    /// The endpoints, by server.
+    pub endpoints: Vec<Endpoint>,
+}
+
+/// One server's endpoint for the phone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(rename = "PushEndpoint")]
+pub struct Endpoint {
+    /// The server's host.
+    pub server: String,
+    /// The endpoint's address, as `https://zirc.dev/api/push/<id>`.
+    pub endpoint: String,
+}
+
+/// A phone zirc.dev registers with a server's pusher at [`PHONES_PATH`], as the phone's own
+/// [`Said::Register`] would, for the person's `account` there.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(rename = "PushPhone")]
+pub struct Phone {
+    /// The person's account on the server.
+    pub account: String,
+    /// The endpoint zirc.dev made for the phone on this server.
+    pub endpoint: String,
+    /// The phone's public key, base64url.
+    #[serde(default)]
+    pub p256dh: String,
+    /// Its auth secret, base64url.
+    #[serde(default)]
+    pub auth: String,
+    /// How much each conversation notifies on the phone.
+    #[serde(default)]
+    #[ts(type = "unknown")]
+    pub settings: serde_json::Value,
+}
+
 /// The push contract's types and constants as TypeScript, for zirc.dev's relay.
 #[must_use]
 pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
     vec![
         Arrived::decl(config),
+        FanOut::decl(config),
+        FanOutOrg::decl(config),
+        FannedOut::decl(config),
+        Endpoint::decl(config),
+        Phone::decl(config),
+        format!("const PUSH_ME_PATH = {ME_PUSH_PATH:?};"),
+        format!("const PUSH_PHONES_PATH = {PHONES_PATH:?};"),
         format!("const PUSH_PAYLOAD_KEY = {PAYLOAD_KEY:?};"),
         format!("const PUSH_ENDPOINT_KEY = {ENDPOINT_KEY:?};"),
         format!("const PUSH_ID_KEY = {PUSH_ID_KEY:?};"),
