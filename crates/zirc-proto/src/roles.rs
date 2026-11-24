@@ -339,6 +339,13 @@ pub fn composer(role: &str) -> String {
     format!("Message the {role}")
 }
 
+/// That `who` left role `role`: `main-fix left the fixer role`, as a seat left is said
+/// everywhere ([`SeatChange::words`], zircd's lease event).
+#[must_use]
+pub fn left_words(who: &str, role: &str) -> String {
+    format!("{who} left the {role} role")
+}
+
 /// The command that takes role `role`.
 #[must_use]
 pub fn take_command(role: &str) -> String {
@@ -553,7 +560,7 @@ impl SeatChange {
                 take_command(&self.role)
             )
         } else {
-            format!("{who} left the {} role", self.role)
+            left_words(&who, &self.role)
         }
     }
 
