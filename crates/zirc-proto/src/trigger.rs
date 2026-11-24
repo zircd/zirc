@@ -42,7 +42,7 @@ use crate::state::Level;
 /// inputs = { report = "text", from = "author" }   # of [`REACTION_FIELDS`]
 ///
 /// [[on]]
-/// landed = ["crates/zirc", "MODULE.bazel"]   # files, or everything under a directory
+/// landed = ["server", "MODULE.bazel"]   # files, or everything under a directory
 /// inputs = { commit = "commit", by = "session" } # of [`LANDED_FIELDS`]
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
