@@ -14,7 +14,7 @@
 
 use zirc_line::Line;
 
-use super::{Ask, Chat, Gap, Page, fold};
+use super::{Ask, Chat, Page, fold};
 
 /// What the hole below a stretch opened at a message says, as every app draws it there.
 pub const HOLE_LABEL: &str = "Newer messages";
@@ -75,23 +75,8 @@ impl Chat {
         if self.gaps.contains_key(&folded) || !self.link.as_ref().is_some_and(|l| l.chathistory) {
             return None;
         }
-        self.gaps.insert(
-            folded,
-            Gap {
-                since: None,
-                pages: 1,
-                ask: Ask::Newer,
-            },
-        );
-        Some(Line::new(
-            "CHATHISTORY",
-            [
-                "AFTER",
-                &target,
-                &format!("msgid={after}"),
-                &self.options.history.to_string(),
-            ],
-        ))
+        let count = self.options.history;
+        Some(self.ask_page("AFTER", &target, &after, count, Ask::Newer))
     }
 
     /// Looks for the message being looked for in `target`, whose history just came: found,
@@ -117,23 +102,8 @@ impl Chat {
         }
         if self.options.around {
             let target = super::target(&self.conversation(&name)?.name).to_owned();
-            self.gaps.insert(
-                fold(&target),
-                Gap {
-                    since: None,
-                    pages: 1,
-                    ask: Ask::Around(id.clone()),
-                },
-            );
-            return Some(Line::new(
-                "CHATHISTORY",
-                [
-                    "AROUND",
-                    &target,
-                    &format!("msgid={id}"),
-                    &self.options.history.to_string(),
-                ],
-            ));
+            let count = self.options.history;
+            return Some(self.ask_page("AROUND", &target, &id, count, Ask::Around(id.clone())));
         }
         // Not in what it keeps: it shows at its end.
         if !self.has_older(&name) {

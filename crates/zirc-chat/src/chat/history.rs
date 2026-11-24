@@ -13,12 +13,13 @@ const CATCH_UP_OVERLAP: chrono::Duration = chrono::Duration::seconds(1);
 /// (`CHATHISTORY TARGETS`), and so how far back a live agent session is looked for.
 pub(super) const TARGETS_SPAN: chrono::Duration = chrono::Duration::days(30);
 
-/// How many messages a page looking for live agent sessions asks for: Ergo's
-/// `chathistory-maxmessages`, the most it gives at once.
-const AGENTS_PAGE: usize = 1000;
+/// The most messages a server gives for one `CHATHISTORY` request: Ergo's
+/// `chathistory-maxmessages`, its default. A page looking for live agent sessions asks for
+/// this many, as zirc-core's reads of a range do (`zirc_core::history::PAGE`).
+pub const CHATHISTORY_MOST: usize = 1000;
 
 /// How many such pages each machine's history is looked through, at most.
-const AGENTS_PAGES: usize = 5;
+const CHATHISTORY_MOSTS: usize = 5;
 
 impl Chat {
     pub(super) fn next_batch(&mut self) -> String {
@@ -91,7 +92,7 @@ impl Chat {
             }
             Ask::Agents => {
                 self.gaps.remove(&folded);
-                if page.count < AGENTS_PAGE {
+                if page.count < CHATHISTORY_MOST {
                     self.began(&page.target);
                 }
                 return self.seek_agents(&page.target);
@@ -117,27 +118,19 @@ impl Chat {
             return self.seek_agents(&page.target);
         };
         gap.pages += 1;
-        Some(Line::new(
-            "CHATHISTORY",
-            [
-                "BEFORE",
-                &page.target,
-                &format!("msgid={oldest}"),
-                &history.to_string(),
-            ],
-        ))
+        Some(page_line("BEFORE", &page.target, &oldest, history))
     }
 
     /// Asks for an older page of our machine `nick`'s history while it lists a live agent
     /// session that nothing loaded is with: after starting again, one that answered us long
     /// ago, further back than the latest page (the user's choice, 23 Nov 2026). It stops at
-    /// the start of the history, at [`TARGETS_SPAN`] back, or after [`AGENTS_PAGES`] pages.
+    /// the start of the history, at [`TARGETS_SPAN`] back, or after [`CHATHISTORY_MOSTS`] pages.
     pub(super) fn seek_agents(&mut self, nick: &str) -> Option<Line> {
         let folded = fold(nick);
         if !self.link.as_ref().is_some_and(|link| link.chathistory)
             || !self.ours(nick)
             || self.gaps.contains_key(&folded)
-            || self.sought.get(&folded).copied().unwrap_or_default() >= AGENTS_PAGES
+            || self.sought.get(&folded).copied().unwrap_or_default() >= CHATHISTORY_MOSTS
         {
             return None;
         }
@@ -149,40 +142,52 @@ impl Chat {
             return None;
         }
         // From the oldest message held of it, once its history has started coming.
-        let held: Vec<&super::Conversation> = self
+        let began = self
             .conversations
             .iter()
-            .filter(|c| super::target(&c.name).eq_ignore_ascii_case(nick))
-            .collect();
-        if held.iter().any(|c| c.beginning) {
+            .any(|c| c.beginning && super::target(&c.name).eq_ignore_ascii_case(nick));
+        if began {
             return None;
         }
-        let (oldest, at) = held
-            .iter()
-            .filter_map(|c| c.entries.iter().find(|entry| entry.id.is_some()))
-            .min_by_key(|entry| entry.time)
-            .and_then(|entry| Some((entry.id.clone()?, entry.time)))?;
+        let (oldest, at) = self.oldest_held(nick)?;
         if (self.clock)() - at > TARGETS_SPAN {
             return None;
         }
-        *self.sought.entry(folded.clone()).or_default() += 1;
+        *self.sought.entry(folded).or_default() += 1;
+        Some(self.ask_page("BEFORE", nick, &oldest, CHATHISTORY_MOST, Ask::Agents))
+    }
+
+    /// The oldest message with a server id held of `target`'s history, and when it was said:
+    /// a machine's holds what was said with each of its agents too.
+    fn oldest_held(&self, target: &str) -> Option<(String, DateTime<Utc>)> {
+        self.conversations
+            .iter()
+            .filter(|c| super::target(&c.name).eq_ignore_ascii_case(target))
+            .filter_map(|c| c.entries.iter().find(|entry| entry.id.is_some()))
+            .min_by_key(|entry| entry.time)
+            .and_then(|entry| Some((entry.id.clone()?, entry.time)))
+    }
+
+    /// Asks for one page of `target`'s history, `count` messages `verb` (`BEFORE`, `AFTER`,
+    /// `AROUND`) the message whose server id is `id`, for `ask`: its gap stays open until
+    /// the page is in ([`Chat::filled`]).
+    pub(super) fn ask_page(
+        &mut self,
+        verb: &str,
+        target: &str,
+        id: &str,
+        count: usize,
+        ask: Ask,
+    ) -> Line {
         self.gaps.insert(
-            folded,
+            fold(target),
             Gap {
                 since: None,
                 pages: 1,
-                ask: Ask::Agents,
+                ask,
             },
         );
-        Some(Line::new(
-            "CHATHISTORY",
-            [
-                "BEFORE",
-                nick,
-                &format!("msgid={oldest}"),
-                &AGENTS_PAGE.to_string(),
-            ],
-        ))
+        page_line(verb, target, id, count)
     }
 
     /// Asks for the page of history before the oldest message the conversation called `name`
@@ -194,35 +199,12 @@ impl Chat {
             return None;
         }
         let target = super::target(&self.conversation(name)?.name).to_owned();
-        let folded = fold(&target);
-        if self.gaps.contains_key(&folded) {
+        if self.gaps.contains_key(&fold(&target)) {
             return None;
         }
-        // A machine's history holds what was said with each of its agents too.
-        let oldest = self
-            .conversations
-            .iter()
-            .filter(|c| super::target(&c.name).eq_ignore_ascii_case(&target))
-            .filter_map(|c| c.entries.iter().find(|entry| entry.id.is_some()))
-            .min_by_key(|entry| entry.time)
-            .and_then(|entry| entry.id.clone())?;
-        self.gaps.insert(
-            folded,
-            Gap {
-                since: None,
-                pages: 1,
-                ask: Ask::Older,
-            },
-        );
-        Some(Line::new(
-            "CHATHISTORY",
-            [
-                "BEFORE",
-                &target,
-                &format!("msgid={oldest}"),
-                &self.options.history.to_string(),
-            ],
-        ))
+        let (oldest, _) = self.oldest_held(&target)?;
+        let count = self.options.history;
+        Some(self.ask_page("BEFORE", &target, &oldest, count, Ask::Older))
     }
 
     /// Whether a page of the history of the conversation called `name` is on its way: what
@@ -396,4 +378,13 @@ impl Chat {
             .retain(|(_, entry)| entry.id.as_deref() != Some(id.as_str()));
         Vec::new()
     }
+}
+
+/// `CHATHISTORY <verb> <target> msgid=<id> <count>`: a page of `target`'s history around the
+/// message whose server id is `id`.
+fn page_line(verb: &str, target: &str, id: &str, count: usize) -> Line {
+    Line::new(
+        "CHATHISTORY",
+        [verb, target, &format!("msgid={id}"), &count.to_string()],
+    )
 }

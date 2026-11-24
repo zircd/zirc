@@ -8,8 +8,9 @@
 
 use zirc_irc::Line;
 
-/// The most messages asked for in one request.
-pub const PAGE: usize = 1000;
+/// The most messages asked for in one request: the most a server gives
+/// ([`zirc_chat::chat::CHATHISTORY_MOST`]).
+pub const PAGE: usize = zirc_chat::chat::CHATHISTORY_MOST;
 
 /// The most pages one read goes back: a safety stop, 500 000 messages. A read that reaches
 /// it says so ([`Pages::stopped_short`]).

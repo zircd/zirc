@@ -49,6 +49,7 @@ mod forge;
 mod group;
 mod header_line;
 mod history;
+pub use history::CHATHISTORY_MOST;
 mod incoming;
 mod layout;
 /// A conversation's lines as every app's records carry them. [`lines::Line`] isn't
