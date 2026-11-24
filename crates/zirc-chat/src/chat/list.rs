@@ -88,9 +88,10 @@ pub struct SidebarTab {
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub struct SectionEmpty {
-    /// Its line: `No channels yet.`, `No direct messages yet`.
+    /// Its line: `No channels yet.`, or what will fill Messages ([`super::NO_DIRECTS`]).
     pub line: String,
-    /// Under it, muted, how to start one; `None` for Channels, whose header's + makes one.
+    /// Under it, muted, who else comes to be there; `None` for Channels, whose header's +
+    /// makes one.
     pub hint: Option<String>,
 }
 

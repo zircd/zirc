@@ -294,7 +294,7 @@ pub enum Side {
     /// a time ([`zirc_core::chat::Chat::tabs`]): a click on a half shows it.
     Tabs(Vec<zirc_core::chat::SidebarTab>),
     /// A line of what the half shown says while it holds no conversation: `No channels
-    /// yet.`, or `No direct messages yet` and, muted under it, how to start one
+    /// yet.`, or what will fill Messages and, muted under it, who else comes there
     /// ([`zirc_core::chat::SidebarTab::empty`]).
     Empty {
         /// What it says.

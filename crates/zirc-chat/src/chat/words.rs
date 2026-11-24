@@ -151,8 +151,9 @@ pub const MACHINES: &str = "Machines";
 /// The channel list's empty line, once connected.
 pub const NO_CHANNELS: &str = "No channels yet.";
 
-/// Direct messages' empty line.
-pub const NO_DIRECTS: &str = "No direct messages yet";
+/// Messages' empty line: what will fill it (onboarding's mocks, 23 Nov 2026: "the empty
+/// space says what will fill it").
+pub const NO_DIRECTS: &str = "Each agent you start shows here, named by its task, while it works.";
 
 /// A header's menu: shows only what people said.
 pub const PEOPLE_ONLY: &str = "People only";
@@ -233,8 +234,8 @@ pub const EARLIER_REPLY: &str = "a reply to an earlier message";
 /// [`EARLIER_REPLY`]'s message, where the composer's reply line names what it answers.
 pub const EARLIER_MESSAGE: &str = "an earlier message";
 
-/// Under [`NO_DIRECTS`]: how to start one (the user's choice, 17 Nov 2026: the iPhone's).
-pub const NO_DIRECTS_HINT: &str = "Start one from someone's card or the people list.";
+/// Under [`NO_DIRECTS`]: who else comes to be there.
+pub const NO_DIRECTS_HINT: &str = "Teammates and their agents appear once you invite them.";
 
 /// Where a conversation shows while none is open (the user's choice, 17 Nov 2026). With
 /// nothing joined, [`super::NOTHING_JOINED`] instead.
@@ -657,7 +658,7 @@ pub struct Words {
     /// What the composer's reply line names for a message no longer kept: `an earlier
     /// message`.
     pub earlier_message: String,
-    /// Under `no_directs`: `Start one from someone's card or the people list.`
+    /// Under `no_directs`: `Teammates and their agents appear once you invite them.`
     pub no_directs_hint: String,
     /// Where a conversation shows while none is open: `Pick a conversation`.
     pub pick_a_conversation: String,
@@ -710,7 +711,7 @@ pub struct Words {
     pub new_tag: String,
     /// The channel list's empty line: `No channels yet.`.
     pub no_channels: String,
-    /// Direct messages' empty line: `No direct messages yet`.
+    /// Messages' empty line: `Each agent you start shows here, named by its task, while it works.`
     pub no_directs: String,
     /// What the emoji picker says when nothing matches: `No emoji match.`.
     pub no_emoji: String,
