@@ -30,6 +30,9 @@ use super::{Chat, Line};
 /// ([`WaitingCard::title`]), and the dashboard's panel as it is.
 pub const WAITING_FOR_YOU: &str = "Waiting for you";
 
+/// What an item's ⋯ button is called, over its menu ([`WaitingItem::menu`]).
+pub const MORE_ANSWERS: &str = "More answers";
+
 /// The card pinned at the top of Messages while something waits ([`Chat::waiting_card`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +42,9 @@ pub struct WaitingCard {
     pub title: String,
     /// What a screen reader calls it: `Waiting for you, 2`.
     pub label: String,
+    /// What an item's ⋯ button is called, for a screen reader and its tooltip:
+    /// [`MORE_ANSWERS`].
+    pub more: String,
     /// What waits, the longest waiting first: never empty.
     pub items: Vec<WaitingItem>,
 }
@@ -186,6 +192,7 @@ impl Chat {
         Some(WaitingCard {
             title: format!("{} · {}", WAITING_FOR_YOU.to_uppercase(), items.len()),
             label: format!("{WAITING_FOR_YOU}, {}", items.len()),
+            more: MORE_ANSWERS.to_owned(),
             items,
         })
     }

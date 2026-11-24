@@ -110,7 +110,10 @@ fn the_card_is_over_messages_and_holds_only_what_our_own_machines_asked_us() {
         .waiting_card(Some(SidebarSection::Direct))
         .expect("a card over Messages");
     assert_eq!(card.title, "WAITING FOR YOU · 1");
-    assert_eq!(card.label, "Waiting for you, 1");
+    assert_eq!(
+        (card.label.as_str(), card.more.as_str()),
+        ("Waiting for you, 1", "More answers")
+    );
     assert_eq!(card.items[0].key, "me-mbp/1");
     assert_eq!(scene.waiting_card(Some(SidebarSection::Channels)), None);
 }
