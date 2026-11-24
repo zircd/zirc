@@ -624,6 +624,7 @@ async fn roles_shown(State(ergo): State<Arc<Ergo>>) -> Response {
             hue: zirc_chat::chat::nick_degrees(&seat.role),
             holder_machine: seat.holder.as_ref().and_then(&machine),
             last_machine: seat.last.as_ref().and_then(&machine),
+            day: seat.day(),
             seat,
         })
         .collect();

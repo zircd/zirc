@@ -77,6 +77,16 @@ pub const NAME: &str = "Zirc";
 /// lowercase too.
 pub const PROGRAM: &str = "zirc";
 
+/// How many times something happened, as every count of them is said: `once`, `3 times`.
+#[must_use]
+pub fn times(n: u32) -> String {
+    if n == 1 {
+        "once".to_owned()
+    } else {
+        format!("{n} times")
+    }
+}
+
 /// The word after `ACTION` that marks a body as zirc's.
 pub const TAG: &str = "ZIRC";
 

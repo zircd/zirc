@@ -170,6 +170,8 @@ pub struct SeatShown {
     /// The last holder's machine, the same way.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_machine: Option<String>,
+    /// Its day in words ([`Seat::day`]).
+    pub day: String,
 }
 
 /// How an organisation's roles stand, as its server answers zirc.dev at [`ACCOUNTS_PATH`]:
@@ -306,6 +308,21 @@ pub struct Seat {
 }
 
 impl Seat {
+    /// Its day, as the Roles tab's card ends: `Woke 3 times today · 1 message waiting`,
+    /// `Not woken today`.
+    #[must_use]
+    pub fn day(&self) -> String {
+        let woke = match self.woke_today {
+            0 => "Not woken today".to_owned(),
+            n => format!("Woke {} today", crate::times(n)),
+        };
+        match self.waiting {
+            0 => woke,
+            1 => format!("{woke} · 1 message waiting"),
+            n => format!("{woke} · {n} messages waiting"),
+        }
+    }
+
     /// Under the role's name, in its conversation's header and among the members: `held by
     /// main-fix on Henrik's MacBook`, `Vacant in monorepo`. `machine` is the holder's
     /// machine as the reader's app names it.
@@ -629,6 +646,22 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_seats_day_says_its_wakes_and_what_waits() {
+        let seat = |woke_today, waiting| Seat {
+            role: "fixer".into(),
+            repository: "monorepo".into(),
+            holder: None,
+            last: None,
+            waiting,
+            wakes_on: Vec::new(),
+            woke_today,
+        };
+        assert_eq!(seat(0, 0).day(), "Not woken today");
+        assert_eq!(seat(1, 1).day(), "Woke once today · 1 message waiting");
+        assert_eq!(seat(3, 2).day(), "Woke 3 times today · 2 messages waiting");
+    }
 
     #[test]
     fn the_take_command_is_zircs() {

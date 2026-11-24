@@ -291,10 +291,7 @@ impl Chat {
         if teammate.state != State::Available || today.wakes == 0 {
             return None;
         }
-        let woke = match today.wakes {
-            1 => "once".to_owned(),
-            n => format!("{n} times"),
-        };
+        let woke = zirc_proto::times(today.wakes);
         let fixed = match today.fixed {
             0 => String::new(),
             1 => " and fixed a build".to_owned(),
