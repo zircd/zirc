@@ -683,13 +683,7 @@ fn path(history: &Path) -> PathBuf {
 
 /// Writes `kept` beside the history, whole, renamed into place.
 fn keep(history: &Path, kept: &Kept) {
-    let path = path(history);
-    let partial = path.with_extension("json.partial");
-    let written = serde_json::to_vec(kept)
-        .map_err(std::io::Error::other)
-        .and_then(|bytes| std::fs::write(&partial, bytes))
-        .and_then(|()| std::fs::rename(&partial, &path));
-    if let Err(error) = written {
+    if let Err(error) = crate::save_json(&path(history), kept) {
         warn!(%error, "couldn't keep the roles");
     }
 }
@@ -919,8 +913,10 @@ impl Host {
 
     /// Who `account` is.
     fn sender(&self, account: &str) -> Sender {
-        let account = account.to_lowercase();
-        if account.is_empty() || account == "*" || crate::workflows::is_zircs_own(&account) {
+        let Some(account) = crate::exporter::known_account(account).map(str::to_lowercase) else {
+            return Sender::Other;
+        };
+        if crate::workflows::is_zircs_own(&account) {
             Sender::Other
         } else if zirc_proto::names::is_integration_nick(&account) {
             Sender::Integration

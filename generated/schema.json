@@ -2175,6 +2175,17 @@
             "null"
           ],
           "description": "The role ([`crate::roles`]) the session was woken as, when it was: its line ends\nwith it, `Woke: master is broken (fixer)`."
+        },
+        "report": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reported"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a report: the item it opened ([`crate::role_report::OpenItem::id`]) and what was\nreported, which its line says, as CI's build is."
         }
       },
       "required": [
@@ -2272,6 +2283,11 @@
         },
         {
           "type": "string",
+          "const": "reported",
+          "description": "Something was reported to the role it holds ([`crate::role_report`]), or an item of\nit is still open ([`Woke::reminder`])."
+        },
+        {
+          "type": "string",
           "const": "other",
           "description": "One a newer zircd says that this reader doesn't know."
         }
@@ -2342,6 +2358,28 @@
         }
       ],
       "description": "A card's colour and icon."
+    },
+    "Reported": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The item's id."
+        },
+        "report": {
+          "$ref": "#/$defs/RoleReport",
+          "description": "What was reported."
+        },
+        "reminder": {
+          "type": "boolean",
+          "description": "Whether it's a reminder of an item still open."
+        }
+      },
+      "required": [
+        "id",
+        "report"
+      ],
+      "description": "What a report's wake says of it ([`What::Reported`])."
     },
     "Direct": {
       "type": "object",

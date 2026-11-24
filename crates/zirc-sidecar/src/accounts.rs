@@ -297,6 +297,15 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
         }
     }));
     spawn_roles(&ergo);
+    // Roles' open items (crate::items), from the reports said in #ops: each new one, and each
+    // reminder, wakes the role's holder through its nick, or waits for the next.
+    let roles = ergo.roles.clone();
+    tokio::spawn(crate::items::keep_items(
+        ergo.history.clone(),
+        move |wake| {
+            roles.wake(&wake.role, wake.woke(), &wake.text());
+        },
+    ));
     // Ergo's logins: when the socket can't be had, passphrases still work, as Ergo checks
     // them itself when the sidecar doesn't answer, and everything else here goes on.
     let socket = options

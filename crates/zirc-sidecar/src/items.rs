@@ -57,6 +57,12 @@ impl Wake {
     pub fn woke(&self) -> zirc_proto::woke::Woke {
         zirc_proto::woke::Woke::reported(&self.item, self.reminder)
     }
+
+    /// What the holder's watch shows of it ([`zirc_proto::role_report::OpenItem::told`]).
+    #[must_use]
+    pub fn text(&self) -> String {
+        self.item.told(self.reminder)
+    }
 }
 
 /// What a [`Items::catch_up`] did.

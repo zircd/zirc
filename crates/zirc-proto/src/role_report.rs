@@ -441,6 +441,26 @@ impl OpenItem {
         }
     }
 
+    /// What its role's holder is told of it, new or as a reminder: what was reported, its
+    /// id, where to read more and how to close it. `flaky test in build 612: //a:b [3f2a1b9c]
+    /// https://ci/612; close it with the trailer Fixes: report 3f2a1b9c`.
+    #[must_use]
+    pub fn told(&self, reminder: bool) -> String {
+        let still = if reminder { "still open: " } else { "" };
+        let link = self
+            .report
+            .link
+            .as_ref()
+            .map(|link| format!(" {link}"))
+            .unwrap_or_default();
+        format!(
+            "{still}{} [{}]{link}; close it with the trailer {}",
+            self.words,
+            self.id,
+            fixes_trailer(&self.id)
+        )
+    }
+
     /// When its holder is next reminded, in unix seconds: its kind's time after it opened,
     /// then twice as long after each reminder.
     #[must_use]
@@ -671,5 +691,17 @@ mod tests {
             items.closed_today_words,
             "Closed today: 3 (2 fixed, 1 to the baseline)"
         );
+    }
+
+    #[test]
+    fn the_holder_is_told_what_it_is_and_how_to_close_it() {
+        let item = OpenItem::opened(warning(), 0);
+        let told = item.told(false);
+        assert!(told.starts_with("new warning in build 612: warning: unused import `N` ["));
+        assert!(told.ends_with(&format!(
+            "] https://ci/612; close it with the trailer Fixes: report {}",
+            item.id
+        )));
+        assert!(item.told(true).starts_with("still open: new warning"));
     }
 }
