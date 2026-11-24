@@ -17,6 +17,7 @@
 //! the answer was sent, until the requesting machine posts the request's card again as
 //! answered. So nothing here reads as decided that a machine never heard.
 
+use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use zirc_proto::request::{self, Answer, Posted, Request, State};
@@ -178,14 +179,19 @@ impl WaitingButton {
 }
 
 impl Chat {
-    /// The card over the list while `tab` shows Messages, or both halves: `None` while
-    /// nothing waits, and over Channels, where no app draws it.
+    /// The card over the list while `tab` shows Messages, or both halves, its times on a
+    /// clock `offset` from UTC, as [`Chat::lines`] has them: `None` while nothing waits, and
+    /// over Channels, where no app draws it.
     #[must_use]
-    pub fn waiting_card(&self, tab: Option<SidebarSection>) -> Option<WaitingCard> {
+    pub fn waiting_card(
+        &self,
+        tab: Option<SidebarSection>,
+        offset: FixedOffset,
+    ) -> Option<WaitingCard> {
         if tab == Some(SidebarSection::Channels) {
             return None;
         }
-        let items = self.waiting();
+        let items = self.waiting(offset);
         if items.is_empty() {
             return None;
         }
@@ -198,12 +204,13 @@ impl Chat {
     }
 
     /// What waits for the person's answer: their agents' open requests, then the questions
-    /// their agents put to them directly, each the longest waiting first.
+    /// their agents put to them directly, each the longest waiting first, times on a clock
+    /// `offset` from UTC.
     #[must_use]
-    pub fn waiting(&self) -> Vec<WaitingItem> {
+    pub fn waiting(&self, offset: FixedOffset) -> Vec<WaitingItem> {
         let mut items: Vec<WaitingItem> = request::waiting(self.requests_heard(), &self.me)
             .iter()
-            .map(|waiting| self.request_item(waiting))
+            .map(|waiting| self.request_item(waiting, offset))
             .collect();
         items.extend(self.questions());
         items
@@ -249,7 +256,7 @@ impl Chat {
             .find_map(|reaction| request::answer_of(&reaction.emoji))
     }
 
-    fn request_item(&self, waiting: &request::Waiting) -> WaitingItem {
+    fn request_item(&self, waiting: &request::Waiting, offset: FixedOffset) -> WaitingItem {
         let asked = &waiting.request;
         let machine = self.asker(&waiting.msgid).unwrap_or_default().to_owned();
         let row = self.session_row(&machine, &asked.session, machine.clone());
@@ -282,7 +289,7 @@ impl Chat {
             State::Held { until, .. } => (
                 Some(format!(
                     "Your yes counts at {} unless you stop it",
-                    clock(until)
+                    clock(until, offset)
                 )),
                 vec![WaitingButton::of(WaitingAction::Stop, false, None)],
             ),
@@ -436,10 +443,11 @@ fn asks(entry: &Entry) -> Option<String> {
     Some(last.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
-/// An RFC 3339 time in UTC as the card says it, `14:32 UTC`; anything else as it is.
-fn clock(at: &str) -> String {
-    match (at.get(10..11), at.get(11..16)) {
-        (Some("T"), Some(time)) if at.ends_with('Z') => format!("{time} UTC"),
-        _ => at.to_owned(),
-    }
+/// An RFC 3339 time on the app's clock, `offset` from UTC, as every app writes a time
+/// ([`super::clock`]): `14:32`. Anything else as it is.
+fn clock(at: &str, offset: FixedOffset) -> String {
+    DateTime::parse_from_rfc3339(at).map_or_else(
+        |_| at.to_owned(),
+        |at| super::clock(at.with_timezone(&offset).naive_local()),
+    )
 }

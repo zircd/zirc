@@ -49,8 +49,16 @@ fn in_decisions() -> Scene {
     scene
 }
 
+fn utc() -> chrono::FixedOffset {
+    east(0)
+}
+
+fn east(hours: i32) -> chrono::FixedOffset {
+    chrono::FixedOffset::east_opt(hours * 3600).unwrap()
+}
+
 fn questions(chat: &Chat) -> Vec<String> {
-    chat.waiting()
+    chat.waiting(utc())
         .into_iter()
         .map(|item| item.question)
         .collect()
@@ -70,7 +78,7 @@ fn labels(buttons: &[WaitingButton]) -> Vec<&str> {
 
 #[test]
 fn an_open_request_from_our_own_agent_waits_with_what_each_answer_does() {
-    let item = revoke_waits().waiting().remove(0);
+    let item = revoke_waits().waiting(utc()).remove(0);
     assert_eq!(item.key, "me-mbp/1");
     assert_eq!(item.kind, WaitingKind::Request);
     assert_eq!(item.agent, "cc-1");
@@ -97,7 +105,11 @@ fn an_open_request_from_our_own_agent_waits_with_what_each_answer_does() {
 
 #[test]
 fn the_card_is_over_messages_and_holds_only_what_our_own_machines_asked_us() {
-    assert_eq!(in_decisions().waiting_card(None), None, "nothing waits");
+    assert_eq!(
+        in_decisions().waiting_card(None, utc()),
+        None,
+        "nothing waits"
+    );
     let mut scene = revoke_waits();
     // A teammate's request to them, and one in our name from a machine that isn't ours.
     let bobs = Request::open("bob-mbp/1", "cc-9", "bob", "Ship?", "y", "n");
@@ -107,7 +119,7 @@ fn the_card_is_over_messages_and_holds_only_what_our_own_machines_asked_us() {
         &posted("bob-mbp", "r3", &forged),
     ]);
     let card = scene
-        .waiting_card(Some(SidebarSection::Direct))
+        .waiting_card(Some(SidebarSection::Direct), utc())
         .expect("a card over Messages");
     assert_eq!(card.title, "WAITING FOR YOU · 1");
     assert_eq!(
@@ -115,7 +127,10 @@ fn the_card_is_over_messages_and_holds_only_what_our_own_machines_asked_us() {
         ("Waiting for you, 1", "More answers")
     );
     assert_eq!(card.items[0].key, "me-mbp/1");
-    assert_eq!(scene.waiting_card(Some(SidebarSection::Channels)), None);
+    assert_eq!(
+        scene.waiting_card(Some(SidebarSection::Channels), utc()),
+        None
+    );
 }
 
 #[test]
@@ -126,7 +141,7 @@ fn an_answer_goes_as_a_reaction_and_the_item_leaves_only_once_its_machine_took_i
         ..ask("me-mbp/1", "cc-1", "Revoke it now?")
     };
     scene.hears(&[&posted("me-mbp", "r1", &revoke)]);
-    let item = scene.waiting().remove(0);
+    let item = scene.waiting(utc()).remove(0);
     assert_eq!(item.buttons[0].label, "No", "the recommended answer first");
     assert!(item.buttons[0].primary);
     assert_eq!(item.does[0].label, "No");
@@ -145,7 +160,7 @@ fn an_answer_goes_as_a_reaction_and_the_item_leaves_only_once_its_machine_took_i
 
     // The server has it; the machine hasn't said: it still waits, and says the yes is sent.
     scene.hears(&["@+draft/react=👍;+draft/reply=r1 :me!u@h TAGMSG #decisions"]);
-    let item = scene.waiting().remove(0);
+    let item = scene.waiting(utc()).remove(0);
     assert_eq!(
         item.note.as_deref(),
         Some("Your yes is sent: waiting for me-mbp to take it")
@@ -160,7 +175,7 @@ fn an_answer_goes_as_a_reaction_and_the_item_leaves_only_once_its_machine_took_i
     );
     // Its machine's card says answered: gone.
     scene.hears(&[&posted("me-mbp", "r2", &answered(&revoke, Answer::Yes))]);
-    assert_eq!(scene.waiting_card(None), None);
+    assert_eq!(scene.waiting_card(None, utc()), None);
 }
 
 #[test]
@@ -172,7 +187,7 @@ fn requests_asking_the_same_show_once_and_one_answer_goes_to_each() {
         &posted("me-mbp", "r1", &agent),
         &posted("me-mbp", "r2", &dispatcher),
     ]);
-    let items = scene.waiting();
+    let items = scene.waiting(utc());
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].agent, "cc-1 · also asked by cc-2");
     assert_eq!(
@@ -198,7 +213,7 @@ fn drop_waits() -> (Scene, Request) {
 #[test]
 fn a_yes_that_cant_be_undone_says_so_and_can_be_stopped_while_held() {
     let (mut scene, drop) = drop_waits();
-    let item = scene.waiting().remove(0);
+    let item = scene.waiting(utc()).remove(0);
     assert_eq!(
         item.note.as_deref(),
         Some("A yes can't be undone: it waits a minute, which Stop ends")
@@ -216,10 +231,11 @@ fn a_yes_that_cant_be_undone_says_so_and_can_be_stopped_while_held() {
         ..drop
     };
     scene.hears(&[&posted("me-mbp", "r2", &held)]);
-    let item = scene.waiting().remove(0);
+    // On the person's clock, two hours east of UTC here.
+    let item = scene.waiting(east(2)).remove(0);
     assert_eq!(
         item.note.as_deref(),
-        Some("Your yes counts at 12:02 UTC unless you stop it")
+        Some("Your yes counts at 14:02 unless you stop it")
     );
     assert_eq!(labels(&item.buttons), ["Stop"]);
     assert_eq!(
@@ -232,7 +248,7 @@ fn a_yes_that_cant_be_undone_says_so_and_can_be_stopped_while_held() {
 fn one_asked_about_still_waits_and_one_withdrawn_is_gone() {
     let (mut scene, drop) = drop_waits();
     scene.hears(&[&posted("me-mbp", "r3", &answered(&drop, Answer::More))]);
-    let item = scene.waiting().remove(0);
+    let item = scene.waiting(utc()).remove(0);
     assert_eq!(
         item.note.as_deref(),
         Some("You asked for more: cc-1 answers in #decisions")
@@ -247,7 +263,7 @@ fn one_asked_about_still_waits_and_one_withdrawn_is_gone() {
         ..drop
     };
     scene.hears(&[&posted("me-mbp", "r4", &withdrawn)]);
-    assert_eq!(scene.waiting(), []);
+    assert_eq!(scene.waiting(utc()), []);
 }
 
 /// Our agent `cc-2` asking us a question directly, after another of ours and a teammate's
@@ -272,7 +288,7 @@ fn asked_directly() -> Scene {
 fn an_agents_direct_question_waits_with_a_reply_that_opens_its_conversation() {
     let mut scene = asked_directly();
     assert_eq!(questions(&scene), ["Which branch should I use?"]);
-    let item = scene.waiting().remove(0);
+    let item = scene.waiting(utc()).remove(0);
     assert_eq!(item.kind, WaitingKind::Question);
     assert_eq!(
         (item.key.as_str(), item.opens.as_str(), item.at.as_deref()),
@@ -291,7 +307,7 @@ fn an_agents_direct_question_waits_with_a_reply_that_opens_its_conversation() {
         ["Revoke it?", "Which branch should I use?"]
     );
     assert_eq!(
-        scene.waiting_card(None).unwrap().title,
+        scene.waiting_card(None, utc()).unwrap().title,
         "WAITING FOR YOU · 2"
     );
 }

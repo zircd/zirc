@@ -160,7 +160,7 @@ fn web(chat: &Chat, zone: FixedOffset) -> usize {
             })
             .len()
         + chat.tabs().len()
-        + usize::from(chat.waiting_card(Some(chat.tab())).is_some())
+        + usize::from(chat.waiting_card(Some(chat.tab()), zone).is_some())
         + chat.threads(OPEN).len()
         + chat.member_count(OPEN)
         + usize::from(chat.intro(OPEN).is_some())
@@ -211,7 +211,7 @@ fn phone(chat: &Chat, zone: FixedOffset) -> usize {
     .sum::<usize>();
     rows + sidebar
         + chat.tabs().len()
-        + usize::from(chat.waiting_card(Some(chat.tab())).is_some())
+        + usize::from(chat.waiting_card(Some(chat.tab()), zone).is_some())
         + chat.lines(OPEN, zone, false).len()
         + chat.activity().len()
         + usize::from(chat.badges().total > 0)
@@ -236,7 +236,7 @@ fn desktop(chat: &Chat, zone: FixedOffset) -> usize {
             })
             .len()
         + chat.tabs().len()
-        + usize::from(chat.waiting_card(Some(chat.tab())).is_some())
+        + usize::from(chat.waiting_card(Some(chat.tab()), zone).is_some())
         + 2 * usize::from(chat.header_line(OPEN).is_some())
         + chat.member_rows(OPEN).len()
         + usize::from(chat.unseen(wall).is_some())
@@ -256,7 +256,7 @@ fn tui(chat: &Chat, zone: FixedOffset) -> usize {
             .iter()
             .sum::<usize>()
         + chat.tabs().len()
-        + usize::from(chat.waiting_card(Some(chat.tab())).is_some())
+        + usize::from(chat.waiting_card(Some(chat.tab()), zone).is_some())
 }
 
 /// How many times longer what an app asks may take in the busy organisation than in a

@@ -541,7 +541,10 @@ impl App {
     /// The "Waiting for you" card's rows, over the half shown while it's Messages and
     /// something waits ([`zirc_core::chat::Chat::waiting_card`]).
     fn waiting_sides(&self) -> Vec<Side> {
-        let Some(card) = self.chat.waiting_card(Some(self.chat.tab())) else {
+        let Some(card) = self
+            .chat
+            .waiting_card(Some(self.chat.tab()), self.zone.offset())
+        else {
             return Vec::new();
         };
         let mut rows = vec![Side::Waiting {
