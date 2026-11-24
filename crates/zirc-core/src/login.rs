@@ -393,6 +393,35 @@ impl Client {
         Ok(Some(self.checked(response).await?.json().await?))
     }
 
+    /// What the person whose machine or app `account` is had their agents do today
+    /// ([`zirc_proto::onboarding::TODAY_PATH`]). `None` as [`Client::steps`] answers it.
+    ///
+    /// # Errors
+    ///
+    /// When the web app can't be reached or answers anything else.
+    pub async fn today(
+        &self,
+        account: &Account,
+    ) -> Result<Option<zirc_proto::onboarding::Today>, Error> {
+        let response = self
+            .http
+            .get(format!(
+                "{}{}",
+                self.web,
+                zirc_proto::onboarding::TODAY_PATH
+            ))
+            .basic_auth(&account.name, Some(&account.password))
+            .send()
+            .await?;
+        if matches!(
+            response.status(),
+            StatusCode::UNAUTHORIZED | StatusCode::NOT_FOUND
+        ) {
+            return Ok(None);
+        }
+        Ok(Some(self.checked(response).await?.json().await?))
+    }
+
     /// Says a prompt about a step was shown, followed or put away
     /// ([`zirc_proto::onboarding::PROMPTS_PATH`]).
     ///
