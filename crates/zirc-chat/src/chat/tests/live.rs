@@ -63,13 +63,14 @@ fn with_mbp() -> Scene {
 }
 
 #[test]
-fn a_session_is_known_from_its_first_watch_and_listed_once_it_writes_to_us() {
+fn our_session_is_listed_from_its_first_watch_before_it_writes_to_us() {
     let mut chat = with_mbp();
     assert!(find(&rows(&chat), "me-mbp/cc-new").is_none());
     feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-new"]))]);
     assert_eq!(chat.session_live("me-mbp", "cc-new"), Some(true));
-    // Live, but it hasn't written to us: no row (the user's choice, 15 Nov 2026).
-    assert!(find(&rows(&chat), "me-mbp/cc-new").is_none());
+    // Live, though it hasn't written to us: our own agent has its row (the user's choice,
+    // 24 Nov 2026).
+    assert!(find(&rows(&chat), "me-mbp/cc-new").is_some());
     assert!(chat.agents().contains(&"me-mbp/cc-new".to_owned()));
     // The People list has it under its machine, and its card says it's here.
     let people = chat.people_rows("#api");
@@ -100,6 +101,22 @@ fn a_session_is_known_from_its_first_watch_and_listed_once_it_writes_to_us() {
             .iter()
             .any(|entry| matches!(entry.kind, EntryKind::Zirc(_)))
     );
+}
+
+/// A teammate's agent, live but silent, has no row: only our own are listed before they
+/// write to us (the user's choice, 24 Nov 2026).
+#[test]
+fn a_teammates_silent_session_has_no_row() {
+    let mut chat = with_mbp();
+    feed(
+        &mut chat,
+        &[
+            ":bob-mbp!u@machine/bob JOIN #api",
+            &zirc("bob-mbp", &live(&["cc-bob"])),
+        ],
+    );
+    assert_eq!(chat.session_live("bob-mbp", "cc-bob"), Some(true));
+    assert!(find(&rows(&chat), "bob-mbp/cc-bob").is_none());
 }
 
 #[test]

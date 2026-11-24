@@ -1014,6 +1014,12 @@ impl Chat {
             .list(SidebarSection::Direct)
             .into_iter()
             .map(|at| self.conversations[at].name.clone())
+            // Our own sessions with nothing said yet have no conversation, and a row all the same.
+            .chain(
+                self.our_sessions()
+                    .into_iter()
+                    .filter(|name| self.position(name).is_none()),
+            )
             .map(|name| {
                 self.direct_row_heard(name, &|nick, session| {
                     heard.get(&(fold(nick), session.to_owned())).copied()

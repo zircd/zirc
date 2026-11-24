@@ -370,13 +370,17 @@ impl Chat {
             self.conversation(name)
                 .is_some_and(|c| c.entries.iter().any(super::Entry::is_said))
         };
+        // Our own sessions their machines name are listed though nothing's said yet.
+        let ours = self.our_sessions();
         let mut rows: Vec<DirectRow> = self
             .direct_rows()
             .into_iter()
             .filter(|row| {
                 shown.eq_ignore_ascii_case(&row.name)
                     || match row.kind {
-                        DirectKind::Agent => said(&row.name) && !row.folded,
+                        DirectKind::Agent => {
+                            (said(&row.name) || ours.contains(&row.name)) && !row.folded
+                        }
                         // Whatever counts has a row: a machine's own thread too.
                         DirectKind::Machine => said(&row.name),
                         DirectKind::Person | DirectKind::Group => true,

@@ -120,6 +120,25 @@ impl Chat {
         }
     }
 
+    /// Our own agent sessions their machines name, live or away, by their conversations'
+    /// names: each has a row in Messages from its first watch, before it says anything (the
+    /// user's choice, 24 Nov 2026); a teammate's only once something's said with it.
+    pub(super) fn our_sessions(&self) -> BTreeSet<String> {
+        self.live
+            .values()
+            .filter(|known| self.ours(&known.nick))
+            .flat_map(|known| {
+                known
+                    .live
+                    .sessions
+                    .iter()
+                    .chain(known.live.away.keys())
+                    .filter(|session| !session.is_empty() && *session != zirc_proto::NO_SESSION)
+                    .map(|session| super::agent_channel(&known.nick, session))
+            })
+            .collect()
+    }
+
     /// Whether the agent session `session` is known to run on the machine `nick`: the
     /// machine has listed it, live or ended, or it has spoken as from that machine.
     pub(super) fn known_on(&self, nick: &str, session: &str) -> bool {
