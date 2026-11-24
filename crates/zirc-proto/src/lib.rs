@@ -826,11 +826,14 @@ pub fn says(text: &str, label: &str) -> bool {
         .is_some_and(|start| start.eq_ignore_ascii_case(label))
 }
 
-/// What a post `text` says it's taking on, when it starts [`TAKING`] ([`taking`] writes
-/// one): `the login page`.
+/// What a post `text` says it's taking on, when it starts [`TAKING`], whatever the case
+/// ([`taking`] writes one): `the login page`.
 #[must_use]
 pub fn taken(text: &str) -> Option<&str> {
-    text.trim_start().strip_prefix(TAKING).map(str::trim)
+    // Whatever the case, as [`says`] reads it: `TAKING` is ASCII, so its length is where
+    // the task starts.
+    let text = text.trim_start();
+    says(text, TAKING).then(|| text[TAKING.len()..].trim())
 }
 
 /// Whether `text`, an intent's summary or a post, says its work is done: it starts
@@ -1835,6 +1838,9 @@ mod tests {
         assert_eq!(taken("  taking:  the login page "), Some("the login page"));
         assert_eq!(taken(&taking("the login page")), Some("the login page"));
         assert_eq!(taken("on it"), None);
+        // Whatever the case, as says_taking counts it.
+        assert_eq!(taken("Taking: the login page"), Some("the login page"));
+        assert_eq!(taken("TAKING:x"), Some("x"));
         assert!(says_taking("Taking: it"));
         assert!(says_done("Done: it") && says_done(" done: it"));
         assert!(!says_done("dropped: it") && !says_done("undone: it"));
