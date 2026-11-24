@@ -7,7 +7,7 @@ members = ["crates/*"]
 [workspace.package]
 # zirc's version: releases are tagged zirc-v<version>, and Bazel reads it from here too
 # (bazel/version.bzl). The private crates take it too, and use it for nothing.
-version = "0.1.62"
+version = "0.1.63"
 edition = "2024"
 # GPUI follows Zed's toolchain. Keep in step with rust-toolchain.toml and MODULE.bazel.
 rust-version = "1.98"
