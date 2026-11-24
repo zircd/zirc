@@ -1910,10 +1910,15 @@ async fn add_phone(
     };
     match crate::pusher::add_phone(&ergo.history, subscriber, phone).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(crate::pusher::PhoneRefused::Invalid(why)) => {
-            error(StatusCode::BAD_REQUEST, "invalid", why)
-        }
-        Err(crate::pusher::PhoneRefused::Store) => error(
+        Err(why) => refused(why),
+    }
+}
+
+/// What a phone the pusher didn't keep or take away answers.
+fn refused(why: crate::pusher::PhoneRefused) -> Response {
+    match why {
+        crate::pusher::PhoneRefused::Invalid(why) => error(StatusCode::BAD_REQUEST, "invalid", why),
+        crate::pusher::PhoneRefused::Store => error(
             StatusCode::SERVICE_UNAVAILABLE,
             "starting",
             "the pusher's store can't be written",
@@ -1928,14 +1933,7 @@ async fn remove_phone(
 ) -> Response {
     match crate::pusher::remove_phone(&ergo.history, &phone.account, &phone.endpoint).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(crate::pusher::PhoneRefused::Invalid(why)) => {
-            error(StatusCode::BAD_REQUEST, "invalid", why)
-        }
-        Err(crate::pusher::PhoneRefused::Store) => error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "starting",
-            "the pusher's store can't be written",
-        ),
+        Err(why) => refused(why),
     }
 }
 

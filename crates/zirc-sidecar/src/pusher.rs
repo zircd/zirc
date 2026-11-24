@@ -100,7 +100,7 @@ pub struct Pusher {
 }
 
 /// Why a phone zirc.dev hands the pusher isn't kept or taken away.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum PhoneRefused {
     /// What's wrong with it.
     Invalid(&'static str),
@@ -127,6 +127,10 @@ pub async fn add_phone(
     }
     if !relayed(&phone.endpoint, subscriber) || phone.p256dh.is_empty() || phone.auth.is_empty() {
         return Err(PhoneRefused::Invalid("not a relayed phone with its keys"));
+    }
+    // zirc.dev passes the phone's levels on unread: checked here, where they're read.
+    if serde_json::from_value::<NotifySettings>(phone.settings.clone()).is_err() {
+        return Err(PhoneRefused::Invalid("not notification settings"));
     }
     let subscription = Subscription {
         account,

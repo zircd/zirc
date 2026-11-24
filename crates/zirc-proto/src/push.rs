@@ -67,14 +67,39 @@ pub const ME_PUSH_PATH: &str = "/api/me/push";
 /// sidecar's accounts API, which only zirc.dev reaches.
 pub const PHONES_PATH: &str = "/v1/push/phones";
 
+/// The push service a phone's token is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(rename = "PushPlatform")]
+pub enum Platform {
+    /// Apple's (APNs).
+    Ios,
+    /// Google's (FCM).
+    Android,
+}
+
+impl Platform {
+    /// Every one, as zirc.dev's relay takes them.
+    pub const ALL: [Self; 2] = [Self::Ios, Self::Android];
+
+    /// As the wire says it.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ios => "ios",
+            Self::Android => "android",
+        }
+    }
+}
+
 /// What a phone asks zirc.dev at [`ME_PUSH_PATH`]: its push token on its platform, its keys,
 /// and each other organisation on it, by its server, with how much each of its conversations
 /// notifies there. The organisation it shows isn't among them: it registers there itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(rename = "PushFanOut")]
 pub struct FanOut {
-    /// `ios` or `android`.
-    pub platform: String,
+    /// Its push service.
+    pub platform: Platform,
     /// The push token, as the platform wrote it.
     pub token: String,
     /// APNs' sandbox, for builds signed for development.
@@ -150,6 +175,11 @@ pub struct Phone {
 pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
     vec![
         Arrived::decl(config),
+        Platform::decl(config),
+        format!(
+            "const PUSH_PLATFORMS: readonly PushPlatform[] = {:?};",
+            Platform::ALL.map(Platform::as_str)
+        ),
         FanOut::decl(config),
         FanOutOrg::decl(config),
         FannedOut::decl(config),

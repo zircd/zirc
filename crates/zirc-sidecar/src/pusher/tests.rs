@@ -615,7 +615,7 @@ async fn pushes_to_a_phone_zirc_dev_registered_until_taken_away() {
     );
 }
 
-/// Only a phone of the relay's, with its keys, for an account, is kept; and erasing the
+/// Only a phone of the relay's, with its keys and levels, for an account, is kept; and erasing the
 /// account, as when she leaves, forgets it.
 #[tokio::test]
 async fn keeps_only_a_relayed_phone_and_forgets_an_erased_accounts() {
@@ -635,6 +635,11 @@ async fn keeps_only_a_relayed_phone_and_forgets_an_erased_accounts() {
         ..fanned(url)
     };
     assert!(add_phone(&history, subscriber, nameless).await.is_err());
+    let unsettled = zirc_proto::push::Phone {
+        settings: serde_json::json!({"levels": 5}),
+        ..fanned(url)
+    };
+    assert!(add_phone(&history, subscriber, unsettled).await.is_err());
     add_phone(&history, subscriber, fanned(url)).await.unwrap();
     assert_eq!(phones_kept(&history), 1);
     forget_phones(&history, "ada").await;

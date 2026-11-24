@@ -415,6 +415,36 @@ impl Client {
         Ok(Some(self.checked(response).await?.json().await?))
     }
 
+    /// Sends `body` with `method` to one of the web app's `/api/me/*` routes at `path`, as
+    /// `account`, its machine or app: the response, or `None` as [`Client::read_me`] answers
+    /// it (401, 404).
+    ///
+    /// # Errors
+    ///
+    /// When the web app can't be reached or refuses it otherwise.
+    pub async fn write_me<B: serde::Serialize + ?Sized>(
+        &self,
+        account: &Account,
+        method: reqwest::Method,
+        path: &str,
+        body: &B,
+    ) -> Result<Option<reqwest::Response>, Error> {
+        let response = self
+            .http
+            .request(method, format!("{}{path}", self.web))
+            .basic_auth(&account.name, Some(&account.password))
+            .json(body)
+            .send()
+            .await?;
+        if matches!(
+            response.status(),
+            StatusCode::UNAUTHORIZED | StatusCode::NOT_FOUND
+        ) {
+            return Ok(None);
+        }
+        Ok(Some(self.checked(response).await?))
+    }
+
     /// Says a prompt about a step was shown, followed or put away
     /// ([`zirc_proto::onboarding::PROMPTS_PATH`]).
     ///
