@@ -114,6 +114,11 @@ pub enum RowShape {
     /// A one-time note under the line before it: a dashed box, its [`Callout::label`] in
     /// bold, its words, and [`Callout::button`], which puts it away ([`Chat::see_note`]).
     Once,
+    /// Getting started's next step in a conversation ([`Chat::prompt`]): a solid box tinted
+    /// with [`Callout::tone`], its [`Callout::label`] in bold, its words, and
+    /// [`Callout::button`] filled, which takes the step. Never dashed, so a prompt and a
+    /// one-time note can't look alike (mocks `OnbPhoneHello`, `OnbPhoneTest`).
+    Prompt,
 }
 
 /// How a message's words are styled, decided here for every app, which never styles them
@@ -924,7 +929,7 @@ impl<'a> Layout<'a> {
         };
         let mut line = self.blank(format!("{under}-next"), None, time, LineKind::Note);
         line.text = callout.said();
-        line.shape = RowShape::Once;
+        line.shape = RowShape::Prompt;
         line.callout = Some(callout);
         // Under a note already there, which is about the same line.
         let below = at

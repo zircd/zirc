@@ -157,7 +157,7 @@ fn the_next_steps_card_is_in_the_agents_conversation_under_its_first_answer() {
         .expect("the answer");
     let card = &shown[at + 1];
     assert_eq!(card.key, "me-mbp1-next");
-    assert_eq!(card.shape, crate::chat::RowShape::Once);
+    assert_eq!(card.shape, crate::chat::RowShape::Prompt);
     let callout = card.callout.as_ref().expect("a callout");
     assert_eq!(callout.label, "Zirc · next step");
     assert_eq!(callout.tone, "ok");
