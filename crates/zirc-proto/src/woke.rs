@@ -376,10 +376,7 @@ impl Woke {
                     id,
                     report,
                     reminder,
-                }) => {
-                    let still = if *reminder { "still open: " } else { "" };
-                    format!("{still}{} [{id}]", report.words())
-                }
+                }) => crate::role_report::head(&report.words(), id, *reminder),
                 None => "something was reported".to_owned(),
             },
             What::Other => "something concerned it".to_owned(),

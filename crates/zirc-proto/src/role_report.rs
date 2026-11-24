@@ -298,6 +298,14 @@ pub fn kinds_said() -> String {
     }
 }
 
+/// How a wake and its holder's text start, for an item with `words` and `id`, new or as a
+/// reminder: `new warning in build 612: unused import [3f2a1b9c]`, `still open: …`.
+#[must_use]
+pub fn head(words: &str, id: &str, reminder: bool) -> String {
+    let still = if reminder { "still open: " } else { "" };
+    format!("{still}{words} [{id}]")
+}
+
 /// The ids of the items a landing's `Fixes:` trailers close ([`crate::ci::Data::fixes`]),
 /// each said as `report <id>`.
 #[must_use]
@@ -446,7 +454,6 @@ impl OpenItem {
     /// https://ci/612; close it with the trailer Fixes: report 3f2a1b9c`.
     #[must_use]
     pub fn told(&self, reminder: bool) -> String {
-        let still = if reminder { "still open: " } else { "" };
         let link = self
             .report
             .link
@@ -454,9 +461,8 @@ impl OpenItem {
             .map(|link| format!(" {link}"))
             .unwrap_or_default();
         format!(
-            "{still}{} [{}]{link}; close it with the trailer {}",
-            self.words,
-            self.id,
+            "{}{link}; close it with the trailer {}",
+            head(&self.words, &self.id, reminder),
             fixes_trailer(&self.id)
         )
     }
