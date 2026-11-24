@@ -384,6 +384,42 @@ pub struct StepProgress {
     pub label: String,
     /// Whether it's the next step: the one to highlight and suggest.
     pub next: bool,
+    /// Why it isn't reached though it was begun, where zirc.dev can tell ([`Stall`]): never
+    /// from [`progress`], which knows only what's reached.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub stall: Option<Stall>,
+}
+
+/// One thing zirc.dev checked about a step that was begun and isn't reached, from what it
+/// records itself: never a guess.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "StepCheck")]
+pub struct Check {
+    /// Whether it's as it should be.
+    pub ok: bool,
+    /// What was checked and how it stands, in a sentence.
+    pub text: String,
+}
+
+/// A step begun and not reached after a while: what zirc.dev checked, the one command that
+/// fixes it, and another step to do meanwhile. zirc.dev works it out, as only it holds the
+/// facts, and every surface says these words: the dashboard under the step, the command line
+/// and the agent with [`STEPS_PATH`]'s answer. A stalled step never just says it's waiting.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "StepStall", optional_fields)]
+pub struct Stall {
+    /// What happened and what didn't, in a sentence.
+    pub summary: String,
+    /// What zirc.dev checked, in the order things happen: the first that isn't ok is why.
+    pub checks: Vec<Check>,
+    /// The one command that fixes it, where there is one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fix: Option<String>,
+    /// Another step to do meanwhile, by number: the lowest-numbered other one that can be
+    /// done now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meanwhile: Option<u8>,
 }
 
 /// Every step as it stands for someone, and which is next: what [`STEPS_PATH`] answers.
@@ -456,6 +492,7 @@ pub fn progress(reached: &[u8]) -> Progress {
                 },
                 label,
                 next: is_next,
+                stall: None,
             }
         })
         .collect();
@@ -622,6 +659,8 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const TODAY_PATH = {TODAY_PATH:?};"),
         format!("const ONBOARDING_APP_PAGE = {APP_PAGE:?};"),
         State::decl(config),
+        Check::decl(config),
+        Stall::decl(config),
         StepProgress::decl(config),
         Progress::decl(config),
         format!("const STEPS_PATH = {STEPS_PATH:?};"),
