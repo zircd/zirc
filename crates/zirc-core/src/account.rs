@@ -70,6 +70,9 @@ pub mod keys {
     pub const REGISTERED_AT: &str = "zirc-push-registered";
     /// The id zirc.dev gave its push endpoint, which every push for it carries as `ep`.
     pub const ENDPOINT: &str = "zirc-push-endpoint";
+    /// Getting started's prompts the person put away there, by step, as JSON
+    /// (`zirc_chat::chat::PutAway`).
+    pub const PUT_AWAY: &str = "zirc-prompts-put-away";
 }
 
 /// The names the apps kept, one each for their only organisation, before several. They move
@@ -143,6 +146,7 @@ impl OrgStore {
             keys::PUSHED,
             keys::REGISTERED_AT,
             keys::ENDPOINT,
+            keys::PUT_AWAY,
         ] {
             self.secrets.delete(&org_key(name, org))?;
             if self.mirror && LEGACY_KEYS.contains(&name) {

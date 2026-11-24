@@ -541,6 +541,12 @@ pub struct Today {
 /// [`STEPS_PATH`] is asked.
 pub const TODAY_PATH: &str = "/api/me/today";
 
+/// zirc.dev's page that invites someone to the organisation an app is signed in to, given
+/// its server as `?host=`: it finds the organisation and goes on to its people's invites, or
+/// says who may invite. A copy, as the web app's routes are its folders: the page is
+/// `web/src/app/invite/page.tsx`, which names this.
+pub const INVITE_PATH: &str = "/invite";
+
 /// Where a prompt was shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(rename = "PromptSurface")]

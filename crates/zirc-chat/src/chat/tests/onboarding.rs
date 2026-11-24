@@ -2,8 +2,10 @@
 //! person is, in the words every app draws.
 
 use super::*;
-use crate::chat::{Prompt, PromptAction, PromptContext, PromptPlace};
-use zirc_proto::onboarding::progress;
+use crate::chat::{
+    Prompt, PromptAction, PromptContext, PromptLater, PromptPlace, PutAway, wants_today,
+};
+use zirc_proto::onboarding::{Today, progress};
 use zirc_proto::session::Live;
 
 /// What `me-mbp` says of its live sessions, in #api.
@@ -48,6 +50,7 @@ fn answered() -> Scene {
 const PHONE: PromptContext = PromptContext {
     phone: true,
     acted: None,
+    today: None,
 };
 
 fn shown(chat: &Chat, reached: &[u8], context: PromptContext) -> Option<Prompt> {
@@ -108,10 +111,7 @@ fn a_prompt_acted_on_says_so_in_its_buttons_place() {
     let chat = answered();
     let at =
         chrono::NaiveDate::from_ymd_opt(2026, 10, 30).and_then(|day| day.and_hms_opt(9, 10, 0));
-    let acted = PromptContext {
-        phone: true,
-        acted: at,
-    };
+    let acted = PromptContext { acted: at, ..PHONE };
     let ci = shown(&chat, &[1, 2, 3, 4], acted).expect("CI is next");
     assert_eq!(ci.button, None);
     assert_eq!(
@@ -188,4 +188,78 @@ fn the_next_steps_card_is_nowhere_else_and_goes_once_its_step_is_done() {
     )));
     chat.set_prompting(Some(progress(&[1, 2, 3, 4, 5, 6, 7, 8])), PHONE);
     assert!(!card(tls_lines(&chat)));
+}
+
+/// On a phone or a computer, with their agents' day as zirc.dev counts it.
+fn today(wakes: u32, fixed: u32) -> PromptContext {
+    PromptContext {
+        today: Some(Today { wakes, fixed }),
+        ..PromptContext::default()
+    }
+}
+
+#[test]
+fn once_their_agents_woke_today_a_teammate_is_invited_atop_messages() {
+    let chat = Scene::in_api();
+    let done = [1, 2, 3, 4, 5, 6];
+    assert!(wants_today(&progress(&done)));
+    let prompt = shown(&chat, &done, today(4, 2)).expect("the first overlap waits");
+    assert_eq!(prompt.step, "teammate");
+    assert_eq!(prompt.place, PromptPlace::Messages);
+    assert_eq!(
+        prompt.title.as_deref(),
+        Some("Your agents woke 4 times today and fixed 2 builds.")
+    );
+    assert_eq!(
+        prompt.button.map(|b| b.action),
+        Some(PromptAction::Page {
+            path: zirc_proto::onboarding::INVITE_PATH.to_owned()
+        })
+    );
+    let later = prompt.later.expect("Not now");
+    assert_eq!(
+        (later.label.as_str(), later.back_after_days),
+        ("Not now", Some(7))
+    );
+}
+
+#[test]
+fn the_invite_card_counts_a_lone_wake_and_waits_for_a_busy_day() {
+    let chat = Scene::in_api();
+    let done = [1, 2, 3, 4, 5, 6];
+    let once = shown(&chat, &[1, 2, 3, 4, 5, 6, 7], today(1, 0)).expect("a teammate is next");
+    assert_eq!(once.title.as_deref(), Some("Your agents woke once today."));
+    assert_eq!(
+        once.body,
+        zirc_proto::onboarding::STEPS[7].about,
+        "the step's own words"
+    );
+    // Not on a quiet day, nor before zirc.dev says, nor once a teammate joined.
+    assert_eq!(shown(&chat, &done, today(0, 0)), None);
+    assert_eq!(shown(&chat, &done, PromptContext::default()), None);
+    assert_eq!(shown(&chat, &[1, 2, 3, 4, 5, 6, 8], today(4, 2)), None);
+    assert!(!wants_today(&progress(&[1, 2, 3, 4, 5])));
+}
+
+#[test]
+fn not_now_puts_a_prompt_away_for_a_week_once_and_dismiss_for_good() {
+    let day = 24 * 60 * 60;
+    let not_now = PromptLater {
+        label: "Not now".to_owned(),
+        back_after_days: Some(7),
+    };
+    let once = PutAway::default().again(&not_now, 0);
+    assert!(!PutAway::default().hides(0));
+    assert!(once.hides(6 * day));
+    assert!(!once.hides(7 * day), "back a week later");
+    let twice = once.again(&not_now, 7 * day);
+    assert!(twice.hides(1000 * day), "then gone for good");
+    let dismiss = PromptLater {
+        back_after_days: None,
+        ..not_now
+    };
+    assert!(PutAway::default().again(&dismiss, 0).hides(1000 * day));
+    // The phone's card is dismissed for good.
+    let hi = shown(&listening(), &[1, 2, 3], PHONE).expect("the phone's step");
+    assert_eq!(hi.later.map(|l| l.back_after_days), Some(None));
 }

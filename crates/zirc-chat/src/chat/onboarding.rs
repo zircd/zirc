@@ -8,14 +8,15 @@
 //! ([`zirc_proto::onboarding::progress`]): nothing here decides it again.
 
 use chrono::NaiveDateTime;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use zirc_proto::ci;
-use zirc_proto::onboarding::{Progress, State, id};
+use zirc_proto::onboarding::{INVITE_PATH, Progress, State, Today, id};
 
 use super::flat::RichSpan;
 use super::lines::Keys;
 use super::rich::Span;
+use super::words::{DISMISS, NOT_NOW};
 use super::{Callout, Chat, EntryKind, agent};
 
 /// What the card over an agent's conversation is headed, in every app.
@@ -64,6 +65,55 @@ pub enum PromptAction {
         /// What's said.
         text: String,
     },
+    /// Opens zirc.dev's page at `path`, for the organisation the app is signed in to
+    /// ([`INVITE_PATH`]).
+    Page {
+        /// The page's path on zirc.dev.
+        path: String,
+    },
+}
+
+/// A prompt's second button, that puts it away: logged as dismissed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct PromptLater {
+    /// What it says: `Not now`.
+    pub label: String,
+    /// The days after which it's back, the first time it's put away; the second time, and
+    /// with none, it's gone for good.
+    pub back_after_days: Option<u32>,
+}
+
+/// How long a prompt the person put away stays away, as an app keeps it for its step.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PutAway {
+    /// How many times it was put away.
+    pub times: u32,
+    /// Until when (unix seconds) it stays away; none, for good.
+    pub until: Option<i64>,
+}
+
+impl PutAway {
+    /// Whether it stays away at `now` (unix seconds).
+    #[must_use]
+    pub fn hides(&self, now: i64) -> bool {
+        self.times > 0 && self.until.is_none_or(|until| now < until)
+    }
+
+    /// Put away once more at `now` with `later`: back after its days the first time, then
+    /// gone for good.
+    #[must_use]
+    pub fn again(self, later: &PromptLater, now: i64) -> Self {
+        let back = later
+            .back_after_days
+            .filter(|_| self.times == 0)
+            .map(|days| now + i64::from(days) * 24 * 60 * 60);
+        Self {
+            times: self.times + 1,
+            until: back,
+        }
+    }
 }
 
 /// A prompt's button.
@@ -98,6 +148,8 @@ pub struct Prompt {
     pub body: String,
     /// Its one action, until the person has taken it.
     pub button: Option<PromptButton>,
+    /// Atop Messages, the button that puts it away.
+    pub later: Option<PromptLater>,
     /// Once they have, what it says in the button's place: `✓ You asked tls-rotation to do
     /// it · 09:10`.
     pub done: Option<String>,
@@ -111,6 +163,31 @@ pub struct PromptContext {
     /// When the person took the next step's prompt's action, on the app's clock, if they
     /// have.
     pub acted: Option<NaiveDateTime>,
+    /// What their agents did today, as zirc.dev counts it, once asked ([`wants_today`]).
+    pub today: Option<Today>,
+}
+
+/// The days the invite card stays away the first time it's put away.
+const INVITE_BACK_AFTER_DAYS: u32 = 7;
+
+/// What a teammate's step is for, as zirc-proto words it for every surface
+/// ([`zirc_proto::onboarding::Step::about`]).
+fn teammate_about() -> String {
+    zirc_proto::onboarding::STEPS
+        .iter()
+        .find(|step| step.id == id::TEAMMATE)
+        .map_or_else(String::new, |step| step.about.to_owned())
+}
+
+/// Whether an app should ask zirc.dev what the person's agents did today
+/// ([`zirc_proto::onboarding::TODAY_PATH`]): only once the invite card may show.
+#[must_use]
+pub fn wants_today(progress: &Progress) -> bool {
+    progress
+        .steps
+        .iter()
+        .find(|step| step.next)
+        .is_some_and(|next| matches!(next.id.as_str(), id::FIRST_OVERLAP | id::TEAMMATE))
 }
 
 impl Chat {
@@ -171,6 +248,9 @@ impl Chat {
             id::PHONE => self.say_hi(context),
             id::CI => self.connect_ci(context),
             id::FIRST_WAKE => self.see_a_wake(context),
+            // The first overlap asks nothing of the person, so while it waits, a teammate's
+            // step is prompted, as is the teammate's own.
+            id::FIRST_OVERLAP | id::TEAMMATE => Self::invite(progress, context),
             // The rest are prompted elsewhere: the dashboard, the terminal, #agents.
             _ => None,
         }
@@ -194,6 +274,49 @@ impl Chat {
             button: Some(PromptButton {
                 label: format!("Message {agent}"),
                 action: PromptAction::Open { name },
+            }),
+            later: Some(PromptLater {
+                label: DISMISS.to_owned(),
+                back_after_days: None,
+            }),
+            done: None,
+        })
+    }
+
+    /// A teammate's step, atop Messages once the person's agents woke today: how many
+    /// times, and the builds they fixed, as zirc.dev counts them, and Invite.
+    fn invite(progress: &Progress, context: PromptContext) -> Option<Prompt> {
+        let teammate = progress.steps.iter().find(|step| step.id == id::TEAMMATE)?;
+        let today = context.today?;
+        if teammate.state != State::Available || today.wakes == 0 {
+            return None;
+        }
+        let woke = match today.wakes {
+            1 => "once".to_owned(),
+            n => format!("{n} times"),
+        };
+        let fixed = match today.fixed {
+            0 => String::new(),
+            1 => " and fixed a build".to_owned(),
+            n => format!(" and fixed {n} builds"),
+        };
+        Some(Prompt {
+            step: id::TEAMMATE.to_owned(),
+            place: PromptPlace::Messages,
+            label: None,
+            tone: MESSAGES_TONE.to_owned(),
+            title: Some(format!("Your agents woke {woke} today{fixed}.")),
+            // The step's own words, as Get started and the terminal say it.
+            body: teammate_about(),
+            button: Some(PromptButton {
+                label: "Invite".to_owned(),
+                action: PromptAction::Page {
+                    path: INVITE_PATH.to_owned(),
+                },
+            }),
+            later: Some(PromptLater {
+                label: NOT_NOW.to_owned(),
+                back_after_days: Some(INVITE_BACK_AFTER_DAYS),
             }),
             done: None,
         })
@@ -228,6 +351,7 @@ impl Chat {
                     text: ci::CONNECT_ASK.to_owned(),
                 },
             }),
+            later: None,
             done,
         })
     }
@@ -256,6 +380,7 @@ impl Chat {
                     text: ci::test_failure_ask(),
                 },
             }),
+            later: None,
             done,
         })
     }
