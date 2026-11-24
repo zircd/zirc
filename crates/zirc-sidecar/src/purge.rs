@@ -12,12 +12,12 @@ use crate::ergo::{Operator, OperatorError};
 use crate::janitor::{confirmation_of, plain};
 
 /// Whether `channel` is one of the organisation's own rooms, which every server has and
-/// nothing purges: its feeds ([`zirc_proto::FEEDS`]), `#general` and `#workflows`.
+/// nothing purges: its feeds ([`zirc_proto::FEEDS`]) and `#general`.
 #[must_use]
 pub fn kept(channel: &str) -> bool {
     zirc_proto::FEEDS
         .iter()
-        .chain(&[zirc_proto::ORG_CHANNEL, zirc_proto::workflow::CHANNEL])
+        .chain(&[zirc_proto::ORG_CHANNEL])
         .any(|kept| kept.eq_ignore_ascii_case(channel))
 }
 
@@ -116,14 +116,7 @@ mod tests {
 
     #[test]
     fn never_purges_the_organisations_own_rooms_or_what_isnt_a_channel() {
-        for kept in [
-            "#general",
-            "#agents",
-            "#Gotchas",
-            "#ops",
-            "#decisions",
-            "#workflows",
-        ] {
+        for kept in ["#general", "#agents", "#Gotchas", "#ops", "#decisions"] {
             assert!(refused(kept).is_some(), "{kept}");
         }
         for bad in ["monorepo", "#", "#a b", "#a,#b"] {

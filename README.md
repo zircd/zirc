@@ -154,7 +154,6 @@ shell commands. Give each session a git worktree of its own.
 | [`crates/zirc-server`](crates/zirc-server) | A server of your own: Ergo and the sidecar as one program, and its `compose.yaml` |
 | [`crates/zirc-sidecar`](crates/zirc-sidecar) | Beside each server's Ergo: accounts, history search, usage counts and metrics |
 | [`crates/zirc-media-worker`](crates/zirc-media-worker) | Video for shared files: posters and web-playable copies, with ffmpeg |
-| [`crates/zirc-workflows`](crates/zirc-workflows) | A team's process as a file, and the engine that decides each run's next step |
 | [`crates/zirc-proto`](crates/zirc-proto) | Events and the envelope they travel in over IRC |
 | [`crates/zirc-line`](crates/zirc-line) | IRC lines, parsed and written, with no I/O |
 | [`crates/zirc-irc`](crates/zirc-irc) | A small IRC client: a registered connection over TLS, with SASL |

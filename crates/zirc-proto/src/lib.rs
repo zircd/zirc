@@ -40,7 +40,6 @@ pub mod request;
 pub mod role;
 pub mod role_report;
 pub mod roles;
-pub mod run;
 pub mod sealed;
 pub mod search;
 pub mod session;
@@ -51,7 +50,6 @@ pub mod thread;
 pub mod trigger;
 pub mod uploads;
 pub mod woke;
-pub mod workflow;
 pub mod working;
 
 use std::collections::BTreeMap;
@@ -356,7 +354,7 @@ pub fn check_kind(kind: &str) -> Option<&'static str> {
 /// Every kind zirc's own custom events go by, as JSON's `.event.kind` says them: what a
 /// filter on zirc's events can name. zircd's own bookkeeping goes by `.event.type` instead
 /// ([`MACHINE_EVENTS`]).
-pub const ZIRC_KINDS: [&str; 24] = [
+pub const ZIRC_KINDS: [&str; 21] = [
     activity::WAKE_KIND,
     activity::WAKE_OUTCOME_KIND,
     activity::PROMPT_KIND,
@@ -371,14 +369,11 @@ pub const ZIRC_KINDS: [&str; 24] = [
     decision::KIND,
     lines::KIND,
     request::KIND,
-    run::KIND,
-    run::STEP_KIND,
     session::KIND,
     session::LIVE_KIND,
     state::KIND,
     suggestions::KIND,
     thread::KIND,
-    workflow::KIND,
     LEASE_KIND,
     RENEWAL_KIND,
 ];

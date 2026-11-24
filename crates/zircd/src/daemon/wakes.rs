@@ -243,7 +243,6 @@ pub(super) fn acting(request: &Request) -> Option<(&str, Acted)> {
         Request::Intend { session, .. } => Some((session, Acted::Intended)),
         Request::React { session, .. } => Some((session, Acted::Reacted)),
         Request::Emit { session, .. }
-        | Request::Workflow { session, .. }
         | Request::SetState { session, .. }
         | Request::Report { session, .. }
         | Request::CloseReport { session, .. }

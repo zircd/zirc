@@ -40,7 +40,6 @@ fn away(live: &[&str], away: &[(&str, u32, u32)]) -> Message {
                         (session.to_owned(), Away { since, waiting })
                     })
                     .collect(),
-                ..Default::default()
             }
             .event(),
         )

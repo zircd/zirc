@@ -20,7 +20,6 @@ zirc-proto = { path = "crates/zirc-proto" }
 zirc-media-worker = { path = "crates/zirc-media-worker" }
 zirc-irc = { path = "crates/zirc-irc" }
 zirc-line = { path = "crates/zirc-line" }
-zirc-workflows = { path = "crates/zirc-workflows" }
 zirc-chat = { path = "crates/zirc-chat" }
 zirc-core = { path = "crates/zirc-core" }
 zirc-sidecar = { path = "crates/zirc-sidecar" }

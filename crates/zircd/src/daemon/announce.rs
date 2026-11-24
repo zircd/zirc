@@ -115,7 +115,7 @@ impl Daemon {
     /// watched repository's: this machine in it is in each one's scope.
     ///
     /// When `who` is one of zirc's integrations, only which sessions are live is said again
-    /// (the workflows' host reads roles from it): they post or read history and go, and
+    /// (the roles' nicks read it): they post or read history and go, and
     /// never read working sets, intents or leases. CI joins for each line it says, and saying
     /// all of it again for each, some 370 lines here every 8 seconds, was more than Ergo lets
     /// a connection send: it held every line this machine sent back by minutes (24 Nov 2026).

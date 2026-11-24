@@ -821,7 +821,7 @@ impl Roles {
 }
 
 /// The roles' names now, which count as zirc's own accounts, never a person's
-/// ([`crate::workflows::is_zircs_own`]).
+/// ([`crate::nicks::is_zircs_own`]).
 static NAMES: std::sync::LazyLock<std::sync::RwLock<BTreeSet<String>>> =
     std::sync::LazyLock::new(std::sync::RwLock::default);
 
@@ -941,7 +941,6 @@ impl Host {
         tokio::spawn(connection::run(
             config,
             CHANNELS.iter().map(|c| (*c).to_owned()).collect(),
-            BTreeMap::new(),
             todo,
             hear.clone(),
         ));
@@ -953,7 +952,7 @@ impl Host {
         let Some(account) = crate::exporter::known_account(account).map(str::to_lowercase) else {
             return Sender::Other;
         };
-        if crate::workflows::is_zircs_own(&account) {
+        if crate::nicks::is_zircs_own(&account) {
             Sender::Other
         } else if zirc_proto::names::is_integration_nick(&account) {
             Sender::Integration
@@ -965,12 +964,9 @@ impl Host {
     }
 
     /// What `heard`, by one of the nicks, says to the roles: what came to a nick directly,
-    /// and, as the first nick heard it in a channel, what was said there. What a nick caught
-    /// up on when it joined, it already acted on when it was said.
+    /// and, as the first nick heard it in a channel, what was said there.
     fn input(&self, heard: connection::Heard, links: &Links) -> Option<Input> {
-        let connection::Heard::Live { nick, line } = heard else {
-            return None;
-        };
+        let connection::Heard::Live { nick, line } = heard;
         if !matches!(line.command.as_str(), "PRIVMSG" | "TAGMSG") {
             return None;
         }

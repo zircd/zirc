@@ -245,452 +245,6 @@
       ],
       "description": "Who may query this machine's agents."
     },
-    "Event": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "intent"
-            },
-            "summary": {
-              "type": "string",
-              "description": "One line, as a person would say it."
-            },
-            "paths": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "Paths or directories it expects to touch, relative to the repository root."
-            },
-            "expires": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0,
-              "description": "When it ends unless renewed, in seconds since the Unix epoch, by the sender's\nclock. One without lasts until its session is done."
-            },
-            "lasts": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "uint64",
-              "minimum": 0,
-              "description": "How many seconds it lasts from when it was sent: from the message's server time,\nwhich works for replayed messages and other clocks alike. Readers prefer it to\n`expires`, which stays for readers that predate it."
-            }
-          },
-          "required": [
-            "type",
-            "summary",
-            "paths"
-          ],
-          "description": "What a session is about to work on, sent before it starts editing so that others\nchanging the same paths hear of it while it's cheap to avoid. A session's intent\nreplaces its previous one, and ends when it expires or the session posts `done:` or\n`dropped:`.",
-          "title": "IntentEvent"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "working"
-            },
-            "paths": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "The paths."
-            },
-            "continued": {
-              "type": "boolean",
-              "description": "Whether this adds to the previous message's paths rather than replacing them."
-            },
-            "worktree": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "description": "The name of the worktree's directory the paths are in; never its full path."
-            },
-            "branch": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "description": "The branch checked out in that worktree, unless its HEAD is detached."
-            },
-            "part": {
-              "type": [
-                "array",
-                "null"
-              ],
-              "items": {
-                "type": "integer",
-                "format": "uint32",
-                "minimum": 0
-              },
-              "minItems": 2,
-              "maxItems": 2,
-              "description": "Which part of the set this is and how many there are, counting from 1, or\n[`ALONE`] for one worktree's set said alone."
-            },
-            "base": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "description": "The commit the worktree's work is built on: the newest commit of the remote's\ndefault branch that it has, by the first [`BASE_DIGITS`] digits of its id, as a\nline has little room. With it, anyone who knows what landed since can tell\nwhether the work is behind a landing. Left out without a remote default branch,\nwhere it doesn't fit, and by machines that predate it."
-            },
-            "committed": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "The paths the worktree's own commits since `base` change, beyond `paths`: with\n`paths`, all its work changes. A worktree with commits of its own and nothing\nuncommitted is said with these alone, which readers that predate them take as a\nworktree with no changes."
-            }
-          },
-          "required": [
-            "type",
-            "paths"
-          ],
-          "description": "Every path a machine has uncommitted changes in, relative to the repository root,\nsent whenever the set changes and when someone joins. A set too long for one line is\nsplit: the first part replaces what the receiver knew, and the parts after it are\nmarked `continued` and add to it.\n\nA machine with several worktrees sends one part per worktree with changes, each\nnaming its worktree and branch, and the message's session is the one working there.\nA reader that ignores `worktree` and `branch` still gets the machine's whole set. A\nmachine whose worktrees are all clean sends one part with no paths.\n\nEach part also says which it is of how many, so a reader that gets only some of\nthem, as a history replay cut short can give it, can tell and keep what it had.\n\nBetween whole sets, a machine says a worktree's changed set alone, numbered [`ALONE`]:\nit replaces that worktree's set and no other.",
-          "title": "WorkingEvent"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "commit"
-            },
-            "branch": {
-              "type": "string",
-              "description": "The branch it was made on."
-            },
-            "sha": {
-              "type": "string",
-              "description": "The commit's full id."
-            },
-            "subject": {
-              "type": "string",
-              "description": "The first line of its message."
-            },
-            "paths": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "The paths it changed, relative to the repository's root, so a session changing\nthem too hears of it before the branch lands. Left out of a very large commit."
-            },
-            "repo": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "description": "The repository's web address, such as `https://github.com/zircapp/monorepo`, so\napps can link the commit, its branch and its files. Left out where it has none."
-            }
-          },
-          "required": [
-            "type",
-            "branch",
-            "sha",
-            "subject"
-          ],
-          "description": "A new commit.",
-          "title": "CommitEvent"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "push"
-            },
-            "branch": {
-              "type": "string",
-              "description": "The branch pushed."
-            },
-            "head": {
-              "type": "string",
-              "description": "The commit the branch now points at."
-            },
-            "forced": {
-              "type": "boolean",
-              "description": "Whether the push rewrote history."
-            },
-            "subjects": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "The subjects of the commits it pushed, oldest first, so a branch's name needn't\nsay what it holds."
-            },
-            "paths": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "The paths its commits changed, relative to the repository's root, so a session\nworking on them hears that it may need to rebase. Left out of a very large push."
-            },
-            "base": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "description": "The commit the remote branch pointed at before, which `lines` count in."
-            },
-            "lines": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "array",
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "integer",
-                    "format": "uint32",
-                    "minimum": 0
-                  },
-                  "minItems": 2,
-                  "maxItems": 2
-                }
-              },
-              "description": "For each path, the lines of `base` the push changes, as `[first, count]`, with\na count of 0 for lines added after `first`: so a machine without the push's\ncommits can tell whether its own changes to those lines will conflict. Left out\nfirst of a large push."
-            },
-            "repo": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "description": "The repository's web address, such as `https://github.com/zircapp/monorepo`, so\napps can link the push, its branch and its files. Left out where it has none."
-            },
-            "on": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "description": "The branch not landed yet that this one is built on, as the pushing machine's git\nsays ([`zirc stack`]'s): whoever works on that one hears that someone builds on it,\nbefore they amend or force-push it from under them."
-            }
-          },
-          "required": [
-            "type",
-            "branch",
-            "head",
-            "forced"
-          ],
-          "description": "A push to the remote.",
-          "title": "PushEvent"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "text"
-            },
-            "body": {
-              "type": "string",
-              "description": "The text."
-            }
-          },
-          "required": [
-            "type",
-            "body"
-          ],
-          "description": "Free text, for people.",
-          "title": "TextEvent"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "query"
-            },
-            "id": {
-              "type": "string",
-              "description": "What names it, to answer it by: unique enough among the asker's queries."
-            },
-            "to": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "description": "The session on the machine it's for; every session there when absent."
-            },
-            "text": {
-              "type": "string",
-              "description": "The question."
-            }
-          },
-          "required": [
-            "type",
-            "id",
-            "text"
-          ],
-          "description": "A question for agents, sent with `zirc ask` to a machine's nick: unlike other\nmessages to a machine, `zirc watch` delivers it, to the session it names or to every\nsession there, when the machine lets the sender query its agents. It's a teammate's\nrequest, never the person's instruction.",
-          "title": "QueryEvent"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "answer"
-            },
-            "query": {
-              "type": "string",
-              "description": "The query's id."
-            },
-            "to": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "description": "The session that asked, as the query's message named it."
-            },
-            "text": {
-              "type": "string",
-              "description": "The answer."
-            }
-          },
-          "required": [
-            "type",
-            "query",
-            "text"
-          ],
-          "description": "The answer to a [`Event::Query`], sent with `zirc reply` to the asking machine's\nnick, which hands it to the session that asked.",
-          "title": "AnswerEvent"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "note"
-            },
-            "to": {
-              "type": "string",
-              "description": "The session it's for: its id, or the name it goes by."
-            },
-            "text": {
-              "type": "string",
-              "description": "What it says."
-            }
-          },
-          "required": [
-            "type",
-            "to",
-            "text"
-          ],
-          "description": "A note for one agent session, sent with `zirc note` to the nick of the machine it works\non: `zirc watch` delivers it to that session alone, when the machine lets the sender\nquery its agents, as it does a [`Event::Query`]. Unlike a query it asks for no answer:\nit's a report or a heads-up for one session, which nobody else need read. It's a\nteammate's word, never the person's instruction.",
-          "title": "NoteEvent"
-        },
-        {
-          "$ref": "#/$defs/File",
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "file"
-            }
-          },
-          "required": [
-            "type"
-          ],
-          "description": "A file someone shared, stored by zirc.dev: an image, a video or any other file. The\nhuman text is its link, which works in any client once the person is signed in to\nzirc.dev; zirc's apps draw it inline from what's here without asking first.",
-          "title": "FileEvent"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "custom"
-            },
-            "kind": {
-              "type": "string",
-              "description": "What kind of event it is, in the team's namespace: `x-<team>/<name>`, such as\n`x-acme/deploy`. See [`check_kind`]."
-            },
-            "data": {
-              "description": "Whatever the team wants it to carry."
-            },
-            "text": {
-              "type": "string",
-              "description": "What it says, for people."
-            }
-          },
-          "required": [
-            "type",
-            "kind",
-            "text"
-          ],
-          "description": "An event a team made up, such as a deploy or who's on call, sent by `zirc emit`: zirc\ncarries it without knowing what it means. Readers that predate it drop it, and plain\nIRC clients and zirc's apps show its text.",
-          "title": "CustomEvent"
-        }
-      ],
-      "description": "Something one agent or person tells the others."
-    },
-    "File": {
-      "type": "object",
-      "properties": {
-        "url": {
-          "type": "string",
-          "description": "Where it's downloaded: `https://zirc.dev/m/<org>/<id>`, its id unguessable and never\nderived from its name. An image is resized by asking for it with `?w=<width>`."
-        },
-        "name": {
-          "type": "string",
-          "description": "Its name as uploaded, maybe shortened to fit the line."
-        },
-        "mime": {
-          "type": "string",
-          "description": "Its media type, from its bytes rather than its name, such as `image/webp`."
-        },
-        "size": {
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0,
-          "description": "Its size in bytes."
-        },
-        "width": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0,
-          "description": "An image's or video's width in pixels."
-        },
-        "height": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0,
-          "description": "An image's or video's height in pixels."
-        },
-        "duration_ms": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0,
-          "description": "A video's length in milliseconds."
-        }
-      },
-      "required": [
-        "url",
-        "name",
-        "mime",
-        "size"
-      ],
-      "description": "A file shared in chat: what [`Event::File`] carries."
-    },
     "StateWait": {
       "type": "object",
       "properties": {
@@ -1573,6 +1127,452 @@
         "event"
       ],
       "description": "An [`Event`] with who sent it."
+    },
+    "Event": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "intent"
+            },
+            "summary": {
+              "type": "string",
+              "description": "One line, as a person would say it."
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Paths or directories it expects to touch, relative to the repository root."
+            },
+            "expires": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "When it ends unless renewed, in seconds since the Unix epoch, by the sender's\nclock. One without lasts until its session is done."
+            },
+            "lasts": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "description": "How many seconds it lasts from when it was sent: from the message's server time,\nwhich works for replayed messages and other clocks alike. Readers prefer it to\n`expires`, which stays for readers that predate it."
+            }
+          },
+          "required": [
+            "type",
+            "summary",
+            "paths"
+          ],
+          "description": "What a session is about to work on, sent before it starts editing so that others\nchanging the same paths hear of it while it's cheap to avoid. A session's intent\nreplaces its previous one, and ends when it expires or the session posts `done:` or\n`dropped:`.",
+          "title": "IntentEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "working"
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The paths."
+            },
+            "continued": {
+              "type": "boolean",
+              "description": "Whether this adds to the previous message's paths rather than replacing them."
+            },
+            "worktree": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The name of the worktree's directory the paths are in; never its full path."
+            },
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The branch checked out in that worktree, unless its HEAD is detached."
+            },
+            "part": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "Which part of the set this is and how many there are, counting from 1, or\n[`ALONE`] for one worktree's set said alone."
+            },
+            "base": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The commit the worktree's work is built on: the newest commit of the remote's\ndefault branch that it has, by the first [`BASE_DIGITS`] digits of its id, as a\nline has little room. With it, anyone who knows what landed since can tell\nwhether the work is behind a landing. Left out without a remote default branch,\nwhere it doesn't fit, and by machines that predate it."
+            },
+            "committed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The paths the worktree's own commits since `base` change, beyond `paths`: with\n`paths`, all its work changes. A worktree with commits of its own and nothing\nuncommitted is said with these alone, which readers that predate them take as a\nworktree with no changes."
+            }
+          },
+          "required": [
+            "type",
+            "paths"
+          ],
+          "description": "Every path a machine has uncommitted changes in, relative to the repository root,\nsent whenever the set changes and when someone joins. A set too long for one line is\nsplit: the first part replaces what the receiver knew, and the parts after it are\nmarked `continued` and add to it.\n\nA machine with several worktrees sends one part per worktree with changes, each\nnaming its worktree and branch, and the message's session is the one working there.\nA reader that ignores `worktree` and `branch` still gets the machine's whole set. A\nmachine whose worktrees are all clean sends one part with no paths.\n\nEach part also says which it is of how many, so a reader that gets only some of\nthem, as a history replay cut short can give it, can tell and keep what it had.\n\nBetween whole sets, a machine says a worktree's changed set alone, numbered [`ALONE`]:\nit replaces that worktree's set and no other.",
+          "title": "WorkingEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "commit"
+            },
+            "branch": {
+              "type": "string",
+              "description": "The branch it was made on."
+            },
+            "sha": {
+              "type": "string",
+              "description": "The commit's full id."
+            },
+            "subject": {
+              "type": "string",
+              "description": "The first line of its message."
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The paths it changed, relative to the repository's root, so a session changing\nthem too hears of it before the branch lands. Left out of a very large commit."
+            },
+            "repo": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The repository's web address, such as `https://github.com/zircapp/monorepo`, so\napps can link the commit, its branch and its files. Left out where it has none."
+            }
+          },
+          "required": [
+            "type",
+            "branch",
+            "sha",
+            "subject"
+          ],
+          "description": "A new commit.",
+          "title": "CommitEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "push"
+            },
+            "branch": {
+              "type": "string",
+              "description": "The branch pushed."
+            },
+            "head": {
+              "type": "string",
+              "description": "The commit the branch now points at."
+            },
+            "forced": {
+              "type": "boolean",
+              "description": "Whether the push rewrote history."
+            },
+            "subjects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The subjects of the commits it pushed, oldest first, so a branch's name needn't\nsay what it holds."
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The paths its commits changed, relative to the repository's root, so a session\nworking on them hears that it may need to rebase. Left out of a very large push."
+            },
+            "base": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The commit the remote branch pointed at before, which `lines` count in."
+            },
+            "lines": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              },
+              "description": "For each path, the lines of `base` the push changes, as `[first, count]`, with\na count of 0 for lines added after `first`: so a machine without the push's\ncommits can tell whether its own changes to those lines will conflict. Left out\nfirst of a large push."
+            },
+            "repo": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The repository's web address, such as `https://github.com/zircapp/monorepo`, so\napps can link the push, its branch and its files. Left out where it has none."
+            },
+            "on": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The branch not landed yet that this one is built on, as the pushing machine's git\nsays ([`zirc stack`]'s): whoever works on that one hears that someone builds on it,\nbefore they amend or force-push it from under them."
+            }
+          },
+          "required": [
+            "type",
+            "branch",
+            "head",
+            "forced"
+          ],
+          "description": "A push to the remote.",
+          "title": "PushEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "text"
+            },
+            "body": {
+              "type": "string",
+              "description": "The text."
+            }
+          },
+          "required": [
+            "type",
+            "body"
+          ],
+          "description": "Free text, for people.",
+          "title": "TextEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "query"
+            },
+            "id": {
+              "type": "string",
+              "description": "What names it, to answer it by: unique enough among the asker's queries."
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The session on the machine it's for; every session there when absent."
+            },
+            "text": {
+              "type": "string",
+              "description": "The question."
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "text"
+          ],
+          "description": "A question for agents, sent with `zirc ask` to a machine's nick: unlike other\nmessages to a machine, `zirc watch` delivers it, to the session it names or to every\nsession there, when the machine lets the sender query its agents. It's a teammate's\nrequest, never the person's instruction.",
+          "title": "QueryEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "answer"
+            },
+            "query": {
+              "type": "string",
+              "description": "The query's id."
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The session that asked, as the query's message named it."
+            },
+            "text": {
+              "type": "string",
+              "description": "The answer."
+            }
+          },
+          "required": [
+            "type",
+            "query",
+            "text"
+          ],
+          "description": "The answer to a [`Event::Query`], sent with `zirc reply` to the asking machine's\nnick, which hands it to the session that asked.",
+          "title": "AnswerEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "note"
+            },
+            "to": {
+              "type": "string",
+              "description": "The session it's for: its id, or the name it goes by."
+            },
+            "text": {
+              "type": "string",
+              "description": "What it says."
+            }
+          },
+          "required": [
+            "type",
+            "to",
+            "text"
+          ],
+          "description": "A note for one agent session, sent with `zirc note` to the nick of the machine it works\non: `zirc watch` delivers it to that session alone, when the machine lets the sender\nquery its agents, as it does a [`Event::Query`]. Unlike a query it asks for no answer:\nit's a report or a heads-up for one session, which nobody else need read. It's a\nteammate's word, never the person's instruction.",
+          "title": "NoteEvent"
+        },
+        {
+          "$ref": "#/$defs/File",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "file"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "description": "A file someone shared, stored by zirc.dev: an image, a video or any other file. The\nhuman text is its link, which works in any client once the person is signed in to\nzirc.dev; zirc's apps draw it inline from what's here without asking first.",
+          "title": "FileEvent"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "custom"
+            },
+            "kind": {
+              "type": "string",
+              "description": "What kind of event it is, in the team's namespace: `x-<team>/<name>`, such as\n`x-acme/deploy`. See [`check_kind`]."
+            },
+            "data": {
+              "description": "Whatever the team wants it to carry."
+            },
+            "text": {
+              "type": "string",
+              "description": "What it says, for people."
+            }
+          },
+          "required": [
+            "type",
+            "kind",
+            "text"
+          ],
+          "description": "An event a team made up, such as a deploy or who's on call, sent by `zirc emit`: zirc\ncarries it without knowing what it means. Readers that predate it drop it, and plain\nIRC clients and zirc's apps show its text.",
+          "title": "CustomEvent"
+        }
+      ],
+      "description": "Something one agent or person tells the others."
+    },
+    "File": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Where it's downloaded: `https://zirc.dev/m/<org>/<id>`, its id unguessable and never\nderived from its name. An image is resized by asking for it with `?w=<width>`."
+        },
+        "name": {
+          "type": "string",
+          "description": "Its name as uploaded, maybe shortened to fit the line."
+        },
+        "mime": {
+          "type": "string",
+          "description": "Its media type, from its bytes rather than its name, such as `image/webp`."
+        },
+        "size": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "Its size in bytes."
+        },
+        "width": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "An image's or video's width in pixels."
+        },
+        "height": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "description": "An image's or video's height in pixels."
+        },
+        "duration_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "description": "A video's length in milliseconds."
+        }
+      },
+      "required": [
+        "url",
+        "name",
+        "mime",
+        "size"
+      ],
+      "description": "A file shared in chat: what [`Event::File`] carries."
     },
     "EventLevel": {
       "oneOf": [
@@ -4144,40 +4144,6 @@
           "properties": {
             "op": {
               "type": "string",
-              "const": "workflow"
-            },
-            "repo": {
-              "type": "string",
-              "description": "Anywhere inside a watched repository."
-            },
-            "session": {
-              "type": "string",
-              "description": "Who's sending it: an agent session or a person."
-            },
-            "channel": {
-              "type": "string",
-              "description": "Where: `#workflows`, or the workflow's channel."
-            },
-            "event": {
-              "$ref": "#/$defs/Event",
-              "description": "What."
-            }
-          },
-          "required": [
-            "op",
-            "repo",
-            "session",
-            "channel",
-            "event"
-          ],
-          "description": "Send something for the organisation's workflows ([`zirc_proto::workflow`]) to\n`channel`, in the organisation of the repository containing `repo`: a workflow's file\nto `#workflows`, what a worker did with a step ([`zirc_proto::run::StepAction`]), or\nwords to a workflow's nick, as [`zirc_proto::Event::Text`].",
-          "title": "WorkflowRequest"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "op": {
-              "type": "string",
               "const": "intend"
             },
             "repo": {
@@ -5841,7 +5807,7 @@
           "items": {
             "type": "string"
           },
-          "description": "On a landing that passed: the paths it changed, from the repository's root, for what\nfollows landings by where they land (a workflow's `landed` trigger). Where it changed\nmany files in a directory, CI may name the directory, ending in `/`, in their place."
+          "description": "On a landing that passed: the paths it changed, from the repository's root, for what\nfollows landings by where they land (a role's `landed` trigger). Where it changed\nmany files in a directory, CI may name the directory, ending in `/`, in their place."
         },
         "deploys": {
           "type": "array",

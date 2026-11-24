@@ -5295,7 +5295,6 @@ dependencies = [
  "zirc-proto",
  "zirc-test-ergo",
  "zirc-tui",
- "zirc-workflows",
  "zircd",
 ]
 
@@ -5486,7 +5485,6 @@ dependencies = [
  "zirc-proto",
  "zirc-test-ergo",
  "zirc-test-irc",
- "zirc-workflows",
 ]
 
 [[package]]
@@ -5542,16 +5540,6 @@ dependencies = [
  "zirc-test-ergo",
  "zirc-test-irc",
  "zirc-theme",
-]
-
-[[package]]
-name = "zirc-workflows"
-version = "0.1.65"
-dependencies = [
- "ring",
- "serde_json",
- "toml",
- "zirc-proto",
 ]
 
 [[package]]

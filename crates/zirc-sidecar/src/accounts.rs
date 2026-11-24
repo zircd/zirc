@@ -173,8 +173,6 @@ struct Ergo {
     visibility: tokio::sync::Mutex<Option<Visibility>>,
     /// Searches running now: a few at once, and the rest told to come back.
     searches: tokio::sync::Semaphore,
-    /// Whether the server runs workflows, as the controller last said (`crate::workflows`).
-    workflows: Arc<tokio::sync::watch::Sender<bool>>,
     /// People's and machines' names and pictures (`crate::profiles`).
     profiles: tokio::sync::Mutex<profiles::Profiles>,
     /// Devices' keys, and the login log (`crate::signin`).
@@ -262,41 +260,8 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
             }
         }));
     }
-    // The server's workflows, each as its own nick (crate::workflows), where the controller
-    // turns them on. An account that exists is never changed for one: a nick that's someone
-    // else's is refused.
-    let workflows = crate::workflows::Host {
-        host: ergo.irc.ip().to_string(),
-        port: ergo.irc.port(),
-        gate: ergo.gate.clone(),
-        token: ergo.token.clone(),
-        history: ergo.history.clone(),
-        machines: ergo.machines.clone(),
-        on: ergo.workflows.clone(),
-        admins: {
-            let ergo = ergo.clone();
-            Box::new(move || {
-                let ergo = ergo.clone();
-                Box::pin(async move {
-                    let mut people = ergo.owners.lock().await.accounts.clone();
-                    if let Some(content) = ergo.content.lock().await.as_ref() {
-                        people.extend(content.admins.iter().cloned());
-                    }
-                    people
-                })
-            })
-        },
-    };
-    let keeper = ergo.clone();
-    tokio::spawn(workflows.run(move |nick| {
-        let ergo = keeper.clone();
-        // Never a name the server knows as someone's: only zirc.dev registers people's and
-        // machines' accounts (`zirc_core::agents::standing` rests on it).
-        async move {
-            !someones(&ergo, &nick).await && integration_account(&ergo, &nick, false).await.is_ok()
-        }
-    }));
     spawn_roles(&ergo);
+    tokio::spawn(retire_workflow_accounts(ergo.clone()));
     // Roles' open items (crate::items), from the reports said in #ops: each new one, and each
     // reminder, wakes the role's holder through its nick, or waits for the next.
     let roles = ergo.roles.clone();
@@ -322,6 +287,48 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
     let public = tokio::net::TcpListener::bind(options.content_listen).await?;
     tokio::spawn(axum::serve(public, content::router(ergo.clone())).into_future());
     axum::serve(tokio::net::TcpListener::bind(listen).await?, routes(ergo)).await
+}
+
+/// The accounts the retired workflows ran as, on the one server that ran them (zirc's own
+/// organisation's): their host and each workflow's nick. Workflows went whole on 24 Nov 2026,
+/// and the user chose to erase these with them rather than leave them counted as accounts;
+/// this goes once every tenant's sidecar has run it.
+const RETIRED_WORKFLOW_ACCOUNTS: [&str; 6] = [
+    "zirc-workflows",
+    "master_bot",
+    "flake_bot",
+    "warn_bot",
+    "k8s_bot",
+    "drill_bot",
+];
+
+/// How often erasing the retired accounts is tried before it's left to the next start.
+const RETIRE_TRIES: u32 = 10;
+
+/// Erases those of [`RETIRED_WORKFLOW_ACCOUNTS`] the server still has, once Ergo answers:
+/// their past messages stay in its history under their names.
+async fn retire_workflow_accounts(ergo: Arc<Ergo>) {
+    for _ in 0..RETIRE_TRIES {
+        match registered(&ergo.api).await {
+            Ok(accounts) => {
+                for name in accounts.iter().filter(|name| {
+                    RETIRED_WORKFLOW_ACCOUNTS.contains(&name.to_lowercase().as_str())
+                }) {
+                    match ergo.operator.erase(name).await {
+                        Ok(()) => info!(account = %name, "erased a retired workflow's account"),
+                        Err(failure) => {
+                            warn!(account = %name, %failure, "couldn't erase a retired workflow's account");
+                        }
+                    }
+                }
+                return;
+            }
+            Err(failure) => {
+                debug!(%failure, "Ergo isn't answering yet: erasing the retired accounts waits");
+            }
+        }
+        tokio::time::sleep(SWEEP).await;
+    }
 }
 
 /// Every so often, gives the owners ops in the channels made since (`teams::sweep`).
@@ -405,7 +412,6 @@ fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
         colleagues: tokio::sync::Mutex::new(None),
         hints: crate::hints::Store::beside(&history),
         searches: tokio::sync::Semaphore::new(SEARCHES),
-        workflows: Arc::new(tokio::sync::watch::Sender::new(false)),
         history,
         push_subscriber: options.push_subscriber.clone(),
     })
@@ -447,11 +453,6 @@ fn routes(ergo: Arc<Ergo>) -> Router {
             put(add_phone).delete(remove_phone),
         )
         .route("/v1/server", get(describe))
-        .route(
-            zirc_proto::workflow::LIST_PATH,
-            get(list_workflows).post(deploy_workflow),
-        )
-        .route(zirc_proto::workflow::RUNS_PATH, get(workflow_runs))
         .route(zirc_proto::role_report::ITEMS_PATH, get(role_items))
         .route("/v1/channels", get(list_channels))
         .route("/v1/channels/purge", get(old_channels).post(purge_channels))
@@ -528,7 +529,7 @@ async fn authorize_controller(
 /// Makes the server's team channels as the controller asks, and says how each came out:
 /// `{"channels": {"#name": null | "what went wrong"}}`.
 /// Starts the organisation's roles' nicks (`crate::roles`), each as its own account, refused
-/// as workflows' nicks are where the name is someone's.
+/// where the name is someone's.
 fn spawn_roles(ergo: &Arc<Ergo>) {
     let said = ergo
         .roles_said
@@ -653,11 +654,6 @@ async fn set_teams(
     } else {
         desired.public.keys.clone()
     };
-    ergo.workflows.send_if_modified(|on| {
-        let changed = *on != desired.public.workflows;
-        *on = desired.public.workflows;
-        changed
-    });
     // Whose machines are, as zirc.dev says now; a controller from before them says nothing, and
     // what was said before stands.
     match &desired.machines {
@@ -1271,52 +1267,6 @@ async fn role_items(State(ergo): State<Arc<Ergo>>, Path(role): Path<String>) -> 
     }
 }
 
-/// What `GET /v1/workflows/<name>/runs` is asked.
-#[derive(Deserialize)]
-struct RunsQuery {
-    /// Where the page starts: the page before's `before`.
-    #[serde(default)]
-    before: Option<String>,
-}
-
-/// `GET /v1/workflows/<name>/runs`: a page of the workflow's ended runs, read back from the
-/// history of its channel ([`crate::workflows::runs`]).
-async fn workflow_runs(
-    State(ergo): State<Arc<Ergo>>,
-    Path(name): Path<String>,
-    Query(query): Query<RunsQuery>,
-) -> Response {
-    let before = match query.before.as_deref().map(str::parse::<i64>) {
-        None => None,
-        Some(Ok(before)) => Some(before),
-        Some(Err(_)) => {
-            return error(
-                StatusCode::BAD_REQUEST,
-                "before",
-                "before is a page's cursor",
-            );
-        }
-    };
-    let (workflows, _) = crate::workflows::listed();
-    let Some(workflow) = workflows.into_iter().find(|w| w.name == name) else {
-        return error(
-            StatusCode::NOT_FOUND,
-            "workflow",
-            format!("no workflow {name}"),
-        );
-    };
-    let history = ergo.history.clone();
-    let page = tokio::task::spawn_blocking(move || {
-        crate::workflows::runs::page(&history, &workflow.channel, &workflow.nick, before)
-    })
-    .await;
-    match page {
-        Ok(Ok(page)) => Json(page).into_response(),
-        Ok(Err(failure)) => history_failed(failure),
-        Err(failure) => history_failed(failure),
-    }
-}
-
 /// What `GET /v1/activity` is asked.
 #[derive(Deserialize)]
 struct ActivityQuery {
@@ -1602,8 +1552,8 @@ struct Outcome {
 }
 
 /// Whether the server knows `name` as a person's or a machine's, as zirc.dev last told it: an
-/// owner, an admin, a machine or client, or the owner of one. A workflow's nick is never one
-/// of them: deployed as one, it would take that account before zirc.dev registers it.
+/// owner, an admin, a machine or client, or the owner of one. A role's nick is never one of
+/// them: named as one, it would take that account before zirc.dev registers it.
 async fn someones(ergo: &Ergo, name: &str) -> bool {
     let name = name.to_lowercase();
     if ergo.owners.lock().await.accounts.contains(&name)
@@ -1660,76 +1610,6 @@ async fn integration_account(ergo: &Ergo, nick: &str, reset: bool) -> Result<(),
     }
 }
 
-/// `GET /v1/workflows`: the workflows the server runs and their runs that aren't finished
-/// ([`crate::workflows::listed`]), and whether it runs them at all.
-async fn list_workflows(State(ergo): State<Arc<Ergo>>) -> Response {
-    let on = *ergo.workflows.borrow();
-    let (workflows, refused) = crate::workflows::listed();
-    Json(zirc_proto::workflow::Hosting {
-        on,
-        workflows,
-        refused,
-    })
-    .into_response()
-}
-
-/// `POST /v1/workflows`: a deploy from zirc.dev's dashboard, for the person signed in there.
-/// The file is checked here, then said in `#workflows` as zirc's own account, where the
-/// workflows' host hears it as it hears any deploy and holds it to the same rules: whose it
-/// is to replace, and never under a run. Whether it took it shows in the list.
-async fn deploy_workflow(
-    State(ergo): State<Arc<Ergo>>,
-    Json(body): Json<zirc_proto::workflow::Deploying>,
-) -> Response {
-    use zirc_proto::workflow::{CHANNEL, Deploy, Sent};
-    if !*ergo.workflows.borrow() {
-        return error(
-            StatusCode::CONFLICT,
-            "off",
-            "workflows aren't turned on for this organisation",
-        );
-    }
-    if !zirc_proto::names::is_account_name(&body.by) {
-        return error(StatusCode::BAD_REQUEST, "invalid", "by isn't an account");
-    }
-    let workflow = match zirc_workflows::parse(&body.source) {
-        Ok(workflow) => workflow,
-        Err(why) => return error(StatusCode::BAD_REQUEST, "invalid", why),
-    };
-    let sent = Sent {
-        name: workflow.name.clone(),
-        version: zirc_workflows::version(&body.source),
-    };
-    let deploy = Deploy {
-        name: workflow.name,
-        nick: workflow.nick,
-        source: body.source,
-        by: Some(body.by),
-    };
-    let nick = zirc_proto::names::SYSTEM;
-    if let Err(response) = integration_account(&ergo, nick, false).await {
-        return *response;
-    }
-    let config = say::config(
-        &ergo.irc.ip().to_string(),
-        ergo.irc.port(),
-        ergo.gate.as_deref(),
-        &ergo.token,
-        nick,
-    );
-    let message = zirc_proto::Message::new("dashboard", deploy.event());
-    match say::post(&config, CHANNEL, &message).await {
-        Ok(()) => {
-            info!(workflow = sent.name, "the dashboard deployed a workflow");
-            (StatusCode::ACCEPTED, Json(sent)).into_response()
-        }
-        Err(failure) => {
-            warn!(workflow = sent.name, %failure, "the dashboard's deploy couldn't be said");
-            error(StatusCode::BAD_GATEWAY, "say", failure.to_string())
-        }
-    }
-}
-
 /// `POST /v1/say`: an integration's post, as `crate::say` says.
 async fn say(State(ergo): State<Arc<Ergo>>, Json(body): Json<say::Say>) -> Response {
     let message = match body.message() {
@@ -1783,14 +1663,14 @@ fn unsettable(name: &str) -> Option<Response> {
             "names are [a-z][a-z0-9_-], at most 32 characters",
         ));
     }
-    // A name a workflow runs as is the workflow's account, made by the server: never taken for
-    // a person or a machine, whose messages would then be the workflow's and whose sign-ins
-    // would join its connection. Its workflow goes first.
-    crate::workflows::is_zircs_own(name).then(|| {
+    // A name zirc's own account has, the recorder's or a role's, made by the server: never
+    // taken for a person or a machine, whose messages would then be zirc's and whose sign-ins
+    // would join its connection.
+    crate::nicks::is_zircs_own(name).then(|| {
         error(
             StatusCode::CONFLICT,
             "taken",
-            "a workflow runs as that name: remove it first",
+            "zirc's own account has that name",
         )
     })
 }
@@ -2641,8 +2521,8 @@ pub(crate) async fn sessions(api: &Api) -> Result<Vec<(String, i64)>, reqwest::E
     let lookups = registered(api)
         .await?
         .into_iter()
-        // zirc's own, always connected, are nobody: the recorder, and the workflows'.
-        .filter(|name| !crate::workflows::is_zircs_own(name))
+        // zirc's own, always connected, are nobody: the recorder, and the roles'.
+        .filter(|name| !crate::nicks::is_zircs_own(name))
         .map(|name| async move {
             let whois: Option<Whois> = api.call("whois", json!({"nickname": name})).await.ok();
             let sessions = whois

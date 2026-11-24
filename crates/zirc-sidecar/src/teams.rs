@@ -57,7 +57,7 @@ pub struct Desired {
     /// history it serves.
     #[serde(default)]
     pub visibility: zirc_proto::desired::Visibility,
-    /// The keys zirc.dev signs browser logins with, and whether the server runs workflows.
+    /// The keys zirc.dev signs browser logins with.
     #[serde(default)]
     pub public: Public,
     /// Whether the server answers content requests itself, and as which host name
@@ -89,10 +89,6 @@ pub struct Public {
     /// when `keys` is empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
-    /// The server runs its organisation's workflows (`spec.workflows`, `crate::workflows`):
-    /// off unless zirc.dev turns them on, so no other organisation sees their host.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub workflows: bool,
 }
 
 /// The content API's settings (`zirc_proto::desired::DesiredState::content_api`), with the

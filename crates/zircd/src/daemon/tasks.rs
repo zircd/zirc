@@ -5,7 +5,7 @@
 //! (`//ops:land`, [`zirc_core::ipc::Request::Task`]) claims the task the session is on, else
 //! the one it finished last, as sessions often post `done:` before they land, else a new
 //! one of its own, so every landing says a task: 101 of 234 landings' events said none on
-//! 14-15 Nov, the fixer's (which takes workflow steps, never `taking:`) and those landed
+//! 14-15 Nov, the fixer's (which took workflows' steps, never `taking:`) and those landed
 //! well after a `done:`, and a landing no task names can't be counted per task. When that
 //! landing lands while the session is still on the task it claimed, zircd says `done:` for
 //! it, in the channel its `taking:` went to: the task is finished everywhere without the
@@ -21,7 +21,6 @@ use serde::{Deserialize, Serialize};
 use zirc_core::{ipc::LANDING_CLAIMS, paths};
 use zirc_proto::Event;
 
-use super::book::Field;
 use super::{Daemon, read_saved, save_saved};
 
 /// A task a session finished, for its landing to claim.
@@ -172,13 +171,6 @@ impl Daemon {
 
     /// After `session`'s post `text` went: a `done:` or `dropped:` ends its task.
     pub(super) fn task_ended(&mut self, session: &str, text: &str) {
-        // Its roles end with it: a workflow's next step goes to a member still at work.
-        if zirc_proto::says_finished(text)
-            && !self.roles_of(session).is_empty()
-            && let Err(err) = self.book.set(Field::Roles, session, String::new())
-        {
-            tracing::warn!("couldn't clear a session's roles: {err}");
-        }
         if zirc_proto::says_finished(text) {
             self.same_work_finished(session);
             // What it asked its owner and still waits for: nobody acts on the answer now.

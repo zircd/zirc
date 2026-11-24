@@ -88,9 +88,6 @@ pub(crate) struct Breaker {
     held: usize,
     /// Notices of its opening, to send the owner once the line being told is.
     pending: Vec<String>,
-    /// The workflow steps given to a session, as `<session> <run> <step>`, whose first wake
-    /// went through as asked for ([`given_step`]); the newest few hundred.
-    given: VecDeque<String>,
 }
 
 impl Default for Breaker {
@@ -111,7 +108,6 @@ impl Breaker {
             sessions: BTreeSet::new(),
             held: 0,
             pending: Vec::new(),
-            given: VecDeque::new(),
         }
     }
 
@@ -308,21 +304,19 @@ fn asked_for(response: &Response, reason: Why) -> bool {
         || matches!(response, Response::Direct(direct) if direct.answer.is_some())
 }
 
-/// The run and step a workflow's `response` gives `session`, if it does: its step assigned
-/// or escalated to the session, as `machine/session` or the session alone.
-fn given_step(response: &Response, session: &str) -> Option<String> {
-    let Response::Delivery(delivery) = response else {
-        return None;
-    };
-    let event = zirc_proto::run::RunEvent::of(&delivery.message.event)?;
-    let (zirc_proto::run::Change::Assigned { step, to }
-    | zirc_proto::run::Change::Escalated { step, to }) = &event.change
-    else {
-        return None;
-    };
-    to.iter()
-        .any(|name| super::deliver::names_session(name, session))
-        .then(|| format!("{session} {} {step}", event.run))
+/// Whether `response`, waking `session` for `reason`, is one the breaker never holds
+/// nor counts.
+fn never_held(response: &Response, session: &str, reason: Why) -> bool {
+    // What the session asked to be woken for isn't a storm, however much of it comes.
+    if asked_for(response, reason) {
+        return true;
+    }
+    // The owner's own direct messages always reach the session, and so do a state said
+    // anew and CI's failures: the breaker once paused the operator's session in the
+    // middle of master breaking (11 Nov 2026). Nor do they count: counted, they paused
+    // the session a production deploy's failures were for, on its next wake (13 Nov
+    // 2026).
+    owners_word(response) || urgent(response) || super::dropped::about_a_drop(response, session)
 }
 
 /// Whether `response` is a state said anew or an integration's line that something went
@@ -356,7 +350,7 @@ impl Daemon {
             let (Some(session), Some(reason)) = (session.as_deref(), *why) else {
                 continue;
             };
-            if self.never_held(response, session, reason) {
+            if never_held(response, session, reason) {
                 continue;
             }
             let from = source(response, reason);
@@ -385,34 +379,6 @@ impl Daemon {
         }
     }
 
-    /// Whether `response`, waking `session` for `reason`, is one the breaker never holds
-    /// nor counts.
-    fn never_held(&mut self, response: &Response, session: &str, reason: Why) -> bool {
-        // What the session asked to be woken for isn't a storm, however much of it comes.
-        if asked_for(response, reason) {
-            return true;
-        }
-        // A step a workflow gives the session, one of a role it joined to be given them,
-        // as the master fixer is (ops/master_fixer.sh): asked for too, the first time. A
-        // flaky build gave it six in a minute, and the breaker held five (14 Nov 2026).
-        // The same step said again counts, so a workflow gone wrong still trips it.
-        if let Some(given) = given_step(response, session)
-            && !self.breaker.given.contains(&given)
-        {
-            self.breaker.given.push_back(given);
-            if self.breaker.given.len() > 500 {
-                self.breaker.given.pop_front();
-            }
-            return true;
-        }
-        // The owner's own direct messages always reach the session, and so do a state said
-        // anew and CI's failures: the breaker once paused the operator's session in the
-        // middle of master breaking (11 Nov 2026). Nor do they count: counted, they paused
-        // the session a production deploy's failures were for, on its next wake (13 Nov
-        // 2026).
-        owners_word(response) || urgent(response) || super::dropped::about_a_drop(response, session)
-    }
-
     /// Whether `session`'s catch-up, a wake of its own, is held: what it missed then
     /// waits for its next wake instead. One that brings what the breaker never holds goes
     /// ahead uncounted, and one that brings nothing else that counts isn't counted either.
@@ -422,7 +388,7 @@ impl Daemon {
             let Some(reason) = super::why_of(response) else {
                 continue;
             };
-            if self.never_held(response, session, reason) {
+            if never_held(response, session, reason) {
                 return false;
             }
             counts = true;
@@ -726,52 +692,6 @@ mod tests {
         );
     }
 
-    /// A workflow's `run` giving its `step` to `to`, as its nick posts it.
-    fn given(run: &str, step: &str, to: &str) -> Response {
-        let data = serde_json::json!({
-            "run": run,
-            "change": {"type": "assigned", "step": step, "to": [to]},
-            "card": {"id": run, "title": run},
-        });
-        Response::Delivery(Delivery::new(
-            "#ops",
-            "flake_bot",
-            Message::new(
-                "flake_bot",
-                Event::Custom {
-                    kind: "x-zirc/run".into(),
-                    data,
-                    text: format!("`{run}` · `{step}` → @{to}"),
-                },
-            ),
-        ))
-    }
-
-    #[tokio::test]
-    async fn a_step_a_workflow_gives_the_session_wakes_it_once_past_its_limit() {
-        let home = tempfile::tempdir().unwrap();
-        let (mut daemon, _hears) = daemon_watched_by_cc1(home.path());
-        for n in 0..=PER_SESSION {
-            let mut reasons = [Some(Why::Mention)];
-            daemon.gate_wakes(&post(&format!("cc-1: look at {n}")), &mut reasons);
-        }
-        let paused = daemon.breaker.state(daemon.clock.now()).paused_sessions;
-        assert_eq!(paused, ["cc-1"]);
-        // Each step given to it, to the session alone or as its machine's, still wakes it.
-        for (n, to) in [(1, "m3-mac/cc-1"), (2, "cc-1"), (3, "m3-mac/cc-1")] {
-            let mut reasons = [Some(Why::Mention)];
-            daemon.gate_wakes(&given(&format!("flaky-{n}"), "fix", to), &mut reasons);
-            assert_eq!(reasons, [Some(Why::Mention)], "flaky-{n}");
-        }
-        // The same step said again is held, as is a step given to another session.
-        let mut reasons = [Some(Why::Mention)];
-        daemon.gate_wakes(&given("flaky-1", "fix", "m3-mac/cc-1"), &mut reasons);
-        assert_eq!(reasons, [None]);
-        let mut reasons = [Some(Why::Mention)];
-        daemon.gate_wakes(&given("flaky-9", "fix", "m3-mac/cc-2"), &mut reasons);
-        assert_eq!(reasons, [None]);
-    }
-
     const MIN: Duration = Duration::from_mins(1);
 
     /// Whether `breaker` lets `session` wake at `at` for `source`, said by a message of its
@@ -934,42 +854,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_workflow_saying_what_the_session_did_does_not_wake_it() {
-        let home = tempfile::tempdir().unwrap();
-        let (daemon, _hears) = daemon_watched_by_cc1(home.path());
-        let took = |by: &str| {
-            let data = serde_json::json!({
-                "run": "flaky-1",
-                "change": {"type": "claimed", "step": "fix", "by": by},
-                "card": {"id": "flaky-1", "title": "flaky-1"},
-            });
-            Response::Delivery(Delivery::new(
-                "#ops",
-                "flake_bot",
-                Message::new(
-                    "flake_bot",
-                    Event::Custom {
-                        kind: "x-zirc/run".into(),
-                        data,
-                        text: format!("{by} took `fix` of `flaky-1` (cc-1 asked)"),
-                    },
-                ),
-            ))
-        };
-        assert_eq!(daemon.why(&took("m3-mac/cc-1"), Some("cc-1")), None);
-        assert_eq!(daemon.why(&took("cc-1"), Some("cc-1")), None);
-        // Another's act that names the session still does, as does a step given to it.
-        assert_eq!(
-            daemon.why(&took("m3-mac/cc-2"), Some("cc-1")),
-            Some(Why::Mention)
-        );
-        assert_eq!(
-            daemon.why(&given("flaky-1", "fix", "m3-mac/cc-1"), Some("cc-1")),
-            Some(Why::Mention)
-        );
-    }
-
-    #[tokio::test]
     async fn a_post_naming_the_branch_a_session_is_stacked_on_is_its_news() {
         let home = tempfile::tempdir().unwrap();
         let (mut daemon, _hears) = daemon_watched_by_cc1(home.path());
@@ -992,10 +876,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn a_dropped_base_is_told_through_a_paused_breaker() {
-        let home = tempfile::tempdir().unwrap();
-        let (mut daemon, _hears) = daemon_watched_by_cc1(home.path());
+    #[test]
+    fn a_dropped_base_is_told_through_a_paused_breaker() {
         let note = |to: &str| {
             Response::Delivery(Delivery::new(
                 "#api",
@@ -1011,8 +893,8 @@ mod tests {
                 ),
             ))
         };
-        assert!(daemon.never_held(&note("cc-1"), "cc-1", Why::Mention));
-        assert!(!daemon.never_held(&note("cc-2"), "cc-1", Why::Mention));
+        assert!(super::never_held(&note("cc-1"), "cc-1", Why::Mention));
+        assert!(!super::never_held(&note("cc-2"), "cc-1", Why::Mention));
     }
 
     #[test]

@@ -485,19 +485,6 @@ impl Daemon {
         if session.is_some() && ci_for_another_machine(delivery, me) {
             return None;
         }
-        // A workflow saying what the session itself did, took a step on or finished it, is
-        // no news to it, as its own posts aren't: a fixer closing three runs at once woke
-        // itself six times with them and tripped the wake breaker (14 Nov 2026). What it
-        // waits on still wakes it, above.
-        if let Some(session) = session
-            && let Some(event) = zirc_proto::run::RunEvent::of(&delivery.message.event)
-            && event
-                .change
-                .by()
-                .is_some_and(|by| names_session(by, session))
-        {
-            return None;
-        }
         let mine = self.paths_in(channel, session);
         let mine: BTreeSet<&str> = mine.iter().map(String::as_str).collect();
         match &delivery.message.event {
@@ -838,15 +825,6 @@ fn ci_for_another_machine(delivery: &Delivery, me: &str) -> bool {
         && zirc_proto::ci::Data::of(data)
             .machine
             .is_some_and(|machine| !machine.eq_ignore_ascii_case(me))
-}
-
-/// Whether `name`, as a workflow says who did something or who a step is for, is
-/// `session`: the session alone, or as `machine/session`.
-pub(super) fn names_session(name: &str, session: &str) -> bool {
-    name == session
-        || name
-            .rsplit_once('/')
-            .is_some_and(|(_, name)| name == session)
 }
 
 /// Whether a landing's event, `message` with its `data`, only says how its steps stand while

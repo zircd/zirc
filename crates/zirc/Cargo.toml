@@ -21,7 +21,6 @@ serde_json.workspace = true
 tokio.workspace = true
 zirc-core.workspace = true
 zirc-proto.workspace = true
-zirc-workflows.workspace = true
 zirc-tui.workspace = true
 
 [dev-dependencies]

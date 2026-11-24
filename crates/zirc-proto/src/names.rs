@@ -24,7 +24,7 @@ pub const SYSTEM: &str = "zirc-system";
 /// Nicks of zirc's own integrations (the alert bridge's, CI's, the tenant's recorder's and pusher's), which
 /// no team's integration may post as: the tenant sidecar refuses to post as them, so no
 /// integration can pass for another.
-pub const RESERVED_INTEGRATION_NICKS: [&str; 8] = [
+pub const RESERVED_INTEGRATION_NICKS: [&str; 7] = [
     "zirc-alerts",
     "zirc-ci",
     "zirc-bridge",
@@ -32,7 +32,6 @@ pub const RESERVED_INTEGRATION_NICKS: [&str; 8] = [
     "zirc-zirc",
     crate::activity::RECORDER,
     crate::push::PUSHER,
-    crate::workflow::HOST,
 ];
 
 // A handle and `-<machine>` fit a nick.

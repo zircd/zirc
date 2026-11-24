@@ -175,9 +175,6 @@ enum Ask {
     /// and answered with `response`, as a line written to a connection that has dropped
     /// unnoticed is kept nowhere.
     Requested { id: String, response: Box<Response> },
-    /// The echo of the step's action `session` just sent to a workflow in `channel`, such as
-    /// its answer to an approval: only then is it sent.
-    Stepped { channel: String, session: String },
     /// The private conversations with messages lately, in the batch named `batch` once it
     /// starts.
     Conversations {
@@ -192,9 +189,6 @@ enum Ask {
         batch: Option<String>,
         found: Option<Box<Delivery>>,
     },
-    /// Whether the server's workflows' host is on (`ISON`), before `session` sends it a
-    /// workflow's file, `event` ([`Daemon::deploy`]).
-    Hosted { session: String, event: Box<Event> },
 }
 
 impl Ask {
@@ -219,9 +213,7 @@ impl Ask {
             Self::Conversations { .. }
             | Self::Echo { .. }
             | Self::Decided { .. }
-            | Self::Requested { .. }
-            | Self::Stepped { .. }
-            | Self::Hosted { .. } => "",
+            | Self::Requested { .. } => "",
         }
     }
 }
@@ -989,9 +981,6 @@ impl Daemon {
             }
             Input::Request(ask @ Request::AskOwner { .. }, answer) => {
                 self.requested(ask, answer).await;
-            }
-            Input::Request(deploy @ Request::Workflow { .. }, answer) => {
-                self.workflow(deploy, answer).await;
             }
             Input::Request(request, answer) => {
                 let response = self

@@ -36,7 +36,6 @@ tracing-subscriber.workspace = true
 zirc-chat.workspace = true
 zirc-irc.workspace = true
 zirc-proto.workspace = true
-zirc-workflows.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

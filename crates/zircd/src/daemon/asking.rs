@@ -232,21 +232,6 @@ impl Daemon {
                 self.listed(at);
                 true
             }
-            // RPL_ISON, for a workflow's file waiting on whether the server runs workflows.
-            "303" => {
-                let Some(at) = self
-                    .asking
-                    .iter()
-                    .position(|asking| matches!(asking.what, Ask::Hosted { .. }))
-                else {
-                    return false;
-                };
-                let on = param(1)
-                    .split_whitespace()
-                    .any(|nick| nick.eq_ignore_ascii_case(zirc_proto::workflow::HOST));
-                self.hosted(at, on);
-                true
-            }
             "BATCH" => self.history_batch(param(0), param(1), param(2)),
             _ => self.read_line(line),
         }
@@ -473,102 +458,6 @@ impl Daemon {
         self.finish(at, Response::Messages { messages });
     }
 
-    /// Sends what [`Request::Workflow`] asks to: a workflow's file once the server says its
-    /// workflows' host is on (`ISON`), anything else at once.
-    pub(super) async fn workflow(&mut self, request: Request, answer: oneshot::Sender<Response>) {
-        let Request::Workflow {
-            repo,
-            session,
-            channel,
-            event,
-        } = request
-        else {
-            return;
-        };
-        if zirc_proto::workflow::Deploy::of(&event).is_some() {
-            self.deploy(&repo, session, &channel, event, answer).await;
-            return;
-        }
-        // A step's action, such as an approval's answer, is sent only once the server echoes
-        // it, as a decision is decided ([`Daemon::decided`]).
-        let confirmed = zirc_proto::run::StepAction::of(&event).is_some()
-            && !zirc_proto::Message::new(session.as_str(), event.clone()).is_live();
-        match self.workflow_send(&repo, &session, &channel, event).await {
-            Ok(channel) if confirmed && self.echoes() => {
-                self.wait(answer, Ask::Stepped { channel, session });
-            }
-            sent => {
-                let _ = answer.send(sent.map_or_else(
-                    |err| Response::Error {
-                        message: format!("{err:#}"),
-                    },
-                    Response::channel,
-                ));
-            }
-        }
-    }
-
-    /// Sends a workflow's file ([`Request::Workflow`]) once the server says its workflows'
-    /// host is on (`ISON`). Workflows are on only for the organisations zirc.dev turns them on
-    /// for (`spec.workflows`): elsewhere nothing is sent, so `#workflows` isn't even made.
-    async fn deploy(
-        &mut self,
-        repo: &std::path::Path,
-        session: String,
-        channel: &str,
-        event: zirc_proto::Event,
-        answer: oneshot::Sender<Response>,
-    ) {
-        if let Err(err) = self.workflow_checked(repo, channel, &event).await {
-            let message = format!("{err:#}");
-            let _ = answer.send(Response::Error { message });
-            return;
-        }
-        let asked = self
-            .connected()
-            .and_then(|client| Ok(client.send(Line::new("ISON", [zirc_proto::workflow::HOST]))?));
-        match asked {
-            Ok(()) => self.wait(
-                answer,
-                Ask::Hosted {
-                    session,
-                    event: Box::new(event),
-                },
-            ),
-            Err(err) => {
-                let message = format!("{err:#}");
-                let _ = answer.send(Response::Error { message });
-            }
-        }
-    }
-
-    /// The server said whether its workflows' host is `on`, for the file waiting at `at`: it's
-    /// sent if it is.
-    fn hosted(&mut self, at: usize, on: bool) {
-        let Ask::Hosted { session, event } = &self.asking[at].what else {
-            return;
-        };
-        let (session, event) = (session.clone(), (**event).clone());
-        let response = if on {
-            self.workflow_emit(&session, zirc_proto::workflow::CHANNEL, event)
-                .map_or_else(
-                    |err| Response::Error {
-                        message: format!("{err:#}"),
-                    },
-                    Response::channel,
-                )
-        } else {
-            Response::Error {
-                message: format!(
-                    "{} doesn't run workflows: they're on only for the organisations zirc.dev \
-                     has turned them on for. Nothing was sent.",
-                    self.server
-                ),
-            }
-        };
-        self.finish(at, response);
-    }
-
     /// Fails the request waiting with `token` once it's waited [`Daemon::ask_wait`]. With
     /// none, as a test may set, it fails before anything the server says next.
     fn expire_after(&self, token: u64) {
@@ -694,13 +583,6 @@ impl Daemon {
                 message: format!(
                     "not known to be decided: the server didn't confirm it in {channel} within \
                      {}s. `zirc decisions` says whether it's there, before you decide it again",
-                    self.ask_wait.as_secs()
-                ),
-            },
-            Ask::Stepped { channel, .. } => Response::Error {
-                message: format!(
-                    "not known to be sent: the server didn't confirm it in {channel} within \
-                     {}s. `zirc workflow` says how the run stands, before you send it again",
                     self.ask_wait.as_secs()
                 ),
             },

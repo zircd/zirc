@@ -219,7 +219,7 @@ person or on a call, never in a message; `zirc team-key add` reads one from stdi
 `zirc team-key list` and `forget` keep them. Whoever held a key can read what was sealed
 with it, so after someone leaves, make a new one and change what they saw.
 
-## Commands for a team's own workflow
+## Commands for a team's own process
 
 These serve teams whose scripts or CLAUDE.md use them; the agent guide leaves them out.
 Each command's `--help` has the detail.
@@ -294,124 +294,30 @@ sent it: `their own account` is their word, `a terminal on <machine>` as sure as
 machine, `relayed by <machine>/<session>` that session's account of it, and `unverified`
 decides nothing.
 
-**Workflows.** A process the team declares once, in `.zirc/workflows/<name>.toml`, that the
-server runs as a nick of its own: each run is a card in its channel, and each step goes to
-whoever does it, named so their watch wakes.
-
-```toml
-name = "master"
-nick = "master_bot"            # the user it runs as: mention it to start a run
-channel = "#ops"
-follow = ["#agents"]           # more channels it listens in; or /invite it
-one_run_per = "owner"          # optional: asked again while a run with this input goes on, starts none
-
-[[input]]
-name = "owner"
-
-[roles]
-fixers = ["mattias"]           # the people a step falls back to
-
-[[on]]                         # what starts a run besides a mention
-state = "master"
-level = "broken"
-inputs = { owner = "owner" }   # input = the state's repo, name, why, owner or link
-
-[[on]]                         # or a time coming round
-every = "7d"                   # 5m at least: every whole multiple of it since 1970, UTC
-day = "mon"                    # with 7d; and at = "09:00" (UTC) with whole days
-with = { owner = "cc-1a2b3c" } # the inputs its runs are given
-
-[[on]]                         # or words a person or an integration says where it listens
-said = "is broken"             # whatever their case, as words of their own
-inputs = { why = "text" }      # input = the message's text, by, channel or id
-
-[[on]]                         # or a person's reaction to a message it heard
-reaction = "🐛"                # any but 👍 and 👎, which answer approvals
-inputs = { why = "text" }      # input = text, author, by, channel or id
-
-[[on]]                         # or a landing that changes these files or directories
-landed = ["web/content/docs"]  # "." for any landing
-inputs = { why = "subject" }   # input = commit, branch, session, build, link or subject
-
-[[step]]
-id = "fix"
-who = "inputs.owner"           # or role:fixers (its members), or a nick
-says = "{owner}: fix master"   # reads {input} and {step.output}
-outputs = ["cause"]            # optional: `zirc step done` may hand them back
-fallback = "fixers"            # who it goes to when it stays quiet
-nudge = "15m"                  # quiet this long: a mention asking how it goes
-escalate = "30m"               # quiet this long after that: to the fallback, then it fails
-stages = [                     # followed from what they do, without their saying so
-  { name = "working", on = "push" },             # or said, intent
-  { name = "landing", on = "landing-queued" },   # a failed landing goes back to working
-  { name = "landed", on = "landed" },            # the last stage is the task done
-]
-
-[[step]]
-id = "tell"
-each = ["role:ios", "role:web"] # in place of who: to every one at once, or "inputs.<name>"
-says = "{each}: master broke under you"   # {each} is whose part it is
-
-[[step]]
-id = "green"
-kind = "wait"                  # task (the default), approve, wait or post
-when = "fix.cause != flaky"    # comparisons joined by and
-until = { state = "master", level = "ok" }
-```
+**Roles and reports.** A role, such as the fixer, is a standing job your organisation's
+admins define on zirc.dev: what it does and what wakes it (a state changing, words said, a
+reaction, a landing's paths, a schedule). One session at a time holds it, taken from a checkout
+of its repository, and its nick speaks for that session:
 
 ```bash
-zirc workflow check .zirc/workflows/master.toml
-zirc workflow deploy .zirc/workflows/master.toml    # zirc-workflows answers in #workflows; on a
-                                                    # server that doesn't run workflows, sends nothing
-zirc workflow run master owner=cc-1a2b3c            # or say "@master_bot run owner=cc-1a2b3c"
-zirc step claim master-3 fix --session cc-1a2b3c
-zirc step done master-3 fix cause="a typo" --session cc-1a2b3c
-zirc step fail master-3 fix --why "can't reproduce it" --session cc-1a2b3c
-zirc step answer spend-2 approve yes                # a person only; or 👍 / 👎 on its message
-zirc role join fixers --session cc-1a2b3c          # be given role:fixers steps while live
-zirc role leave fixers --session cc-1a2b3c
+zirc role take fixer --session cc-1a2b3c     # prints its brief and what wakes it
+zirc roles                                   # how each role stands, held or vacant
+zirc role leave --session cc-1a2b3c
 ```
 
-A `said` or `reaction` trigger counts where the workflow's file says it listens, its
-`channel` and those it `follow`s, and only for the organisation's people (and, for `said`, its
-integrations): never an agent session's. A reaction to a message from before the
-workflow was listening can't give its text. A `landed` trigger needs CI to say which paths a
-landing changed (`changed` in its landing event's data).
+Work reaches a role as a report: its kind (`warning`, `flaky` or `container`) and a key that
+makes it the same as an earlier one. The server keeps one open item per kind and key, wakes
+the holder once for it, or the next holder while none holds it, and reminds them while it
+stays open. A landing whose commit has the trailer `Fixes: report <id>` closes it when it
+passes; so does the holder, with `--done`, or `--baselined` when it can't be fixed here:
 
-A run a time starts (`every`) starts once for that time. One the server was away for, as
-while it restarted, still starts within the hour; later it's passed over, never made up for.
+```bash
+zirc report fixer --kind flaky --key //web:e2e --build 612 --link https://ci.example/612
+zirc report fixer --kind flaky --key //web:e2e --done
+```
 
-Only those a step went to may take it, and only a person's own account answers an approval;
-an `irreversible` approval's yes counts a minute later, unless a no comes first. A task with
-stages needs no `zirc step`: the workflow follows what its assignee says, the intents and
-branches they push, and what CI says of their landings, and anything it hears of them
-keeps it from being quiet. A step's outputs are among the ones its file names; one not
-handed back reads as nothing in a `when`. Say `@<nick> cancel <run>` to stop a run.
-
-A step with `each` goes to every one it names at once, eight at most, each in a run of their
-own under the run it's of (`master-3.1`, `master-3.2`), which they answer by that name
-(`zirc step done master-3.1 tell`) and which is followed, nudged and handed to the fallback
-as any task is. The step is done when all of them are. When one fails or runs out of time,
-the others carry on and the step fails once all have ended; with `when_one_fails = "stop"`
-at the top of the file, the run fails at once and the others are called off. Such a step
-hands back no outputs.
-
-A `role:` step goes to one of the role's members: the live agent sessions that joined it
-with `zirc role join`, the one with the fewest workflow steps first. A member quiet past the
-step's `nudge` is passed over for the next; with none left, the step is nudged and then
-goes to its `fallback`. With no member live, it waits for one. A role's people in `[roles]` may name
-`role:<name>` too, as `fixers = ["role:master-fixers", "mattias"]`: a fallback then goes to
-one of that role's live members, and to the people after it only while it has none. A session's roles end with
-its `done:` or `dropped:`, or once its watch stops.
-
-A workflow's nick hears what's said where it is, as it's said: its `channel`, those it
-`follow`s, `#ops` when it reads a state, `#general` when a step goes to a role, and anywhere
-anyone in the organisation `/invite`s it (a kick takes it out). Joining, it catches up on the
-last day of a channel's history and acts on what came since it last read there, if within
-the hour; a run started more than a day before is forgotten. Workflows run only where
-zirc.dev has turned them on for the organisation. An integration (`zirc-` and its name, as
-CI posts through `zirc.dev/ci`) starts a run as a person does, by naming the nick in its
-event's text: `@flake_bot run test=//web:unit`.
+CI reports the same way through `zirc.dev/ci`, as kind `report` with `{role, kind, key}` in its
+data.
 
 **Sessions and tasks.** `zirc sessions --json` lists what each session is doing, with the
 commit of the default branch its work is built on (`base`, the first 12 digits of its id) and the paths it

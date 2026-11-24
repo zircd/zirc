@@ -39,18 +39,15 @@ pub(super) enum Field {
     Title,
     /// Where its owner opens it: never sent to the server.
     Link,
-    /// The workflows' roles it joined, comma separated.
-    Roles,
 }
 
 impl Field {
-    const ALL: [Self; 6] = [
+    const ALL: [Self; 5] = [
         Self::Name,
         Self::Tool,
         Self::Avatar,
         Self::Title,
         Self::Link,
-        Self::Roles,
     ];
 
     /// Where it's saved, in zirc's directory `home`.
@@ -61,7 +58,6 @@ impl Field {
             Self::Avatar => paths::session_avatars(home),
             Self::Title => paths::session_titles(home),
             Self::Link => paths::session_links(home),
-            Self::Roles => paths::session_roles(home),
         }
     }
 }

@@ -272,7 +272,7 @@ pub struct Data {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fixes: Vec<String>,
     /// On a landing that passed: the paths it changed, from the repository's root, for what
-    /// follows landings by where they land (a workflow's `landed` trigger). Where it changed
+    /// follows landings by where they land (a role's `landed` trigger). Where it changed
     /// many files in a directory, CI may name the directory, ending in `/`, in their place.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub changed: Vec<String>,

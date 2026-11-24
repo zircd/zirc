@@ -1,7 +1,7 @@
 //! States that end by themselves, such as a hold on landing: `zirc state set landings broken
 //! --until 15:00` ([`zirc_proto::state::State::until`]). The machine that said one says it's
 //! fine again once its time has passed, in `#ops` as any state is, so every reader, app,
-//! workflow and waiting session hears it end; unless a newer state of that name was said
+//! role and waiting session hears it end; unless a newer state of that name was said
 //! first. A machine that's off by then, or restarted since, says nothing: readers take a
 //! state whose time has passed as fine all the same ([`zirc_core::states::in_force`]).
 

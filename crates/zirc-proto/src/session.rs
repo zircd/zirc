@@ -83,9 +83,8 @@ pub const LIVE_KIND: &str = "x-zirc/sessions";
 
 /// How long a session stays in [`Live::sessions`] after its last `zirc watch` closed, in
 /// seconds: as long as a `zirc watch --once` takes to be started again after it wakes, and
-/// then some. Only for readers from before [`Live::away`] and for the workflows that give a
-/// role's steps to its live sessions: an app shows a session online strictly while a watch
-/// is open ([`Live::online`]).
+/// then some. Only for readers from before [`Live::away`]: an app shows a session online
+/// strictly while a watch is open ([`Live::online`]).
 pub const LIVE_GRACE_SECS: u64 = 180;
 
 /// How long a session that stopped watching is still said to be away ([`Live::away`]), in
@@ -121,11 +120,6 @@ pub struct Live {
     /// The sessions with a watch open, or one closed less than [`LIVE_GRACE_SECS`] ago,
     /// sorted: what readers from before [`Live::away`] show as live.
     pub sessions: Vec<String>,
-    /// The workflows' roles each live session joined (`zirc role join`), by session: what
-    /// the server's workflows give a role's steps to ([`crate::workflow::Who::Role`]).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    #[ts(as = "Option<BTreeMap<String, Vec<String>>>", optional)]
-    pub roles: BTreeMap<String, Vec<String>>,
     /// The sessions with no watch open, closed less than [`AWAY_FOLD_SECS`] ago, by session:
     /// since when, and what waits for them. A machine from before it says none.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -277,16 +271,6 @@ mod tests {
         };
         let event = live.event();
         assert_eq!(Live::of(&event), Some(live.clone()));
-        // Roles ride along, and a reader from before them takes the list as it was.
-        let with_roles = Live {
-            roles: BTreeMap::from([("cc-1".into(), vec!["fixers".into()])]),
-            ..live
-        };
-        assert_eq!(Live::of(&with_roles.event()), Some(with_roles.clone()));
-        let Event::Custom { data, .. } = with_roles.event() else {
-            unreachable!("a live list is a custom event")
-        };
-        assert_eq!(data["roles"]["cc-1"][0], "fixers");
         assert!(crate::live(&event));
         assert_eq!(event.level(), Some(crate::Level::Debug));
         assert_eq!(Live::of(&Event::Text { body: "hi".into() }), None);
@@ -303,7 +287,6 @@ mod tests {
                     waiting: 1,
                 },
             )]),
-            ..Live::default()
         };
         assert!(live.online("cc-1"));
         // In its grace for older readers, but away.

@@ -136,66 +136,6 @@ impl Daemon {
         Ok(ops)
     }
 
-    /// Sends `event` for the organisation's workflows to `channel` as `session`, joining it
-    /// first ([`zirc_core::ipc::Request::Workflow`]): a workflow's file, to `#workflows`
-    /// alone, what a worker did with a step, or words to a workflow's nick. A file is sent by
-    /// [`Daemon::deploy`] instead, once the server's workflows are surely on.
-    pub(super) async fn workflow_send(
-        &mut self,
-        repo: &Path,
-        session: &str,
-        channel: &str,
-        event: Event,
-    ) -> Result<String> {
-        self.workflow_checked(repo, channel, &event).await?;
-        self.workflow_emit(session, channel, event)
-    }
-
-    /// Whether `event` may go to `channel` as one of the organisation's workflows' events.
-    pub(super) async fn workflow_checked(
-        &mut self,
-        repo: &Path,
-        channel: &str,
-        event: &Event,
-    ) -> Result<()> {
-        use zirc_proto::workflow::{CHANNEL, Deploy};
-        let deploy = Deploy::of(event).is_some();
-        let fits = matches!(event, Event::Text { .. })
-            || deploy
-            || zirc_proto::run::StepAction::of(event).is_some();
-        anyhow::ensure!(
-            fits,
-            "only a workflow's file, a step's action or words go to a workflow"
-        );
-        anyhow::ensure!(
-            !deploy || channel == CHANNEL,
-            "a workflow's file goes to {CHANNEL}"
-        );
-        anyhow::ensure!(
-            channel.len() > 1 && channel.starts_with('#') && !channel.contains([' ', ',']),
-            "{channel} isn't a channel"
-        );
-        self.watched(repo).await?;
-        self.connected()?;
-        Ok(())
-    }
-
-    /// Sends `event`, checked, to `channel` as `session`, joining it first.
-    pub(super) fn workflow_emit(
-        &mut self,
-        session: &str,
-        channel: &str,
-        event: Event,
-    ) -> Result<String> {
-        let client = self.connected()?;
-        if !self.joined.contains(channel) {
-            client.send(Line::new("JOIN", [channel]))?;
-        }
-        let message = self.signed(session, event);
-        self.emit(channel, message)?;
-        Ok(channel.to_owned())
-    }
-
     /// Sends a team's own kind of event to `channel`, whole or not at all: unlike a post, it
     /// can't be split or shortened.
     pub(super) fn emit(&mut self, channel: &str, message: Message) -> Result<()> {
@@ -301,9 +241,6 @@ impl Daemon {
                 }
                 if Decision::of(&message.event).is_some() {
                     self.decision_echoed(channel, &message.session);
-                }
-                if zirc_proto::run::StepAction::of(&message.event).is_some() {
-                    self.step_echoed(&message.session);
                 }
                 self.request_echoed(channel, id, &message.event);
                 if let Some(to) = line.tag("+draft/reply") {
@@ -523,22 +460,6 @@ impl Daemon {
                 channels: vec![channel.to_owned()],
             },
         );
-    }
-
-    /// Answers the step's action of `session`'s waiting on its echo: the server has it. By
-    /// its session alone, as the channel it was sent to may go out as another
-    /// ([`Daemon::on_wire`]).
-    fn step_echoed(&mut self, session: &str) {
-        let Some(at) = self.asking.iter().position(
-            |asking| matches!(&asking.what, super::Ask::Stepped { session: s, .. } if s == session),
-        ) else {
-            return;
-        };
-        let super::Ask::Stepped { channel, .. } = &self.asking[at].what else {
-            return;
-        };
-        let response = Response::channel(channel.clone());
-        self.finish(at, response);
     }
 
     /// The link to message `id` in `target`.

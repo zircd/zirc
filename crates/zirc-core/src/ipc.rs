@@ -334,20 +334,6 @@ pub enum Request {
         /// The record.
         data: serde_json::Value,
     },
-    /// Send something for the organisation's workflows ([`zirc_proto::workflow`]) to
-    /// `channel`, in the organisation of the repository containing `repo`: a workflow's file
-    /// to `#workflows`, what a worker did with a step ([`zirc_proto::run::StepAction`]), or
-    /// words to a workflow's nick, as [`zirc_proto::Event::Text`].
-    Workflow {
-        /// Anywhere inside a watched repository.
-        repo: PathBuf,
-        /// Who's sending it: an agent session or a person.
-        session: String,
-        /// Where: `#workflows`, or the workflow's channel.
-        channel: String,
-        /// What.
-        event: zirc_proto::Event,
-    },
     /// Tell the organisation's agents what the session is about to touch.
     Intend {
         /// Anywhere inside a watched repository.

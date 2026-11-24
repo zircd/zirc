@@ -7,8 +7,8 @@ show = json.load(open(sys.argv[1]))
 people = {p["nick"] for p in show["people"]}
 agents = {a["conversation"] for a in show["agents"]}
 channels = {c["name"] for c in show["channels"]}
-# CI, and the nicks its workflows run as (`apps`).
-speakers = people | agents | {"zirc-ci"} | set(show.get("apps", []))
+# Who may speak: its people, its agents and CI.
+speakers = people | agents | {"zirc-ci"}
 assert show["me"] in people, "me isn't one of the people"
 assert show["org"]["members"] == len(people), "the org's members aren't its people"
 # The organisations the phone is signed in to, Acme first and shown: the one this file is.
@@ -39,11 +39,9 @@ for name, messages in show["conversations"].items():
         ids.add(message["id"])
         picture = message.get("picture")
         assert picture is None or os.path.exists(os.path.join(os.path.dirname(sys.argv[1]), picture)), f"{picture} isn't beside the showcase"
-        assert message["kind"] in ("message", "file", "intent", "overlap", "landed", "failed", "request", "run"), f"{message['id']} is a {message['kind']}"
+        assert message["kind"] in ("message", "file", "intent", "overlap", "landed", "failed", "request"), f"{message['id']} is a {message['kind']}"
         # A request is an agent's, asked of its owner: what a yes does and what a no does.
         assert message["kind"] != "request" or (message["from"] in agents and message.get("text") and message.get("yes") and message.get("no")), f"{message['id']} is a request without an agent, a question, a yes or a no"
-        # A workflow's run: its card as it stands, from the nick the workflow runs as.
-        assert message["kind"] != "run" or (message["from"] in show.get("apps", []) and message.get("card", {}).get("id") and message.get("text")), f"{message['id']} is a run without a workflow's nick, a card or words"
         code = message.get("code")
         assert code is None or (code.get("language") and code.get("text")), f"{message['id']}'s code needs a language and text"
         for button in message.get("buttons", []):

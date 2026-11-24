@@ -559,6 +559,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
     let json = |value: serde_json::Value| value.to_string();
     vec![
         Trigger::decl(config),
+        Level::decl(config),
         format!(
             "const TRIGGER_WORDS: Record<string, string> = {};",
             json(

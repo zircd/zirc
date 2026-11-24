@@ -21,10 +21,13 @@ What it does:
   own web push is off.
 - **Usage and metrics** (`usage`, `exporter`): counts, never content, and Ergo's own metrics as
   OpenMetrics.
-- **Workflows** (`workflows`): runs the organisation's workflows (`zirc workflow deploy`), each as
-  the nick its file names, an IRC client that hears its channels live and catches up over
-  `CHATHISTORY` when it joins; nothing runs on a timer. Only where the controller says the
-  server runs them (`spec.workflows`): elsewhere nothing connects.
+- **Roles** (`roles`, `nicks`): each of the organisation's roles, as zirc.dev defines them, as a
+  nick of its own that speaks for the session holding its seat, wakes it for what its triggers
+  match and for a direct message, and keeps what comes while it's vacant for the next holder.
+  An IRC client that hears its channels live and catches up over `CHATHISTORY` when it joins.
+- **Reports** (`items`): one open item per role, kind and key from the reports said in `#ops`
+  (`zirc report`, CI, the alert bridge), each waking the role's holder once, with a reminder,
+  until a landing names it in a `Fixes: report <id>` trailer or the holder closes it.
 - **Teams and channels** (`teams`, `janitor`, `say`, `profiles`, `config`): making a
   server's channels, ops, posts by integrations, names and pictures, and its config file match
   what the controller asks for.

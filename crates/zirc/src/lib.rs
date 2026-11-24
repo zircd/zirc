@@ -41,7 +41,6 @@ mod wait;
 mod watch;
 #[cfg(test)]
 mod which_org;
-mod workflows;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -212,14 +211,6 @@ const EXAMPLES: &[(&str, &[&str])] = &[
     ("playbook", &["zirc playbook src/login", "zirc playbook"]),
     ("join", &["zirc join auth --session cc-1"]),
     (
-        "workflow",
-        &[
-            "zirc workflow check .zirc/workflows/master.toml",
-            "zirc workflow deploy .zirc/workflows/master.toml",
-            "zirc workflow run master owner=cc-1a2b3c",
-        ],
-    ),
-    (
         "role",
         &[
             "zirc role take fixer --session cc-1",
@@ -229,14 +220,6 @@ const EXAMPLES: &[(&str, &[&str])] = &[
         ],
     ),
     ("roles", &["zirc roles"]),
-    (
-        "step",
-        &[
-            "zirc step claim master-3 fix --session cc-1",
-            "zirc step done master-3 fix cause=\"a typo\" --session cc-1",
-            "zirc step answer spend-2 approve yes",
-        ],
-    ),
     ("catchup", &["zirc catchup --since 3h"]),
     ("search", &["zirc search --since 2d --from ada login"]),
     (
@@ -301,7 +284,7 @@ const GROUPS: &[(&str, &[&str])] = &[
         "Coordinate",
         &[
             "who", "intend", "settle", "lease", "state", "wait", "stack", "gotcha", "playbook",
-            "join", "report", "workflow", "role", "roles", "step",
+            "join", "report", "role", "roles",
         ],
     ),
     (
@@ -848,22 +831,6 @@ enum Command {
     /// zircd agrees leases with every machine in the organisation, through its channel.
     #[command(after_long_help = examples("lease", ""))]
     Lease(lease::LeaseArgs),
-    /// Check, deploy or start a workflow your team runs.
-    ///
-    /// A workflow is a file in .zirc/workflows/ whose steps the server gives, one by one, to
-    /// the sessions and people who do them, as the nick the file names, in chat where
-    /// everyone sees each run's card. `zirc reference` has the file's shape.
-    #[command(subcommand)]
-    #[command(after_long_help = examples("workflow", ""))]
-    Workflow(workflows::WorkflowCommand),
-    /// Take on, finish or answer a step a workflow gave you.
-    ///
-    /// When a workflow's nick names you for a step, take it with `claim`, then say it's
-    /// `done` with its outputs, or that it `fail`ed. An approval is answered with `answer`,
-    /// or with 👍 or 👎 on its message, only from a person's own account.
-    #[command(subcommand)]
-    #[command(after_long_help = examples("step", ""))]
-    Step(workflows::StepCommand),
     /// Take, leave or speak as one of your organisation's roles, such as the fixer.
     ///
     /// A role is a standing job its organisation's admins define on zirc.dev, with one seat a
@@ -1066,8 +1033,6 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::WaitFor(args) => sessions::wait_for(&socket, args, out).await,
         Command::Wait { command } => wait::wait(&home, &socket, command, out).await,
         Command::Stack(args) => stack::stack(&socket, args, out).await,
-        Command::Workflow(command) => workflows::workflow(&socket, command, out).await,
-        Command::Step(command) => workflows::step(&socket, command, out).await,
         Command::Role(command) => roles::role(&socket, command, out).await,
         Command::Gotcha(args) => gotchas::gotcha(&socket, args, out).await,
         Command::Gotchas(args) => gotchas::list(&socket, args, out).await,

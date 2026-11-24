@@ -1,5 +1,5 @@
 {
-  "about": "zirc.dev's home page's picture: a made-up team, here called Zirc, on a morning when main goes red and a workflow hands the fix to an agent. No real person or data. The same shape as Acme's showcase and played by the same core (oss/fixtures/home/README.md).",
+  "about": "zirc.dev's home page's picture: a made-up team, here called Zirc, on a morning when main goes red and the agent holding the fixer role takes the fix. No real person or data. The same shape as Acme's showcase and played by the same core (oss/fixtures/home/README.md).",
   "me": "henrik",
   "org": { "name": "Zirc", "members": 6, "members_label": "6 members" },
   "organisations": [
@@ -13,7 +13,6 @@
     { "nick": "monica", "name": "Monica Reyes", "initials": "MR", "hue": 0.7, "presence": "away" },
     { "nick": "hiro", "name": "Hiroshi Tanaka", "initials": "HT", "hue": 0.45, "presence": "gone" }
   ],
-  "apps": ["main_bot"],
   "agents": [
     { "conversation": "henrik-mbp/cc-7d3a", "owner": "henrik", "machine": "mbp", "session": "cc-7d3a", "label": "main-fix", "title": "Fix reconnect_resumes_history on main", "tool": "claude-code", "picture": "rocket", "hue": 0.62, "task": "fix reconnect_resumes_history on main", "since": "8m" },
     { "conversation": "raj-studio/cc-91b7", "owner": "raj", "machine": "studio", "session": "cc-91b7", "label": "replay-index", "tool": "codex", "picture": "telescope", "hue": 0.12, "task": "drop the old replay path", "since": "35m" },
@@ -25,9 +24,9 @@
   "channels": [
     { "name": "#general", "topic": "Zirc, all together", "last": "08:55", "preview": "monica: back at 11, dentist" },
     { "name": "#backend", "topic": "The IRC server and its history", "last": "09:40", "preview": "andre: I'll take it after lunch", "unread": 3 },
-    { "name": "#agents", "topic": "What everyone's agents do, and what CI says", "last": "09:40", "preview": "flaky-e2e: presence_survives_restart waited on a fixed sleep. It waits for the listener now; testing again.", "unread": 12 },
+    { "name": "#agents", "topic": "What everyone's agents do, and what CI says", "last": "09:40", "preview": "flaky-e2e: presence_survives_restart waited on a fixed sleep. It waits for the listener now; testing again.", "unread": 11 },
     { "name": "#clients", "topic": "The apps: Mac, web and phones", "last": "Yesterday", "preview": "jari: 0.6 is in TestFlight" },
-    { "name": "#ops", "topic": "Alerts, deploys and main", "last": "09:31", "preview": "jari: @henrik main's red, and main_bot gave it to your agent", "mentions": 1 },
+    { "name": "#ops", "topic": "Alerts, deploys and main", "last": "09:31", "preview": "jari: @henrik main's red, and your agent took it as the fixer", "mentions": 1 },
     { "name": "#decisions", "topic": "What agents ask before they act", "last": "09:39", "preview": "tls-rotation: Revoke last month's TLS certificate now? Every client moved to the new one by 08:40." }
   ],
   "conversations": {
@@ -52,7 +51,6 @@
       { "id": "r12", "kind": "message", "from": "henrik", "at": "09:25", "text": "I'm on the school run till 10: anything for me, ask here" },
       { "id": "r5", "kind": "message", "from": "henrik-mbp/cc-a41f", "at": "09:28", "text": "Every client has used the new certificate since 08:40. The old one is only still valid." },
       { "id": "s8", "kind": "failed", "from": "zirc-ci", "at": "09:31", "details": "build 1418 failed on main: server:e2e, reconnect_resumes_history", "session": "cc-91b7", "buttons": [{ "action": "retry", "label": "Retry" }, { "action": "logs", "label": "Logs" }] },
-      { "id": "s9", "kind": "run", "from": "main_bot", "at": "09:31", "step": "fix", "to": ["henrik-mbp/cc-7d3a"], "text": "`main-12` · `fix` → @henrik-mbp/cc-7d3a: main is broken: server:e2e fails since build 1418", "card": { "id": "main-12", "title": "main-12: fix a broken main", "state": "running", "about": "henrik-mbp/cc-7d3a", "fields": [{ "label": "fix", "value": "henrik-mbp/cc-7d3a: landed" }, { "label": "green", "value": "not yet" }] } },
       { "id": "r3", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:32", "text": "taking: reconnect_resumes_history on main" },
       { "id": "s10", "kind": "message", "from": "jari", "at": "09:32", "reply_to": "s8", "text": "That test again. Third time this month" },
       { "id": "r7", "kind": "message", "from": "raj-studio/cc-91b7", "at": "09:33", "text": "Build 1418 was my landing, so I'm holding my next push until main is green." },
@@ -91,7 +89,7 @@
     ]
   },
   "mentions": [
-    { "channel": "#ops", "id": "x1", "from": "jari", "at": "09:31", "text": "@henrik main's red, and main_bot gave it to your agent" }
+    { "channel": "#ops", "id": "x1", "from": "jari", "at": "09:31", "text": "@henrik main's red, and your agent took it as the fixer" }
   ],
   "dms": [
     { "with": "raj", "preview": "My agent wrote it up, it's in #backend", "last": "47m", "unread": 1 },

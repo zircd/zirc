@@ -481,7 +481,6 @@ fn repo_of(request: &Request) -> Option<&Path> {
         Request::Post { repo, .. }
         | Request::SealedPost { repo, .. }
         | Request::Emit { repo, .. }
-        | Request::Workflow { repo, .. }
         | Request::Intend { repo, .. }
         | Request::Join { repo, .. }
         | Request::Leave { repo, .. }

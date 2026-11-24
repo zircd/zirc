@@ -28,7 +28,6 @@ pub mod suggestions;
 pub mod teams;
 pub mod trim;
 pub mod usage;
-pub mod workflows;
 
 /// Everything the sidecar is told, on its command line or in its environment.
 #[derive(Clone, Debug, clap::Args)]

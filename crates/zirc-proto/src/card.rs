@@ -259,7 +259,7 @@ impl Card {
     }
 
     /// A card called `title` with the id `id`, and nothing else yet: the builder every card
-    /// starts from, CI's, a workflow's, an integration's adapter's and `zirc card`'s alike,
+    /// starts from, CI's, an integration's adapter's and `zirc card`'s alike,
     /// so all of them are checked by [`Card::validate`] alone ([`Card::checked`]).
     #[must_use]
     pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {

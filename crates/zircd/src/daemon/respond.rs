@@ -301,10 +301,7 @@ impl Daemon {
             } => self.role_say(&session, to, reply_to, &text)?,
             Request::RoleStanding => self.role_standing().await?,
             Request::Watch { .. } => anyhow::bail!("watching is its own kind of connection"),
-            Request::Trim { .. }
-            | Request::Read { .. }
-            | Request::Conversations { .. }
-            | Request::Workflow { .. } => {
+            Request::Trim { .. } | Request::Read { .. } | Request::Conversations { .. } => {
                 anyhow::bail!("this waits on the server, and is answered when it says")
             }
             Request::WaitFor {
@@ -462,35 +459,6 @@ impl Daemon {
         self.publish_sealed(&said.target, message, Some(&said.id), sealed);
         self.task_ended(session, text);
         Ok(Response::channel(said.target))
-    }
-
-    /// `session` joins or leaves the workflows' `role` ([`Request::Role`]), said with its
-    /// machine's live sessions from the next second. It goes with workflows.
-    fn role(&mut self, session: &str, role: &str, join: bool) -> Result<Response> {
-        zirc_proto::workflow::check_role(role).map_err(|why| anyhow::anyhow!(why))?;
-        self.book.seen(session, super::now());
-        let mut roles = self.roles_of(session);
-        if join {
-            roles.insert(role.to_owned());
-        } else {
-            roles.remove(role);
-        }
-        let joined: Vec<String> = roles.into_iter().collect();
-        self.book
-            .set(Field::Roles, session, joined.join(","))
-            .context("couldn't save the session's roles")?;
-        Ok(Response::Roles { roles: joined })
-    }
-
-    /// The roles `session` joined.
-    pub(super) fn roles_of(&self, session: &str) -> std::collections::BTreeSet<String> {
-        self.book
-            .get(Field::Roles, session)
-            .unwrap_or_default()
-            .split(',')
-            .filter(|role| !role.is_empty())
-            .map(str::to_owned)
-            .collect()
     }
 
     /// Names `session`, and keeps its tool, avatar, title and link ([`Request::Name`]).

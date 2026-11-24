@@ -169,12 +169,6 @@ pub fn session_titles(home: &Path) -> PathBuf {
     home.join("session-titles.json")
 }
 
-/// The workflows' roles each session joined ([`crate::ipc::Request::Role`]), by session.
-#[must_use]
-pub fn session_roles(home: &Path) -> PathBuf {
-    home.join("session-roles.json")
-}
-
 /// Where its owner opens each session ([`crate::ipc::Request::Name`]), by session: kept on
 /// this machine, never sent to the chat server.
 #[must_use]

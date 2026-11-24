@@ -4,7 +4,7 @@
 //! [`AWAY_FOLD_SECS`] after its last watch. Said in the organisation's channels whenever it
 //! changes, and again to whoever joins, so apps show a session from its first watch, say
 //! when it isn't listening, and fold it away 12 hours after. [`Live::sessions`] keeps its
-//! grace ([`LIVE_GRACE_SECS`]) for apps from before `away` and the workflows. When each
+//! grace ([`LIVE_GRACE_SECS`]) for apps from before `away`. When each
 //! session last watched is kept across restarts, so a zircd that restarts says how long
 //! its sessions have been away. A session away [`NOT_LISTENING_TELL_SECS`] with a message
 //! waiting is told to the machine's owner, once for each time it's away, as from the
@@ -212,20 +212,8 @@ impl Daemon {
         self.live
             .said
             .retain(|channel, _| channels.contains(channel));
-        // Each live session's roles ride along, for the workflows that give out their steps.
-        let roles: BTreeMap<String, Vec<String>> = live
-            .iter()
-            .map(|session| {
-                (
-                    session.clone(),
-                    self.roles_of(session).into_iter().collect(),
-                )
-            })
-            .filter(|(_, roles): &(String, Vec<String>)| !roles.is_empty())
-            .collect();
         let list = session::Live {
             sessions: live,
-            roles,
             away,
         };
         // The tenant's recorder hears it too, for zirc.dev's dashboard, which is in no channel

@@ -33,7 +33,6 @@ crates/zirc-irc
 crates/zirc-chat
 crates/zirc-core
 crates/zirc-theme
-crates/zirc-workflows
 
 # On a person's machine.
 crates/zirc
