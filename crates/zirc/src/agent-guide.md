@@ -21,7 +21,7 @@ squash onto it: another session's fetch may have moved `origin/<default>`, and `
 ### When a session starts
 
 1. In your worktree, start `zirc watch --once --session <your session> --name <short>
-   --role <role>` as a background command that tells you when it ends (in Claude Code,
+   --avatar <avatar>` as a background command that tells you when it ends (in Claude Code,
    Bash with `run_in_background`), before anything else, even when the task looks like
    only reading. Never with `&`, nor with its output sent to a file or `/dev/null`: what
    such a watch takes is lost. It registers your session here, so your commits and pushes
@@ -42,7 +42,7 @@ squash onto it: another session's fetch may have moved `origin/<default>`, and `
    The watch waits until something concerns your session, prints it and ends, which wakes
    you: deal with it, then start it again the same way, every time, without telling anyone.
    Keep exactly one running, and don't narrow it with `--filter`. `--name` is what apps
-   show for you, such as `controller`; `--role` is your picture from `zirc avatars`, such as `fixer`.
+   show for you, such as `controller`; `--avatar` is your picture from `zirc avatars`, such as `fixer`.
    Once, `zirc name --session <your session> --name <short> --title "<your session's
    title>"`, unless the session that started you did. Without any way to run a background
    process, run `zirc who` before each commit.

@@ -81,9 +81,9 @@ zirc's files are in ~/.zirc, or $ZIRC_HOME.";
 /// anywhere, as they always were, but said only where they do something: on every command's
 /// help they were three long paragraphs about something else.
 const IDENTITY: &str = "\
-How your session shows in apps (also $ZIRC_SESSION_NAME, _ROLE and _TOOL):
+How your session shows in apps (also $ZIRC_SESSION_NAME, _AVATAR and _TOOL):
       --name <SHORT>  What it's called, such as login-flow, in place of its id
-      --role <ROLE>   The role it plays, from `zirc avatars`, such as fixer: apps draw its bot
+      --avatar <AVATAR> The picture it goes by, from `zirc avatars`, such as fixer: apps draw it
       --tool <TOOL>   The agent tool it runs in, such as claude-code; told by itself in most";
 
 /// What to type, for each command `zirc --help` lists: shown at the end of its own `--help`,
@@ -96,7 +96,7 @@ const EXAMPLES: &[(&str, &[&str])] = &[
         "watch",
         &[
             "zirc watch",
-            "zirc watch --once --session cc-1 --name login-flow --role builder",
+            "zirc watch --once --session cc-1 --name login-flow --avatar builder",
         ],
     ),
     ("status", &["zirc status", "zirc status --json"]),
@@ -438,16 +438,16 @@ pub struct Cli {
         hide = true
     )]
     tool: Option<String>,
-    /// The role your session plays, from `zirc avatars`, such as fixer: apps draw the bot
-    /// dressed for it. Without it, the role its name tells, else a plain bot. `--avatar`,
-    /// from before roles, still takes one. `zirc watch`, `zirc join` and `zirc post` set it
-    /// for the session.
+    /// The picture your session goes by, from `zirc avatars`, such as fixer: apps draw that
+    /// bot. Without it, the one its name tells, else a plain bot. `--role`, its name before
+    /// roles were seats (`zirc role`), still takes one. `zirc watch`, `zirc join` and `zirc
+    /// post` set it for the session.
     #[arg(
-        long = "role",
-        alias = "avatar",
-        env = "ZIRC_SESSION_ROLE",
+        long = "avatar",
+        alias = "role",
+        env = "ZIRC_SESSION_AVATAR",
         global = true,
-        value_name = "ROLE",
+        value_name = "AVATAR",
         hide = true
     )]
     avatar: Option<String>,
@@ -978,7 +978,7 @@ enum Command {
     /// List your organisation's roles: who holds each, and what wakes it.
     #[command(after_long_help = examples("roles", ""))]
     Roles,
-    /// List the pictures an agent session can go by, for `--role <role>`, each a bot.
+    /// List the pictures a session can go by, for `--avatar`, each a bot.
     #[command(hide = true)]
     Avatars,
     /// Print the reference for building bots and scripts on zirc.
@@ -1158,15 +1158,16 @@ fn before(command: &Command, home: &Path, own_home: bool) {
     }
 }
 
-/// The picture `--role` names, or `ZIRC_SESSION_AVATAR`, from before roles, which still counts.
+/// The picture `--avatar` names, or `ZIRC_SESSION_ROLE`, the flag's variable before roles
+/// were seats, which still counts.
 fn session_avatar(given: Option<String>) -> Option<&'static str> {
     given
-        .or_else(|| std::env::var("ZIRC_SESSION_AVATAR").ok())
+        .or_else(|| std::env::var("ZIRC_SESSION_ROLE").ok())
         .as_deref()
         .map(role_named)
 }
 
-/// The role `--role` names, saying on stderr which one it took for a word that isn't one.
+/// The picture `--avatar` names, saying on stderr which one it took for a word that isn't one.
 fn role_named(id: &str) -> &'static str {
     let (role, note) = avatar_named(id);
     if let Some(note) = note {
