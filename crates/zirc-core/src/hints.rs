@@ -583,6 +583,9 @@ pub fn team(home: &Path, repo: &Repo) -> (Team, Option<String>) {
     )
 }
 
+/// Among what a session has seen: that its person's next step was asked for.
+const NEXT_ASKED: &str = "next";
+
 /// The hints `zirc watch` shows under what wakes a session: each the first time its kind
 /// does, and again only when its text changes, remembered per session in
 /// `$ZIRC_HOME/hints-seen/<session>.json` across `--once` watches.
@@ -687,6 +690,26 @@ impl Watch {
         self.show(&seen)
     }
 
+    /// The hint for the session's person's next step of getting started, `step` by its id
+    /// ([`zirc_proto::onboarding::Step::id`]), the first time it's asked for as it is now
+    /// (`zirc watch` asks as it starts): none for a step an agent has nothing to say about.
+    pub fn at_next(&mut self, step: &str) -> Option<Shown> {
+        let kind = kind::next(step);
+        // Asked once a session, whatever the step: a later watch of it asks no more.
+        self.shown.entry(NEXT_ASKED.to_owned()).or_default();
+        self.save();
+        let seen = Seen {
+            kind: kind?,
+            channel: self
+                .repos
+                .first()
+                .map(|(channel, _)| channel.clone())
+                .unwrap_or_default(),
+            ..Seen::default()
+        };
+        self.show(&seen)
+    }
+
     /// The hint for `seen`, unless it's quiet or the session saw it as it is now; kept as
     /// seen.
     fn show(&mut self, seen: &Seen) -> Option<Shown> {
@@ -696,20 +719,52 @@ impl Watch {
         }
         self.shown.insert(shown.kind.clone(), shown.text.clone());
         self.recent.push(shown.clone());
+        self.save();
+        Some(shown)
+    }
+
+    /// Whether the session's person's next step was asked for already ([`Watch::at_next`]).
+    #[must_use]
+    pub fn next_asked(&self) -> bool {
+        self.shown.contains_key(NEXT_ASKED)
+    }
+
+    /// Keeps what the session has seen. Best effort: at worst, a hint is shown again.
+    fn save(&self) {
         if let Some(file) = &self.file {
-            // Best effort: at worst, a hint is shown again.
             let _ = std::fs::create_dir_all(file.parent().unwrap_or(file));
             if let Ok(json) = serde_json::to_string(&self.shown) {
                 let _ = std::fs::write(file, json);
             }
         }
-        Some(shown)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sessions_first_watch_gets_its_persons_next_steps_hint_once() {
+        let home = tempfile::tempdir().unwrap();
+        let mut watch = Watch::load(home.path(), Some("cc-1"), &[]).0;
+        assert!(!watch.next_asked());
+        let shown = watch.at_next("phone").expect("the phone's hint");
+        assert_eq!(
+            (shown.kind.as_str(), shown.layer),
+            (kind::NEXT_PHONE, Layer::Default)
+        );
+        assert!(shown.text.contains("zirc.dev/app"), "{}", shown.text);
+        assert_eq!(watch.take_shown().len(), 1, "for its usage record");
+        // The next watch of the session knows it was asked, and says it no more.
+        let mut again = Watch::load(home.path(), Some("cc-1"), &[]).0;
+        assert!(again.next_asked());
+        assert_eq!(again.at_next("phone"), None);
+        // A step an agent has nothing to say about is asked once all the same.
+        let mut other = Watch::load(home.path(), Some("cc-2"), &[]).0;
+        assert_eq!(other.at_next("teammate"), None);
+        assert!(Watch::load(home.path(), Some("cc-2"), &[]).0.next_asked());
+    }
 
     #[test]
     fn the_defaults_read_and_check() {

@@ -638,7 +638,49 @@ pub(crate) async fn watch(
         once,
         hints: &hints,
     };
+    // An agent's first watch ends at once with what to tell its person of their next step:
+    // it's read when the watch ends, and the agent starts the next as after any wake.
+    if once
+        && !json
+        && let Some(session) = session.as_deref()
+        && said_next(home, socket, &how, session, out).await?
+    {
+        return Ok(());
+    }
     watch_as(socket, &how, session.as_deref(), until, out).await
+}
+
+/// At a session's first watch, says its person's next step of getting started with the hint
+/// for it, when there's one ([`zirc_core::hints::Watch::at_next`]): whether it said one.
+async fn said_next(
+    home: &Path,
+    socket: &Path,
+    how: &How<'_>,
+    session: &str,
+    out: &mut impl Write,
+) -> Result<bool> {
+    if how.hints.lock().is_ok_and(|hints| hints.next_asked()) {
+        return Ok(false);
+    }
+    let Some((step, _)) = crate::next::step(home, socket, None).await else {
+        return Ok(false);
+    };
+    let Some(hint) = how
+        .hints
+        .lock()
+        .ok()
+        .and_then(|mut hints| hints.at_next(step.id))
+    else {
+        return Ok(false);
+    };
+    writeln!(
+        out,
+        "{PROGRAM}: your user's next step with Zirc: {}",
+        step.title
+    )?;
+    writeln!(out, "{}", hint_line(&hint))?;
+    record_hints(socket, how, Some(session)).await;
+    Ok(true)
 }
 
 #[cfg(test)]

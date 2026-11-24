@@ -362,6 +362,59 @@ impl Client {
         Ok(Some(self.checked(response).await?.json().await?))
     }
 
+    /// How the person whose machine `account` is stands with getting started, and which step
+    /// is next ([`zirc_proto::onboarding::STEPS_PATH`]). `None` if the web app doesn't know
+    /// that account and passphrase.
+    ///
+    /// # Errors
+    ///
+    /// When the web app can't be reached or answers anything else.
+    pub async fn steps(
+        &self,
+        account: &Account,
+    ) -> Result<Option<zirc_proto::onboarding::Progress>, Error> {
+        let response = self
+            .http
+            .get(format!(
+                "{}{}",
+                self.web,
+                zirc_proto::onboarding::STEPS_PATH
+            ))
+            .basic_auth(&account.name, Some(&account.password))
+            .send()
+            .await?;
+        if response.status() == StatusCode::UNAUTHORIZED {
+            return Ok(None);
+        }
+        Ok(Some(self.checked(response).await?.json().await?))
+    }
+
+    /// Says a prompt about a step was shown, followed or put away
+    /// ([`zirc_proto::onboarding::PROMPTS_PATH`]).
+    ///
+    /// # Errors
+    ///
+    /// When the web app can't be reached or refuses it.
+    pub async fn prompt(
+        &self,
+        account: &Account,
+        seen: &zirc_proto::onboarding::PromptSeen,
+    ) -> Result<(), Error> {
+        let response = self
+            .http
+            .post(format!(
+                "{}{}",
+                self.web,
+                zirc_proto::onboarding::PROMPTS_PATH
+            ))
+            .basic_auth(&account.name, Some(&account.password))
+            .json(seen)
+            .send()
+            .await?;
+        self.checked(response).await?;
+        Ok(())
+    }
+
     /// Revokes the CI token called `name`. `None` if the web app doesn't know that account and
     /// passphrase.
     ///

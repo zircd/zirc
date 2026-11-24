@@ -95,8 +95,28 @@ pub mod kind {
     /// heard.
     pub const REACTION_OTHER: &str = "reaction.other";
 
+    /// At a session's first watch, while its person's next step of getting started
+    /// ([`crate::onboarding`]) is the phone: what to tell them.
+    pub const NEXT_PHONE: &str = "next.phone";
+    /// The same, while it's connecting CI.
+    pub const NEXT_CI: &str = "next.ci";
+    /// The same, while it's a first wake.
+    pub const NEXT_FIRST_WAKE: &str = "next.first-wake";
+
+    /// The kind for a person's next step, by the step's id, where an agent has something to
+    /// say about it.
+    #[must_use]
+    pub fn next(step: &str) -> Option<&'static str> {
+        match step {
+            "phone" => Some(NEXT_PHONE),
+            "ci" => Some(NEXT_CI),
+            "first_wake" => Some(NEXT_FIRST_WAKE),
+            _ => None,
+        }
+    }
+
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 38] = [
+    pub const ALL: [&str; 41] = [
         START,
         OVERLAP,
         OVERLAP_SAME_LINES,
@@ -134,6 +154,9 @@ pub mod kind {
         REACTION_ISSUE,
         REACTION_PERSON,
         REACTION_AGENT,
+        NEXT_PHONE,
+        NEXT_CI,
+        NEXT_FIRST_WAKE,
         REACTION_OTHER,
     ];
 }

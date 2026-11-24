@@ -570,6 +570,7 @@ pub async fn connect(
     writeln!(out, "✓ Heard run {build}: {}", outcome(&said))?;
     writeln!(out)?;
     writeln!(out, "{}", bold("CI is connected."))?;
+    crate::next::say(home, socket, args.org.org.as_deref(), out).await?;
     Ok(())
 }
 

@@ -15,6 +15,7 @@ mod lease;
 mod lines;
 mod log;
 mod logout;
+mod next;
 mod paint;
 mod playbook;
 mod post;
@@ -1020,7 +1021,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
             let out = &mut paint::Lines::new(out, paint::status, !json && paint::wanted());
             status(&socket, json, session.as_deref(), out).await
         }
-        Command::Repo(command) => setup::repo_first(&home, &socket, command, out).await,
+        Command::Repo(command) => next::repo(&home, &socket, command, out).await,
         Command::Post(args) => post::post(&socket, name, args, out).await,
         Command::Dm(args) => post::dm(&socket, args, out).await,
         Command::Decide(args) => decide::decide(&socket, args, out).await,

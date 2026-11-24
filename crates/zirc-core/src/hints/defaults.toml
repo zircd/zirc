@@ -109,6 +109,23 @@ kind = "build.yours.test"
 level = "act"
 text = "A test failure your user sent to see you wake, not a real one: fix nothing. Tell them in one line that CI's failure reached you, and carry on."
 
+# A session's first watch, by its person's next step of getting started: what to tell them,
+# in the agent's own words.
+[[hint]]
+kind = "next.phone"
+level = "tell"
+text = "Tell your user, in your own words: you're on Zirc now, so they needn't stay at this terminal. They can message you from the Zirc app and you'll answer within seconds, and what you need them to decide reaches their phone. The app: zirc.dev/app."
+
+[[hint]]
+kind = "next.ci"
+level = "tell"
+text = "Tell your user that CI isn't connected to Zirc yet: once it is, you wake when a build of your branch fails. `zirc ci connect` in this repository does it; offer to run it for them."
+
+[[hint]]
+kind = "next.first-wake"
+level = "tell"
+text = "Offer your user to see you wake without waiting for a real failure: `zirc ci test-failure --session <your session>` fails a run of your branch on purpose, as a test."
+
 [[hint]]
 kind = "landing.awaited"
 level = "act"

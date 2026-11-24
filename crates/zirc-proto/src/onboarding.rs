@@ -167,6 +167,9 @@ pub struct Step {
     pub title: &'static str,
     /// What it's for, in a line under its title.
     pub about: &'static str,
+    /// What to do to reach it, as a command line says it after `Next:`, when it's the next
+    /// step ([`Progress::next`]): one line, naming the command where there's one.
+    pub next_line: &'static str,
 }
 
 /// The steps, in number order.
@@ -181,6 +184,7 @@ pub const STEPS: [Step; 8] = [
         early: false,
         title: "Your server",
         about: "Made when you signed up.",
+        next_line: "your server is starting: zirc.dev says when it's ready.",
     },
     Step {
         number: 2,
@@ -192,6 +196,7 @@ pub const STEPS: [Step; 8] = [
         early: false,
         title: "Your computer",
         about: "In your repository, on the computer your agents run on.",
+        next_line: "in a repository you work in, run `zirc repo add`.",
     },
     Step {
         number: 3,
@@ -203,6 +208,7 @@ pub const STEPS: [Step; 8] = [
         early: false,
         title: "Your agent",
         about: "Start Claude Code or Codex in that repository. It joins Zirc on its own.",
+        next_line: "start your agent here (or restart it) and give it a task. It joins Zirc by itself.",
     },
     Step {
         number: 4,
@@ -214,6 +220,7 @@ pub const STEPS: [Step; 8] = [
         early: true,
         title: "Your phone",
         about: "Get the app now; this ticks off when your agent answers you from it.",
+        next_line: "message your agent from the Zirc app: zirc.dev/app",
     },
     Step {
         number: 5,
@@ -225,6 +232,7 @@ pub const STEPS: [Step; 8] = [
         early: false,
         title: "CI",
         about: "So your agent wakes when a build fails.",
+        next_line: "connect CI, so your agent wakes when a build fails: `zirc ci connect`",
     },
     Step {
         number: 6,
@@ -236,6 +244,7 @@ pub const STEPS: [Step; 8] = [
         early: false,
         title: "Your first wake",
         about: "See it happen, without waiting for a real failure.",
+        next_line: "see a wake without waiting for a failure: `zirc ci test-failure`",
     },
     Step {
         number: 7,
@@ -247,6 +256,7 @@ pub const STEPS: [Step; 8] = [
         early: false,
         title: "Your first overlap",
         about: "Two agents changing the same files settle it between them.",
+        next_line: "nothing to do: two of your agents changing the same files settle it between them.",
     },
     Step {
         number: 8,
@@ -258,6 +268,7 @@ pub const STEPS: [Step; 8] = [
         early: false,
         title: "A teammate",
         about: "Teammates' agents hear yours.",
+        next_line: "invite a teammate at zirc.dev: their agents hear yours.",
     },
 ];
 
@@ -597,6 +608,29 @@ mod tests {
                 assert!(*need < step.number, "{} needs {need}", step.id);
             }
         }
+    }
+
+    #[test]
+    fn every_step_says_what_to_do_next_in_a_line() {
+        for step in &STEPS {
+            assert!(
+                !step.next_line.is_empty() && !step.next_line.contains('\n'),
+                "{}",
+                step.id
+            );
+        }
+        assert!(
+            step(5)
+                .unwrap()
+                .next_line
+                .contains(crate::ci::CONNECT_COMMAND)
+        );
+        assert!(
+            step(6)
+                .unwrap()
+                .next_line
+                .contains(crate::ci::TEST_FAILURE_COMMAND)
+        );
     }
 
     #[test]
