@@ -5,10 +5,11 @@
 //!
 //! It hears every message the moment Ergo keeps it: it watches Ergo's history file for writes
 //! (the OS's file events, merged over [`THROTTLE`]) and reads only the rows after the last it
-//! read ([`kept`]). For each, and each phone registered with it ([`store`]), zirc-chat's push
-//! rule says whether and why it's pushed: a mention, a reply to or a reaction to what the
-//! person said, a direct message, or anything where they asked to hear everything, by how much
-//! that conversation notifies on that phone. A channel's goes only to its members (Ergo's
+//! read ([`kept`]), stopping before one Ergo is still writing. For each, and each phone
+//! registered with it ([`store`]), zirc-chat's push rule says whether and why it's pushed: a
+//! mention, a reply to or a reaction to what the person said, a direct message, or anything
+//! where they asked to hear everything, by how much that conversation notifies on that phone.
+//! A channel's goes only to its members (Ergo's
 //! `whois`). Each waits [`DELAY`], and goes only if none of the person's apps has read that
 //! conversation meanwhile; when one reads it after, the phone is told, so the notification
 //! goes from it.
@@ -47,6 +48,15 @@ pub const THROTTLE: Duration = Duration::from_millis(200);
 
 /// How often it reads where the OS can't tell it of writes: only then.
 const FALLBACK: Duration = Duration::from_secs(2);
+
+/// How long it waits on a message Ergo is still writing, reading again every [`THROTTLE`],
+/// before it reads past it: one to someone without an account never gets a recipient's copy,
+/// nor one Ergo failed to finish ([`kept::after`]).
+const UNPLACED: Duration = Duration::from_secs(10);
+
+/// A message Ergo was still writing at the last read, and since when the pusher has waited on
+/// it.
+type Waiting = Option<(i64, Instant)>;
 
 /// How long what channels an account is in is taken as known.
 const MEMBERS_FOR: Duration = Duration::from_secs(30);
@@ -496,11 +506,18 @@ impl Running {
                 (None, None)
             }
         };
+        let mut waiting = None;
         loop {
-            if let Err(error) = Arc::clone(&self).read_new().await {
-                warn!(%error, "the pusher couldn't read the history");
+            match Arc::clone(&self).read_new(waiting).await {
+                Ok(still) => waiting = still,
+                Err(error) => warn!(%error, "the pusher couldn't read the history"),
             }
             tokio::time::sleep(THROTTLE).await;
+            // What finishes a message may have been written before the read could see it,
+            // with no write to come after: read again without waiting for one.
+            if waiting.is_some() {
+                continue;
+            }
             match written.as_mut() {
                 Some(written) => {
                     if written.recv().await.is_none() {
@@ -513,13 +530,15 @@ impl Running {
     }
 
     /// Reads what's new in the history, and sends each push it makes once [`DELAY`] has
-    /// passed.
-    async fn read_new(self: Arc<Self>) -> Result<(), String> {
+    /// passed; says what it's waiting on Ergo to finish writing, if anything.
+    async fn read_new(self: Arc<Self>, mut waiting: Waiting) -> Result<Waiting, String> {
         let (history, store) = (self.pusher.history.clone(), self.store.clone());
-        let pushes = tokio::task::spawn_blocking(move || pushes_after(&history, &store))
-            .await
-            .map_err(|error| error.to_string())?
-            .map_err(|error| error.to_string())?;
+        let (pushes, waiting) = tokio::task::spawn_blocking(move || {
+            pushes_after(&history, &store, &mut waiting).map(|pushes| (pushes, waiting))
+        })
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
         for push in pushes {
             if let Some(channel) = &push.channel
                 && !self.is_member(&push.account, channel).await
@@ -532,7 +551,7 @@ impl Running {
                 running.deliver(push).await;
             });
         }
-        Ok(())
+        Ok(waiting)
     }
 
     /// Whether `account` is in `channel` now, as Ergo says, asked at most every
@@ -716,8 +735,13 @@ impl Running {
 
 /// The pushes the history's rows after the last read make, for every phone in the store at
 /// `store`, and keeps where it read to. The first time, it starts from the history's end:
-/// nothing said before it ran is pushed.
-fn pushes_after(history: &Path, store: &Path) -> rusqlite::Result<Vec<Push>> {
+/// nothing said before it ran is pushed. It stops before a message Ergo is still writing,
+/// which `waiting` then names, until it's finished or has been waited on for [`UNPLACED`].
+fn pushes_after(
+    history: &Path,
+    store: &Path,
+    waiting: &mut Waiting,
+) -> rusqlite::Result<Vec<Push>> {
     let kept_store = store::open(store)?;
     if !history.exists() {
         // A new server: everything it keeps from now on is new.
@@ -738,11 +762,11 @@ fn pushes_after(history: &Path, store: &Path) -> rusqlite::Result<Vec<Push>> {
     let now = jiff::Timestamp::now().as_second();
     let mut pushes = Vec::new();
     loop {
-        let (rows, newest) = kept::after(&connection, last)?;
-        if newest == last {
-            return Ok(pushes);
-        }
-        for row in rows.iter().filter(|_| !phones.is_empty()) {
+        let pass = waiting
+            .filter(|(_, since)| since.elapsed() >= UNPLACED)
+            .map(|(id, _)| id);
+        let read = kept::after(&connection, last, pass)?;
+        for row in read.kept.iter().filter(|_| !phones.is_empty()) {
             let answered = row
                 .said
                 .tags
@@ -752,8 +776,21 @@ fn pushes_after(history: &Path, store: &Path) -> rusqlite::Result<Vec<Push>> {
                 .flatten();
             pushes.extend(decide(row, &phones, answered.as_ref(), now));
         }
-        last = newest;
-        store::set_last(&kept_store, last)?;
+        let moved = read.newest != last;
+        if moved {
+            last = read.newest;
+            store::set_last(&kept_store, last)?;
+        }
+        if let Some(id) = read.unplaced {
+            if waiting.is_none_or(|(waited, _)| waited != id) {
+                *waiting = Some((id, Instant::now()));
+            }
+            return Ok(pushes);
+        }
+        *waiting = None;
+        if !moved {
+            return Ok(pushes);
+        }
     }
 }
 

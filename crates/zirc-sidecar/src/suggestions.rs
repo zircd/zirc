@@ -267,6 +267,10 @@ pub struct Kept {
     /// The last row of Ergo's history read; `None` before any was.
     #[serde(default)]
     pub last: Option<i64>,
+    /// A row Ergo was still writing at the last round, read past at this one if it still is
+    /// ([`history::after`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting: Option<i64>,
     /// The suggestions, by id.
     #[serde(default)]
     pub suggestions: BTreeMap<String, Entry>,
@@ -499,14 +503,16 @@ pub fn round(
         None => kept.last = Some(history::newest(&connection)?),
         Some(mut last) => {
             loop {
-                let (rows, newest) = history::after(&connection, last)?;
-                if newest == last {
-                    break;
-                }
-                for row in &rows {
+                let read = history::after(&connection, last, kept.waiting)?;
+                for row in &read.kept {
                     says.extend(kept.heard(row, &person, now));
                 }
-                last = newest;
+                let moved = read.newest != last;
+                last = read.newest;
+                if read.unplaced.is_some() || !moved {
+                    kept.waiting = read.unplaced;
+                    break;
+                }
             }
             kept.last = Some(last);
         }

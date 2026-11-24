@@ -1,5 +1,7 @@
 use super::*;
-use crate::trim::testing::{add, add_direct, add_direct_item, add_item, history};
+use crate::trim::testing::{
+    add, add_copy, add_direct, add_direct_item, add_item, add_message, history,
+};
 
 const SECOND: i64 = 1_000_000_000;
 
@@ -17,8 +19,9 @@ fn phone(account: &str, settings: &serde_json::Value) -> Phone {
 /// them, as (account, why, line).
 fn decided(path: &Path, from: i64, phones: &[Phone]) -> Vec<(String, String, String)> {
     let connection = crate::trim::open(path).unwrap();
-    let (rows, _) = kept::after(&connection, from).unwrap();
-    rows.iter()
+    let read = kept::after(&connection, from, None).unwrap();
+    read.kept
+        .iter()
         .flat_map(|row| {
             let answered = row
                 .said
@@ -190,7 +193,7 @@ fn starts_from_the_end_of_the_history_and_reads_on() {
     let path = history(dir.path());
     let store = store::path_for(&path);
     add(&path, "m1", "#api", SECOND, "bob", "ada: before the pusher");
-    assert!(pushes_after(&path, &store).unwrap().is_empty());
+    assert!(pushes_after(&path, &store, &mut None).unwrap().is_empty());
     store::register(
         &store::open(&store).unwrap(),
         &phone("ada", &serde_json::json!({})).subscription,
@@ -205,11 +208,68 @@ fn starts_from_the_end_of_the_history_and_reads_on() {
         "ada",
         &serde_json::json!({"Type": 1, "Nick": "bob!u@h", "AccountName": "bob", "Message": {"Message": "since"}}),
     );
-    let pushes = pushes_after(&path, &store).unwrap();
+    let pushes = pushes_after(&path, &store, &mut None).unwrap();
     assert_eq!(pushes.len(), 1);
     assert_eq!(pushes[0].conversation, "bob");
     assert_eq!(pushes[0].channel, None);
-    assert!(pushes_after(&path, &store).unwrap().is_empty(), "each once");
+    assert!(
+        pushes_after(&path, &store, &mut None).unwrap().is_empty(),
+        "each once"
+    );
+}
+
+/// A history with ada's phone registered and the pusher's first look taken, its store, and
+/// what the pusher waits on.
+fn with_a_phone(dir: &Path) -> (PathBuf, PathBuf, Waiting) {
+    let path = history(dir);
+    let store = store::path_for(&path);
+    let mut waiting = None;
+    pushes_after(&path, &store, &mut waiting).unwrap();
+    store::register(
+        &store::open(&store).unwrap(),
+        &phone("ada", &serde_json::json!({})).subscription,
+        1,
+    )
+    .unwrap();
+    (path, store, waiting)
+}
+
+/// A direct message read between Ergo's statements for it, before its recipient's copy is
+/// kept, is pushed once it is, not read past (the real-Ergo test's flake, 24 Nov 2026).
+#[test]
+fn waits_on_a_message_ergo_is_still_writing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (path, store, mut waiting) = with_a_phone(dir.path());
+    let lunch = add_message(&path, "m1", "bob", "lunch?");
+    add_copy(&path, lunch, "bob", "ada");
+    let none = pushes_after(&path, &store, &mut waiting).unwrap();
+    assert!(none.is_empty());
+    let since = waiting.expect("waiting on it").1;
+    assert_eq!(waiting.map(|(id, _)| id), Some(lunch));
+    let none = pushes_after(&path, &store, &mut waiting).unwrap();
+    assert!(none.is_empty());
+    assert_eq!(waiting, Some((lunch, since)), "waited on since first seen");
+    add_copy(&path, lunch, "ada", "bob");
+    let pushes = pushes_after(&path, &store, &mut waiting).unwrap();
+    assert_eq!(pushes.len(), 1);
+    assert_eq!(pushes[0].conversation, "bob");
+    assert_eq!(waiting, None);
+}
+
+/// A message Ergo never finishes writing is read past once waited on for [`UNPLACED`].
+#[test]
+fn reads_past_a_message_never_finished() {
+    let dir = tempfile::tempdir().unwrap();
+    let (path, store, mut waiting) = with_a_phone(dir.path());
+    let lost = add_message(&path, "m1", "bob", "never placed");
+    pushes_after(&path, &store, &mut waiting).unwrap();
+    assert_eq!(waiting.map(|(id, _)| id), Some(lost));
+    waiting = Some((lost, Instant::now().checked_sub(UNPLACED).unwrap()));
+    let none = pushes_after(&path, &store, &mut waiting).unwrap();
+    assert!(none.is_empty());
+    assert_eq!(waiting, None);
+    let read_to = store::last(&store::open(&store).unwrap()).unwrap();
+    assert_eq!(read_to, Some(lost));
 }
 
 /// The file events the pusher waits on come for writes to the history, not to its own store

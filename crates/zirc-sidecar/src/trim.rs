@@ -497,6 +497,35 @@ pub(crate) mod testing {
             .unwrap();
     }
 
+    /// A message's row alone, as Ergo's first statement for one keeps it: where it was said
+    /// follows ([`add_copy`]). Its id.
+    pub(crate) fn add_message(path: &Path, msgid: &str, from: &str, text: &str) -> i64 {
+        let data = serde_json::json!({
+            "Type": 1, "Nick": format!("{from}!u@h"), "AccountName": from,
+            "Message": {"Message": text, "Msgid": msgid},
+        });
+        let connection = Connection::open(path).unwrap();
+        connection
+            .execute(
+                "INSERT INTO history (data, msgid) VALUES (?1, ?2)",
+                rusqlite::params![data.to_string().into_bytes(), msgid],
+            )
+            .unwrap();
+        connection.last_insert_rowid()
+    }
+
+    /// One copy of the direct message `id`, under `account`, with `correspondent`.
+    pub(crate) fn add_copy(path: &Path, id: i64, account: &str, correspondent: &str) {
+        Connection::open(path)
+            .unwrap()
+            .execute(
+                "INSERT INTO conversations (target, correspondent, nanotime, history_id) \
+                 VALUES (?1, ?2, 1, ?3)",
+                rusqlite::params![account, correspondent, id],
+            )
+            .unwrap();
+    }
+
     /// A direct message from `from` to `to`, kept for both, as Ergo keeps one.
     pub(crate) fn add_direct(
         path: &Path,
