@@ -44,7 +44,8 @@ const DEVICES: &[&str] = &["simulator", "emulator"];
 /// Whether lease `name` is given back once its holder has run nothing heavy for
 /// [`IDLE_FOR`]: any but a device's ([`DEVICES`]).
 fn released_when_idle(name: &str) -> bool {
-    !DEVICES.contains(&name)
+    // A role's seat is held while its session's watch lives, busy or not (`super::roles`).
+    !DEVICES.contains(&name) && zirc_proto::roles::of_lease(name).is_none()
 }
 
 /// The longest a lease's name may be.
@@ -178,7 +179,7 @@ impl Daemon {
 
     /// This machine's nick, while it's in the organisation's channel, where leases are agreed:
     /// they're said in its name.
-    fn lease_nick(&self) -> Result<String> {
+    pub(super) fn lease_nick(&self) -> Result<String> {
         let Some(client) = &self.client else {
             bail!("not connected to the server: leases are agreed there");
         };
@@ -192,7 +193,7 @@ impl Daemon {
     }
 
     /// Says `event` in the organisation's channel, as `session`, and takes it in.
-    fn say_lease(&mut self, session: &str, event: LeaseEvent, text: String) {
+    pub(super) fn say_lease(&mut self, session: &str, event: LeaseEvent, text: String) {
         let data = serde_json::to_value(&event).expect("a lease event serializes");
         self.leases.leases.apply(event);
         self.save_leases();
@@ -322,7 +323,7 @@ impl Daemon {
 
     /// Holds `turn`'s lease longer, asked at `now` for `seconds` more ([`leases::renewal`]):
     /// past the cap while others wait, its session asks again behind them.
-    fn renew(&mut self, me: &str, turn: &leases::Turn, seconds: u64, now: u64) {
+    pub(super) fn renew(&mut self, me: &str, turn: &leases::Turn, seconds: u64, now: u64) {
         let (name, session) = (&turn.want.name, &turn.want.session);
         let others = self.leases.leases.others_wait(turn, now);
         let (until, capped) = leases::renewal(turn, others, now, seconds);
@@ -354,7 +355,14 @@ impl Daemon {
 
     /// Asks the organisation's machines for lease `name` for `session`, for `seconds` once
     /// it's theirs.
-    fn want(&mut self, me: &str, name: &str, session: &str, seconds: u64, now: u64) -> String {
+    pub(super) fn want(
+        &mut self,
+        me: &str,
+        name: &str,
+        session: &str,
+        seconds: u64,
+        now: u64,
+    ) -> String {
         self.leases.made += 1;
         let want = Want {
             id: format!("{me}-{now}-{}", self.leases.made),
@@ -552,7 +560,7 @@ impl Daemon {
 
     /// Tells the watch of the session `text` names, in a lease line of zircd's own, which
     /// concerns only whom it names.
-    fn tell_session(&mut self, text: String, id: Option<&str>) {
+    pub(super) fn tell_session(&mut self, text: String, id: Option<&str>) {
         let from = self
             .client
             .as_ref()
@@ -736,7 +744,10 @@ impl Daemon {
             // `zirc lease` said: telling its watch too woke it for nothing.
             let at_once = self.leases.free_when_asked.contains(&turn.want.id)
                 && turn.start <= turn.want.at + leases::SETTLE;
+            // A role's seat: `zirc role take` said so, and one that came second is told apart.
+            let role = zirc_proto::roles::of_lease(&turn.want.name).is_some();
             if turn.start <= now
+                && !role
                 && self.leases.told.insert(turn.want.id.clone())
                 && !at_once
                 && !self.waiter_says_it(&turn.want.name, session)
@@ -763,6 +774,7 @@ impl Daemon {
             self.leases.unwatched.remove(&session);
         }
         self.release_idle(&mine, now).await;
+        self.roles_tick();
         // Read again: a request held for room may have been asked for since `mine` was.
         let mine = self.leases.leases.mine(&me, now_ms());
         self.leases.forget_ended(&mine);

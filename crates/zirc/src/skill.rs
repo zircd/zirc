@@ -182,6 +182,8 @@ mod tests {
             why: None,
             id: None,
             org: None,
+            role: None,
+            woke: None,
         });
         assert_eq!(query, "query from mattias-mini/cc-2 [q1]: which branch?");
         assert!(AGENT_GUIDE.contains("query from <nick>/<session> [<id>]: <text>"));
@@ -197,6 +199,8 @@ mod tests {
             why: None,
             id: None,
             org: None,
+            role: None,
+            woke: None,
         });
         assert_eq!(answer, "answer from mattias-mbp/cc-1 [q1]: main");
         assert!(AGENT_GUIDE.contains("answer from <nick>/<session> [<id>]: <text>"));
@@ -212,6 +216,8 @@ mod tests {
             why: None,
             id: None,
             org: None,
+            role: None,
+            woke: None,
         });
         assert_eq!(note, "note from mattias-mbp/cc-1: landed the login page");
         assert!(AGENT_GUIDE.contains("note from <nick>/<session>: <text>"));

@@ -138,6 +138,15 @@ pub(crate) fn direct_line(direct: &Direct) -> String {
         Some(session) => format!("{}/{session}", direct.from),
         None => direct.from.clone(),
     };
+    // Never `dm from`, which is the person's own words: a role's are anyone's.
+    if let Some(role) = &direct.role {
+        let id = id_of(direct.id.as_deref());
+        let line = match &direct.woke {
+            Some(woke) => format!("{role} woke: {}: {}{id}", woke.words(None), direct.text),
+            None => format!("{role}: message from {from}{id}: {}", direct.text),
+        };
+        return channel_in(&line, direct.org.as_deref());
+    }
     if let Some(id) = &direct.query {
         let line = format!("query from {from} [{id}]: {}", direct.text);
         return channel_in(&line, direct.org.as_deref());
@@ -488,6 +497,8 @@ pub(crate) mod tests {
             why: None,
             id: None,
             org: Some("globex".into()),
+            role: None,
+            woke: None,
         });
         assert_eq!(dm, "globex dm from mattias: rebase please");
         let said = Delivery {

@@ -12,16 +12,10 @@ impl Daemon {
     /// Reads the team's hints from the server in the background and keeps them, when the
     /// server has this machine's key.
     pub(super) fn read_team_hints(&self) {
-        let (name, first) = (self.org.name.clone(), self.org.first);
-        let Some(org) = self
-            .config
-            .ask(|settings| crate::config::find(settings, &name, first))
-        else {
+        let Some(server) = self.content_server() else {
             return;
         };
-        let Some(server) = zirc_core::team_hints::Server::of(&self.home, &org) else {
-            return;
-        };
+        let name = self.org.name.clone();
         let home = self.home.clone();
         tokio::spawn(async move {
             match server.list().await {
@@ -33,6 +27,16 @@ impl Daemon {
                 Err(why) => tracing::debug!("couldn't read the team's hints: {why}"),
             }
         });
+    }
+
+    /// The organisation's server, asked as this machine, when it has this machine's key: for
+    /// the team's hints, and how its roles stand.
+    pub(super) fn content_server(&self) -> Option<zirc_core::team_hints::Server> {
+        let (name, first) = (self.org.name.clone(), self.org.first);
+        let org = self
+            .config
+            .ask(|settings| crate::config::find(settings, &name, first))?;
+        zirc_core::team_hints::Server::of(&self.home, &org)
     }
 
     /// Reads the team's hints again if `delivery` is zirc's own account saying they changed

@@ -2083,6 +2083,266 @@
       ],
       "description": "This machine's owner's answer to a request ([`zirc_proto::request`]): a reaction the\nserver said their own account gave, on the request's own message, while it was open."
     },
+    "Woke": {
+      "type": "object",
+      "properties": {
+        "what": {
+          "$ref": "#/$defs/What",
+          "description": "What happened."
+        },
+        "by": {
+          "$ref": "#/$defs/By",
+          "description": "Whose doing it was."
+        },
+        "from": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Who: the nick it came from, a person's or a machine's. `None` for CI and zirc."
+        },
+        "session": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The agent session on [`Self::from`] it came from."
+        },
+        "channel": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The channel the line that woke it was said in, as it's called on the server; `None`\nfor what was sent to it directly."
+        },
+        "line": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "That line's id on the server, for an app to add its words where its reader has it."
+        },
+        "build": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "For CI's line: the build's number."
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/State"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For CI's line, how it stands ([`crate::card::State`], as [`crate::ci::Data::state`]\nsays it)."
+        },
+        "level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Level"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For how something the team shares stands, its level."
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The branch it's about: the one CI built or that landed, or the state's name."
+        },
+        "landing": {
+          "type": "boolean",
+          "description": "For CI's line, whether it's a landing's ([`crate::ci::LANDING_KIND`]): one that\npassed landed."
+        },
+        "wake": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The wake's id ([`crate::activity::Wake::id`]), which joins the line to its record."
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The role ([`crate::roles`]) the session was woken as, when it was: its line ends\nwith it, `Woke: master is broken (fixer)`."
+        }
+      },
+      "required": [
+        "what",
+        "by"
+      ],
+      "description": "A session's watch woke: what an [`Event::Custom`] of [`KIND`] carries, from the session."
+    },
+    "What": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "build",
+          "description": "CI said how a build, a landing or a deploy went ([`Woke::build`], [`Woke::state`])."
+        },
+        {
+          "type": "string",
+          "const": "state",
+          "description": "How something the team shares stands changed, such as the default branch broken."
+        },
+        {
+          "type": "string",
+          "const": "wrote",
+          "description": "Someone wrote to it directly."
+        },
+        {
+          "type": "string",
+          "const": "mentioned",
+          "description": "Someone named it in a channel."
+        },
+        {
+          "type": "string",
+          "const": "replied",
+          "description": "Someone replied to it in a channel."
+        },
+        {
+          "type": "string",
+          "const": "asked",
+          "description": "Another agent asked it something."
+        },
+        {
+          "type": "string",
+          "const": "answered",
+          "description": "Another agent answered what it asked."
+        },
+        {
+          "type": "string",
+          "const": "noted",
+          "description": "Another agent sent it a note."
+        },
+        {
+          "type": "string",
+          "const": "reacted",
+          "description": "Someone reacted to what it said."
+        },
+        {
+          "type": "string",
+          "const": "decided",
+          "description": "Its person answered its request."
+        },
+        {
+          "type": "string",
+          "const": "intends",
+          "description": "Another session is about to change its files."
+        },
+        {
+          "type": "string",
+          "const": "overlap",
+          "description": "Another session is changing the same files."
+        },
+        {
+          "type": "string",
+          "const": "conflict",
+          "description": "Another's push changes the same lines as its work."
+        },
+        {
+          "type": "string",
+          "const": "landed",
+          "description": "Changes to its files landed, or went onto its branch."
+        },
+        {
+          "type": "string",
+          "const": "stacked-on",
+          "description": "Another session built on its branch."
+        },
+        {
+          "type": "string",
+          "const": "committed",
+          "description": "Another session committed to files it changes."
+        },
+        {
+          "type": "string",
+          "const": "posted",
+          "description": "A post in a topic it joined, or that names its files."
+        },
+        {
+          "type": "string",
+          "const": "other",
+          "description": "One a newer zircd says that this reader doesn't know."
+        }
+      ],
+      "description": "What happened, that woke the session."
+    },
+    "By": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "ci",
+          "description": "CI, or how something in the repository stands."
+        },
+        {
+          "type": "string",
+          "const": "agent",
+          "description": "Another agent session."
+        },
+        {
+          "type": "string",
+          "const": "person",
+          "description": "A person."
+        },
+        {
+          "type": "string",
+          "const": "zirc",
+          "description": "zirc itself, or one a newer zircd says that this reader doesn't know."
+        }
+      ],
+      "description": "Whose doing a wake was."
+    },
+    "State": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "info",
+          "description": "Nothing good or bad, as when a card doesn't say."
+        },
+        {
+          "type": "string",
+          "const": "pending",
+          "description": "Waiting to start."
+        },
+        {
+          "type": "string",
+          "const": "running",
+          "description": "Under way."
+        },
+        {
+          "type": "string",
+          "const": "passed",
+          "description": "Done, and it went well."
+        },
+        {
+          "type": "string",
+          "const": "failed",
+          "description": "Done, and it didn't."
+        },
+        {
+          "type": "string",
+          "const": "cancelled",
+          "description": "Stopped before it was done."
+        },
+        {
+          "type": "string",
+          "const": "warning",
+          "description": "Needs a look."
+        }
+      ],
+      "description": "A card's colour and icon."
+    },
     "Direct": {
       "type": "object",
       "properties": {
@@ -2154,6 +2414,24 @@
             "null"
           ],
           "description": "The organisation whose server it came from, while watching on a machine signed in\nto several."
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The role ([`zirc_proto::roles`]) the session holds that it came to, from the role's\nnick: a direct message to the role, from [`Direct::from`], or with [`Direct::woke`],\nwhat woke the role."
+        },
+        "woke": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Woke"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a role woken by one of its triggers or a report rather than a message: what woke\nit ([`zirc_proto::woke::Woke`]), its role said."
         }
       },
       "required": [
@@ -2629,45 +2907,263 @@
       ],
       "description": "A session's request this machine holds back until it has room for the lease."
     },
-    "State": {
-      "oneOf": [
-        {
+    "Definition": {
+      "type": "object",
+      "properties": {
+        "name": {
           "type": "string",
-          "const": "info",
-          "description": "Nothing good or bad, as when a card doesn't say."
+          "description": "Its name, which is its nick on the server: unique in the organisation ([`check_name`]),\nsuch as `fixer`."
         },
-        {
+        "repository": {
           "type": "string",
-          "const": "pending",
-          "description": "Waiting to start."
+          "description": "The repository its seat is taken from a checkout of, by name as zirc spells it\n([`crate::Message::repo`]), such as `monorepo`."
         },
-        {
+        "brief": {
           "type": "string",
-          "const": "running",
-          "description": "Under way."
+          "description": "What it does, given to whoever takes it, as zirc.dev's \"What it does\" says."
         },
-        {
-          "type": "string",
-          "const": "passed",
-          "description": "Done, and it went well."
+        "triggers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Trigger"
+          },
+          "description": "What wakes its holder, besides a direct message, which always does."
         },
-        {
-          "type": "string",
-          "const": "failed",
-          "description": "Done, and it didn't."
-        },
-        {
-          "type": "string",
-          "const": "cancelled",
-          "description": "Stopped before it was done."
-        },
-        {
-          "type": "string",
-          "const": "warning",
-          "description": "Needs a look."
+        "seats": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0,
+          "maximum": 255,
+          "description": "How many seats it has: [`SEATS`].",
+          "default": 1
         }
+      },
+      "required": [
+        "name",
+        "repository",
+        "brief"
       ],
-      "description": "A card's colour and icon."
+      "description": "A role as an organisation's admins define it on zirc.dev."
+    },
+    "Trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The state's name, such as `master`."
+        },
+        "level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Level"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The level that starts a run."
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Which input each thing the trigger knows fills: `input = \"field\"`, where the field\nis one its kind has ([`TriggerKind::fields`])."
+        },
+        "said": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Words that start a run when a person or an integration says them where the workflow\nlistens, whatever their case, as words of their own: `refund` isn't in `refunded`."
+        },
+        "reaction": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The reaction that starts a run when a person gives it to a message the workflow\nheard, such as `🐛`."
+        },
+        "landed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Paths a landing changes to start a run: a file, or a directory for everything under\nit; `.` for any landing. As CI says what a landing changed ([`crate::ci::Data`])."
+        },
+        "every": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "How often a run starts by itself, such as `1d` ([`seconds`]): at every whole multiple\nof it since 1 January 1970 UTC, so `1d` is each midnight and `6h` is 0, 6, 12 and 18."
+        },
+        "at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The time of day it starts at, `HH:MM` in UTC, when `every` is whole days."
+        },
+        "day": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The day of the week it starts on, `mon` to `sun`, when `every` is `7d`."
+        },
+        "with": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "What a run started by `every` is given: `input = \"value\"`."
+        }
+      },
+      "description": "What starts a run on its own, each trigger one of: a state ([`crate::state`]) being said, a\ntime coming round (`every`), words someone says where the workflow listens (`said`), a\nperson's reaction to a message there (`reaction`), or a landing that changes some paths\n(`landed`). What it knows of that fills the run's inputs (`inputs`), but a time, which\nknows nothing and is given them (`with`).\n\n```toml\n[[on]]\nstate = \"master\"\nlevel = \"broken\"\ninputs = { owner = \"owner\" }\n\n[[on]]\nevery = \"7d\"          # at least [`MIN_EVERY`]\nday = \"mon\"           # with 7d alone; Thursdays without it\nat = \"09:00\"          # UTC, when `every` is whole days; midnight without it\nwith = { what = \"update dependencies\" }\n\n[[on]]\nsaid = \"refund\"       # a person or an integration says it, as words of its own\ninputs = { ask = \"text\", who = \"by\" }   # of [`SAID_FIELDS`]\n\n[[on]]\nreaction = \"🐛\"        # a person's, on a message the workflow heard\ninputs = { report = \"text\", from = \"author\" }   # of [`REACTION_FIELDS`]\n\n[[on]]\nlanded = [\"oss/crates/zirc\", \"MODULE.bazel\"]   # files, or everything under a directory\ninputs = { commit = \"commit\", by = \"session\" } # of [`LANDED_FIELDS`]\n```"
+    },
+    "Seat": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "The role."
+        },
+        "repository": {
+          "type": "string",
+          "description": "Its repository."
+        },
+        "holder": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Holder2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Who holds it; vacant without."
+        },
+        "last": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Holder2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Who held it before, for \"Last held by\" and `zirc role last`."
+        },
+        "waiting": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many direct messages wait for the next holder."
+        },
+        "wakes_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "What wakes it, as people read it ([`Definition::wakes_on`]): said here for readers\nthat can't run this crate, such as zirc.dev's Roles tab."
+        }
+      },
+      "required": [
+        "role",
+        "repository"
+      ],
+      "description": "How a role stands: who holds its seat, if anyone, and who did last."
+    },
+    "Holder2": {
+      "type": "object",
+      "properties": {
+        "machine": {
+          "type": "string",
+          "description": "Its machine, by nick."
+        },
+        "since": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "Since when it held it, or until when it did for the last holder: unix seconds."
+        },
+        "session": {
+          "type": "string",
+          "description": "The session's id, as its messages carry it."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its short handle ([`crate::Message::name`]), when it has one."
+        },
+        "title": {
+          "type": "string",
+          "description": "Its full title, as the agent tool shows it, at most [`MAX_TITLE`] characters."
+        },
+        "tool": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The agent tool it runs in ([`crate::Message::tool`]), when known."
+        }
+      },
+      "required": [
+        "machine",
+        "since",
+        "session",
+        "title"
+      ],
+      "description": "A session holding a role, or that held it: its machine, and the session as its card says\nit ([`crate::session::SessionCard`]), so its name and tool are read one way."
+    },
+    "Listing": {
+      "type": "object",
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Definition"
+          },
+          "description": "Every role, in the order zirc.dev lists them."
+        },
+        "version": {
+          "type": "string",
+          "description": "What they're at: anything that changes when they do."
+        }
+      },
+      "required": [
+        "roles",
+        "version"
+      ],
+      "description": "An organisation's roles, as zirc.dev syncs them to its server: whole each time, with a\nversion that changes whenever they do."
+    },
+    "Standing": {
+      "type": "object",
+      "properties": {
+        "listing": {
+          "$ref": "#/$defs/Listing",
+          "description": "The roles, as zirc.dev last synced them."
+        },
+        "seats": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Seat"
+          },
+          "description": "Each role's seat, in the same order."
+        }
+      },
+      "required": [
+        "listing",
+        "seats"
+      ],
+      "description": "How an organisation's roles stand, as its server answers at [`PATH`]: each role, and its\nseat, in the listing's order."
     },
     "Field": {
       "type": "object",
@@ -3851,35 +4347,6 @@
           "properties": {
             "op": {
               "type": "string",
-              "const": "role"
-            },
-            "session": {
-              "type": "string",
-              "description": "The session."
-            },
-            "role": {
-              "type": "string",
-              "description": "The role, as [`zirc_proto::workflow::check_role`] takes it."
-            },
-            "join": {
-              "type": "boolean",
-              "description": "Joining it, or leaving it."
-            }
-          },
-          "required": [
-            "op",
-            "session",
-            "role",
-            "join"
-          ],
-          "description": "Join or leave one of the workflows' roles ([`zirc_proto::workflow::Who::Role`]) as\n`session`: the machine says each live session's roles with the list of them\n([`zirc_proto::session::Live`]), so a workflow gives a role's steps to its members.\nA session's roles end with its `done:` or `dropped:`, or once it's no longer live.\nAnswered with [`Response::Roles`].",
-          "title": "RoleRequest"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "op": {
-              "type": "string",
               "const": "local-sessions"
             }
           },
@@ -4319,6 +4786,108 @@
           ],
           "description": "Every lease held or waited for. Answered with [`Response::Leases`].",
           "title": "LeasesRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "role-take"
+            },
+            "role": {
+              "type": "string",
+              "description": "The role, such as `fixer`."
+            },
+            "session": {
+              "type": "string",
+              "description": "The session taking it."
+            },
+            "repo": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The repository of the checkout it's taken in, as zirc spells it."
+            }
+          },
+          "required": [
+            "op",
+            "role",
+            "session"
+          ],
+          "description": "Take role `role`'s one seat ([`zirc_proto::roles`]) for `session`, in a checkout of\n`repo`, its lease asked for and held while the session's watch lives. Refused when\nanother session holds it, or the role's repository isn't `repo`. Answered with\n[`Response::RoleTaken`].",
+          "title": "RoleTakeRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "role-leave"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session."
+            }
+          },
+          "required": [
+            "op",
+            "session"
+          ],
+          "description": "Leave the role `session` holds. Answered with [`Response::Done`].",
+          "title": "RoleLeaveRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "role-say"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session holding the role."
+            },
+            "to": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Whom to, by nick."
+            },
+            "reply_to": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The message it answers, by id."
+            },
+            "text": {
+              "type": "string",
+              "description": "What to say."
+            }
+          },
+          "required": [
+            "op",
+            "session",
+            "text"
+          ],
+          "description": "Say `text` as the role `session` holds: to `to` directly, answering `reply_to`, or\nwithout `to` in the agents' room. Answered with [`Response::Done`].",
+          "title": "RoleSayRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "role-standing"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "description": "How the organisation's roles stand, from its server. Answered with\n[`Response::RoleStanding`].",
+          "title": "RoleStandingRequest"
         }
       ],
       "description": "What a client asks zircd."
@@ -4571,28 +5140,6 @@
           ],
           "description": "While watching: someone reacted to a message, or took a reaction back.",
           "title": "ReactionResponse"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "roles"
-            },
-            "roles": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "Its roles, sorted."
-            }
-          },
-          "required": [
-            "kind",
-            "roles"
-          ],
-          "description": "The answer to [`Request::Role`]: the session's roles now.",
-          "title": "RolesResponse"
         },
         {
           "type": "object",
@@ -4935,6 +5482,45 @@
           ],
           "description": "The answer to [`Request::Lease`], [`Request::LeaseRelease`] and [`Request::Leases`].",
           "title": "LeasesResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "role-taken"
+            },
+            "role": {
+              "$ref": "#/$defs/Definition",
+              "description": "The role."
+            },
+            "seat": {
+              "$ref": "#/$defs/Seat",
+              "description": "Its seat."
+            }
+          },
+          "required": [
+            "kind",
+            "role",
+            "seat"
+          ],
+          "description": "The answer to [`Request::RoleTake`]: the role, whose brief its holder is given, and\nhow it stood when taken, its last holder among it.",
+          "title": "RoleTakenResponse"
+        },
+        {
+          "$ref": "#/$defs/Standing",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "role-standing"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "description": "The answer to [`Request::RoleStanding`].",
+          "title": "RoleStandingResponse"
         },
         {
           "type": "object",

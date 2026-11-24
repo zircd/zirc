@@ -970,61 +970,6 @@ async fn a_sessions_first_watch_says_it_is_live_before_it_posts() {
 }
 
 #[tokio::test]
-async fn a_sessions_roles_ride_with_the_live_list_until_its_done() {
-    let ergo = require_ergo!();
-    let [(alpha, alpha_clone), _beta] = two_machines(&ergo).await;
-    let (ada, mut ada_hears) = zirc_test_irc::person(&ergo, "ada").await;
-    zirc_test_irc::joins(&ada, &mut ada_hears, "#agents").await;
-    let live_of = |line: &zirc_irc::Line| {
-        let message = zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG)?).ok()?;
-        zirc_proto::session::Live::of(&message.event)
-    };
-    let _cc1 = alpha.watch(Some("cc-1")).await;
-    let joined = alpha
-        .request(Request::Role {
-            session: "cc-1".into(),
-            role: "fixers".into(),
-            join: true,
-        })
-        .await;
-    assert_eq!(
-        joined,
-        Response::Roles {
-            roles: vec!["fixers".into()]
-        }
-    );
-    zirc_test_irc::next_matching(&mut ada_hears, |line| {
-        live_of(line).is_some_and(|live| live.roles.get("cc-1") == Some(&vec!["fixers".into()]))
-    })
-    .await;
-
-    // Its done: ends its roles; it's still live.
-    alpha
-        .request(Request::Post {
-            repo: alpha_clone.path().to_owned(),
-            session: "cc-1".into(),
-            text: "done: the fix".into(),
-            to: ipc::Target::Agents,
-            app: None,
-            everyone: false,
-            reply: None,
-        })
-        .await;
-    zirc_test_irc::next_matching(&mut ada_hears, |line| {
-        live_of(line).is_some_and(|live| live.sessions == ["cc-1"] && live.roles.is_empty())
-    })
-    .await;
-    let bad = alpha
-        .try_request(Request::Role {
-            session: "cc-1".into(),
-            role: "Not A Role".into(),
-            join: true,
-        })
-        .await;
-    assert!(bad.is_err(), "{bad:?}");
-}
-
-#[tokio::test]
 async fn a_workflows_file_is_sent_only_where_the_server_runs_workflows() {
     use zirc_proto::workflow::{CHANNEL, Deploy, HOST};
     let ergo = require_ergo!();

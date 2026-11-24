@@ -390,7 +390,7 @@ pub(crate) fn card_named(json: &str) -> Result<zirc_proto::card::Card> {
     Ok(card)
 }
 
-/// `id` as one of the roles `zirc roles` lists, or a picture from before roles. Any other
+/// `id` as one of the roles `zirc avatars` lists, or a picture from before roles. Any other
 /// word is never a reason to fail the command it came with: the role its words tell
 /// ([`zirc_proto::guess_role`]), such as `builder` for `developer`, else the plain
 /// [`zirc_proto::DEFAULT_ROLE`], with a note saying which it took.
@@ -399,7 +399,7 @@ pub(crate) fn avatar_named(id: &str) -> (&'static str, Option<String>) {
         return (role, None);
     }
     let role = zirc_proto::guess_role(id).unwrap_or(zirc_proto::DEFAULT_ROLE);
-    let note = format!("{id:?} isn't a role, so it's {role}; `{PROGRAM} roles` lists them");
+    let note = format!("{id:?} isn't a role, so it's {role}; `{PROGRAM} avatars` lists them");
     (role, Some(note))
 }
 

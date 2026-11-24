@@ -52,6 +52,7 @@ mod replay;
 mod repos;
 mod requests;
 mod respond;
+mod roles;
 mod same_work;
 mod say;
 mod scans;

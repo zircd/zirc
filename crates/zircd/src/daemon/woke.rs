@@ -176,6 +176,10 @@ impl Daemon {
 
 /// What was sent to the machine directly, as a wake's line says it.
 fn direct_woke(direct: &Direct) -> Woke {
+    // What woke a role, as its nick said it.
+    if let Some(woke) = &direct.woke {
+        return woke.clone();
+    }
     let (what, by) = if direct.query.is_some() {
         (What::Asked, By::Agent)
     } else if direct.answer.is_some() {
@@ -189,6 +193,7 @@ fn direct_woke(direct: &Direct) -> Woke {
         from: Some(direct.from.clone()),
         session: direct.from_session.clone(),
         line: direct.id.clone(),
+        role: direct.role.clone(),
         ..Woke::new(what, by)
     }
 }

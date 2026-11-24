@@ -42,7 +42,7 @@ squash onto it: another session's fetch may have moved `origin/<default>`, and `
    The watch waits until something concerns your session, prints it and ends, which wakes
    you: deal with it, then start it again the same way, every time, without telling anyone.
    Keep exactly one running, and don't narrow it with `--filter`. `--name` is what apps
-   show for you, such as `controller`; `--role` is yours from `zirc roles`, such as `fixer`.
+   show for you, such as `controller`; `--role` is your picture from `zirc avatars`, such as `fixer`.
    Once, `zirc name --session <your session> --name <short> --title "<your session's
    title>"`, unless the session that started you did. Without any way to run a background
    process, run `zirc who` before each commit.

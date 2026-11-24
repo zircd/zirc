@@ -155,7 +155,23 @@ impl Server {
             .send()
             .await
             .map_err(|err| format!("couldn't reach the server: {err}"))?;
-        answer(response).await
+        answer(response, "hints").await
+    }
+
+    /// How the organisation's roles stand ([`zirc_proto::roles::Standing`]).
+    ///
+    /// # Errors
+    ///
+    /// When the server can't be reached or refuses, saying why.
+    pub async fn roles(&self) -> Result<zirc_proto::roles::Standing, String> {
+        let response = self
+            .http
+            .get(format!("{}{}", self.base, zirc_proto::roles::PATH))
+            .bearer_auth(self.token()?)
+            .send()
+            .await
+            .map_err(|err| format!("couldn't reach the server: {err}"))?;
+        answer(response, "roles").await
     }
 
     /// Adds `hint` for `scope`, for `session` when an agent's asking.
@@ -177,7 +193,7 @@ impl Server {
             .send()
             .await
             .map_err(|err| format!("couldn't reach the server: {err}"))?;
-        answer(response).await
+        answer(response, "hints").await
     }
 
     /// Removes the hint `id`, for `session` when an agent's asking.
@@ -200,12 +216,16 @@ impl Server {
             .send()
             .await
             .map_err(|err| format!("couldn't reach the server: {err}"))?;
-        answer(response).await
+        answer(response, "hints").await
     }
 }
 
-/// What a response says: its JSON, or the server's own words for why not.
-async fn answer<T: serde::de::DeserializeOwned>(response: reqwest::Response) -> Result<T, String> {
+/// What a response says: its JSON, or the server's own words for why not; `what` is what
+/// was asked for, as a server too old to keep it is told.
+async fn answer<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+    what: &str,
+) -> Result<T, String> {
     let status = response.status();
     if status.is_success() {
         return response
@@ -221,7 +241,7 @@ async fn answer<T: serde::de::DeserializeOwned>(response: reqwest::Response) -> 
     Err(match said {
         Some(said) => said,
         None if status == reqwest::StatusCode::NOT_FOUND => {
-            "this organisation's server doesn't keep hints yet".to_owned()
+            format!("this organisation's server doesn't keep {what} yet")
         }
         None => format!("the server answered {status}"),
     })

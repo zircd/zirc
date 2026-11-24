@@ -203,11 +203,6 @@ impl Daemon {
                 kind,
                 data,
             } => self.used(&session, kind, data)?,
-            Request::Role {
-                session,
-                role,
-                join,
-            } => self.role(&session, &role, join)?,
             Request::React {
                 session,
                 message,
@@ -287,6 +282,19 @@ impl Daemon {
             } => self.lease(&name, &session, seconds, pid, wait).await?,
             Request::LeaseRelease { name, session } => self.lease_release(&name, &session)?,
             Request::Leases => self.leases(),
+            Request::RoleTake {
+                role,
+                session,
+                repo,
+            } => self.role_take(&role, &session, repo.as_deref()).await?,
+            Request::RoleLeave { session } => self.role_leave(&session)?,
+            Request::RoleSay {
+                session,
+                to,
+                reply_to,
+                text,
+            } => self.role_say(&session, to, reply_to, &text)?,
+            Request::RoleStanding => self.role_standing().await?,
             Request::Watch { .. } => anyhow::bail!("watching is its own kind of connection"),
             Request::Trim { .. }
             | Request::Read { .. }
@@ -449,24 +457,6 @@ impl Daemon {
         self.publish_sealed(&said.target, message, Some(&said.id), sealed);
         self.task_ended(session, text);
         Ok(Response::channel(said.target))
-    }
-
-    /// `session` joins or leaves `role` ([`Request::Role`]), said with its machine's live
-    /// sessions from the next second.
-    fn role(&mut self, session: &str, role: &str, join: bool) -> Result<Response> {
-        zirc_proto::workflow::check_role(role).map_err(|why| anyhow::anyhow!(why))?;
-        self.book.seen(session, super::now());
-        let mut roles = self.roles_of(session);
-        if join {
-            roles.insert(role.to_owned());
-        } else {
-            roles.remove(role);
-        }
-        let joined: Vec<String> = roles.into_iter().collect();
-        self.book
-            .set(Field::Roles, session, joined.join(","))
-            .context("couldn't save the session's roles")?;
-        Ok(Response::Roles { roles: joined })
     }
 
     /// The roles `session` joined.

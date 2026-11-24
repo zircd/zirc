@@ -78,6 +78,8 @@ impl Daemon {
             why: None,
             id: None,
             org: None,
+            role: None,
+            woke: None,
         }))
     }
 
@@ -125,6 +127,8 @@ impl Daemon {
             why: None,
             id: None,
             org: None,
+            role: None,
+            woke: None,
         })
     }
 
@@ -228,6 +232,8 @@ impl Daemon {
             why: None,
             id: None,
             org: None,
+            role: None,
+            woke: None,
         })
     }
 
@@ -280,6 +286,8 @@ impl Daemon {
                     why: None,
                     id: None,
                     org: None,
+                    role: None,
+                    woke: None,
                 })
             }
             // Only from the machine asked, by the account the server says sent it: on a server
@@ -307,6 +315,8 @@ impl Daemon {
                     why: None,
                     id: None,
                     org: None,
+                    role: None,
+                    woke: None,
                 })
             }
             _ => None,
@@ -459,6 +469,8 @@ impl Daemon {
             why: None,
             id: None,
             org: None,
+            role: None,
+            woke: None,
         });
         Ok(())
     }
@@ -508,6 +520,8 @@ impl Daemon {
             why: None,
             id: None,
             org: None,
+            role: None,
+            woke: None,
         });
         Ok(())
     }
@@ -539,6 +553,8 @@ impl Daemon {
                 why: None,
                 id: None,
                 org: None,
+                role: None,
+                woke: None,
             }));
             return Ok(from);
         }

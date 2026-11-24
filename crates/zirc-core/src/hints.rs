@@ -106,10 +106,16 @@ fn paths_field(paths: &[String]) -> String {
     shown.join(", ")
 }
 
-/// The kind of a message to this machine: a query, an answer (refused or not), a
+/// The kind of a message to this machine: one to a role a session holds, a query, an answer (refused or not), a
 /// colleague's reply, another session's note, or the user's own words.
 fn direct_kind(direct: &crate::ipc::Direct) -> &'static str {
-    if direct.query.is_some() {
+    if direct.role.is_some() {
+        if direct.woke.is_some() {
+            kind::ROLE_WOKE
+        } else {
+            kind::ROLE_MESSAGE
+        }
+    } else if direct.query.is_some() {
         kind::QUERY
     } else if direct.answer.is_some() && direct.text.starts_with(crate::agents::REFUSED) {
         kind::ANSWER_REFUSED
@@ -1000,6 +1006,8 @@ mod tests {
                 id: None,
                 why: None,
                 org: None,
+                role: None,
+                woke: None,
             })
         };
         let note = super::seen(&direct(true), Some("cc-1")).unwrap().kind;

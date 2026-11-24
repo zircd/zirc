@@ -78,6 +78,13 @@ impl Daemon {
         if self.resume_on_owners_word(account, from, body) {
             return;
         }
+        // What came to a role a session here holds, from the role's own nick.
+        if let Ok(Some(message)) = zirc_proto::decode(body)
+            && let Some(direct) = self.role_woke(account, from, &message)
+        {
+            self.tell_direct(direct);
+            return;
+        }
         match self
             .queried_or_answered(sender, from, body)
             .map(Ok)

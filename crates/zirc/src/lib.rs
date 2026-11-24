@@ -23,6 +23,7 @@ mod queries;
 mod react;
 mod repo;
 mod report;
+mod roles;
 mod safety;
 mod sealed;
 mod search;
@@ -82,7 +83,7 @@ zirc's files are in ~/.zirc, or $ZIRC_HOME.";
 const IDENTITY: &str = "\
 How your session shows in apps (also $ZIRC_SESSION_NAME, _ROLE and _TOOL):
       --name <SHORT>  What it's called, such as login-flow, in place of its id
-      --role <ROLE>   The role it plays, from `zirc roles`, such as fixer: apps draw its bot
+      --role <ROLE>   The role it plays, from `zirc avatars`, such as fixer: apps draw its bot
       --tool <TOOL>   The agent tool it runs in, such as claude-code; told by itself in most";
 
 /// What to type, for each command `zirc --help` lists: shown at the end of its own `--help`,
@@ -221,10 +222,13 @@ const EXAMPLES: &[(&str, &[&str])] = &[
     (
         "role",
         &[
-            "zirc role join fixers --session cc-1",
-            "zirc role leave fixers --session cc-1",
+            "zirc role take fixer --session cc-1",
+            "zirc role say --session cc-1 --to ada \"on it: the flake is the port rebind\"",
+            "zirc role last fixer",
+            "zirc role leave --session cc-1",
         ],
     ),
+    ("roles", &["zirc roles"]),
     (
         "step",
         &[
@@ -297,7 +301,7 @@ const GROUPS: &[(&str, &[&str])] = &[
         "Coordinate",
         &[
             "who", "intend", "settle", "lease", "state", "wait", "stack", "gotcha", "playbook",
-            "join", "report", "workflow", "role", "step",
+            "join", "report", "workflow", "role", "roles", "step",
         ],
     ),
     (
@@ -434,7 +438,7 @@ pub struct Cli {
         hide = true
     )]
     tool: Option<String>,
-    /// The role your session plays, from `zirc roles`, such as fixer: apps draw the bot
+    /// The role your session plays, from `zirc avatars`, such as fixer: apps draw the bot
     /// dressed for it. Without it, the role its name tells, else a plain bot. `--avatar`,
     /// from before roles, still takes one. `zirc watch`, `zirc join` and `zirc post` set it
     /// for the session.
@@ -860,14 +864,15 @@ enum Command {
     #[command(subcommand)]
     #[command(after_long_help = examples("step", ""))]
     Step(workflows::StepCommand),
-    /// Join or leave one of the workflows' roles, to be given its steps.
+    /// Take, leave or speak as one of your organisation's roles, such as the fixer.
     ///
-    /// A workflow step for a role, such as `who = "role:fixers"`, goes to one of the live
-    /// sessions that joined it, the least busy first, and to the next when they're quiet.
-    /// A session's roles end with its done: or dropped:, or when its watch stops.
+    /// A role is a standing job its organisation's admins define on zirc.dev, with one seat a
+    /// session takes only by this command, in a checkout of the role's repository: its nick
+    /// is then yours to answer for. What wakes it, a direct message to it among them, wakes
+    /// your watch; you hold it while your watch runs.
     #[command(subcommand)]
     #[command(after_long_help = examples("role", ""))]
-    Role(workflows::RoleCommand),
+    Role(roles::RoleCommand),
     /// See or say how something shared stands, such as a broken master.
     ///
     /// See or say how something your team shares stands, such as a broken master.
@@ -970,9 +975,12 @@ enum Command {
     /// Such as: zirc agent-guide >> CLAUDE.md
     #[command(hide = true)]
     AgentGuide,
-    /// List the roles an agent session can play, for `--role <role>`, each with its bot.
-    #[command(hide = true, alias = "avatars")]
+    /// List your organisation's roles: who holds each, and what wakes it.
+    #[command(after_long_help = examples("roles", ""))]
     Roles,
+    /// List the pictures an agent session can go by, for `--role <role>`, each a bot.
+    #[command(hide = true)]
+    Avatars,
     /// Print the reference for building bots and scripts on zirc.
     ///
     /// The team's IRC server, Zirc's messages and events over it, and zircd's socket, with
@@ -1066,7 +1074,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Stack(args) => stack::stack(&socket, args, out).await,
         Command::Workflow(command) => workflows::workflow(&socket, command, out).await,
         Command::Step(command) => workflows::step(&socket, command, out).await,
-        Command::Role(command) => workflows::role(&socket, command, out).await,
+        Command::Role(command) => roles::role(&socket, command, out).await,
         Command::Gotcha(args) => gotchas::gotcha(&socket, args, out).await,
         Command::Gotchas(args) => gotchas::list(&socket, args, out).await,
         Command::Playbook(args) => playbook::playbook(&home, &socket, args, out).await,
@@ -1129,7 +1137,8 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Ci(command) => ci::ci(&home, &socket, command, out).await,
         Command::AgentGuide => Ok(write!(out, "{AGENT_GUIDE}")?),
         Command::Reference => Ok(write!(out, "{REFERENCE}")?),
-        Command::Roles => Ok(write!(out, "{}", avatars_text())?),
+        Command::Roles => roles::roles(&socket, out).await,
+        Command::Avatars => Ok(write!(out, "{}", avatars_text())?),
         Command::Skill(command) => skill::install_or_remove(command, out),
         Command::Help { all, command } => help(all, &command, out),
     }

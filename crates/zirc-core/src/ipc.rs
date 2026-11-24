@@ -435,19 +435,6 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         link: Option<String>,
     },
-    /// Join or leave one of the workflows' roles ([`zirc_proto::workflow::Who::Role`]) as
-    /// `session`: the machine says each live session's roles with the list of them
-    /// ([`zirc_proto::session::Live`]), so a workflow gives a role's steps to its members.
-    /// A session's roles end with its `done:` or `dropped:`, or once it's no longer live.
-    /// Answered with [`Response::Roles`].
-    Role {
-        /// The session.
-        session: String,
-        /// The role, as [`zirc_proto::workflow::check_role`] takes it.
-        role: String,
-        /// Joining it, or leaving it.
-        join: bool,
-    },
     /// This machine's named sessions, with their titles and links, for its owner's apps:
     /// answered with [`Response::LocalSessions`].
     LocalSessions,
@@ -619,6 +606,41 @@ pub enum Request {
     },
     /// Every lease held or waited for. Answered with [`Response::Leases`].
     Leases,
+    /// Take role `role`'s one seat ([`zirc_proto::roles`]) for `session`, in a checkout of
+    /// `repo`, its lease asked for and held while the session's watch lives. Refused when
+    /// another session holds it, or the role's repository isn't `repo`. Answered with
+    /// [`Response::RoleTaken`].
+    RoleTake {
+        /// The role, such as `fixer`.
+        role: String,
+        /// The session taking it.
+        session: String,
+        /// The repository of the checkout it's taken in, as zirc spells it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        repo: Option<String>,
+    },
+    /// Leave the role `session` holds. Answered with [`Response::Done`].
+    RoleLeave {
+        /// The session.
+        session: String,
+    },
+    /// Say `text` as the role `session` holds: to `to` directly, answering `reply_to`, or
+    /// without `to` in the agents' room. Answered with [`Response::Done`].
+    RoleSay {
+        /// The session holding the role.
+        session: String,
+        /// Whom to, by nick.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        to: Option<String>,
+        /// The message it answers, by id.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply_to: Option<String>,
+        /// What to say.
+        text: String,
+    },
+    /// How the organisation's roles stand, from its server. Answered with
+    /// [`Response::RoleStanding`].
+    RoleStanding,
 }
 
 /// Which channel a post goes to.
@@ -701,11 +723,6 @@ pub enum Response {
     Direct(Direct),
     /// While watching: someone reacted to a message, or took a reaction back.
     Reaction(Reaction),
-    /// The answer to [`Request::Role`]: the session's roles now.
-    Roles {
-        /// Its roles, sorted.
-        roles: Vec<String>,
-    },
     /// The answer to [`Request::LiveSessions`].
     LiveSessions {
         /// The sessions live now, sorted.
@@ -795,6 +812,16 @@ pub enum Response {
         /// The leases, by name.
         leases: Vec<crate::leases::Lease>,
     },
+    /// The answer to [`Request::RoleTake`]: the role, whose brief its holder is given, and
+    /// how it stood when taken, its last holder among it.
+    RoleTaken {
+        /// The role.
+        role: zirc_proto::roles::Definition,
+        /// Its seat.
+        seat: zirc_proto::roles::Seat,
+    },
+    /// The answer to [`Request::RoleStanding`].
+    RoleStanding(zirc_proto::roles::Standing),
     /// The request failed.
     Error {
         /// Why, for a person to read.
@@ -1336,6 +1363,15 @@ pub struct Direct {
     /// to several.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub org: Option<String>,
+    /// The role ([`zirc_proto::roles`]) the session holds that it came to, from the role's
+    /// nick: a direct message to the role, from [`Direct::from`], or with [`Direct::woke`],
+    /// what woke the role.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    /// For a role woken by one of its triggers or a report rather than a message: what woke
+    /// it ([`zirc_proto::woke::Woke`]), its role said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub woke: Option<zirc_proto::woke::Woke>,
 }
 
 /// What a client says when zircd doesn't know what it asked: zircd runs an older release than

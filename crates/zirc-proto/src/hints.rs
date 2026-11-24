@@ -78,6 +78,10 @@ pub mod kind {
     pub const COLLEAGUE_REPLY: &str = "dm.colleague";
     /// A note another agent session left for you (`zirc note`): never your user's word.
     pub const NOTE: &str = "note";
+    /// Someone wrote to the role you hold ([`crate::roles`]): a person, not your user.
+    pub const ROLE_MESSAGE: &str = "role.message";
+    /// What the role you hold wakes on happened ([`crate::roles`]).
+    pub const ROLE_WOKE: &str = "role.woke";
     /// A decision that concerns you.
     pub const DECISION: &str = "decision";
     /// A decision that isn't surely its decider's own word: relayed by an agent, or from an
@@ -114,7 +118,7 @@ pub mod kind {
     }
 
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 41] = [
+    pub const ALL: [&str; 43] = [
         START,
         OVERLAP,
         OVERLAP_SAME_LINES,
@@ -146,6 +150,8 @@ pub mod kind {
         ANSWER_REFUSED,
         COLLEAGUE_REPLY,
         NOTE,
+        ROLE_MESSAGE,
+        ROLE_WOKE,
         DECISION,
         DECISION_CLAIMED,
         REQUEST_ANSWERED,

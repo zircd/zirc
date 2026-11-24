@@ -634,6 +634,8 @@ mod tests {
             id: None,
             why: None,
             org: None,
+            role: None,
+            woke: None,
         });
         let mut reasons = [Some(Why::Direct)];
         daemon.gate_wakes(&direct, &mut reasons);
@@ -880,6 +882,8 @@ mod tests {
             id: None,
             why: None,
             org: None,
+            role: None,
+            woke: None,
         })
     }
 

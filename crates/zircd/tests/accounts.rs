@@ -201,6 +201,8 @@ fn said(from: &str, session: Option<&str>, text: &str) -> Direct {
         why: Some(Why::Direct),
         id: None,
         org: None,
+        role: None,
+        woke: None,
     }
 }
 
@@ -253,6 +255,8 @@ fn query(from: &str, session: &str, to: Option<&str>, text: &str, id: &str) -> D
         why: Some(Why::Direct),
         id: None,
         org: None,
+        role: None,
+        woke: None,
     }
 }
 
@@ -353,6 +357,8 @@ async fn the_owners_machines_query_each_others_agents_and_others_dont() {
             why: Some(Why::Direct),
             id: None,
             org: None,
+            role: None,
+            woke: None,
         }
     );
 
@@ -735,6 +741,8 @@ fn note(from: &str, session: &str, to: &str, text: &str) -> Direct {
         why: Some(Why::Direct),
         id: None,
         org: None,
+        role: None,
+        woke: None,
     }
 }
 

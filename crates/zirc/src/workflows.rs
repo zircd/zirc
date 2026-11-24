@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, bail};
 use clap::Subcommand;
-use zirc_core::ipc::{Request, Response};
+use zirc_core::ipc::Request;
 use zirc_proto::Event;
 use zirc_proto::run::{Act, StepAction};
 use zirc_proto::workflow::{CHANNEL, Deploy, Each, HOST, Workflow};
@@ -113,49 +113,6 @@ pub(crate) enum StepCommand {
         #[arg(long, env = "ZIRC_SESSION")]
         session: Option<String>,
     },
-}
-
-// `zirc role`'s commands: their doc comments are their --help.
-#[derive(Debug, Subcommand)]
-pub(crate) enum RoleCommand {
-    /// Join a role, to be given its steps while this session is live.
-    Join {
-        /// The role, such as fixers.
-        role: String,
-        /// Your session. Defaults to $ZIRC_SESSION, then $USER.
-        #[arg(long, env = "ZIRC_SESSION")]
-        session: Option<String>,
-    },
-    /// Leave a role.
-    Leave {
-        /// The role, such as fixers.
-        role: String,
-        /// Your session. Defaults to $ZIRC_SESSION, then $USER.
-        #[arg(long, env = "ZIRC_SESSION")]
-        session: Option<String>,
-    },
-}
-
-/// `zirc role`.
-pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Write) -> Result<()> {
-    let (role, session, join) = match command {
-        RoleCommand::Join { role, session } => (role, session, true),
-        RoleCommand::Leave { role, session } => (role, session, false),
-    };
-    let request = Request::Role {
-        session: session_or_user(session),
-        role,
-        join,
-    };
-    let Response::Roles { roles } = ask(socket, request).await? else {
-        return Err(crate::client::unexpected());
-    };
-    if roles.is_empty() {
-        writeln!(out, "in no roles")?;
-    } else {
-        writeln!(out, "in {}", roles.join(", "))?;
-    }
-    Ok(())
 }
 
 /// The workflow `path`'s file says, and the file.
