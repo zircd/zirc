@@ -99,7 +99,10 @@ pub(crate) async fn intend(
     let cwd = std::env::current_dir()?;
     let takes = session.is_some();
     let session = session_or_user(session);
-    if ends_work(&summary) {
+    // An intent's summary that ends the work, `done:` or `dropped:`, rather than saying
+    // what's next, is posted: sessions sent intents reading "done: …, committed" (the chat
+    // analysis, 11 Nov 2026), which told everyone on those paths they were about to change them.
+    if zirc_proto::says_finished(&summary) {
         let request = Request::Post {
             repo: cwd,
             session,
@@ -208,14 +211,6 @@ async fn take_task(
 /// What `zirc intend` says when its text ends the work rather than starting it.
 const INTENT_ENDED: &str = "a done: or dropped: line ends your intent, so it was posted, not \
     said as an intent; next time, zirc post it";
-
-/// Whether an intent's `summary` ends the work, `done:` or `dropped:`, rather than saying
-/// what's next. Sessions sent intents reading "done: …, committed" (the chat analysis, 11
-/// Nov 2026), which told everyone on those paths that they were about to change them.
-fn ends_work(summary: &str) -> bool {
-    let lower = summary.trim_start().to_lowercase();
-    lower.starts_with("done:") || lower.starts_with("dropped:")
-}
 
 /// Why `zirc post` refuses a post that's hard to read, and how to write it instead.
 pub(crate) const POST_REFUSED: &str = "not posted: a line is over 200 characters, or chains clauses with \
@@ -927,13 +922,13 @@ mod tests {
             "done: profile cards, committed",
             "  Dropped: the old sidebar",
         ] {
-            assert!(ends_work(text), "{text}");
+            assert!(zirc_proto::says_finished(text), "{text}");
         }
         for text in [
             "profile cards: done is a word here",
             "split the done: handler",
         ] {
-            assert!(!ends_work(text), "{text}");
+            assert!(!zirc_proto::says_finished(text), "{text}");
         }
     }
 

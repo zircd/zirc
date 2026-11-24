@@ -119,7 +119,7 @@ fn says_done(text: &str) -> bool {
     if needs.iter().any(|word| lower.contains(word)) {
         return false;
     }
-    if lower.starts_with("done:") {
+    if zirc_proto::says_done(&lower) {
         return true;
     }
     // After an address such as `cc-1:`, as reports start.
@@ -128,7 +128,7 @@ fn says_done(text: &str) -> bool {
     if said.starts_with("landed ") {
         return false;
     }
-    said.starts_with("done:")
+    zirc_proto::says_done(said)
         || said.starts_with("done ")
         || [" landed ", " is out", " deployed ", " published "]
             .iter()
