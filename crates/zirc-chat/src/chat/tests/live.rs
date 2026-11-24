@@ -474,6 +474,8 @@ fn a_dot_is_filled_here_and_a_ring_away_or_gone_each_in_its_own_role() {
             ("presence-gone".to_owned(), true),
         ]
     );
+    // A small dot's ring is never thinner than the core says.
+    assert!(Presence::Away.dot().min_stroke >= 1.5);
 }
 
 #[test]

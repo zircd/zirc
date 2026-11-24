@@ -128,6 +128,9 @@ pub struct PresenceDot {
     pub hollow: bool,
     /// A ring's stroke, as a share of the dot's size.
     pub stroke: f32,
+    /// The thinnest a ring's stroke is drawn, in points, so a small dot's ring still reads
+    /// as one, not a speck (ui-check of 5715189 on a sidebar row).
+    pub min_stroke: f32,
 }
 
 impl Presence {
@@ -143,6 +146,7 @@ impl Presence {
             tone: tone.to_owned(),
             hollow,
             stroke: 0.22,
+            min_stroke: 1.5,
         }
     }
 }
