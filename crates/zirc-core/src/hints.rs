@@ -745,6 +745,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_next_steps_hints_name_the_commands_and_the_page_as_declared() {
+        let text = |kind: &str| {
+            let hint = defaults().into_iter().find(|hint| hint.kind == kind);
+            hint.unwrap_or_else(|| panic!("no default hint for {kind}"))
+                .text
+        };
+        assert!(text(kind::NEXT_PHONE).contains(zirc_proto::onboarding::APP_PAGE));
+        assert!(text(kind::NEXT_CI).contains(zirc_proto::ci::CONNECT_COMMAND));
+        assert!(text(kind::NEXT_FIRST_WAKE).contains(zirc_proto::ci::TEST_FAILURE_COMMAND));
+    }
+
+    #[test]
     fn a_sessions_first_watch_gets_its_persons_next_steps_hint_once() {
         let home = tempfile::tempdir().unwrap();
         let mut watch = Watch::load(home.path(), Some("cc-1"), &[]).0;

@@ -170,13 +170,42 @@ pub struct Step {
     /// What to do to reach it, as a command line says it after `Next:`, when it's the next
     /// step ([`Progress::next`]): one line, naming the command where there's one.
     pub next_line: &'static str,
+    /// The kind of the hint an agent's first watch shows while this is its person's next
+    /// step ([`crate::hints::kind`]'s `next.*`), where an agent has something to tell them.
+    pub agent_hint: Option<&'static str>,
+}
+
+/// What every surface starts its prompt for the next step with: `Next: <what to do>`.
+pub const NEXT_PREFIX: &str = "Next:";
+
+/// Where the apps are had, as a prompt names it.
+pub const APP_PAGE: &str = "zirc.dev/app";
+
+/// Each step's id ([`Step::id`]), for whoever tells one step from another.
+pub mod id {
+    /// Step 1.
+    pub const SERVER: &str = "server";
+    /// Step 2.
+    pub const COMPUTER: &str = "computer";
+    /// Step 3.
+    pub const AGENT: &str = "agent";
+    /// Step 4.
+    pub const PHONE: &str = "phone";
+    /// Step 5.
+    pub const CI: &str = "ci";
+    /// Step 6.
+    pub const FIRST_WAKE: &str = "first_wake";
+    /// Step 7.
+    pub const FIRST_OVERLAP: &str = "first_overlap";
+    /// Step 8.
+    pub const TEAMMATE: &str = "teammate";
 }
 
 /// The steps, in number order.
 pub const STEPS: [Step; 8] = [
     Step {
         number: 1,
-        id: "server",
+        id: id::SERVER,
         scope: Scope::Organisation,
         needs: &[],
         signals: &[Signal::ServerReady],
@@ -185,10 +214,11 @@ pub const STEPS: [Step; 8] = [
         title: "Your server",
         about: "Made when you signed up.",
         next_line: "your server is starting: zirc.dev says when it's ready.",
+        agent_hint: None,
     },
     Step {
         number: 2,
-        id: "computer",
+        id: id::COMPUTER,
         scope: Scope::Person,
         needs: &[1],
         signals: &[Signal::Machine],
@@ -197,10 +227,11 @@ pub const STEPS: [Step; 8] = [
         title: "Your computer",
         about: "In your repository, on the computer your agents run on.",
         next_line: "in a repository you work in, run `zirc repo add`.",
+        agent_hint: None,
     },
     Step {
         number: 3,
-        id: "agent",
+        id: id::AGENT,
         scope: Scope::Person,
         needs: &[2],
         signals: &[Signal::Agent],
@@ -209,10 +240,11 @@ pub const STEPS: [Step; 8] = [
         title: "Your agent",
         about: "Start Claude Code or Codex in that repository. It joins Zirc on its own.",
         next_line: "start your agent here (or restart it) and give it a task. It joins Zirc by itself.",
+        agent_hint: None,
     },
     Step {
         number: 4,
-        id: "phone",
+        id: id::PHONE,
         scope: Scope::Person,
         needs: &[3],
         signals: &[Signal::Phone, Signal::AgentDirect],
@@ -221,10 +253,11 @@ pub const STEPS: [Step; 8] = [
         title: "Your phone",
         about: "Get the app now; this ticks off when your agent answers you from it.",
         next_line: "message your agent from the Zirc app: zirc.dev/app",
+        agent_hint: Some(crate::hints::kind::NEXT_PHONE),
     },
     Step {
         number: 5,
-        id: "ci",
+        id: id::CI,
         scope: Scope::Organisation,
         needs: &[2],
         signals: &[Signal::Ci],
@@ -233,10 +266,11 @@ pub const STEPS: [Step; 8] = [
         title: "CI",
         about: "So your agent wakes when a build fails.",
         next_line: "connect CI, so your agent wakes when a build fails: `zirc ci connect`",
+        agent_hint: Some(crate::hints::kind::NEXT_CI),
     },
     Step {
         number: 6,
-        id: "first_wake",
+        id: id::FIRST_WAKE,
         scope: Scope::Person,
         needs: &[3, 5],
         signals: &[Signal::Wake],
@@ -245,10 +279,11 @@ pub const STEPS: [Step; 8] = [
         title: "Your first wake",
         about: "See it happen, without waiting for a real failure.",
         next_line: "see a wake without waiting for a failure: `zirc ci test-failure`",
+        agent_hint: Some(crate::hints::kind::NEXT_FIRST_WAKE),
     },
     Step {
         number: 7,
-        id: "first_overlap",
+        id: id::FIRST_OVERLAP,
         scope: Scope::Person,
         needs: &[3],
         signals: &[Signal::Overlap],
@@ -257,10 +292,11 @@ pub const STEPS: [Step; 8] = [
         title: "Your first overlap",
         about: "Two agents changing the same files settle it between them.",
         next_line: "nothing to do: two of your agents changing the same files settle it between them.",
+        agent_hint: None,
     },
     Step {
         number: 8,
-        id: "teammate",
+        id: id::TEAMMATE,
         scope: Scope::Organisation,
         needs: &[1],
         signals: &[Signal::Teammate],
@@ -269,6 +305,7 @@ pub const STEPS: [Step; 8] = [
         title: "A teammate",
         about: "Teammates' agents hear yours.",
         next_line: "invite a teammate at zirc.dev: their agents hear yours.",
+        agent_hint: None,
     },
 ];
 
@@ -565,6 +602,8 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const STEPS_RECORDED_FROM = {RECORDED_FROM:?};"),
         format!("const INSTALL_COMMAND = {INSTALL_COMMAND:?};"),
         format!("const REPO_ADD_COMMAND = {REPO_ADD_COMMAND:?};"),
+        format!("const NEXT_PREFIX = {NEXT_PREFIX:?};"),
+        format!("const ONBOARDING_APP_PAGE = {APP_PAGE:?};"),
         State::decl(config),
         StepProgress::decl(config),
         Progress::decl(config),
@@ -640,6 +679,13 @@ mod tests {
                 .next_line
                 .contains(crate::ci::TEST_FAILURE_COMMAND)
         );
+        assert!(step(4).unwrap().next_line.contains(APP_PAGE));
+        // An agent has something to say of the phone, CI and a first wake, by kinds that are.
+        let hinted: Vec<&str> = STEPS.iter().filter_map(|step| step.agent_hint).collect();
+        assert_eq!(hinted.len(), 3);
+        for kind in hinted {
+            assert!(crate::hints::kind::ALL.contains(&kind), "{kind}");
+        }
     }
 
     #[test]

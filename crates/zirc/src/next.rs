@@ -37,7 +37,7 @@ pub(crate) async fn step(
 
 /// `Next: <what to do>`, bold where a terminal reads it.
 pub(crate) fn line(step: &Step) -> String {
-    let line = format!("Next: {}", step.next_line);
+    let line = format!("{} {}", zirc_proto::onboarding::NEXT_PREFIX, step.next_line);
     if crate::paint::wanted() {
         format!("\x1b[1m{line}\x1b[0m")
     } else {

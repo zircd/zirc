@@ -364,7 +364,8 @@ impl Client {
 
     /// How the person whose machine `account` is stands with getting started, and which step
     /// is next ([`zirc_proto::onboarding::STEPS_PATH`]). `None` if the web app doesn't know
-    /// that account and passphrase.
+    /// that account and passphrase, or doesn't serve steps at all, as a self-hosted server's
+    /// or an older one (404).
     ///
     /// # Errors
     ///
@@ -383,7 +384,10 @@ impl Client {
             .basic_auth(&account.name, Some(&account.password))
             .send()
             .await?;
-        if response.status() == StatusCode::UNAUTHORIZED {
+        if matches!(
+            response.status(),
+            StatusCode::UNAUTHORIZED | StatusCode::NOT_FOUND
+        ) {
             return Ok(None);
         }
         Ok(Some(self.checked(response).await?.json().await?))
