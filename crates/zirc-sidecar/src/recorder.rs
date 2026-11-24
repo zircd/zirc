@@ -49,6 +49,31 @@ pub fn live(now: u64) -> std::collections::BTreeMap<String, zirc_proto::session:
         .collect()
 }
 
+/// Each session's card as its machine last told the recorder, by the machine's account and the
+/// session: what it's called and its tool, for Working now. In memory, as [`LIVE`] is.
+static CARDS: std::sync::LazyLock<
+    std::sync::RwLock<
+        std::collections::BTreeMap<(String, String), zirc_proto::session::SessionCard>,
+    >,
+> = std::sync::LazyLock::new(std::sync::RwLock::default);
+
+/// Keeps the card `account`'s machine said for one of its sessions.
+fn heard_card(account: String, card: zirc_proto::session::SessionCard) {
+    CARDS
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert((account, card.session.clone()), card);
+}
+
+/// The card of each session the machines told the recorder of, by account and session.
+#[must_use]
+pub fn cards() -> std::collections::BTreeMap<(String, String), zirc_proto::session::SessionCard> {
+    CARDS
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
 /// What the recorder needs to connect: Ergo's loopback address, its gate password, and the
 /// endpoint's token its passphrase is derived from.
 #[derive(Clone)]
@@ -132,6 +157,13 @@ impl Recorder {
             let Some((account, nanotime, message)) = record_in(&line) else {
                 continue;
             };
+            // A session's card: what it's called, kept in memory beside the live lists.
+            if let Some(card) = zirc_proto::session::SessionCard::of(&message.event) {
+                if let Some(account) = account {
+                    heard_card(account, card);
+                }
+                continue;
+            }
             // A machine's live sessions are only true now: kept in memory, never a row.
             if let Some(live) = zirc_proto::session::Live::of(&message.event) {
                 if let Some(account) = account {

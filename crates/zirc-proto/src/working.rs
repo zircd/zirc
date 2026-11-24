@@ -4,7 +4,8 @@
 //! it tells the tenant's recorder the same ([`crate::activity::RECORDER`]), again every
 //! [`TELL_EVERY_SECS`], and the sidecar answers what it last heard at [`PATH`]: each session
 //! online or away, in words, which for one away with messages waiting are the ones every
-//! app says ([`crate::session::not_listening`]). Nothing a session said.
+//! app says ([`crate::session::not_listening`]), with what its card says it's working on and
+//! its tool, which the machine tells the recorder too. Nothing a session said in a message.
 
 use std::collections::BTreeMap;
 
@@ -12,7 +13,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::session::Live;
+use crate::session::{Live, SessionCard};
 
 /// The sidecar's endpoint for how the sessions stand now: `GET`, a [`Standing`].
 pub const PATH: &str = "/v1/sessions";
@@ -33,6 +34,14 @@ pub struct Session {
     pub machine: String,
     /// The session's id.
     pub session: String,
+    /// What it's working on, as its card says: the title its agent tool shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub title: Option<String>,
+    /// The agent tool it runs in, as people read it ([`crate::tool_name`]): `Claude Code`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tool: Option<String>,
     /// Whether a `zirc watch` of its is open: a message reaches it at once.
     pub online: bool,
     /// How many messages from people wait for it, when it's away.
@@ -61,7 +70,18 @@ pub struct Standing {
 /// (`machines`, by account). A session in neither of a machine's lists has been away longer
 /// than an app keeps it, and isn't here.
 #[must_use]
-pub fn standing(machines: &BTreeMap<String, Live>, now: u64) -> Standing {
+pub fn standing(
+    machines: &BTreeMap<String, Live>,
+    cards: &BTreeMap<(String, String), SessionCard>,
+    now: u64,
+) -> Standing {
+    let named = |machine: &str, session: &str| {
+        let card = cards.get(&(machine.to_owned(), session.to_owned()));
+        (
+            card.map(|card| card.title.clone()),
+            card.and_then(|card| card.tool.as_deref().map(crate::tool_name)),
+        )
+    };
     let mut sessions = Vec::new();
     for (machine, live) in machines {
         let mut of_machine: BTreeMap<&str, Session> = BTreeMap::new();
@@ -72,6 +92,8 @@ pub fn standing(machines: &BTreeMap<String, Live>, now: u64) -> Standing {
                     Session {
                         machine: machine.clone(),
                         session: session.clone(),
+                        title: named(machine, session).0,
+                        tool: named(machine, session).1,
                         online: true,
                         waiting: 0,
                         says: ONLINE.to_owned(),
@@ -90,6 +112,8 @@ pub fn standing(machines: &BTreeMap<String, Live>, now: u64) -> Standing {
                 Session {
                     machine: machine.clone(),
                     session: session.clone(),
+                    title: named(machine, session).0,
+                    tool: named(machine, session).1,
                     online: false,
                     waiting: away.waiting,
                     says,
@@ -141,7 +165,18 @@ mod tests {
         };
         let machines = [("ada-mbp".to_owned(), live)].into();
 
-        let said = standing(&machines, 1_000 + 17 * 60);
+        let cards = [(
+            ("ada-mbp".to_owned(), "cc-a".to_owned()),
+            SessionCard {
+                session: "cc-a".into(),
+                name: Some("tls-rotation".into()),
+                title: "Rotate the server's TLS certificates".into(),
+                tool: Some(crate::CLAUDE_CODE.into()),
+            },
+        )]
+        .into();
+
+        let said = standing(&machines, &cards, 1_000 + 17 * 60);
 
         let lines: Vec<String> = said
             .sessions
@@ -157,5 +192,11 @@ mod tests {
                 "cc-c false Away",
             ]
         );
+        assert_eq!(
+            said.sessions[0].title.as_deref(),
+            Some("Rotate the server's TLS certificates")
+        );
+        assert_eq!(said.sessions[0].tool.as_deref(), Some("Claude Code"));
+        assert_eq!(said.sessions[1].title, None);
     }
 }

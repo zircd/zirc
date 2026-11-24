@@ -205,7 +205,7 @@ impl Chat {
             .tool
             .or_else(|| self.session_tools.get(session).cloned())
             .as_deref()
-            .map(super::profile::tool_name)
+            .map(zirc_proto::tool_name)
             .into_iter()
             .chain(self.whose(nick).map(|(_, machine)| machine))
             .collect();

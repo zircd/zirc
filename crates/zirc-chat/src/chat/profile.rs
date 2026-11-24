@@ -723,7 +723,7 @@ impl Chat {
             let (whose, _) = super::agent_name(None, &owner);
             let mut line = vec![whose];
             if let Some(tool) = self.session_tools.get(session) {
-                line.push(tool_name(tool));
+                line.push(zirc_proto::tool_name(tool));
             }
             card.agent = Some(line.join(" · "));
             // A session is never away itself: its owner's away is what the card says.
@@ -737,14 +737,5 @@ impl Chat {
             .claim(nick, session)
             .map(|(task, since)| format!("{task} · {}", ago_short(since, now)));
         card
-    }
-}
-
-/// A tool's name as people read it: `Claude Code` for `claude-code`.
-pub(super) fn tool_name(tool: &str) -> String {
-    match tool {
-        zirc_proto::CLAUDE_CODE => "Claude Code".to_owned(),
-        zirc_proto::CODEX => "Codex".to_owned(),
-        other => other.to_owned(),
     }
 }

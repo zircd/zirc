@@ -135,7 +135,7 @@ impl super::Chat {
             .or_else(|| self.session_tools.get(session).cloned());
         let place: Vec<String> = tool
             .as_deref()
-            .map(super::profile::tool_name)
+            .map(zirc_proto::tool_name)
             .into_iter()
             .chain(whose_parts.map(|(_, machine)| machine))
             .collect();

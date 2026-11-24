@@ -935,6 +935,19 @@ pub const CLAUDE_CODE: &str = "claude-code";
 /// Codex, as [`Message::tool`] says it.
 pub const CODEX: &str = "codex";
 
+/// A tool's name as people read it, wherever it's shown: `Claude Code` for [`CLAUDE_CODE`],
+/// `Codex` for [`CODEX`], and another tool's own name as it says it.
+#[must_use]
+pub fn tool_name(tool: &str) -> String {
+    TOOL_NAMES
+        .iter()
+        .find(|(id, _)| *id == tool)
+        .map_or_else(|| tool.to_owned(), |(_, name)| (*name).to_owned())
+}
+
+/// The tools zirc knows by name, as [`tool_name`] says them: what the web app reads too.
+pub const TOOL_NAMES: [(&str, &str); 2] = [(CLAUDE_CODE, "Claude Code"), (CODEX, "Codex")];
+
 /// `tool` as the agent tool a session runs in, plain as [`session_name`] makes a name:
 /// [`CLAUDE_CODE`], [`CODEX`], or another tool's own short name. `None` when nothing is
 /// left.
@@ -1403,6 +1416,12 @@ pub fn frame_typescript(config: &ts_rs::Config) -> Vec<String> {
             AGENT_AVATARS.map(|(id, _)| format!("{id:?}")).join(", ")
         ),
         format!("const SESSION_CARD_KIND = {:?};", session::KIND),
+        format!(
+            "const TOOL_NAMES: Readonly<Record<string, string>> = {{ {} }};",
+            TOOL_NAMES
+                .map(|(id, name)| format!("{id:?}: {name:?}"))
+                .join(", ")
+        ),
         format!(
             "const SESSION_AWAY_FOLD_SECS = {};",
             session::AWAY_FOLD_SECS
@@ -1976,6 +1995,8 @@ mod tests {
         );
         assert_eq!(session_name(" !? "), None);
         assert_eq!(session_tool("Claude Code").as_deref(), Some(CLAUDE_CODE));
+        assert_eq!(tool_name(CLAUDE_CODE), "Claude Code");
+        assert_eq!(tool_name("aider"), "aider");
         assert_eq!(session_tool(" ").as_deref(), None);
         assert_eq!(agent_avatar(" Rocket"), Some("rocket"));
         assert_eq!(agent_avatar("Reviewer"), Some("reviewer"));

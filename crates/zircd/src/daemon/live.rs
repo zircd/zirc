@@ -235,6 +235,13 @@ impl Daemon {
         });
         if !told && self.record(WATCHER_SESSION, list.event()) {
             self.live.recorded = Some((list.clone(), now));
+            // With each session's card, so a recorder that started since knows what it's called.
+            let named: BTreeSet<&String> = list.sessions.iter().chain(list.away.keys()).collect();
+            for session in named {
+                if let Some(card) = self.card_of(session) {
+                    self.record(session, card.event());
+                }
+            }
         }
         for channel in channels {
             if self.live.said.get(&channel) == Some(&list) {

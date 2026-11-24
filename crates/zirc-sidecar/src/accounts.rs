@@ -1242,7 +1242,8 @@ async fn sessions_standing(State(ergo): State<Arc<Ergo>>) -> Response {
     let now = jiff::Timestamp::now().as_second().unsigned_abs();
     let mut machines = crate::recorder::live(now);
     machines.retain(|account, _| connected.contains(account));
-    Json(zirc_proto::working::standing(&machines, now)).into_response()
+    let cards = crate::recorder::cards();
+    Json(zirc_proto::working::standing(&machines, &cards, now)).into_response()
 }
 
 async fn remove_message(State(ergo): State<Arc<Ergo>>, Path(msgid): Path<String>) -> Response {

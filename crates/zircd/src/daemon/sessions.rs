@@ -98,15 +98,11 @@ impl Daemon {
     /// Sends `session`'s card, if it has a title, to the channels of the repositories it
     /// works in, or the organisation's channel when it works in none.
     fn send_card(&mut self, session: &str) {
-        let Some(title) = self.book.get(Field::Title, session) else {
+        let Some(card) = self.card_of(session) else {
             return;
         };
-        let card = SessionCard {
-            session: session.to_owned(),
-            name: self.name_of(session),
-            title,
-            tool: self.book.get(Field::Tool, session),
-        };
+        // The tenant's recorder hears it too, for zirc.dev's Working now (zirc_proto::working).
+        self.record(session, card.event());
         let mut channels: BTreeSet<String> = self
             .repos
             .values()
@@ -119,6 +115,16 @@ impl Daemon {
         for channel in channels {
             self.publish(&channel, session, card.event());
         }
+    }
+
+    /// `session`'s card, if it has a title.
+    pub(super) fn card_of(&self, session: &str) -> Option<SessionCard> {
+        Some(SessionCard {
+            session: session.to_owned(),
+            name: self.name_of(session),
+            title: self.book.get(Field::Title, session)?,
+            tool: self.book.get(Field::Tool, session),
+        })
     }
 
     /// [`zirc_core::ipc::Request::LocalSessions`]: each session named, titled or linked here.
