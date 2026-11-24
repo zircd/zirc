@@ -8,6 +8,8 @@
 //!   so the app's SASL login is real.
 //! - `GET /api/me` is the person's profile ([`zirc_proto::profile`]) in the one organisation,
 //!   and a `PATCH` keeps what they share of it.
+//! - With [`Options::steps`], `GET /api/me/steps` is getting started as it stands for them
+//!   ([`zirc_proto::onboarding::progress`]), so an app shows the next step's prompt.
 //! - With a directory of media (`demo.mp4`, `demo-poster.png`, and any `<id>.gif`), a file at
 //!   `/m/<org>/<id>` is served as zirc.dev serves one to an app's account: its picture for
 //!   `?w=` (the `<id>.gif` if there is one, animated, else the poster), and for `?r=` "being
@@ -55,6 +57,10 @@ pub struct Options {
     /// The directory of media to serve, if any.
     #[serde(default)]
     pub media: Option<PathBuf>,
+    /// The steps of getting started the person has reached, by number, which
+    /// [`zirc_proto::onboarding::STEPS_PATH`] answers with; none, and it's not found.
+    #[serde(default)]
+    pub steps: Option<Vec<u8>>,
 }
 
 fn loopback() -> String {
@@ -182,6 +188,10 @@ impl State {
         match method {
             "POST" if path == START_PATH => self.start_login(body),
             "GET" if path == ME_PATH => Answer::json(200, &*lock(&self.me)),
+            "GET" if path == zirc_proto::onboarding::STEPS_PATH => match &self.options.steps {
+                Some(reached) => Answer::json(200, &zirc_proto::onboarding::progress(reached)),
+                None => Answer::error(404, "no such page"),
+            },
             // Nobody here has a picture: the organisation shows their initials.
             "GET" if path.starts_with("/api/media/avatar/") => Answer::error(404, "no picture"),
             "GET" if path.starts_with("/v/") || path.starts_with("/m/") => {

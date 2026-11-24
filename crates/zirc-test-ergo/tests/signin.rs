@@ -8,6 +8,7 @@ use std::time::Duration;
 use base64::Engine as _;
 use serde_json::{Value, json};
 use zirc_proto::login::{LoginStarted, LoginStatus, START_PATH, status_path};
+use zirc_proto::onboarding::{STEPS_PATH, progress};
 use zirc_proto::profile::{ME_PATH, Me};
 use zirc_test_ergo::require_ergo;
 use zirc_test_ergo::signin::{self, Options};
@@ -121,6 +122,24 @@ fn a_profile_is_the_accounts_with_its_handle() {
     let me = serde_json::from_slice::<Me>(&body).expect("a profile");
     assert_eq!(me.orgs[0].handle, "dana");
     assert_eq!(ask(&web, "GET", "/api/media/avatar/dana", "", false).0, 404);
+}
+
+/// Getting started's steps are not found unless the stand-in is told which are reached; then
+/// they're zirc-proto's progress for those, the next one marked.
+#[test]
+fn the_steps_are_those_it_is_told_are_reached() {
+    let none = signin::start(options(None), 0).expect("the stand-in");
+    assert_eq!(ask(&none, "GET", STEPS_PATH, "", false).0, 404);
+    let told: Options =
+        serde_json::from_value(json!({ "handle": "dana", "steps": [1, 2, 3] })).expect("options");
+    let web = signin::start(told, 0).expect("the stand-in");
+    let (status, _, body) = ask(&web, "GET", STEPS_PATH, "", false);
+    assert_eq!(status, 200);
+    let said: Value = serde_json::from_slice(&body).expect("the steps");
+    assert_eq!(
+        said,
+        serde_json::to_value(progress(&[1, 2, 3])).expect("progress")
+    );
 }
 
 #[test]
