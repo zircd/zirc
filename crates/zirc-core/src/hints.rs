@@ -755,10 +755,11 @@ mod tests {
 
     #[test]
     fn a_session_gets_each_new_next_steps_hint_once() {
+        use zirc_proto::onboarding::id;
         let home = tempfile::tempdir().unwrap();
         let mut watch = Watch::load(home.path(), Some("cc-1"), &[]).0;
         assert!(watch.nexts_left());
-        let shown = watch.at_next("phone").expect("the phone's hint");
+        let shown = watch.at_next(id::PHONE).expect("the phone's hint");
         // The phone's, naming the app's page, and kept for its usage record.
         assert_eq!(
             (
@@ -771,14 +772,14 @@ mod tests {
         );
         // A later watch of the session says the phone's no more, but the next step's once.
         let mut again = Watch::load(home.path(), Some("cc-1"), &[]).0;
-        assert_eq!(again.at_next("phone"), None);
-        assert_eq!(again.at_next("teammate"), None, "nothing to say of it");
+        assert_eq!(again.at_next(id::PHONE), None);
+        assert_eq!(again.at_next(id::TEAMMATE), None, "nothing to say of it");
         assert_eq!(
-            again.at_next("ci").map(|it| it.kind),
+            again.at_next(id::CI).map(|it| it.kind),
             Some(kind::NEXT_CI.to_owned())
         );
         assert!(again.nexts_left(), "the first wake's is still to come");
-        assert!(again.at_next("first_wake").is_some());
+        assert!(again.at_next(id::FIRST_WAKE).is_some());
         // Once each has been shown, there's nothing left to ask zirc.dev for.
         assert!(!Watch::load(home.path(), Some("cc-1"), &[]).0.nexts_left());
     }
