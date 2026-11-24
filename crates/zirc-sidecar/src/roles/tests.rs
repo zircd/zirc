@@ -78,8 +78,12 @@ fn a_message_to_a_vacant_role_waits_and_only_its_writer_is_told_how_to_fill_it()
     assert_eq!(vacant.seat.waiting, 1);
     assert_eq!(vacant.reply_to.as_deref(), Some("m1"));
     assert_eq!(brain.standing(LATER).seats[0].waiting, 1);
+}
 
-    // The next holder is told, once settled, with what waited; and so is the writer.
+#[test]
+fn the_next_holder_is_woken_by_what_waited_and_its_writer_told() {
+    let mut brain = brain();
+    write(&mut brain, "main is red", LATER);
     assert!(take(&mut brain, "henrik-mbp", "cc-1", LATER).is_empty());
     let outs = brain.tick(LATER + zirc_proto::leases::SETTLE);
     let to: Vec<&str> = outs.iter().map(|out| out.to.as_str()).collect();
@@ -87,10 +91,12 @@ fn a_message_to_a_vacant_role_waits_and_only_its_writer_is_told_how_to_fill_it()
     let change = SeatChange::of(&outs[1].message.event).unwrap();
     assert_eq!(change.words(), "cc-1 took the fixer role in monorepo");
     let (wake, text) = wake_of(&outs[2]);
-    assert_eq!(wake.session, "cc-1");
+    assert_eq!(
+        (wake.session.as_str(), text.as_str()),
+        ("cc-1", "main is red")
+    );
     assert_eq!(wake.woke.role.as_deref(), Some("fixer"));
     assert_eq!(wake.woke.from.as_deref(), Some("ada"));
-    assert_eq!(text, "main is red");
     assert_eq!(brain.standing(LATER).seats[0].waiting, 0);
 }
 
