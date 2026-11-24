@@ -68,6 +68,8 @@ mod warn_once;
 mod woke;
 mod worktree_updates;
 
+pub use worktree_updates::UPDATE_EVERY;
+
 /// A repository is scanned once its files have been quiet this long...
 const QUIET: Duration = Duration::from_millis(500);
 /// ...or once it's been touched this long ago, however busy it still is.

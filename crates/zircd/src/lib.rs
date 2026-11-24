@@ -28,6 +28,7 @@ use zirc_proto::telemetry::{AppOpened, Client, Event};
 
 pub use crate::cli::Cli;
 pub use crate::clock::Clock;
+pub use crate::daemon::UPDATE_EVERY;
 use crate::daemon::{Daemon, Input, Org};
 use crate::router::{Call, Router};
 

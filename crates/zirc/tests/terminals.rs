@@ -18,6 +18,11 @@ use zirc_test_ergo::{Ergo, require_ergo};
 
 const WAIT: Duration = Duration::from_secs(15);
 
+/// How long a machine's working set may take to reach another's zircd: a channel hears a
+/// machine's changed set no sooner than [`zircd::UPDATE_EVERY`] after it last heard one, then
+/// the scan and the server add a little, which a loaded CI machine makes seconds.
+const SETS: Duration = zircd::UPDATE_EVERY.saturating_add(WAIT);
+
 /// How long a watch is given to say nothing more after what it was waited for.
 const QUIET: Duration = Duration::from_millis(800);
 
@@ -84,13 +89,24 @@ async fn run(home: &Path, args: &[&str]) -> anyhow::Result<String> {
 }
 
 async fn until(machine: &Machine, args: &[&str], has: &str) {
-    tokio::time::timeout(WAIT, async {
+    until_within(WAIT, machine, args, has).await;
+}
+
+async fn until_within(within: Duration, machine: &Machine, args: &[&str], has: &str) {
+    tokio::time::timeout(within, async {
         while !machine.zirc(args).await.contains(has) {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     })
     .await
     .unwrap_or_else(|_| panic!("zirc {args:?} never said {has:?}"));
+}
+
+/// Until `machine`'s zircd knows `session`'s working set, its change to the e2e harness, which
+/// may take [`SETS`].
+async fn until_knows(machine: &Machine, session: &str) {
+    let set = format!("main ({session}): tests/e2e/harness.rs");
+    until_within(SETS, machine, &["who"], &set).await;
 }
 
 /// What a watch prints, a line at a time.
@@ -184,7 +200,7 @@ async fn the_terminals_are_as_stored() {
     raj.edit("tests/e2e/harness.rs", "pub const RETRIES: u32 = 3;\n");
     // Raj's working set itself, not the intent zircd says for it, which names the file too
     // and could come first: Henrik's intend then didn't know the set (flaky-73 to 80).
-    until(&henrik, &["who"], "main (cc-91b7): tests/e2e/harness.rs").await;
+    until_knows(&henrik, "cc-91b7").await;
     let mut lines = watching(&raj, "cc-91b7").await;
     let mut watch = Terminal::new("zirc watch --session cc-91b7");
     watch
@@ -211,6 +227,10 @@ async fn the_terminals_are_as_stored() {
     );
     watch.printed(&heard(&mut lines).await);
     henrik.edit("tests/e2e/harness.rs", "pub const RETRIES: u32 = 2;\n");
+    // Raj's watch hears the overlap once Raj's zircd has Henrik's set, which her machine holds
+    // till UPDATE_EVERY after it last told #backend one, at `repo add`: some 12 s from now.
+    // Unwaited, CI's landing below came first on a loaded CI machine (5715189a4).
+    until_knows(&raj, "cc-7d3a").await;
     watch.printed(&heard(&mut lines).await);
     coordinate.typed("zirc who", &henrik.zirc(&["who"]).await);
     terminals.push(("coordinate", coordinate));

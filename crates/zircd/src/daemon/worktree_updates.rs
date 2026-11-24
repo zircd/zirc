@@ -12,8 +12,9 @@ use zirc_proto::Event;
 
 use super::{Daemon, WATCHER_SESSION, worktree_name};
 
-/// How often at most a channel hears a worktree's set alone.
-const UPDATE_EVERY: Duration = Duration::from_secs(15);
+/// How often at most a channel hears a worktree's set alone: as long as another machine may
+/// wait to hear of an edit, which tests that wait for one allow for.
+pub const UPDATE_EVERY: Duration = Duration::from_secs(15);
 
 /// Where a set is on this machine: its worktree's name and branch.
 type Place = (Option<String>, Option<String>);
