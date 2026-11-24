@@ -1401,6 +1401,10 @@ pub fn frame_typescript(config: &ts_rs::Config) -> Vec<String> {
             AGENT_AVATARS.map(|(id, _)| format!("{id:?}")).join(", ")
         ),
         format!("const SESSION_CARD_KIND = {:?};", session::KIND),
+        format!(
+            "const SESSION_AWAY_FOLD_SECS = {};",
+            session::AWAY_FOLD_SECS
+        ),
         format!("const DECISION_REQUEST_KIND = {:?};", request::KIND),
         format!("const DECISION_REQUEST_CHANNEL = {:?};", request::CHANNEL),
         <serde_json::Value as TS>::decl(config),
