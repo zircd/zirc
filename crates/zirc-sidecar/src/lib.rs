@@ -123,6 +123,17 @@ pub fn http() -> reqwest::Client {
         .unwrap_or_default()
 }
 
+/// Now, in unix milliseconds: the sidecar's one clock for what counts in them.
+pub(crate) fn now_ms() -> u64 {
+    u64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+    )
+    .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use clap::{CommandFactory, Parser};

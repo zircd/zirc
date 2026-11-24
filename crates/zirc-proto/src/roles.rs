@@ -351,6 +351,32 @@ pub struct Say {
     pub reply_to: Option<String>,
 }
 
+impl Say {
+    /// Its event, `text` being what to say.
+    ///
+    /// # Panics
+    /// Never: it always serialises.
+    #[must_use]
+    pub fn event(&self, text: &str) -> crate::Event {
+        crate::Event::Custom {
+            kind: SAY_KIND.to_owned(),
+            data: serde_json::to_value(self).expect("a say serialises"),
+            text: text.to_owned(),
+        }
+    }
+
+    /// What `event` says as a role, if it's one, with its text.
+    #[must_use]
+    pub fn of(event: &crate::Event) -> Option<(Self, &str)> {
+        match event {
+            crate::Event::Custom { kind, data, text } if kind == SAY_KIND => {
+                Some((serde_json::from_value(data.clone()).ok()?, text.as_str()))
+            }
+            _ => None,
+        }
+    }
+}
+
 /// A vacant role's answer to whoever wrote to it: what a [`VACANT_KIND`] event carries, so
 /// their app draws the card saying how to fill it ([`Vacant::title`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]

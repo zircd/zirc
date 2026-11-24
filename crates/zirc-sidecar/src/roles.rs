@@ -492,12 +492,8 @@ impl Brain {
         };
         // The holder, speaking as the role.
         if let Some(message) = &message
-            && let Event::Custom { kind, data, text } = &message.event
-            && kind == roles::SAY_KIND
+            && let Some((say, text)) = Say::of(&message.event)
         {
-            let Ok(say) = serde_json::from_value::<Say>(data.clone()) else {
-                return Vec::new();
-            };
             let holder = self.holder(role, now);
             let theirs = sender == Sender::Machine
                 && holder.as_ref().is_some_and(|holder| {
@@ -714,7 +710,7 @@ impl Roles {
     /// The roles kept beside `history`, and what their nicks are to say.
     #[must_use]
     pub fn beside(history: &Path) -> (Self, mpsc::UnboundedReceiver<Vec<Out>>) {
-        let brain = Brain::new(kept(history), now_ms());
+        let brain = Brain::new(kept(history), crate::now_ms());
         let names = brain
             .listing()
             .roles
@@ -750,7 +746,7 @@ impl Roles {
     /// How every role stands now.
     #[must_use]
     pub fn standing(&self) -> Standing {
-        self.with(|brain| (brain.standing(now_ms()), Vec::new()))
+        self.with(|brain| (brain.standing(crate::now_ms()), Vec::new()))
     }
 
     /// Takes zirc.dev's word for the roles.
@@ -768,19 +764,19 @@ impl Roles {
     /// Wakes `role`'s holder with `woke` and `text`, or keeps it for the next one: what a
     /// report does, say.
     pub fn wake(&self, role: &str, woke: Woke, text: &str) {
-        self.with(|brain| ((), brain.wake(role, woke, text, now_ms())));
+        self.with(|brain| ((), brain.wake(role, woke, text, crate::now_ms())));
     }
 
     /// What `input` has the nicks say.
     pub fn heard(&self, input: Input) {
-        self.with(|brain| ((), brain.heard(input, now_ms())));
+        self.with(|brain| ((), brain.heard(input, crate::now_ms())));
     }
 
     /// What the time passing has the nicks say; and when to tick next, in unix milliseconds.
     #[must_use]
     pub fn tick(&self) -> u64 {
         self.with(|brain| {
-            let now = now_ms();
+            let now = crate::now_ms();
             let outs = brain.tick(now);
             (brain.next_due(now), outs)
         })
@@ -809,7 +805,11 @@ pub fn is_role(account: &str) -> bool {
 
 /// The channels a role's nick is in: the organisation's, where seats are agreed; the agents'
 /// room, where seats are said and CI lands; and `#ops`, where states are said.
-const CHANNELS: [&str; 3] = [zirc_proto::ORG_CHANNEL, zirc_proto::AGENTS_CHANNEL, "#ops"];
+const CHANNELS: [&str; 3] = [
+    zirc_proto::ORG_CHANNEL,
+    zirc_proto::AGENTS_CHANNEL,
+    zirc_proto::state::CHANNEL,
+];
 
 /// How long a role whose account couldn't be had waits to be tried again.
 const RETRY: std::time::Duration = std::time::Duration::from_secs(30);
@@ -846,7 +846,7 @@ impl Host {
         let mut names = self.roles.names();
         let mut links = Links::new();
         let (hear, mut heard) = mpsc::unbounded_channel();
-        let mut due = now_ms();
+        let mut due = crate::now_ms();
         loop {
             let wanted = names.borrow_and_update().clone();
             NAMES
@@ -872,7 +872,7 @@ impl Host {
                     short = true;
                 }
             }
-            let wait = std::time::Duration::from_millis(due.saturating_sub(now_ms()));
+            let wait = std::time::Duration::from_millis(due.saturating_sub(crate::now_ms()));
             tokio::select! {
                 changed = names.changed() => if changed.is_err() { return },
                 Some(heard) = heard.recv() => {
@@ -1004,17 +1004,6 @@ impl Host {
             text,
         })
     }
-}
-
-/// Now, in unix milliseconds.
-fn now_ms() -> u64 {
-    u64::try_from(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis(),
-    )
-    .unwrap_or_default()
 }
 
 #[cfg(test)]

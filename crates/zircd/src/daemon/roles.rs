@@ -17,8 +17,8 @@
 use anyhow::{Context, Result, bail};
 use zirc_core::ipc::{Direct, Response};
 use zirc_core::leases::{self, LeaseEvent};
+use zirc_proto::Message;
 use zirc_proto::roles::{self, Say, Wake};
-use zirc_proto::{Event, Message};
 
 use super::Daemon;
 use crate::clock::unix_ms as now_ms;
@@ -163,11 +163,7 @@ impl Daemon {
             to,
             reply_to,
         };
-        let event = Event::Custom {
-            kind: roles::SAY_KIND.to_owned(),
-            data: serde_json::to_value(&say)?,
-            text: text.to_owned(),
-        };
+        let event = say.event(text);
         let message = self.signed(session, event);
         let client = self.connected()?;
         zirc_core::send::send_message(client, &role, &message)
