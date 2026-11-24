@@ -135,7 +135,7 @@ impl Chat {
     fn holder_machine(&self, holder: &Holder) -> String {
         match self.whose(&holder.machine) {
             Some((owner, machine)) => {
-                format!("{} {machine}", super::possessive(&self.owner_name(&owner)))
+                super::speaker::machine_words(&owner, &self.owner_name(&owner), &machine)
             }
             None => holder.machine.clone(),
         }
