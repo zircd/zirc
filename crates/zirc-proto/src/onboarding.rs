@@ -284,6 +284,13 @@ impl Step {
     }
 }
 
+/// How zirc is installed on a computer: the installer, which every surface that says it reads.
+pub const INSTALL_COMMAND: &str = "curl -fsSL https://zirc.dev/install | sh";
+
+/// What connects a computer, run in a repository once zirc is installed: it signs the
+/// computer in the first time, and watches the repository. Step 2's command.
+pub const REPO_ADD_COMMAND: &str = "zirc repo add";
+
 /// From when zirc.dev records steps as they're reached, in RFC 3339: one reached before then is
 /// history, which a backfill records as filled in, so the funnel counts only those who went
 /// through getting started.
@@ -556,6 +563,8 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Step::decl(config),
         format!("const STEPS: readonly OnboardingStep[] = {steps};"),
         format!("const STEPS_RECORDED_FROM = {RECORDED_FROM:?};"),
+        format!("const INSTALL_COMMAND = {INSTALL_COMMAND:?};"),
+        format!("const REPO_ADD_COMMAND = {REPO_ADD_COMMAND:?};"),
         State::decl(config),
         StepProgress::decl(config),
         Progress::decl(config),

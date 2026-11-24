@@ -34,7 +34,7 @@ use zirc_proto::PROGRAM;
 pub const RECEIPT: &str = ".zirc-install.toml";
 
 /// How to install zirc's release, for binaries that didn't come from it.
-pub const REINSTALL: &str = "curl -fsSL https://zirc.dev/install | sh";
+pub const REINSTALL: &str = zirc_proto::onboarding::INSTALL_COMMAND;
 
 /// zirc's release key: the Ed25519 public key that signs every release's checksums, in hex.
 /// Its private key is kept in a secret manager, which only publishing a release reads
