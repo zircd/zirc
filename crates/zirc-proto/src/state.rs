@@ -52,12 +52,13 @@ impl Level {
         }
     }
 
+    /// Every level, best first.
+    pub const ALL: [Self; 3] = [Self::Ok, Self::Warning, Self::Broken];
+
     /// The level `word` names, if it's one.
     #[must_use]
     pub fn of_word(word: &str) -> Option<Self> {
-        [Self::Ok, Self::Warning, Self::Broken]
-            .into_iter()
-            .find(|level| level.word() == word)
+        Self::ALL.into_iter().find(|level| level.word() == word)
     }
 }
 

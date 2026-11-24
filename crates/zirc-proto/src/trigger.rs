@@ -120,6 +120,28 @@ pub const MAX_SAID: usize = 80;
 pub const MAX_LANDED: usize = 16;
 
 impl TriggerKind {
+    /// Every kind, in the order zirc.dev's form offers them.
+    pub const ALL: [Self; 5] = [
+        Self::Landed,
+        Self::Said,
+        Self::Reaction,
+        Self::State,
+        Self::Every,
+    ];
+
+    /// What zirc.dev's Add a role form offers it as, before its fields are filled in: `someone
+    /// says…`.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::State => "a state changes…",
+            Self::Every => "on a schedule…",
+            Self::Said => "someone says…",
+            Self::Reaction => "a reaction…",
+            Self::Landed => "a landing changes…",
+        }
+    }
+
     /// The fields its `inputs` may read; none for a time, which is given `with`.
     #[must_use]
     pub fn fields(self) -> &'static [&'static str] {
@@ -556,6 +578,26 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
                     .iter()
                     .map(|(k, v)| (k.to_string(), serde_json::Value::from(*v)))
                     .collect::<serde_json::Map<_, _>>()
+                    .into()
+            )
+        ),
+        format!(
+            "const TRIGGER_KINDS: readonly {{ kind: \"state\" | \"every\" | \"said\" | \"reaction\" | \"landed\"; label: string }}[] = {};",
+            json(
+                TriggerKind::ALL
+                    .iter()
+                    .map(|k| serde_json::json!({"kind": k.word(), "label": k.label()}))
+                    .collect::<Vec<_>>()
+                    .into()
+            )
+        ),
+        format!(
+            "const STATE_LEVELS: readonly StateLevel[] = {};",
+            json(
+                Level::ALL
+                    .iter()
+                    .map(|l| l.word())
+                    .collect::<Vec<_>>()
                     .into()
             )
         ),

@@ -29,8 +29,17 @@ use crate::trigger::Trigger;
 /// The seats a role has: one, until one proves too few (crews wait).
 pub const SEATS: u8 = 1;
 
-/// The longest a role's brief is, in characters.
-pub const MAX_BRIEF: usize = 2000;
+/// The longest a role's brief is, in characters: room for how a job is done here, as the
+/// fixer's carries what the four workflows it replaced said.
+pub const MAX_BRIEF: usize = 8000;
+
+/// Where zirc.dev gives a server its organisation's roles, whole ([`Listing`], `PUT`), and
+/// reads how they stand ([`Standing`], `GET`), on the sidecar's accounts API, which only
+/// zirc.dev reaches.
+pub const ACCOUNTS_PATH: &str = "/v1/roles";
+
+/// The command that takes a role, before the role's name: `zirc role take`.
+pub const TAKE_COMMAND: &str = "zirc role take";
 
 /// The most triggers a role has.
 pub const MAX_TRIGGERS: usize = 16;
@@ -75,6 +84,10 @@ pub struct Definition {
     /// How many seats it has: [`SEATS`].
     #[serde(default = "one_seat")]
     pub seats: u8,
+    /// The kinds of report it takes ([`crate::role_report::Subject`]), as its admins chose
+    /// them on zirc.dev's Roles tab.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reports: Vec<crate::role_report::Subject>,
 }
 
 fn one_seat() -> u8 {
@@ -136,6 +149,38 @@ pub struct Standing {
     pub listing: Listing,
     /// Each role's seat, in the same order.
     pub seats: Vec<Seat>,
+}
+
+/// A role's seat as zirc.dev's Roles tab draws it, filled by the server as the apps fill
+/// theirs (zirc-chat's `role_face` and `holder_machine`), so the dashboard draws the same
+/// face, colour and machine without a rule of its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(optional_fields, rename = "RoleSeatShown")]
+pub struct SeatShown {
+    /// The seat.
+    #[serde(flatten)]
+    pub seat: Seat,
+    /// Its picture, one of [`crate::AGENT_AVATARS`] ([`crate::agent_picture`]).
+    pub picture: String,
+    /// Its colour, a hue in degrees, as every app colours its nick.
+    pub hue: u16,
+    /// The holder's machine as people read it: `Henrik's mbp`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub holder_machine: Option<String>,
+    /// The last holder's machine, the same way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_machine: Option<String>,
+}
+
+/// How an organisation's roles stand, as its server answers zirc.dev at [`ACCOUNTS_PATH`]:
+/// [`Standing`] with each seat as the Roles tab draws it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "RoleStandingShown")]
+pub struct StandingShown {
+    /// The roles, as zirc.dev last synced them.
+    pub listing: Listing,
+    /// Each role's seat, in the same order.
+    pub seats: Vec<SeatShown>,
 }
 
 impl Standing {
@@ -297,7 +342,7 @@ pub fn composer(role: &str) -> String {
 /// The command that takes role `role`.
 #[must_use]
 pub fn take_command(role: &str) -> String {
-    format!("{} role take {role}", crate::PROGRAM)
+    format!("{TAKE_COMMAND} {role}")
 }
 
 /// A role's holder woken, by a direct message to the role, a trigger or a report: what a
@@ -564,6 +609,12 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
             Vacant::decl(config),
             SeatChange::decl(config),
             Standing::decl(config),
+            SeatShown::decl(config),
+            StandingShown::decl(config),
+            format!("const ROLE_SEATS = {SEATS};"),
+            format!("const ROLE_MAX_BRIEF = {MAX_BRIEF};"),
+            format!("const TAKE_COMMAND = {TAKE_COMMAND:?};"),
+            format!("const ROLES_ACCOUNTS_PATH = {ACCOUNTS_PATH:?};"),
         ])
         .collect()
 }
@@ -571,6 +622,12 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_take_command_is_zircs() {
+        assert!(TAKE_COMMAND.starts_with(&format!("{} ", crate::PROGRAM)));
+        assert_eq!(take_command("fixer"), "zirc role take fixer");
+    }
 
     fn fixer() -> Definition {
         serde_json::from_value(serde_json::json!({

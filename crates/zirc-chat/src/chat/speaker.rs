@@ -102,6 +102,19 @@ pub fn possessive(owner: &str) -> String {
     }
 }
 
+/// A machine as people read it after its owner, the one place it's composed: `Henrik's mbp`,
+/// `your mbp`. `owner` is the owner's nick, `name` how they show ([`Chat::owner_name`]), and
+/// `machine` the machine's nick, whose `<owner>-` the owner's name already says.
+#[must_use]
+pub fn machine_words(owner: &str, name: &str, machine: &str) -> String {
+    let short = machine
+        .strip_prefix(owner)
+        .and_then(|rest| rest.strip_prefix('-'))
+        .filter(|rest| !rest.is_empty())
+        .unwrap_or(machine);
+    format!("{} {short}", possessive(name))
+}
+
 /// An agent's name line, the one place it's composed, agent first (the user's choice): an
 /// agent session as its name, `analytics`, with `mattias's agent` after it, muted; the
 /// machine itself, with no session, as `mattias's agent` alone. `owner` is as the owner
@@ -357,5 +370,25 @@ impl Chat {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_machine_is_its_owners_by_its_own_name() {
+        assert_eq!(
+            machine_words("henrik", "Henrik", "henrik-mbp"),
+            "Henrik's mbp"
+        );
+        assert_eq!(machine_words("henrik", YOU, "henrik-mbp"), "your mbp");
+        // A nick that isn't the owner's and a name is said whole.
+        assert_eq!(machine_words("henrik", "Henrik", "ci-1"), "Henrik's ci-1");
+        assert_eq!(
+            machine_words("henrik", "Henrik", "henrik-"),
+            "Henrik's henrik-"
+        );
     }
 }

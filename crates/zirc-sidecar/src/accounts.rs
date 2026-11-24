@@ -413,17 +413,20 @@ fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
 
 fn routes(ergo: Arc<Ergo>) -> Router {
     // Teams are the controller's to set, from the ZircServer's spec, and usage its to count;
-    // neither is the web app's.
+    // neither is the web app's. Roles are the web app's: its admins define them on zirc.dev.
     let teams = Router::new()
         .route("/v1/teams", put(set_teams))
         .route("/v1/settings", put(set_settings))
         .route("/v1/usage", get(count_usage))
-        .route("/v1/roles", put(set_roles))
         .route_layer(middleware::from_fn_with_state(
             ergo.clone(),
             authorize_controller,
         ));
     Router::new()
+        .route(
+            zirc_proto::roles::ACCOUNTS_PATH,
+            put(set_roles).get(roles_shown),
+        )
         .route("/v1/accounts", get(list))
         .route("/v1/accounts/{name}", put(upsert).delete(erase))
         .route("/v1/accounts/{name}/profile", put(set_profile))
@@ -571,7 +574,7 @@ fn spawn_roles(ergo: &Arc<Ergo>) {
 }
 
 /// `PUT /v1/roles`: the organisation's roles, whole ([`zirc_proto::roles::Listing`]), as
-/// zirc.dev keeps them. Refused when one breaks a rule, or is named as someone's account is:
+/// zirc.dev keeps them, from its admins' changes and its sweep. Refused when one breaks a rule, or is named as someone's account is:
 /// a role's nick is never a person's or a machine's.
 async fn set_roles(
     State(ergo): State<Arc<Ergo>>,
@@ -593,6 +596,42 @@ async fn set_roles(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(why) => error(StatusCode::BAD_REQUEST, "invalid", &why),
     }
+}
+
+/// `GET /v1/roles`: how the organisation's roles stand, each seat as zirc.dev's Roles tab
+/// draws it ([`zirc_proto::roles::StandingShown`]): its picture and colour as the apps draw
+/// a role's face, and its holders' machines as they name them.
+async fn roles_shown(State(ergo): State<Arc<Ergo>>) -> Response {
+    let standing = ergo.roles.standing();
+    let profiles = ergo.profiles.lock().await;
+    let machine = |holder: &zirc_proto::roles::Holder| {
+        let owner = ergo.machines.owner(&holder.machine)?;
+        let name = profiles
+            .said
+            .get(&owner)
+            .map_or(owner.as_str(), |profile| profile.name.as_str());
+        Some(zirc_chat::chat::machine_words(
+            &owner,
+            name,
+            &holder.machine,
+        ))
+    };
+    let seats = standing
+        .seats
+        .into_iter()
+        .map(|seat| zirc_proto::roles::SeatShown {
+            picture: zirc_proto::agent_picture(Some(&seat.role), Some(&seat.role)).to_owned(),
+            hue: zirc_chat::chat::nick_degrees(&seat.role),
+            holder_machine: seat.holder.as_ref().and_then(&machine),
+            last_machine: seat.last.as_ref().and_then(&machine),
+            seat,
+        })
+        .collect();
+    Json(zirc_proto::roles::StandingShown {
+        listing: standing.listing,
+        seats,
+    })
+    .into_response()
 }
 
 async fn set_teams(

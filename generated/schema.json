@@ -2974,6 +2974,13 @@
           "maximum": 255,
           "description": "How many seats it has: [`SEATS`].",
           "default": 1
+        },
+        "reports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Subject"
+          },
+          "description": "The kinds of report it takes ([`crate::role_report::Subject`]), as its admins chose\nthem on zirc.dev's Roles tab."
         }
       },
       "required": [

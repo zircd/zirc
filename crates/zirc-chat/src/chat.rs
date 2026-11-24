@@ -223,7 +223,7 @@ pub use settings_list::{
 pub use sidebar::{ListKind, ListOptions, ListRow, NO_MESSAGES, RowUnder, UnderKind};
 pub use speaker::{
     AGENT_TAG, APP_TAG, Avatar, Speaker, YOU, agent_avatar, agent_label, agent_name, agent_session,
-    app_name, possessive, sender_text, tool_mark,
+    app_name, machine_words, possessive, sender_text, tool_mark,
 };
 pub use split::split_message;
 pub use status::{Connection, Logged, Notice, Status};
