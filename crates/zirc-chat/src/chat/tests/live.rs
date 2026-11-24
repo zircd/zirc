@@ -429,16 +429,14 @@ fn an_agent_away_with_messages_waiting_says_it_isnt_listening() {
             .and_then(|row| row.under.clone())
             .expect("a line under it")
     };
+    // Short, to fit a sidebar's line (the user's choice, 23 Nov 2026).
     assert_eq!(
         (under(&chat).text.as_str(), under(&chat).kind),
-        ("Not listening · 1 message waiting", UnderKind::NotListening)
+        ("Away · 1 waiting", UnderKind::NotListening)
     );
     chat.clock = || noon() + chrono::Duration::minutes(17);
-    assert_eq!(
-        under(&chat).text,
-        "Not listening for 17 min · 1 message waiting"
-    );
-    // Its header says the same.
+    assert_eq!(under(&chat).text, "17m away · 1 waiting");
+    // Its header says it whole.
     assert_eq!(
         chat.agent_header("me-mbp/cc-1").unwrap().heard,
         "Not listening for 17 min · 1 message waiting"
@@ -460,6 +458,47 @@ fn an_agent_away_with_messages_waiting_says_it_isnt_listening() {
     );
     feed(&mut chat, &[&zirc("me-mbp", &taking)]);
     assert_eq!(under(&chat).kind, UnderKind::NotListening);
+}
+
+#[test]
+fn our_agent_is_named_by_its_task_until_it_says_a_name() {
+    let mut chat = with_mbp();
+    feed(
+        &mut chat,
+        &[
+            &zirc("me-mbp", &live(&["cc-1"])),
+            &dm("me-mbp", "cc-1", "on it", 0),
+        ],
+    );
+    let title = |chat: &Chat| {
+        find(&rows(chat), "me-mbp/cc-1")
+            .map(|row| row.title.clone())
+            .expect("listed")
+    };
+    assert_eq!(title(&chat), "cc-1");
+    let taking = Message::new(
+        "cc-1",
+        Event::Text {
+            body: "taking: the login page".into(),
+        },
+    );
+    feed(&mut chat, &[&zirc("me-mbp", &taking)]);
+    // Its row, its header and its composer all go by its task.
+    assert_eq!(title(&chat), "the login page");
+    assert_eq!(chat.title("me-mbp/cc-1"), "the login page");
+    assert_eq!(chat.short_title("me-mbp/cc-1"), "the login page");
+    // A name it says comes first.
+    let named = Message {
+        name: Some("checkout".into()),
+        ..Message::new(
+            "cc-1",
+            Event::Text {
+                body: "renamed".into(),
+            },
+        )
+    };
+    feed(&mut chat, &[&zirc("me-mbp", &named)]);
+    assert_eq!(title(&chat), "checkout");
 }
 
 #[test]

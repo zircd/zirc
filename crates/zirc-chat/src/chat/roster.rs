@@ -94,6 +94,24 @@ impl Chat {
             .unwrap_or_else(|| session.to_owned())
     }
 
+    /// What the agent session `session` on the machine `nick` is called on its row, header
+    /// and composer: the name it goes by, else the task it's on, else its id
+    /// ([`zirc_proto::session::agent_title`]).
+    #[must_use]
+    pub fn agent_label(&self, nick: &str, session: &str) -> String {
+        let task = self.claim(nick, session).map(|(task, _)| task);
+        self.agent_label_on(session, task.as_deref())
+    }
+
+    /// [`Chat::agent_label`], the task it's on known as `task`.
+    pub(super) fn agent_label_on(&self, session: &str, task: Option<&str>) -> String {
+        zirc_proto::session::agent_title(
+            self.session_names.get(session).map(String::as_str),
+            task,
+            session,
+        )
+    }
+
     /// Which of zirc's apps `nick` is, `alerts`, by its nick, `zirc-alerts`, or else by the
     /// account the server says it's logged in to, as before it's posted anything: `None`
     /// for anyone else. Every count of people leaves these out.

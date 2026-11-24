@@ -172,21 +172,71 @@ impl Live {
     }
 }
 
-/// What an agent away with messages waiting says, on its row, its card and the push its
-/// machine sends its owner: `Not listening for 17 min · 1 message waiting`, or
-/// `Not listening · 2 messages waiting` under a minute. Every app reads it, never its own.
+/// What an agent away with messages waiting says on its header and card: `Not listening for
+/// 17 min · 1 message waiting`, or `Not listening · 2 messages waiting` under a minute.
+/// Every app reads it, never its own.
 #[must_use]
 pub fn not_listening(away_secs: u64, waiting: u32) -> String {
-    let waiting = match waiting {
+    let waiting = messages_waiting(waiting);
+    match away_for(away_secs, " min", " h") {
+        Some(away) => format!("Not listening for {away} · {waiting}"),
+        None => format!("Not listening · {waiting}"),
+    }
+}
+
+/// The same on a row of Messages, short enough for a sidebar's line (the user's choice, 23
+/// Nov 2026): `17m away · 1 waiting`, `Away · 2 waiting` under a minute; the row's away
+/// ring and warning colour say it isn't listening.
+#[must_use]
+pub fn not_listening_short(away_secs: u64, waiting: u32) -> String {
+    match away_for(away_secs, "m", "h") {
+        Some(away) => format!("{away} away · {waiting} waiting"),
+        None => format!("Away · {waiting} waiting"),
+    }
+}
+
+/// What its machine tells the owner once it's been away [`NOT_LISTENING_TELL_SECS`] with
+/// messages waiting, as from the agent itself, `title` being what it's called
+/// ([`agent_title`]): `replay-metrics isn't listening: 1 message waiting for 15 min`.
+#[must_use]
+pub fn not_listening_notice(title: &str, away_secs: u64, waiting: u32) -> String {
+    let waiting = messages_waiting(waiting);
+    match away_for(away_secs, " min", " h") {
+        Some(away) => format!("{title} isn't listening: {waiting} for {away}"),
+        None => format!("{title} isn't listening: {waiting}"),
+    }
+}
+
+/// `1 message waiting`, `2 messages waiting`.
+fn messages_waiting(waiting: u32) -> String {
+    match waiting {
         1 => "1 message waiting".to_owned(),
         n => format!("{n} messages waiting"),
-    };
-    let minutes = away_secs / 60;
-    match minutes {
-        0 => format!("Not listening · {waiting}"),
-        1..60 => format!("Not listening for {minutes} min · {waiting}"),
-        _ => format!("Not listening for {} h · {waiting}", minutes / 60),
     }
+}
+
+/// How long `secs` is, in whole minutes under an hour, else whole hours, with `minutes` or
+/// `hours` after: `17 min`, `3h`. `None` under a minute.
+fn away_for(secs: u64, minutes: &str, hours: &str) -> Option<String> {
+    match secs / 60 {
+        0 => None,
+        n @ 1..60 => Some(format!("{n}{minutes}")),
+        n => Some(format!("{}{hours}", n / 60)),
+    }
+}
+
+/// What an agent session is called on its row, its header and what its machine says for it:
+/// the name it was given or goes by, else the task it's on (the user's choice, 23 Nov 2026:
+/// "your agents named by task"), else its id.
+#[must_use]
+pub fn agent_title(name: Option<&str>, task: Option<&str>, session: &str) -> String {
+    [name, task]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|said| !said.is_empty())
+        .unwrap_or(session)
+        .to_owned()
 }
 
 /// `title` as a card carries it: one line, trimmed, at most [`MAX_TITLE`] characters, cut
@@ -295,6 +345,26 @@ mod tests {
             not_listening(3 * 3600 + 120, 2),
             "Not listening for 3 h · 2 messages waiting"
         );
+    }
+
+    #[test]
+    fn a_row_says_it_short_and_the_owner_hears_it_from_the_agent_by_name() {
+        assert_eq!(not_listening_short(17 * 60 + 5, 1), "17m away · 1 waiting");
+        assert_eq!(not_listening_short(20, 2), "Away · 2 waiting");
+        assert_eq!(not_listening_short(3 * 3600, 1), "3h away · 1 waiting");
+        assert_eq!(
+            not_listening_notice("replay-metrics", 15 * 60, 1),
+            "replay-metrics isn't listening: 1 message waiting for 15 min"
+        );
+        assert_eq!(
+            agent_title(Some("presence"), Some("the login page"), "cc-1"),
+            "presence"
+        );
+        assert_eq!(
+            agent_title(None, Some("the login page"), "cc-1"),
+            "the login page"
+        );
+        assert_eq!(agent_title(Some(" "), None, "cc-1"), "cc-1");
     }
 
     #[test]

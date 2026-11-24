@@ -397,7 +397,7 @@ fn at_heading(rows: &[ListRow], shelf: Shelf) -> usize {
 }
 
 #[test]
-fn an_agent_at_work_that_wrote_to_us_has_its_direct_row_with_its_task() {
+fn an_agent_at_work_that_wrote_to_us_has_its_direct_row_named_by_its_task() {
     let mut chat = busy();
     feed(
         &mut chat,
@@ -417,19 +417,19 @@ fn an_agent_at_work_that_wrote_to_us_has_its_direct_row_with_its_task() {
         ],
     );
     let rows = chat.sidebar_list(&all());
-    // Ours, among the direct messages, with what it's taking on.
+    // Ours, among the direct messages, named by what it's taking on, as it says no name
+    // (the user's choice, 23 Nov 2026).
     let ours = row(&rows, "me-mbp/cc-1");
     assert_eq!(ours.shelf, Shelf::Direct);
     assert_eq!(ours.direct_kind, Some(DirectKind::Agent));
-    assert_eq!(ours.note.as_deref(), Some("the login page"));
-    // Its one line under its name is what it's taking on, though it said something too
-    // (the user's choice, 22 Nov 2026); a person's is what was said last.
+    assert_eq!(ours.title, "the login page");
+    // So its line under its name is what it said, not its task again.
     assert_eq!(
-        ours.under,
-        Some(RowUnder {
-            text: "the login page".to_owned(),
-            kind: UnderKind::Note,
-        })
+        (
+            ours.note.as_deref(),
+            ours.under.as_ref().map(|under| under.kind)
+        ),
+        (None, Some(UnderKind::Said))
     );
     let bob = row(&rows, "bob");
     assert_eq!(

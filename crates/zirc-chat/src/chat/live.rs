@@ -211,11 +211,26 @@ impl Chat {
     /// at once (the user's choice, 23 Nov 2026). `None` while it's online, or nothing waits.
     #[must_use]
     pub fn not_listening(&self, nick: &str, session: &str) -> Option<String> {
+        self.waiting_away(nick, session)
+            .map(|(away, waiting)| zirc_proto::session::not_listening(away, waiting))
+    }
+
+    /// The same, short, for its row in Messages: `17m away · 1 waiting`
+    /// ([`zirc_proto::session::not_listening_short`]).
+    #[must_use]
+    pub fn not_listening_short(&self, nick: &str, session: &str) -> Option<String> {
+        self.waiting_away(nick, session)
+            .map(|(away, waiting)| zirc_proto::session::not_listening_short(away, waiting))
+    }
+
+    /// How long, in seconds, the agent session `session` on the machine `nick` has been away
+    /// with messages waiting, and how many: `None` while it's online, or nothing waits.
+    fn waiting_away(&self, nick: &str, session: &str) -> Option<(u64, u32)> {
         let Some(Listening::Away { since, waiting }) = self.listening(nick, session) else {
             return None;
         };
         let away = u64::try_from(((self.clock)() - since).num_seconds()).unwrap_or(0);
-        (waiting > 0).then(|| zirc_proto::session::not_listening(away, waiting))
+        (waiting > 0).then_some((away, waiting))
     }
 
     /// The nick of the machine that runs the agent session `session`, for a chip naming it

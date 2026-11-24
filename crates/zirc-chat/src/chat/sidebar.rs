@@ -488,15 +488,19 @@ impl Chat {
         .counting(self.badge(name))
     }
 
-    /// A direct message's row: an agent session at work says what it's taking on, and never
-    /// folds.
+    /// A direct message's row: an agent session at work says what it's taking on, unless it's
+    /// called by it, and never folds.
     fn direct_list_row(
         &self,
         row: &DirectRow,
         part: Shelf,
         working: &HashMap<String, (String, String)>,
     ) -> ListRow {
-        let task = working.get(&fold(&row.name)).map(|(_, task)| task.clone());
+        // What it's taking on, unless that's already what it's called: then what it said.
+        let task = working
+            .get(&fold(&row.name))
+            .map(|(_, task)| task.clone())
+            .filter(|task| *task != row.title);
         ListRow {
             name: row.name.clone(),
             note: task.clone(),

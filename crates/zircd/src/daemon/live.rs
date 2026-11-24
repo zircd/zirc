@@ -7,7 +7,8 @@
 //! grace ([`LIVE_GRACE_SECS`]) for apps from before `away` and the workflows. When each
 //! session last watched is kept across restarts, so a zircd that restarts says how long
 //! its sessions have been away. A session away [`NOT_LISTENING_TELL_SECS`] with a message
-//! waiting is told to the machine's owner, once for each time it's away.
+//! waiting is told to the machine's owner, once for each time it's away, as from the
+//! session by what it's called.
 //!
 //! [`Live::sessions`]: zirc_proto::session::Live::sessions
 
@@ -183,8 +184,7 @@ impl Daemon {
         let live = self.live.sessions(now);
         let away = self.live.away(&watching, |session| self.waiting(session));
         for (session, away) in self.live.due_to_tell(&away, now) {
-            let words = session::not_listening(now.saturating_sub(away.since), away.waiting);
-            self.tell_owner(&format!("{session}: {words}"));
+            self.tell_not_listening(&session, now.saturating_sub(away.since), away.waiting);
         }
         let Some(client) = &self.client else {
             self.live.said.clear();
@@ -241,6 +241,20 @@ impl Daemon {
         let watching: BTreeSet<String> = self.watching().into_iter().flatten().collect();
         self.live.update(&watching, now);
         self.live.save(now);
+    }
+
+    /// Tells the machine's owner that `session` has been away `away_secs` with `waiting`
+    /// messages for it, as from the session itself, by what it's called: their apps file it
+    /// in its conversation, which a tap on the push opens.
+    fn tell_not_listening(&mut self, session: &str, away_secs: u64, waiting: u32) {
+        let name = self.name_of(session);
+        let task = self.tasks.on(session).cloned();
+        let title = session::agent_title(name.as_deref(), task.as_deref(), session);
+        let words = session::not_listening_notice(&title, away_secs, waiting);
+        tracing::info!("{session}: {words}");
+        if let Err(err) = self.dm(session, &words, None) {
+            tracing::warn!("couldn't tell the owner {session} isn't listening: {err:#}");
+        }
     }
 
     /// How many messages from people wait for `session`, kept while no watch of its is

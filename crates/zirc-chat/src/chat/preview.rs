@@ -22,8 +22,8 @@ impl Chat {
     /// What the list previews of the conversation called `name`: its last message, action,
     /// notice, file or agent event, by whoever said it, in a direct message too. Our own
     /// read `You: …`; anyone else's by the name their rows head them with
-    /// ([`Chat::speaker`]), but for the person a one-to-one conversation is with, whom its
-    /// title names already: `lunch at noon?`, as a narrow row has no room for both. An
+    /// ([`Chat::speaker`]), but for the person or agent a one-to-one conversation is with,
+    /// whom its title names already: `lunch at noon?`, as a narrow row has no room for both. An
     /// action keeps its name, as it reads as a sentence. Files by how many, `1 image`, `2 files`; an agent's event by
     /// its headline. `None` before anything's said.
     #[must_use]
@@ -41,12 +41,14 @@ impl Chat {
                 .trim()
                 .to_owned()
         };
-        // The person a one-to-one conversation is with goes unnamed: its title names them. A
-        // machine's own conversation holds its agents', so each is named.
+        // The person a one-to-one conversation is with goes unnamed: its title names them, as
+        // an agent's own conversation names it. A machine's own conversation holds its
+        // agents', so each is named.
         let theirs = !is_channel(name)
-            && agent(name).is_none()
-            && self.machine(name).is_none()
-            && fold(&entry.from) == fold(name);
+            && match agent(name) {
+                Some((nick, _)) => fold(&entry.from) == fold(nick),
+                None => self.machine(name).is_none() && fold(&entry.from) == fold(name),
+            };
         let named = |what: String| {
             if theirs {
                 what

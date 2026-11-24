@@ -115,11 +115,11 @@ impl Chat {
                     .machine(nick)
                     .map_or_else(|| self.owner_of(nick).to_owned(), |(owner, _)| owner);
                 if owner.eq_ignore_ascii_case(&self.me) {
-                    self.session_label(session)
+                    self.agent_label(nick, session)
                 } else {
                     format!(
                         "{} · {}",
-                        self.session_label(session),
+                        self.agent_label(nick, session),
                         self.owner_name(&owner)
                     )
                 }
@@ -225,7 +225,7 @@ impl Chat {
             return SERVER_TITLE.to_owned();
         }
         match agent(name) {
-            Some((_, session)) => self.session_label(session),
+            Some((nick, session)) => self.agent_label(nick, session),
             None if is_group(name) => self.group_title(name),
             None if is_channel(name) => name.to_owned(),
             None if sender_kind(name, None) == SenderKind::Integration => {

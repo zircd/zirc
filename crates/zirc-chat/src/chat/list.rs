@@ -146,7 +146,8 @@ pub struct Agent {
     pub task: Option<String>,
     /// When something was last said with it, or it last said what it's taking on.
     pub latest: Option<DateTime<Utc>>,
-    /// What it goes by, `zirc-chat`, or else its id ([`Chat::session_label`]).
+    /// What it goes by, `zirc-chat`, or else the task it's on, or else its id
+    /// ([`zirc_proto::session::agent_title`]).
     pub label: String,
     /// Its avatar, under its owner in the people list: see [`super::Avatar::Agent`].
     pub avatar: super::Avatar,
@@ -499,7 +500,7 @@ impl Chat {
             .map_or_else(|| nick.to_owned(), |(owner, _)| owner);
         Agent {
             latest: self.last_said(&name).max(claimed),
-            label: self.session_label(session),
+            label: self.agent_label_on(session, task.as_deref()),
             avatar: super::Avatar::Agent {
                 tool: self.session_tools.get(session).cloned(),
                 picture: self.session_pictures.get(session).cloned(),
@@ -786,7 +787,7 @@ pub struct DirectRow {
     /// machine hasn't said; `None` for the rest.
     pub presence: Option<super::Presence>,
     /// For an agent session away with messages waiting, what its row says under its name
-    /// in their place: `Not listening for 17 min · 1 message waiting` ([`Chat::not_listening`]).
+    /// in their place: `17m away · 1 waiting` ([`Chat::not_listening_short`]).
     pub not_listening: Option<String>,
     /// Whether it's an agent session whose task has landed, or that has been away 12 hours
     /// (the user's choice, 23 Nov 2026), with nothing unread, unstarred and not shown: the
@@ -1104,7 +1105,7 @@ impl Chat {
                 Some(Listening::Away { .. }) => Some(super::Presence::Away),
                 Some(Listening::Ended { .. }) | None => None,
             };
-            row.not_listening = self.not_listening(nick, session_id);
+            row.not_listening = self.not_listening_short(nick, session_id);
             // Ended, it says so where its time was.
             if matches!(listening, Some(Listening::Ended { .. })) {
                 row.when = Some(super::live::ENDED.to_owned());

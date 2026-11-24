@@ -32,6 +32,10 @@ const MEMBERS_FROM: u16 = 90;
 /// The narrowest and widest the member list gets, with its border.
 const MEMBERS_WIDTH: (u16, u16) = (18, 36);
 
+/// The widest the list down the left grows while an agent's row says it isn't listening,
+/// which is shown whole: `17m away · 1 waiting` after a short name.
+const WARNED_WIDTH: u16 = 40;
+
 /// A role's colour, for the terminal.
 fn colour(rgb: Rgb) -> Color {
     Color::Rgb(rgb.r, rgb.g, rgb.b)
@@ -636,11 +640,12 @@ fn header_face(app: &App, name: &str) -> Vec<Span<'static>> {
 
 fn sidebar_width(app: &App) -> u16 {
     // Both halves of the switch, so it keeps its width when the other is shown.
-    let widest = app
-        .sidebar()
-        .into_iter()
-        .chain(app.sides(None))
-        .collect::<Vec<_>>()
+    let rows: Vec<Side> = app.sidebar().into_iter().chain(app.sides(None)).collect();
+    // An agent that isn't listening says so whole, so the list may grow for it.
+    let warned = rows
+        .iter()
+        .any(|row| matches!(row, Side::Row { warning: true, .. }));
+    let widest = rows
         .iter()
         .map(|row| match row {
             // The org is cut to fit, and the switch fits the width the rows want, its halves
@@ -654,13 +659,18 @@ fn sidebar_width(app: &App) -> u16 {
                 agent,
                 presence,
                 note,
+                warning,
                 ..
             } => {
+                // That it isn't listening is shown whole, after ` · `; a task, in part.
+                let note = note
+                    .as_ref()
+                    .map_or(0, |note| if *warning { note.width() + 3 } else { 4 });
                 label.width()
                     + INDENT * depth
                     + agent.map_or(0, |_| AGENT_MARK)
                     + presence.map_or(0, |_| PRESENCE_MARK)
-                    + note.as_ref().map_or(0, |_| 4)
+                    + note
             }
         })
         .max()
@@ -668,7 +678,10 @@ fn sidebar_width(app: &App) -> u16 {
     // A space, the name, room for a count, and the border; at least as wide as the list was
     // while Browse channels ended its channels, so short names still leave room for what was
     // said last.
-    u16::try_from(widest + 7).unwrap_or(u16::MAX).clamp(22, 26)
+    let most = if warned { WARNED_WIDTH } else { 26 };
+    u16::try_from(widest + 7)
+        .unwrap_or(u16::MAX)
+        .clamp(22, most)
 }
 
 fn sidebar_block() -> Block<'static> {
@@ -1922,12 +1935,13 @@ fn members_width(app: &App, width: u16) -> u16 {
 /// The columns a presence mark takes before a name, with its space.
 const PRESENCE_MARK: usize = 2;
 
-/// Someone's presence as a small mark in its colour: ● here, ◐ away, ○ gone.
+/// Someone's presence as a small mark in its colour: ● here, ○ away, ○ gone (fainter).
 fn presence_mark(theme: &Theme, presence: Presence) -> Span<'static> {
     let (mark, colour) = match presence {
         Presence::Here => ("● ", theme.presence_here),
-        Presence::Away => ("◐ ", theme.presence_away),
-        Presence::Gone => ("○ ", theme.muted),
+        // A ring away, as every app draws it (the user's choice, 23 Nov 2026), fainter gone.
+        Presence::Away => ("○ ", theme.presence_away),
+        Presence::Gone => ("○ ", theme.faint),
     };
     Span::styled(mark, fg(colour))
 }
@@ -2908,13 +2922,13 @@ mod tests {
         }
         app.chat.set_tab(zirc_core::chat::SidebarSection::Direct);
         let (rows, terminal) = draw(&app, 140, 24);
-        // Cut to the sidebar's width, as a task is.
-        let (x, y) = place_of(&rows, "Not li");
+        // Whole: the list makes room for it.
+        let (x, y) = place_of(&rows, "17m away · 1 waiting");
         let buffer = terminal.backend().buffer();
         assert_eq!(buffer[(x, y)].fg, colour(app.theme.warning));
         // Its dot says it's away.
         assert!(
-            rows[usize::from(y)].contains('◐'),
+            rows[usize::from(y)].contains('○'),
             "{}",
             rows[usize::from(y)]
         );
@@ -3222,13 +3236,13 @@ mod tests {
             "{}",
             rows.join("\n")
         );
-        // Away, by zirc-chat's presence mark in the warning colour, the name quieter.
-        assert!(row_with(&rows, "alice").ends_with("│ ◐ alice"));
-        let (x, y) = place_of(&rows, "◐ alice");
+        // Away, by zirc-chat's presence mark, a ring in the away grey, the name quieter.
+        assert!(row_with(&rows, "alice").ends_with("│ ○ alice"));
+        let (x, y) = place_of(&rows, "○ alice");
         let buffer = draw(&app, 120, 16).1;
         assert_eq!(
             buffer.backend().buffer()[(x, y)].fg,
-            colour(app.theme.warning)
+            colour(app.theme.presence_away)
         );
         assert_eq!(
             buffer.backend().buffer()[(x + 2, y)].fg,
@@ -3647,7 +3661,7 @@ mod tests {
         let (rows, terminal) = draw(&app, 100, 16);
         let y = rows
             .iter()
-            .position(|row| row.contains("│ ◐ alice"))
+            .position(|row| row.contains("│ ○ alice"))
             .unwrap();
         let x = u16::try_from(rows[y][..rows[y].find("alice").unwrap()].chars().count()).unwrap();
         let cell = &terminal.backend().buffer()[(x, u16::try_from(y).unwrap())];
