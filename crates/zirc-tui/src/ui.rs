@@ -12,7 +12,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr as _;
 
-use crate::app::{App, SessionsPanel, Side, Target, Trimming};
+use crate::app::{App, SessionsPanel, Side, Target, Trimming, WaitingPart};
 use crate::find::Searching;
 use crate::hyperlink;
 use crate::jump::{self, Jumping};
@@ -149,13 +149,28 @@ pub fn target_at(app: &App, area: Rect, column: u16, row: u16) -> Option<Target>
             .into_iter()
             .nth(usize::from(row - sidebar.y))?
         {
-            Side::Row { target, .. } => target,
+            Side::Row { target, .. } | Side::Waiting { target, .. } => target,
             Side::Heading { shelf, .. } => Some(Target::Shelf(shelf)),
             // Each part of the switch takes its share of the width, the last what's left.
             Side::Tabs(tabs) => {
                 let share = usize::from(sidebar.width) / tabs.len().max(1);
                 let part = (usize::from(column - sidebar.x) / share.max(1)).min(tabs.len() - 1);
                 tabs.get(part).map(|tab| Target::Tab(tab.section))
+            }
+            // Each button where it's drawn ([`answers_line`]): a space, then `[label]`s a
+            // space apart.
+            Side::Answers { key, buttons } => {
+                let mut from = 1;
+                let column = usize::from(column - sidebar.x);
+                buttons.into_iter().find_map(|button| {
+                    let to = from + answer_text(&button).width();
+                    let hit = (from..to).contains(&column);
+                    from = to + 1;
+                    hit.then(|| Target::Answer {
+                        key: key.clone(),
+                        action: button.action,
+                    })
+                })
             }
             Side::Org(_) | Side::Empty { .. } => None,
         };
@@ -650,7 +665,12 @@ fn sidebar_width(app: &App) -> u16 {
         .map(|row| match row {
             // The org is cut to fit, and the switch fits the width the rows want, its halves
             // cut to fit.
-            Side::Org(_) | Side::Tabs(_) | Side::Empty { .. } => 0,
+            // The card's lines are wrapped to the narrowest already.
+            Side::Org(_)
+            | Side::Tabs(_)
+            | Side::Empty { .. }
+            | Side::Waiting { .. }
+            | Side::Answers { .. } => 0,
             Side::Heading { label, .. } => label.width() + FOLDED_MARK.width(),
             // An agent at work wants room for some of its task, which is cut to fit.
             Side::Row {
@@ -905,8 +925,42 @@ fn side_line(app: &App, row: Side, width: usize) -> Line<'static> {
             ),
             fg(app.theme.muted).add_modifier(Modifier::BOLD),
         ),
+        Side::Waiting { text, part, .. } => Line::styled(
+            format!(" {}", fit(&text, width.saturating_sub(1))),
+            match part {
+                WaitingPart::Title => fg(app.theme.warning).add_modifier(Modifier::BOLD),
+                WaitingPart::Agent | WaitingPart::Detail => fg(app.theme.muted),
+                WaitingPart::Question => fg(app.theme.text).add_modifier(Modifier::BOLD),
+            },
+        ),
+        Side::Answers { buttons, .. } => answers_line(app, &buttons),
         row @ Side::Row { .. } => side_row_line(app, row, width),
     }
+}
+
+/// A waiting item's button as it's drawn: `[Yes]`.
+fn answer_text(button: &zirc_core::chat::WaitingButton) -> String {
+    format!("[{}]", button.label)
+}
+
+/// A row of a waiting item's answers, each a button a space apart: the recommended one
+/// bold in the accent colour, one already sent reversed.
+fn answers_line(app: &App, buttons: &[zirc_core::chat::WaitingButton]) -> Line<'static> {
+    let theme = app.theme;
+    let mut spans = Vec::new();
+    for button in buttons {
+        let mut style = if button.primary {
+            fg(theme.signal).add_modifier(Modifier::BOLD)
+        } else {
+            fg(theme.text)
+        };
+        if button.sent {
+            style = style.add_modifier(Modifier::REVERSED);
+        }
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(answer_text(button), style));
+    }
+    Line::from(spans)
 }
 
 /// A conversation's row, or a fold's, in the list down the left, `width` columns wide.
@@ -3059,6 +3113,86 @@ mod tests {
         assert_eq!(buffer[(x, y)].fg, colour(app.theme.text));
         assert_eq!(buffer[(x + 3, y)].fg, colour(app.theme.muted));
         assert!(!rows.iter().any(|row| row.ends_with("│ zirc-ci")));
+    }
+
+    /// The app on Messages with a request of ours waiting in `#decisions`, as message `r1`.
+    fn app_asked() -> App {
+        let mut app = app();
+        let asked = zirc_proto::request::Request::open(
+            "me-laptop/1",
+            "cc-1",
+            "me",
+            "Revoke the old certificate now?",
+            "it's revoked",
+            "it stays",
+        );
+        let message = zirc_proto::Message::new("cc-1", asked.event());
+        let body = zirc_proto::encode_up_to(&message, 4096).unwrap();
+        for line in [
+            ":me!u@h JOIN #decisions".to_owned(),
+            format!("@msgid=r1 :me-laptop!u@machine/me PRIVMSG #decisions :{body}"),
+        ] {
+            app.handle(line.parse().unwrap());
+        }
+        app.chat.set_tab(zirc_core::chat::SidebarSection::Direct);
+        app
+    }
+
+    #[test]
+    fn the_waiting_card_is_drawn_over_messages_with_its_answers_to_click() {
+        use zirc_core::chat::WaitingAction;
+        let app = app_asked();
+        let screen = Rect::new(0, 0, 100, 24);
+        let (rows, _) = draw(&app, screen.width, screen.height);
+        let at = |text: &str| {
+            let (x, y) = place_of(&rows, text);
+            target_at(&app, screen, x, y)
+        };
+        let answer = |action| {
+            Some(Target::Answer {
+                key: "me-laptop/1".into(),
+                action,
+            })
+        };
+        assert!(row_with(&rows, "WAITING FOR YOU · 1").starts_with(" WAITING FOR YOU · 1"));
+        // Wrapped to the list, never cut: the question, then what each answer does.
+        assert!(row_with(&rows, "Revoke the old").starts_with(" Revoke the old"));
+        assert!(row_with(&rows, "Yes: it's revoked").starts_with(" Yes: it's revoked"));
+        assert_eq!(at("[Yes]"), answer(WaitingAction::Yes));
+        assert_eq!(at("[No]"), answer(WaitingAction::No));
+        assert_eq!(at("[Tell me more]"), answer(WaitingAction::More));
+        assert_eq!(at("[Your call]"), answer(WaitingAction::Yours));
+        let opens = Target::Waiting {
+            opens: "#decisions".into(),
+            at: Some("r1".into()),
+        };
+        assert_eq!(at("Revoke the old"), Some(opens));
+    }
+
+    #[test]
+    fn a_click_on_a_waiting_answer_reacts_in_decisions_and_one_on_the_item_opens_it() {
+        use ratatui::crossterm::event::{MouseButton, MouseEventKind};
+        let mut app = app_asked();
+        let click = MouseEventKind::Down(MouseButton::Left);
+        let yes = Target::Answer {
+            key: "me-laptop/1".into(),
+            action: zirc_core::chat::WaitingAction::Yes,
+        };
+        let Action::Send(lines) = app.pointer(click, Some(yes)) else {
+            panic!("an answer is sent");
+        };
+        let sent: Vec<String> = lines.iter().map(ToString::to_string).collect();
+        assert_eq!(sent, ["@+draft/react=👍;+draft/reply=r1 TAGMSG #decisions"]);
+        let opens = Target::Waiting {
+            opens: "#decisions".into(),
+            at: Some("r1".into()),
+        };
+        app.pointer(click, Some(opens));
+        assert_eq!(app.current().name, "#decisions");
+        // Over Channels, no card.
+        app.chat.set_tab(zirc_core::chat::SidebarSection::Channels);
+        let (rows, _) = draw(&app, 100, 24);
+        assert!(!rows.iter().any(|row| row.contains("WAITING FOR YOU")));
     }
 
     #[test]

@@ -70,9 +70,41 @@ pub enum Target {
     Shelf(Shelf),
     /// A half of the sidebar's `Channels | Messages` switch, which shows it.
     Tab(zirc_core::chat::SidebarSection),
+    /// A waiting item over Messages ([`Side::Waiting`]): its conversation, and the message
+    /// there to open at.
+    Waiting {
+        /// The conversation it was asked in.
+        opens: String,
+        /// The message there, by the server's id.
+        at: Option<String>,
+    },
+    /// An answer to a waiting item ([`Side::Answers`]), by the item's key.
+    Answer {
+        /// The item, as [`zirc_core::chat::Chat::answer_waiting`] takes it.
+        key: String,
+        /// The answer.
+        action: zirc_core::chat::WaitingAction,
+    },
     /// The scrollback, anywhere else.
     Scrollback,
 }
+
+/// What a line of the "Waiting for you" card is ([`Side::Waiting`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WaitingPart {
+    /// The card's heading, `WAITING FOR YOU · 2`, in the warning colour.
+    Title,
+    /// Who asks, muted.
+    Agent,
+    /// The question, bold.
+    Question,
+    /// What an answer does, or the item's note, muted.
+    Detail,
+}
+
+/// How wide the card's lines are wrapped: the list's narrowest, less its margin, so they fit
+/// however wide the list is drawn.
+pub const WAITING_WRAP: usize = 20;
 
 /// A message about to be trimmed from the server's history, once the person says so.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -304,6 +336,26 @@ pub enum Side {
         /// Whether it's the hint under the line, drawn faint.
         hint: bool,
     },
+    /// A line of the "Waiting for you" card over Messages
+    /// ([`zirc_core::chat::Chat::waiting_card`]): its heading, or a line of an item, wrapped
+    /// to the list's narrowest ([`WAITING_WRAP`]). A click on an item's line opens where it
+    /// was asked.
+    Waiting {
+        /// What the line says.
+        text: String,
+        /// What it is, which says how it's drawn.
+        part: WaitingPart,
+        /// What a click on it does: [`Target::Waiting`], or nothing for the heading.
+        target: Option<Target>,
+    },
+    /// A row of a waiting item's answers, each a button, `[Yes] [No]`: its buttons first,
+    /// then what the other apps keep in its ⋯ menu, each on a row of its own.
+    Answers {
+        /// The item they answer.
+        key: String,
+        /// The buttons, in order.
+        buttons: Vec<zirc_core::chat::WaitingButton>,
+    },
     /// A section's heading: a click folds the section away, or opens it.
     Heading {
         /// What it says, `Channels`.
@@ -474,6 +526,7 @@ impl App {
             .find(|tab| tab.chosen)
             .and_then(|tab| tab.empty.clone());
         rows.push(Side::Tabs(tabs));
+        rows.extend(self.waiting_sides());
         rows.extend(self.sides(Some(self.chat.tab())));
         if let Some(empty) = empty {
             rows.push(Side::Empty {
@@ -483,6 +536,65 @@ impl App {
             rows.extend(empty.hint.map(|text| Side::Empty { text, hint: true }));
         }
         rows
+    }
+
+    /// The "Waiting for you" card's rows, over the half shown while it's Messages and
+    /// something waits ([`zirc_core::chat::Chat::waiting_card`]).
+    fn waiting_sides(&self) -> Vec<Side> {
+        let Some(card) = self.chat.waiting_card(Some(self.chat.tab())) else {
+            return Vec::new();
+        };
+        let mut rows = vec![Side::Waiting {
+            text: card.title,
+            part: WaitingPart::Title,
+            target: None,
+        }];
+        for item in card.items {
+            let target = Target::Waiting {
+                opens: item.opens,
+                at: item.at,
+            };
+            let does = item
+                .does
+                .iter()
+                .map(|does| format!("{}: {}", does.label, does.text));
+            let lines = [(item.agent, WaitingPart::Agent)]
+                .into_iter()
+                .chain([(item.question, WaitingPart::Question)])
+                .chain(
+                    does.chain(item.note)
+                        .map(|text| (text, WaitingPart::Detail)),
+                );
+            for (text, part) in lines {
+                rows.extend(
+                    crate::rows::wrap(&text, WAITING_WRAP)
+                        .into_iter()
+                        .map(|text| Side::Waiting {
+                            text,
+                            part,
+                            target: Some(target.clone()),
+                        }),
+                );
+            }
+            rows.push(Side::Answers {
+                key: item.key.clone(),
+                buttons: item.buttons,
+            });
+            rows.extend(item.menu.into_iter().map(|entry| Side::Answers {
+                key: item.key.clone(),
+                buttons: vec![entry],
+            }));
+        }
+        rows
+    }
+
+    /// A click on a waiting item's answer: Reply opens its conversation, and any other goes
+    /// as the core says, the reaction in `#decisions`.
+    fn answer_waiting(&mut self, key: &str, action: zirc_core::chat::WaitingAction) -> Vec<Line> {
+        if action == zirc_core::chat::WaitingAction::Reply {
+            return self.chat.open(key);
+        }
+        self.chat.answer_waiting(key, action)
     }
 
     /// The list's rows for `tab`, or for both halves.
@@ -1920,6 +2032,15 @@ impl App {
             (MouseEventKind::Down(MouseButton::Left), Some(Target::Tab(tab))) => {
                 self.chat.set_tab(tab);
                 Vec::new()
+            }
+            (MouseEventKind::Down(MouseButton::Left), Some(Target::Waiting { opens, at })) => {
+                match at {
+                    Some(at) => self.chat.open_at(&opens, &at),
+                    None => self.chat.open(&opens),
+                }
+            }
+            (MouseEventKind::Down(MouseButton::Left), Some(Target::Answer { key, action })) => {
+                self.answer_waiting(&key, action)
             }
             (MouseEventKind::Down(MouseButton::Left), Some(Target::Shelf(part))) => {
                 let folded = self.chat.collapsed().contains(&part);
