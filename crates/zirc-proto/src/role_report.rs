@@ -33,6 +33,10 @@ pub const CLOSED_KIND: &str = "x-zirc/report-closed";
 /// /v1/roles/<role>/items`.
 pub const ITEMS_PATH: &str = "/v1/roles/{role}/items";
 
+/// The role CI's and the cluster's reports go to: zirc's own fixer, as an organisation
+/// defines it on zirc.dev. `ops/lib.sh` has a copy, as a shell script can't read this.
+pub const FIXER: &str = "fixer";
+
 /// What a `Fixes:` trailer says before an item's id to close it when the landing passes:
 /// `Fixes: report 3f2a1b9c`.
 pub const FIXES_PREFIX: &str = "report ";
@@ -92,6 +96,16 @@ impl Subject {
             Self::Warning => "new warning",
             Self::Flaky => "flaky test",
             Self::Container => "container",
+        }
+    }
+
+    /// What a role's form and card call the kind: `a new warning`.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Warning => "a new warning",
+            Self::Flaky => "a flaky test",
+            Self::Container => "a container or tenant",
         }
     }
 
@@ -317,9 +331,12 @@ impl End {
         match self {
             Self::Landed => "fixed",
             Self::Done => "done",
-            Self::Baselined => "baselined",
+            Self::Baselined => "to the baseline",
         }
     }
+
+    /// Every end, in the order a count of them is said.
+    pub const ALL: [Self; 3] = [Self::Landed, Self::Done, Self::Baselined];
 }
 
 /// The holder says an item is done or baselined: what an [`Event::Custom`] of
@@ -445,6 +462,43 @@ pub struct OpenItems {
     pub open: Vec<OpenItem>,
     /// What closed in the last day.
     pub closed_today: Vec<OpenItem>,
+    /// What the card says of them ([`closed_words`]): `Closed today: 3 (2 fixed, 1 to the
+    /// baseline)`, empty when none did.
+    #[serde(default)]
+    pub closed_today_words: String,
+}
+
+impl OpenItems {
+    /// `role`'s items: those `open`, and those `closed_today`, with what's said of the latter.
+    #[must_use]
+    pub fn new(role: &str, open: Vec<OpenItem>, closed_today: Vec<OpenItem>) -> Self {
+        Self {
+            role: role.to_owned(),
+            closed_today_words: closed_words(&closed_today),
+            open,
+            closed_today,
+        }
+    }
+}
+
+/// What a card says of the items `closed`: `Closed today: 3 (2 fixed, 1 to the baseline)`, or
+/// `Closed today: 1 (fixed)`; empty when there are none.
+#[must_use]
+pub fn closed_words(closed: &[OpenItem]) -> String {
+    if closed.is_empty() {
+        return String::new();
+    }
+    let ends: Vec<String> = End::ALL
+        .into_iter()
+        .filter_map(|end| {
+            let n = closed.iter().filter(|item| item.end == Some(end)).count();
+            (n > 0).then(|| match closed.len() {
+                1 => end.words().to_owned(),
+                _ => format!("{n} {}", end.words()),
+            })
+        })
+        .collect();
+    format!("Closed today: {} ({})", closed.len(), ends.join(", "))
 }
 
 /// These as TypeScript, for the web app's generated file.
@@ -458,6 +512,19 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         OpenItem::decl(config),
         OpenItems::decl(config),
         format!("const ROLE_ITEMS_PATH = {ITEMS_PATH:?};"),
+        format!(
+            "const ROLE_REPORT_SUBJECTS: readonly {{ id: RoleReportSubject; phrase: string; label: string }}[] = [{}];",
+            Subject::ALL
+                .iter()
+                .map(|kind| format!(
+                    "{{ id: {:?}, phrase: {:?}, label: {:?} }}",
+                    kind.as_str(),
+                    kind.phrase(),
+                    kind.label()
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     ]
 }
 
@@ -577,5 +644,32 @@ mod tests {
             ..closing
         };
         assert_eq!(Closing::of(&landed.event()), None);
+    }
+
+    #[test]
+    fn what_closed_today_is_counted_by_how_it_ended() {
+        let closed = |end| OpenItem {
+            closed: Some(1),
+            end: Some(end),
+            ..OpenItem::opened(warning(), 0)
+        };
+        assert_eq!(closed_words(&[]), "");
+        assert_eq!(
+            closed_words(&[closed(End::Landed)]),
+            "Closed today: 1 (fixed)"
+        );
+        let items = OpenItems::new(
+            "fixer",
+            Vec::new(),
+            vec![
+                closed(End::Baselined),
+                closed(End::Landed),
+                closed(End::Landed),
+            ],
+        );
+        assert_eq!(
+            items.closed_today_words,
+            "Closed today: 3 (2 fixed, 1 to the baseline)"
+        );
     }
 }

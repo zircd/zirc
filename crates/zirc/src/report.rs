@@ -101,7 +101,7 @@ pub(super) async fn report(socket: &Path, args: ReportArgs, out: &mut impl Write
     match end {
         Some(end) => writeln!(
             out,
-            "{} [{id}] said {} in {channel}",
+            "{} [{id}] closed, {}, said in {channel}",
             report.role,
             end.words()
         )?,
