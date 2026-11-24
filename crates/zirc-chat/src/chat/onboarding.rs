@@ -25,6 +25,12 @@ pub const NEXT_STEP_LABEL: &str = "Zirc · next step";
 /// ([`super::Callout::action`]): `prompt:ci`, the step's id after it.
 pub const PROMPT_ACTION: &str = "prompt:";
 
+/// The theme role of a prompt atop Messages, as the mocks tint it.
+const MESSAGES_TONE: &str = "signal";
+
+/// The theme role of a prompt in an agent's conversation: the step's next, green.
+const NEXT_STEP_TONE: &str = "ok";
+
 /// Where a prompt shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase", tag = "at")]
@@ -83,6 +89,9 @@ pub struct Prompt {
     pub place: PromptPlace,
     /// Over an agent's conversation, what it's headed ([`NEXT_STEP_LABEL`]).
     pub label: Option<String>,
+    /// The theme role it's tinted with: `signal` atop Messages, `ok` in a conversation, as
+    /// the mocks have them.
+    pub tone: String,
     /// Its first words, in bold: `tls-rotation is listening.`
     pub title: Option<String>,
     /// What it says.
@@ -141,7 +150,7 @@ impl Chat {
         let callout = Callout {
             label: prompt.label.unwrap_or_else(|| NEXT_STEP_LABEL.to_owned()),
             spans,
-            tone: "ok".to_owned(),
+            tone: prompt.tone,
             button: prompt.button.as_ref().map(|button| button.label.clone()),
             action: prompt
                 .button
@@ -179,6 +188,7 @@ impl Chat {
             step: id::PHONE.to_owned(),
             place: PromptPlace::Messages,
             label: None,
+            tone: MESSAGES_TONE.to_owned(),
             title: Some(format!("{agent} is listening.")),
             body: "Say hi: a message reaches it in seconds, wherever you are.".to_owned(),
             button: Some(PromptButton {
@@ -204,6 +214,7 @@ impl Chat {
                 after,
             },
             label: Some(NEXT_STEP_LABEL.to_owned()),
+            tone: NEXT_STEP_TONE.to_owned(),
             title: context
                 .phone
                 .then(|| format!("Your phone reaches {agent}.")),
@@ -234,6 +245,7 @@ impl Chat {
                 after,
             },
             label: Some(NEXT_STEP_LABEL.to_owned()),
+            tone: NEXT_STEP_TONE.to_owned(),
             title: None,
             body: "See a wake now, without waiting for a real failure.".to_owned(),
             // The agent runs it, where its CI's tools are ([`ci::test_failure_ask`]).
