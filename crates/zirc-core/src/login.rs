@@ -374,23 +374,7 @@ impl Client {
         &self,
         account: &Account,
     ) -> Result<Option<zirc_proto::onboarding::Progress>, Error> {
-        let response = self
-            .http
-            .get(format!(
-                "{}{}",
-                self.web,
-                zirc_proto::onboarding::STEPS_PATH
-            ))
-            .basic_auth(&account.name, Some(&account.password))
-            .send()
-            .await?;
-        if matches!(
-            response.status(),
-            StatusCode::UNAUTHORIZED | StatusCode::NOT_FOUND
-        ) {
-            return Ok(None);
-        }
-        Ok(Some(self.checked(response).await?.json().await?))
+        self.read_me(account, zirc_proto::onboarding::STEPS_PATH).await
     }
 
     /// What the person whose machine or app `account` is had their agents do today
@@ -403,13 +387,20 @@ impl Client {
         &self,
         account: &Account,
     ) -> Result<Option<zirc_proto::onboarding::Today>, Error> {
+        self.read_me(account, zirc_proto::onboarding::TODAY_PATH).await
+    }
+
+    /// What one of the web app's `/api/me/*` reads at `path` answers `account`, its machine or
+    /// app: `None` when the web app doesn't know that account and passphrase (401), or doesn't
+    /// serve `path` at all, as a self-hosted server's or an older one (404).
+    async fn read_me<T: serde::de::DeserializeOwned>(
+        &self,
+        account: &Account,
+        path: &str,
+    ) -> Result<Option<T>, Error> {
         let response = self
             .http
-            .get(format!(
-                "{}{}",
-                self.web,
-                zirc_proto::onboarding::TODAY_PATH
-            ))
+            .get(format!("{}{path}", self.web))
             .basic_auth(&account.name, Some(&account.password))
             .send()
             .await?;
