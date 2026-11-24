@@ -12,7 +12,8 @@ use clap::{Args, Subcommand};
 use zirc_proto::login::{CI_PATH, CI_TOKEN_NAME};
 
 /// What zirc.dev says of an account it no longer takes.
-const SIGNED_OUT: &str = "zirc.dev doesn't take this machine's account any more: run `zirc login`";
+pub(crate) const SIGNED_OUT: &str =
+    "zirc.dev doesn't take this machine's account any more: run `zirc login`";
 
 #[derive(Debug, Subcommand)]
 pub enum CiCommand {
@@ -25,13 +26,26 @@ pub enum CiCommand {
     Tokens(OrgArgs),
     /// Revoke a CI token by its name: CI holding it is refused from then on.
     Revoke(RevokeArgs),
+    /// Connect this repository's GitHub Actions, so its builds are said in Zirc.
+    ///
+    /// Finds the workflows on the default branch, sets a CI token as the repository's
+    /// secret `ZIRC_CI_TOKEN` with gh, adds the step "Tell Zirc" to the end of each job on a
+    /// branch of its own, opens a pull request and waits until a run is heard. It says what
+    /// it will do and asks first. For an organisation's owners and admins, with admin
+    /// access to the repository on GitHub.
+    Connect(crate::connect::ConnectArgs),
+    /// Make a build fail on purpose, as a test, to see an agent wake.
+    ///
+    /// Re-runs the last run of a branch, which fails and says it's a test: the session
+    /// named wakes, with nothing to fix. Needs the step zirc ci connect adds on that branch.
+    TestFailure(crate::connect::TestFailureArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct OrgArgs {
     /// The organisation, on a machine signed in to several.
     #[arg(long, value_name = "NAME")]
-    org: Option<String>,
+    pub(crate) org: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -57,7 +71,7 @@ pub struct RevokeArgs {
 }
 
 /// The organisation's account at zirc.dev, for a command that manages its CI tokens.
-async fn team(home: &Path, socket: &Path, org: &OrgArgs) -> Result<crate::search::Team> {
+pub(crate) async fn team(home: &Path, socket: &Path, org: &OrgArgs) -> Result<crate::search::Team> {
     let org = crate::search::one_org(home, socket, org.org.as_deref()).await?;
     let Some(team) = crate::search::team(&org) else {
         bail!(
@@ -137,6 +151,14 @@ pub async fn ci(
                 );
                 writeln!(out, "{}  made {}{by}, {used}", token.name, day(&token.made))?;
             }
+        }
+        CiCommand::Connect(args) => {
+            return crate::connect::connect(home, socket, args, &mut crate::connect::Real, out)
+                .await;
+        }
+        CiCommand::TestFailure(args) => {
+            return crate::connect::test_failure(socket, args, &mut crate::connect::Real, out)
+                .await;
         }
         CiCommand::Revoke(args) => {
             let team = team(home, socket, &args.org).await?;

@@ -91,6 +91,8 @@ const ACTS: &[(&str, Acts)] = &[
     ("ci token", Acts::One),
     ("ci tokens", Acts::One),
     ("ci revoke", Acts::One),
+    ("ci connect", Acts::One),
+    ("ci test-failure", Acts::Repo),
     ("intend", Acts::Repo),
     ("clashes", Acts::Repo),
     ("repo add", Acts::Repo),

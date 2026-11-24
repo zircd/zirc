@@ -5,6 +5,7 @@ mod args;
 mod catchup;
 mod ci;
 mod client;
+mod connect;
 mod daemon;
 mod decide;
 mod file;
@@ -235,7 +236,14 @@ const EXAMPLES: &[(&str, &[&str])] = &[
         "agents",
         &["zirc agents queries", "zirc agents queries mine"],
     ),
-    ("ci", &["zirc ci token", "zirc ci tokens"]),
+    (
+        "ci",
+        &[
+            "zirc ci connect",
+            "zirc ci test-failure --session cc-1a2b3c",
+            "zirc ci tokens",
+        ],
+    ),
     ("daemon", &["zirc daemon install", "zirc daemon restart"]),
     ("update", &["zirc update", "zirc update --check"]),
     ("skill", &["zirc skill install"]),
