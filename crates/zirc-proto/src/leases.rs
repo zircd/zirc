@@ -16,8 +16,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// The kind of the events leases are agreed through, in the organisation's channel: sent
-/// out of its history ([`zirc_proto::live`]), as they say only how things stand.
-pub const LEASE_KIND: &str = zirc_proto::LEASE_KIND;
+/// out of its history ([`crate::live`]), as they say only how things stand.
+pub const LEASE_KIND: &str = crate::LEASE_KIND;
 
 /// How long after it's made a request can become the holder, in milliseconds: long enough
 /// for a request made at the same moment on another machine to have arrived.

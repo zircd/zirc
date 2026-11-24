@@ -17,6 +17,8 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use crate::is_zero;
 use ts_rs::TS;
 
 /// The bounds on a `DesiredState`, in one place: its schema holds a server to them, and
@@ -160,14 +162,6 @@ pub struct DesiredState {
     /// restarts nothing.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub content_api: bool,
-}
-
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde's skip_serializing_if takes a reference"
-)]
-fn is_zero(n: &u64) -> bool {
-    *n == 0
 }
 
 /// One of the organisation's machines (`DesiredState::machines`): its account, and whose it is.

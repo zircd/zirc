@@ -11,6 +11,8 @@ use std::collections::BTreeMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use crate::is_zero;
 use ts_rs::TS;
 
 use crate::Event;
@@ -63,11 +65,16 @@ impl SessionCard {
         }
     }
 
+    /// The session as people read it: its name, else its id.
+    #[must_use]
+    pub fn who(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.session)
+    }
+
     /// What it says, for plain IRC clients: `desktop is "Desktop: 3f review fixes"`.
     #[must_use]
     pub fn text(&self) -> String {
-        let who = self.name.as_deref().unwrap_or(&self.session);
-        format!("{who} is \"{}\"", self.title)
+        format!("{} is \"{}\"", self.who(), self.title)
     }
 }
 
@@ -101,15 +108,6 @@ pub struct Away {
     #[serde(default, skip_serializing_if = "is_zero")]
     #[ts(as = "Option<u32>", optional)]
     pub waiting: u32,
-}
-
-/// Whether `n` is nothing, for a count left out when it is.
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde's skip_serializing_if passes a reference"
-)]
-fn is_zero(n: &u32) -> bool {
-    *n == 0
 }
 
 /// Which of a machine's agent sessions are live, and which are away. A session is online

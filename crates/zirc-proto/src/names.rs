@@ -52,14 +52,34 @@ pub fn is_handle(name: &str) -> bool {
     handle_problem(name).is_none()
 }
 
+/// Whether `name` is shaped as a handle is ([`handle_pattern`]).
+fn handle_shaped(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && (HANDLE_MIN..=HANDLE_MAX).contains(&name.len())
+}
+
+/// What's wrong with `name` as a role's name ([`crate::roles`]), if anything. It's the
+/// role's nick, among people's on the server, so it's shaped as a handle is
+/// ([`handle_pattern`]) and is none of zirc's own names. That it's no member's handle, nor a
+/// handle a role's name, the server's sidecar and zirc.dev check, as they know both.
+#[must_use]
+pub fn role_problem(name: &str) -> Option<String> {
+    if !handle_shaped(name) {
+        return Some(format!(
+            "Name a role with {HANDLE_MIN} to {HANDLE_MAX} lowercase letters, digits and \
+             underscores, starting with a letter."
+        ));
+    }
+    (RESERVED_HANDLES.contains(&name) || RESERVED_INTEGRATION_NICKS.contains(&name))
+        .then(|| format!("{name} is zirc's own: choose another name."))
+}
+
 /// What's wrong with `name` as a handle, as people are told, if anything.
 #[must_use]
 pub fn handle_problem(name: &str) -> Option<String> {
-    let mut chars = name.chars();
-    let shaped = chars.next().is_some_and(|c| c.is_ascii_lowercase())
-        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-        && (HANDLE_MIN..=HANDLE_MAX).contains(&name.len());
-    if !shaped {
+    if !handle_shaped(name) {
         return Some(format!(
             "Use {HANDLE_MIN} to {HANDLE_MAX} lowercase letters, digits and underscores, \
              starting with a letter."
@@ -185,6 +205,8 @@ pub fn typescript() -> Vec<String> {
         format!("const HANDLE_MIN = {HANDLE_MIN};"),
         format!("const HANDLE_MAX = {HANDLE_MAX};"),
         format!("const HANDLE_PATTERN = {:?};", handle_pattern()),
+        // A role's name is shaped as a handle is (role_problem).
+        format!("const ROLE_PATTERN = {:?};", handle_pattern()),
         format!(
             "const RESERVED_HANDLES: readonly string[] = [{}];",
             reserved.join(", ")

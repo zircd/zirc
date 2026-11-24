@@ -24,6 +24,7 @@ pub mod hints;
 pub mod images;
 pub mod irc;
 pub mod join;
+pub mod leases;
 pub mod lines;
 pub mod link;
 pub mod logging;
@@ -37,6 +38,7 @@ pub mod receipt;
 pub mod report;
 pub mod request;
 pub mod role;
+pub mod roles;
 pub mod run;
 pub mod sealed;
 pub mod search;
@@ -45,6 +47,7 @@ pub mod state;
 pub mod suggestions;
 pub mod telemetry;
 pub mod thread;
+pub mod trigger;
 pub mod uploads;
 pub mod woke;
 pub mod workflow;
@@ -954,6 +957,30 @@ pub const TOOL_NAMES: [(&str, &str); 2] = [(CLAUDE_CODE, "Claude Code"), (CODEX,
 #[must_use]
 pub fn session_tool(tool: &str) -> Option<String> {
     plain(tool, MAX_SESSION_NAME)
+}
+
+/// Whether `n` is its type's zero, for serde's `skip_serializing_if`, which passes a
+/// reference: one for every count a message leaves out at zero.
+pub(crate) fn is_zero<T: Default + PartialEq>(n: &T) -> bool {
+    *n == T::default()
+}
+
+/// How long `text` says, in seconds: a number and its unit, as `90s`, `20m`, `2h`, `3d` or
+/// `2w`. The one way a length of time is written: for a moment that long ago, for how long
+/// something lasts, and for how often a trigger comes round ([`trigger::seconds`]).
+#[must_use]
+pub fn duration(text: &str) -> Option<u64> {
+    let (number, unit) = text.split_at(text.find(|c: char| !c.is_ascii_digit())?);
+    let number: u64 = number.parse().ok()?;
+    let unit = match unit {
+        "s" => 1,
+        "m" => 60,
+        "h" => 3600,
+        "d" => 86_400,
+        "w" => 604_800,
+        _ => return None,
+    };
+    number.checked_mul(unit)
 }
 
 /// The pictures an agent session can go by ([`Message::avatar`]), by id, each with what it

@@ -23,7 +23,8 @@ pub mod history;
 pub mod hunks;
 pub mod intent_scope;
 pub mod ipc;
-pub mod leases;
+// The lease model is the protocol's, which the sidecar reads too (role seats).
+pub use zirc_proto::leases;
 pub mod login;
 pub mod machine;
 pub mod media;

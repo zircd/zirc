@@ -11,6 +11,7 @@
 //! A wake says what happened, never what anyone said: an app adds the words of the line
 //! that woke it ([`Woke::line`]) only where its reader can read that line anyway.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::Event;
@@ -54,7 +55,7 @@ pub fn is_kind(kind: &str) -> bool {
 }
 
 /// Whose doing a wake was.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum By {
     /// CI, or how something in the repository stands.
@@ -69,7 +70,7 @@ pub enum By {
 }
 
 /// What happened, that woke the session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum What {
     /// CI said how a build, a landing or a deploy went ([`Woke::build`], [`Woke::state`]).
@@ -152,7 +153,7 @@ impl Tone {
 }
 
 /// A session's watch woke: what an [`Event::Custom`] of [`KIND`] carries, from the session.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Woke {
     /// What happened.
     pub what: What,
@@ -199,6 +200,10 @@ pub struct Woke {
     /// The wake's id ([`crate::activity::Wake::id`]), which joins the line to its record.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wake: Option<String>,
+    /// The role ([`crate::roles`]) the session was woken as, when it was: its line ends
+    /// with it, `Woke: master is broken (fixer)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 impl Woke {
@@ -218,6 +223,7 @@ impl Woke {
             branch: None,
             landing: false,
             wake: None,
+            role: None,
         }
     }
 
@@ -271,6 +277,15 @@ impl Woke {
     /// word: `a person`, `another agent`.
     #[must_use]
     pub fn words(&self, who: Option<&str>) -> String {
+        let words = self.what_words(who);
+        match &self.role {
+            Some(role) => format!("{words} ({role})"),
+            None => words,
+        }
+    }
+
+    /// [`Woke::words`] but its role.
+    fn what_words(&self, who: Option<&str>) -> String {
         let who = who.unwrap_or(match self.by {
             By::Ci => "CI",
             By::Agent => "another agent",

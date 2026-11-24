@@ -43,23 +43,9 @@ pub fn moment(text: &str, now: u64) -> Option<u64> {
     now.checked_sub(duration(text)?)
 }
 
-/// How long `text` says, in seconds: a number and its unit, as `90s`, `20m`, `2h`, `3d` or
-/// `2w`. The one way a length of time is written, for a moment that long ago
-/// ([`moment`]) and for how long something lasts.
-#[must_use]
-pub fn duration(text: &str) -> Option<u64> {
-    let (number, unit) = text.split_at(text.find(|c: char| !c.is_ascii_digit())?);
-    let number: u64 = number.parse().ok()?;
-    let unit = match unit {
-        "s" => 1,
-        "m" => 60,
-        "h" => 3600,
-        "d" => 86_400,
-        "w" => 604_800,
-        _ => return None,
-    };
-    number.checked_mul(unit)
-}
+/// How long `text` says, in seconds, as zirc writes a length of time everywhere
+/// ([`zirc_proto::duration`]).
+pub use zirc_proto::duration;
 
 #[cfg(test)]
 mod tests {

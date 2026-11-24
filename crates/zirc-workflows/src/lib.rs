@@ -25,9 +25,10 @@ use zirc_proto::Event;
 use zirc_proto::card::{Card, Field, State as CardState};
 use zirc_proto::run::{Act, Change, MAX_OUTPUTS, Outcome, RunEvent, StepAction};
 use zirc_proto::state::{Level, State};
+use zirc_proto::trigger::{Happened, came_round, names_whole};
 use zirc_proto::workflow::{
-    Condition, EACH, EVERY_GRACE, Each, MAX_EACH, MAX_ENDED, MAX_SOURCE, OneFails, Ref, Signal,
-    Step, StepKind, Trigger, TriggerKind, Until, Who, Workflow, fill, landed_under, seconds,
+    Condition, EACH, Each, MAX_EACH, MAX_ENDED, MAX_SOURCE, OneFails, Ref, Signal, Step, StepKind,
+    Trigger, TriggerKind, Until, Who, Workflow, fill, seconds,
 };
 
 /// The workflow `source` says, once it keeps every rule.
@@ -311,14 +312,6 @@ impl Seen<'_> {
             .flatten()
             .any(|said| names_whole(said, id))
     }
-}
-
-/// Whether `id` stands in `said` as a word of its own, not inside a longer name.
-fn names_whole(said: &str, id: &str) -> bool {
-    let apart = |c: Option<char>| c.is_none_or(|c| !c.is_alphanumeric());
-    said.match_indices(id).any(|(at, _)| {
-        apart(said[..at].chars().next_back()) && apart(said[at + id.len()..].chars().next())
-    })
 }
 
 /// Notes that something was heard of `by` at `at`: when `run`'s step given out is theirs,
@@ -860,15 +853,11 @@ impl Engine {
                 id,
                 text,
             } => {
-                let lower = text.to_lowercase();
-                let known = fields([("text", Some(text)), ("by", Some(by.clone()))])
+                let happened = Happened::Said { text: &text };
+                let hears = |t: &Trigger| t.matches(&happened);
+                let known = fields([("text", Some(text.clone())), ("by", Some(by.clone()))])
                     .chain(fields([("channel", Some(channel)), ("id", Some(id))]))
                     .collect();
-                let hears = |t: &Trigger| {
-                    t.said
-                        .as_deref()
-                        .is_some_and(|said| names_whole(&lower, &said.to_lowercase()))
-                };
                 self.happened(TriggerKind::Said, &hears, &by, &known, now, &mut said);
             }
             Input::Reacted {
@@ -882,13 +871,17 @@ impl Engine {
                 let known = fields([("text", text), ("author", author), ("by", Some(by.clone()))])
                     .chain(fields([("channel", Some(channel)), ("id", Some(id))]))
                     .collect();
-                let is = |t: &Trigger| t.reaction.as_deref() == Some(reaction.as_str());
+                let happened = Happened::Reaction {
+                    reaction: &reaction,
+                };
+                let is = |t: &Trigger| t.matches(&happened);
                 self.happened(TriggerKind::Reaction, &is, &by, &known, now, &mut said);
             }
             Input::Landed { landing, changed } => {
                 let commit = landing.get("commit").map_or("", String::as_str);
                 let by = format!("landing:{commit}");
-                let under = |t: &Trigger| landed_under(&t.landed, &changed);
+                let happened = Happened::Landed { changed: &changed };
+                let under = |t: &Trigger| t.matches(&happened);
                 self.happened(TriggerKind::Landed, &under, &by, &landing, now, &mut said);
             }
             Input::Tick => {
@@ -1005,7 +998,12 @@ impl Engine {
             .workflow
             .on
             .iter()
-            .filter(|t| t.state.as_deref() == Some(&state.name) && t.level == Some(state.level))
+            .filter(|t| {
+                t.matches(&Happened::State {
+                    name: &state.name,
+                    level: state.level,
+                })
+            })
             .map(|t| {
                 t.inputs
                     .iter()
@@ -1088,26 +1086,23 @@ impl Engine {
     }
 
     /// Starts a run for each `every` trigger whose time has come round since it was last
-    /// dealt with, if not more than [`EVERY_GRACE`] ago: a time the server was away for
+    /// dealt with, if not more than [`zirc_proto::trigger::EVERY_GRACE`] ago: a time the server was away for
     /// longer is passed over, never made up for.
     fn scheduled(&mut self, now: u64, said: &mut Vec<Said>) {
         if !self.caught_up {
             return;
         }
         for (i, trigger) in self.workflow.on.clone().iter().enumerate() {
-            let Some(at) = trigger
+            let Some((at, start)) = trigger
                 .schedule()
                 .ok()
                 .flatten()
-                .and_then(|schedule| schedule.last(now))
+                .and_then(|schedule| came_round(schedule, self.fired.get(&i).copied(), now))
             else {
                 continue;
             };
-            if self.fired.get(&i).is_some_and(|dealt| *dealt >= at) {
-                continue;
-            }
             self.fired.insert(i, at);
-            if now - at <= EVERY_GRACE {
+            if start {
                 self.start(scheduled_by(i, at), trigger.with.clone(), now, said);
             }
         }
