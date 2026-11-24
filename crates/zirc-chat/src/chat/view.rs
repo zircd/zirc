@@ -625,10 +625,10 @@ pub(super) fn event_parts(
             Icon::Intent,
             ("is about to change".to_owned(), described.headline),
         ),
-        Event::Text { body } => match body.strip_prefix("taking:") {
+        Event::Text { body } => match zirc_proto::taken(body) {
             Some(task) => (
                 Icon::Taking,
-                ("is taking".to_owned(), strip_formatting(task.trim())),
+                ("is taking".to_owned(), strip_formatting(task)),
             ),
             None => (Icon::Post, said(body)),
         },

@@ -136,22 +136,18 @@ pub fn resolve(to: &str, known: &[Known]) -> Result<Address, Error> {
     }
 }
 
-/// The labels that start a session's status line, which is for every session.
-pub const STATUS: [&str; 3] = ["taking:", "done:", "dropped:"];
-
-/// Whether `text` is a session's status line: one starting [`STATUS`].
+/// Whether `text` is a session's status line, which is for every session: one starting
+/// [`zirc_proto::STATUS`].
 #[must_use]
 pub fn is_status(text: &str) -> bool {
-    let text = text.trim_start();
-    STATUS.iter().any(|label| {
-        text.get(..label.len())
-            .is_some_and(|start| start.eq_ignore_ascii_case(label))
-    })
+    zirc_proto::STATUS
+        .iter()
+        .any(|label| zirc_proto::says(text, label))
 }
 
 /// Whether a post saying `text` is addressed to one agent session among `known`, as
 /// `coordinator: landed it`, and so is a note for it: where to, and what it says without
-/// the address. Never a status line ([`STATUS`]), which is for every session, nor one
+/// the address. Never a status line ([`zirc_proto::STATUS`]), which is for every session, nor one
 /// to `@everyone` or one of `people`, nor one whose address could be several sessions.
 #[must_use]
 pub fn addressed<'a>(

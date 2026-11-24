@@ -574,7 +574,7 @@ impl Presence {
         let key = (nick.to_owned(), session.to_owned());
         let text = text.trim();
         let done = (nick.to_ascii_lowercase(), session.to_owned());
-        if let Some(task) = text.strip_prefix("taking:") {
+        if let Some(task) = zirc_proto::taken(text) {
             if self.done.get(&done).is_some_and(|&at| at <= now) {
                 self.done.remove(&done);
             }
@@ -583,7 +583,7 @@ impl Presence {
                 Claim {
                     nick: nick.to_owned(),
                     session: session.to_owned(),
-                    task: task.trim().to_owned(),
+                    task: task.to_owned(),
                     session_name: None,
                     session_tool: None,
                     session_avatar: None,
@@ -591,10 +591,7 @@ impl Presence {
                 },
             );
         } else if zirc_proto::says_finished(text) {
-            if text
-                .get(..5)
-                .is_some_and(|done| done.eq_ignore_ascii_case("done:"))
-            {
+            if zirc_proto::says_done(text) {
                 let at = self.done.entry(done).or_insert(now);
                 *at = (*at).max(now);
             }

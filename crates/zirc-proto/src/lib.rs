@@ -569,7 +569,7 @@ pub const TAKING: &str = "taking:";
 /// Whether `text`, a post, starts a task: it starts `taking:`, whatever the case.
 #[must_use]
 pub fn says_taking(text: &str) -> bool {
-    text.trim_start().to_lowercase().starts_with(TAKING)
+    says(text, TAKING)
 }
 
 /// The post that starts `task`: `taking: <task>`, as `zirc intend` posts it for a session
@@ -808,13 +808,44 @@ impl Event {
     }
 }
 
-/// Whether `text`, an intent's summary or a post, says its work is finished: it starts
-/// `done:` or `dropped:`, whatever the case. Such an intent ends at once, rather than when it
-/// expires, and a claim ends with such a post.
+/// What starts a session's post saying its work is done, as zircd says for it once its
+/// landing lands: `done: the login page`.
+pub const DONE: &str = "done:";
+
+/// What starts a session's post saying it stopped before finishing: `dropped: releases`.
+pub const DROPPED: &str = "dropped:";
+
+/// The labels that start a session's status line: [`TAKING`], [`DONE`], [`DROPPED`].
+pub const STATUS: [&str; 3] = [TAKING, DONE, DROPPED];
+
+/// Whether `text` starts with `label`, after any space, whatever the case.
+#[must_use]
+pub fn says(text: &str, label: &str) -> bool {
+    text.trim_start()
+        .get(..label.len())
+        .is_some_and(|start| start.eq_ignore_ascii_case(label))
+}
+
+/// What a post `text` says it's taking on, when it starts [`TAKING`] ([`taking`] writes
+/// one): `the login page`.
+#[must_use]
+pub fn taken(text: &str) -> Option<&str> {
+    text.trim_start().strip_prefix(TAKING).map(str::trim)
+}
+
+/// Whether `text`, an intent's summary or a post, says its work is done: it starts
+/// [`DONE`], whatever the case.
+#[must_use]
+pub fn says_done(text: &str) -> bool {
+    says(text, DONE)
+}
+
+/// Whether `text`, an intent's summary or a post, says its work is finished: done
+/// ([`says_done`]) or [`DROPPED`], whatever the case. Such an intent ends at once, rather
+/// than when it expires, and a claim ends with such a post.
 #[must_use]
 pub fn says_finished(text: &str) -> bool {
-    let text = text.trim_start().to_lowercase();
-    text.starts_with("done:") || text.starts_with("dropped:")
+    says_done(text) || says(text, DROPPED)
 }
 
 /// `bytes` in lowercase hex.
@@ -1797,6 +1828,18 @@ mod tests {
         assert_eq!("warning".parse::<Level>(), Ok(Level::Warn));
         assert_eq!(Level::Error.to_string(), "error");
         assert!("loud".parse::<Level>().is_err());
+    }
+
+    #[test]
+    fn a_status_line_is_read_by_its_label_whatever_the_case() {
+        assert_eq!(taken("  taking:  the login page "), Some("the login page"));
+        assert_eq!(taken(&taking("the login page")), Some("the login page"));
+        assert_eq!(taken("on it"), None);
+        assert!(says_taking("Taking: it"));
+        assert!(says_done("Done: it") && says_done(" done: it"));
+        assert!(!says_done("dropped: it") && !says_done("undone: it"));
+        assert!(says_finished("DROPPED: it") && says_finished("done: it"));
+        assert!(!says_finished("taking: it"));
     }
 
     #[test]
