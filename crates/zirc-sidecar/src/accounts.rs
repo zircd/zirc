@@ -2194,6 +2194,17 @@ async fn keep_profiles(ergo: Arc<Ergo>) {
         every.tick().await;
         ticks = ticks.wrapping_add(1);
         let again = ticks.is_multiple_of(PROFILES_AGAIN);
+        // Only an account Ergo has can be on. `said` keeps every account zirc.dev ever named,
+        // machines long gone too: a whois each was some thousand calls every 30 s, nearly all
+        // of Ergo's API's work, where it had 26 accounts (24 Nov 2026).
+        let registered: BTreeSet<String> = match registered(&ergo.api).await {
+            Ok(names) => names.iter().map(|name| name.to_lowercase()).collect(),
+            Err(failure) => {
+                warn!(%failure, "couldn't list Ergo's accounts");
+                host_machines(&ergo).await;
+                continue;
+            }
+        };
         let (said, set) = {
             let profiles = ergo.profiles.lock().await;
             (profiles.said.clone(), profiles.set.clone())
@@ -2204,11 +2215,12 @@ async fn keep_profiles(ergo: Arc<Ergo>) {
             if set.contains(&account) && is_person(&account) {
                 continue;
             }
-            let present = ergo
-                .api
-                .call::<Whois>("whois", json!({"nickname": account}))
-                .await
-                .is_ok_and(|w| w.present);
+            let present = registered.contains(&account)
+                && ergo
+                    .api
+                    .call::<Whois>("whois", json!({"nickname": account}))
+                    .await
+                    .is_ok_and(|w| w.present);
             if !present {
                 ergo.profiles.lock().await.set.remove(&account);
             } else if again || !set.contains(&account) {
@@ -2351,15 +2363,6 @@ async fn count_usage(State(ergo): State<Arc<Ergo>>) -> Response {
 /// When Ergo's API doesn't answer.
 pub(crate) async fn sessions(api: &Api) -> Result<Vec<(String, i64)>, reqwest::Error> {
     #[derive(Deserialize)]
-    struct Listed {
-        accounts: Vec<Account>,
-    }
-    #[derive(Deserialize)]
-    struct Account {
-        #[serde(rename = "accountName")]
-        name: String,
-    }
-    #[derive(Deserialize)]
     struct Whois {
         #[serde(default)]
         present: bool,
@@ -2368,30 +2371,50 @@ pub(crate) async fn sessions(api: &Api) -> Result<Vec<(String, i64)>, reqwest::E
         #[serde(default)]
         session_count: Option<i64>,
     }
-    let listed: Listed = api.call("ns/list", json!({})).await?;
     // A nick is its account's (force-nick-equals-account), so whois by name says who's on.
-    let lookups = listed
-        .accounts
+    let lookups = registered(api)
+        .await?
         .into_iter()
         // zirc's own, always connected, are nobody: the recorder, and the workflows'.
-        .filter(|account| !crate::workflows::is_zircs_own(&account.name))
-        .map(|account| async move {
-            let whois: Option<Whois> = api
-                .call("whois", json!({"nickname": account.name}))
-                .await
-                .ok();
+        .filter(|name| !crate::workflows::is_zircs_own(name))
+        .map(|name| async move {
+            let whois: Option<Whois> = api.call("whois", json!({"nickname": name})).await.ok();
             let sessions = whois
                 .filter(|w| {
                     w.present
                         && w.account
                             .as_deref()
-                            .is_some_and(|a| a.eq_ignore_ascii_case(&account.name))
+                            .is_some_and(|a| a.eq_ignore_ascii_case(&name))
                 })
                 .and_then(|w| w.session_count)
                 .unwrap_or(0);
-            (account.name.to_lowercase(), sessions)
+            (name.to_lowercase(), sessions)
         });
     Ok(futures::future::join_all(lookups).await)
+}
+
+/// Every account Ergo has, by its name as registered: one call, where a whois is one an
+/// account.
+///
+/// # Errors
+///
+/// When Ergo's API doesn't answer.
+async fn registered(api: &Api) -> Result<Vec<String>, reqwest::Error> {
+    #[derive(Deserialize)]
+    struct Listed {
+        accounts: Vec<Account>,
+    }
+    #[derive(Deserialize)]
+    struct Account {
+        #[serde(rename = "accountName")]
+        name: String,
+    }
+    let listed: Listed = api.call("ns/list", json!({})).await?;
+    Ok(listed
+        .accounts
+        .into_iter()
+        .map(|account| account.name)
+        .collect())
 }
 
 #[cfg(test)]
