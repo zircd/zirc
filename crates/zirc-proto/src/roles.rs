@@ -333,10 +333,10 @@ pub const VACANT: &str = "vacant";
 /// The private conversation's header line before the seat's status ([`Seat::status`]).
 pub const PRIVATE: &str = "Private to you";
 
-/// The composer's placeholder in a role's conversation: `Message the fixer`.
+/// A role as it's addressed, after `Message` in its conversation's composer: `the fixer`.
 #[must_use]
-pub fn composer(role: &str) -> String {
-    format!("Message the {role}")
+pub fn addressed(role: &str) -> String {
+    format!("the {role}")
 }
 
 /// That `who` left role `role`: `main-fix left the fixer role`, as a seat left is said

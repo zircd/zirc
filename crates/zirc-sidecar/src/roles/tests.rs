@@ -35,6 +35,7 @@ fn take(brain: &mut Brain, machine: &str, session: &str, at: u64) -> Vec<Out> {
     brain.heard(
         Input::Lease {
             from: machine.into(),
+            owner: Some("henrik".into()),
             event: LeaseEvent::Want(Want {
                 id: format!("{machine}-{at}-1"),
                 name: roles::lease("fixer"),
@@ -87,13 +88,16 @@ fn the_next_holder_is_woken_by_what_waited_and_its_writer_told() {
     assert!(take(&mut brain, "henrik-mbp", "cc-1", LATER).is_empty());
     let outs = brain.tick(LATER + zirc_proto::leases::SETTLE);
     let to: Vec<&str> = outs.iter().map(|out| out.to.as_str()).collect();
-    assert_eq!(to, ["ada", zirc_proto::AGENTS_CHANNEL, "henrik-mbp"]);
-    let change = SeatChange::of(&outs[1].message.event).unwrap();
+    assert_eq!(
+        to,
+        ["ada", "henrik", zirc_proto::AGENTS_CHANNEL, "henrik-mbp"]
+    );
+    let change = SeatChange::of(&outs[2].message.event).unwrap();
     assert_eq!(
         change.words(),
         "cc-1 took the fixer role in monorepo · zirc role take fixer"
     );
-    let (wake, text) = wake_of(&outs[2]);
+    let (wake, text) = wake_of(&outs[3]);
     assert_eq!(
         (wake.session.as_str(), text.as_str()),
         ("cc-1", "main is red")
@@ -195,9 +199,10 @@ fn a_seat_is_learnt_not_said_while_the_sidecar_first_listens() {
     let mut brain = brain();
     take(&mut brain, "henrik-mbp", "cc-1", START);
     assert!(brain.tick(START + 10_000).is_empty());
-    // Once it's listened long enough, the holder it learnt is said once.
+    // Once it's listened long enough, the holder it learnt is said once: in the room, and
+    // to its owner.
     let outs = brain.tick(LATER);
-    assert_eq!(outs.len(), 1);
+    assert_eq!(outs.len(), 2);
     assert!(brain.tick(LATER + 1000).is_empty());
 }
 
@@ -209,6 +214,7 @@ fn leaving_says_so_and_keeps_the_last_holder() {
     let outs = brain.heard(
         Input::Lease {
             from: "henrik-mbp".into(),
+            owner: Some("henrik".into()),
             event: LeaseEvent::Release {
                 id: format!("henrik-mbp-{LATER}-1"),
                 at: LATER + 9000,
@@ -216,9 +222,11 @@ fn leaving_says_so_and_keeps_the_last_holder() {
         },
         LATER + 9000,
     );
-    assert_eq!(outs.len(), 1);
+    // To its owner, in their conversation with the role, and in the agents' room.
+    let to: Vec<&str> = outs.iter().map(|out| out.to.as_str()).collect();
+    assert_eq!(to, ["henrik", zirc_proto::AGENTS_CHANNEL]);
     assert_eq!(
-        SeatChange::of(&outs[0].message.event).unwrap().words(),
+        SeatChange::of(&outs[1].message.event).unwrap().words(),
         "cc-1 left the fixer role"
     );
     let seat = &brain.standing(LATER + 9000).seats[0];
@@ -234,6 +242,7 @@ fn another_machine_cant_give_back_a_seat() {
     let outs = brain.heard(
         Input::Lease {
             from: "other-mac".into(),
+            owner: None,
             event: LeaseEvent::Release {
                 id: format!("henrik-mbp-{LATER}-1"),
                 at: LATER + 9000,

@@ -212,17 +212,25 @@ impl Chat {
     /// 2026).
     #[must_use]
     pub fn header_title(&self, name: &str) -> String {
+        // A role is headed by its name, and addressed in the composer as "the fixer".
+        if self.is_role(name) {
+            return name.to_owned();
+        }
         self.short_title(name)
     }
 
     /// The conversation called `name` as a composer names it, `Message <short title>`: a
     /// channel as named, an agent session as it goes by ([`Chat::session_label`]), a group
     /// by who's in it, a machine as its owner and
-    /// its own name, and a person by the name they show as. Every app's composer says this.
+    /// its own name, a role as `the fixer`, and a person by the name they show as. Every
+    /// app's composer says this.
     #[must_use]
     pub fn short_title(&self, name: &str) -> String {
         if self.is_server(name) {
             return SERVER_TITLE.to_owned();
+        }
+        if self.is_role(name) {
+            return zirc_proto::roles::addressed(name);
         }
         match agent(name) {
             Some((nick, session)) => self.agent_label(nick, session),

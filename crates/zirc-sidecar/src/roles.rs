@@ -108,6 +108,8 @@ pub enum Input {
     Lease {
         /// The machine.
         from: String,
+        /// Whose machine it is, by handle, as the server knows.
+        owner: Option<String>,
         /// What it said.
         event: LeaseEvent,
     },
@@ -179,6 +181,8 @@ pub struct Out {
 pub struct Brain {
     kept: Kept,
     leases: Leases,
+    /// Whose each machine is, by machine, as heard with its lease events.
+    owners: BTreeMap<String, String>,
     /// What each machine said its sessions are called, by machine and session.
     cards: BTreeMap<(String, String), SessionCard>,
     /// When it started, in unix milliseconds: until [`LISTEN_FIRST`] after, seats are learnt,
@@ -291,7 +295,10 @@ impl Brain {
     /// What `input`, heard at `now` (unix milliseconds), has the roles' nicks say.
     pub fn heard(&mut self, input: Input, now: u64) -> Vec<Out> {
         match input {
-            Input::Lease { from, event } => {
+            Input::Lease { from, owner, event } => {
+                if let Some(owner) = owner {
+                    self.owners.insert(from.to_lowercase(), owner);
+                }
                 let theirs = match &event {
                     LeaseEvent::Want(want) => want.nick.eq_ignore_ascii_case(&from),
                     LeaseEvent::Release { id, .. } | LeaseEvent::Extend { id, .. } => {
@@ -446,16 +453,26 @@ impl Brain {
             if let Some(before) = before {
                 self.kept.last.insert(name.clone(), before.clone());
                 self.kept.held.remove(&name);
-                outs.push(Self::seat_said(&role, before, false));
+                let left = Self::seat_said(&role, before.clone(), false);
+                if let Some(owner) = self.owners.get(&before.machine.to_lowercase()) {
+                    outs.push(Out {
+                        to: owner.clone(),
+                        ..left.clone()
+                    });
+                }
+                outs.push(left);
             }
             if let Some(holder) = now_held {
                 self.kept.held.insert(name.clone(), holder.clone());
                 let change = Self::seat_said(&role, holder.clone(), true);
                 let waited = self.kept.waiting.remove(&name).unwrap_or_default();
+                // Whoever's messages waited, and the holder's owner, in their own
+                // conversation with the role.
                 let wrote: BTreeSet<String> = waited
                     .iter()
                     .filter(|w| w.woke.what == What::Wrote)
                     .filter_map(|w| w.woke.from.clone())
+                    .chain(self.owners.get(&holder.machine.to_lowercase()).cloned())
                     .collect();
                 for person in wrote {
                     outs.push(Out {
@@ -992,8 +1009,9 @@ impl Host {
             && kind == zirc_proto::LEASE_KIND
         {
             let event = serde_json::from_value(data.clone()).ok()?;
+            let owner = self.machines.owner(&account);
             return (sender == Sender::Machine && target == zirc_proto::ORG_CHANNEL)
-                .then_some(Input::Lease { from, event });
+                .then_some(Input::Lease { from, owner, event });
         }
         if let Some(card) = message.as_ref().and_then(|m| SessionCard::of(&m.event)) {
             return (sender == Sender::Machine).then_some(Input::Card {

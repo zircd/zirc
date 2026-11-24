@@ -34,6 +34,15 @@ pub fn members_label(count: usize) -> String {
     }
 }
 
+/// `count` roles, as a channel's header counts them after its members: `1 role`, `2 roles`.
+#[must_use]
+pub fn roles_label(count: usize) -> String {
+    match count {
+        1 => "1 role".to_owned(),
+        n => format!("{n} roles"),
+    }
+}
+
 /// `count` threads, as a channel's header counts them: `1 thread`, `2 threads`.
 #[must_use]
 pub fn threads_label(count: usize) -> String {
@@ -54,6 +63,7 @@ impl Chat {
             return None;
         }
         let members = self.member_count(name);
+        let roles = self.role_members(name).len();
         let threads = self.threads(name).len();
         let topic = self
             .conversation(name)
@@ -62,6 +72,7 @@ impl Chat {
             .filter(|topic| !topic.is_empty());
         let parts: Vec<String> = [
             (members > 0).then(|| members_label(members)),
+            (roles > 0).then(|| roles_label(roles)),
             (threads > 0).then(|| threads_label(threads)),
             topic.map(str::to_owned),
         ]
