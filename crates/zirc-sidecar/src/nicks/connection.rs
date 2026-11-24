@@ -1,4 +1,5 @@
-//! A workflow's nick connected, or the host's: it says what it's told, joins where it's told,
+//! One of the server's own nicks connected (a workflow's, the workflows' host's, or a
+//! role's): it says what it's told, joins where it's told,
 //! and passes on what it hears as it happens, so nothing reads Ergo's history on a timer.
 //!
 //! Joining a channel, it catches up first: it asks for the channel's history since [`WINDOW`]

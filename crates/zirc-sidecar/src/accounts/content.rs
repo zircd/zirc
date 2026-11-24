@@ -25,7 +25,8 @@
 //!   lists the gotchas kept in the repositories' gotchas rooms the person may read, and `GET
 //!   /playbook/usage` how often each hint and gotcha was used lately, by id, and `GET
 //!   /playbook/uses?hint=<id>` (or `gotcha=<message id>`) one's uses: how many each day,
-//!   and a page of them.
+//!   and a page of them. `GET /roles` says how the organisation's roles stand
+//!   (`zirc_proto::roles::Standing`, `crate::roles`).
 //! - owners: `GET /messages?q=`, `DELETE /messages/<msgid>`, `GET /export` (newline-delimited
 //!   JSON: a header, every message the owner may read, newest first, and an end line) and `GET
 //!   /log` (`{"logins", "access"}`: the login log and this API's access log, newest first).
@@ -234,6 +235,7 @@ pub(super) fn router(ergo: Arc<Ergo>) -> Router {
         .route(&at("/hints/log"), get(hints_log))
         .route(&at("/hints/{id}"), delete(remove_hint))
         .route(&at("/gotchas"), get(list_gotchas))
+        .route(&at(zirc_proto::roles::PATH), get(roles_standing))
         .route(&at("/playbook/usage"), get(playbook_usage))
         .route(&at("/playbook/uses"), get(playbook_uses));
     let owners = Router::new()
@@ -320,6 +322,11 @@ fn now() -> u64 {
 }
 
 /// `GET /hints`: the team's hints.
+/// `GET /roles`: how the organisation's roles stand ([`zirc_proto::roles::Standing`]).
+async fn roles_standing(State(ergo): State<Arc<Ergo>>) -> Response {
+    Json(ergo.roles.standing()).into_response()
+}
+
 async fn list_hints(State(ergo): State<Arc<Ergo>>) -> Response {
     Json(ergo.hints.listing().await).into_response()
 }

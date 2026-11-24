@@ -193,6 +193,11 @@ struct Ergo {
     hints: crate::hints::Store,
     /// The relay the pusher pushes through, while it runs (`crate::pusher`).
     push_subscriber: Option<String>,
+    /// The organisation's roles (`crate::roles`).
+    roles: crate::roles::Roles,
+    /// What the roles' nicks are to say, until [`run`] starts their host.
+    roles_said:
+        std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Vec<crate::roles::Out>>>>,
 }
 
 #[derive(Default)]
@@ -291,6 +296,7 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
             !someones(&ergo, &nick).await && integration_account(&ergo, &nick, false).await.is_ok()
         }
     }));
+    spawn_roles(&ergo);
     // Ergo's logins: when the socket can't be had, passphrases still work, as Ergo checks
     // them itself when the sidecar doesn't answer, and everything else here goes on.
     let socket = options
@@ -357,7 +363,10 @@ pub fn router(options: &Options, api: Api, history: PathBuf) -> Router {
 }
 
 fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
+    let (roles, roles_said) = crate::roles::Roles::beside(&history);
     Arc::new(Ergo {
+        roles,
+        roles_said: std::sync::Mutex::new(Some(roles_said)),
         api,
         operator: Operator {
             host: options.irc.ip().to_string(),
@@ -400,6 +409,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         .route("/v1/teams", put(set_teams))
         .route("/v1/settings", put(set_settings))
         .route("/v1/usage", get(count_usage))
+        .route("/v1/roles", put(set_roles))
         .route_layer(middleware::from_fn_with_state(
             ergo.clone(),
             authorize_controller,
@@ -504,6 +514,77 @@ async fn authorize_controller(
 
 /// Makes the server's team channels as the controller asks, and says how each came out:
 /// `{"channels": {"#name": null | "what went wrong"}}`.
+/// Starts the organisation's roles' nicks (`crate::roles`), each as its own account, refused
+/// as workflows' nicks are where the name is someone's.
+fn spawn_roles(ergo: &Arc<Ergo>) {
+    let said = ergo
+        .roles_said
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take();
+    if let Some(said) = said {
+        let host = crate::roles::Host {
+            host: ergo.irc.ip().to_string(),
+            port: ergo.irc.port(),
+            gate: ergo.gate.clone(),
+            token: ergo.token.clone(),
+            machines: ergo.machines.clone(),
+            roles: ergo.roles.clone(),
+        };
+        let keeper = ergo.clone();
+        tokio::spawn(host.run(
+            move |nick| {
+                let ergo = keeper.clone();
+                async move {
+                    if someones(&ergo, &nick).await
+                        || integration_account(&ergo, &nick, false).await.is_err()
+                    {
+                        return false;
+                    }
+                    // Its host says it's a role, as a machine's says whose it is.
+                    let host = zirc_proto::names::role_host(&nick);
+                    match ergo
+                        .operator
+                        .hostserv(&[format!("SET {nick} {host}")])
+                        .await
+                    {
+                        Ok(answers) if answers.first().is_some_and(|a| hosts_set(a)) => {}
+                        Ok(answers) => debug!(nick, ?answers, "couldn't set a role's host yet"),
+                        Err(failure) => warn!(%failure, nick, "couldn't set a role's host"),
+                    }
+                    true
+                }
+            },
+            said,
+        ));
+    }
+}
+
+/// `PUT /v1/roles`: the organisation's roles, whole ([`zirc_proto::roles::Listing`]), as
+/// zirc.dev keeps them. Refused when one breaks a rule, or is named as someone's account is:
+/// a role's nick is never a person's or a machine's.
+async fn set_roles(
+    State(ergo): State<Arc<Ergo>>,
+    Json(listing): Json<zirc_proto::roles::Listing>,
+) -> Response {
+    for role in &listing.roles {
+        if someones(&ergo, &role.name).await {
+            return error(
+                StatusCode::CONFLICT,
+                "taken",
+                format!(
+                    "{} is someone's name here: name the role another way",
+                    role.name
+                ),
+            );
+        }
+    }
+    match ergo.roles.set_listing(listing) {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(why) => error(StatusCode::BAD_REQUEST, "invalid", &why),
+    }
+}
+
 async fn set_teams(
     State(ergo): State<Arc<Ergo>>,
     Json(mut desired): Json<teams::Desired>,

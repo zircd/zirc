@@ -1,0 +1,236 @@
+use zirc_proto::leases::Want;
+use zirc_proto::roles::{Definition, Listing, SeatChange, Vacant, Wake};
+use zirc_proto::state::Level;
+
+use super::*;
+
+/// When the brain starts, in unix milliseconds.
+const START: u64 = 1_800_000_000_000;
+
+/// Long enough after the start for seats to be said.
+const LATER: u64 = START + LISTEN_FIRST + 1;
+
+fn fixer() -> Definition {
+    serde_json::from_value(serde_json::json!({
+        "name": "fixer",
+        "repository": "monorepo",
+        "brief": "Owns a broken master and flaky tests.",
+        "triggers": [{"state": "master", "level": "broken"}, {"landed": ["server/"]}],
+    }))
+    .unwrap()
+}
+
+fn brain() -> Brain {
+    let mut brain = Brain::new(Kept::default(), START);
+    brain
+        .set_listing(Listing {
+            roles: vec![fixer()],
+            version: "1".into(),
+        })
+        .unwrap();
+    brain
+}
+
+fn take(brain: &mut Brain, machine: &str, session: &str, at: u64) -> Vec<Out> {
+    brain.heard(
+        Input::Lease {
+            from: machine.into(),
+            event: LeaseEvent::Want(Want {
+                id: format!("{machine}-{at}-1"),
+                name: roles::lease("fixer"),
+                nick: machine.into(),
+                session: session.into(),
+                at,
+                seconds: zirc_proto::leases::MAX_SECONDS,
+            }),
+        },
+        at,
+    )
+}
+
+fn write(brain: &mut Brain, text: &str, at: u64) -> Vec<Out> {
+    brain.heard(
+        Input::ToRole {
+            role: "fixer".into(),
+            from: "ada".into(),
+            account: "ada".into(),
+            sender: Sender::Person,
+            id: Some("m1".into()),
+            message: None,
+            text: text.into(),
+        },
+        at,
+    )
+}
+
+fn wake_of(out: &Out) -> (Wake, String) {
+    let (wake, text) = Wake::of(&out.message.event).expect("a wake");
+    (wake, text.to_owned())
+}
+
+#[test]
+fn a_message_to_a_vacant_role_waits_and_only_its_writer_is_told_how_to_fill_it() {
+    let mut brain = brain();
+    let outs = write(&mut brain, "main is red", LATER);
+    assert_eq!(outs.len(), 1);
+    assert_eq!(outs[0].to, "ada");
+    let vacant = Vacant::of(&outs[0].message.event).expect("the vacant card");
+    assert_eq!(vacant.seat.waiting, 1);
+    assert_eq!(vacant.reply_to.as_deref(), Some("m1"));
+    assert_eq!(brain.standing(LATER).seats[0].waiting, 1);
+
+    // The next holder is told, once settled, with what waited; and so is the writer.
+    assert!(take(&mut brain, "henrik-mbp", "cc-1", LATER).is_empty());
+    let outs = brain.tick(LATER + zirc_proto::leases::SETTLE);
+    let to: Vec<&str> = outs.iter().map(|out| out.to.as_str()).collect();
+    assert_eq!(to, ["ada", zirc_proto::AGENTS_CHANNEL, "henrik-mbp"]);
+    let change = SeatChange::of(&outs[1].message.event).unwrap();
+    assert_eq!(change.words(), "cc-1 took the fixer role in monorepo");
+    let (wake, text) = wake_of(&outs[2]);
+    assert_eq!(wake.session, "cc-1");
+    assert_eq!(wake.woke.role.as_deref(), Some("fixer"));
+    assert_eq!(wake.woke.from.as_deref(), Some("ada"));
+    assert_eq!(text, "main is red");
+    assert_eq!(brain.standing(LATER).seats[0].waiting, 0);
+}
+
+#[test]
+fn a_message_to_a_held_role_wakes_its_holder_alone() {
+    let mut brain = brain();
+    take(&mut brain, "henrik-mbp", "cc-1", LATER);
+    brain.tick(LATER + zirc_proto::leases::SETTLE);
+    let outs = write(&mut brain, "is it the same flake?", LATER + 5000);
+    assert_eq!(outs.len(), 1);
+    assert_eq!(outs[0].to, "henrik-mbp");
+    let (wake, _) = wake_of(&outs[0]);
+    assert_eq!(wake.woke.what, What::Wrote);
+    assert_eq!(wake.woke.line.as_deref(), Some("m1"));
+}
+
+#[test]
+fn a_trigger_wakes_the_holder_and_its_words_say_the_role() {
+    let mut brain = brain();
+    take(&mut brain, "henrik-mbp", "cc-1", LATER);
+    brain.tick(LATER + zirc_proto::leases::SETTLE);
+    let state = zirc_proto::state::State {
+        repo: "monorepo".into(),
+        name: "master".into(),
+        level: Level::Broken,
+        why: None,
+        owner: None,
+        link: None,
+        until: None,
+    };
+    let message = Message::new("ci", state.event());
+    let outs = brain.heard(
+        Input::Said {
+            channel: "#ops".into(),
+            from: "zirc-ci".into(),
+            sender: Sender::Integration,
+            id: Some("s1".into()),
+            message: Some(message),
+            text: String::new(),
+        },
+        LATER + 5000,
+    );
+    assert_eq!(outs.len(), 1);
+    let (wake, text) = wake_of(&outs[0]);
+    assert_eq!(text, "master is broken");
+    assert_eq!(wake.woke.words(None), "master is broken (fixer)");
+}
+
+#[test]
+fn only_the_holders_session_speaks_as_the_role() {
+    let mut brain = brain();
+    take(&mut brain, "henrik-mbp", "cc-1", LATER);
+    brain.tick(LATER + zirc_proto::leases::SETTLE);
+    let say = |session: &str, account: &str| Input::ToRole {
+        role: "fixer".into(),
+        from: account.into(),
+        account: account.into(),
+        sender: Sender::Machine,
+        id: None,
+        message: Some(Message::new(
+            session,
+            Event::Custom {
+                kind: roles::SAY_KIND.into(),
+                data: serde_json::json!({"role": "fixer", "to": "ada"}),
+                text: "a fix is on its way".into(),
+            },
+        )),
+        text: String::new(),
+    };
+    let outs = brain.heard(say("cc-1", "henrik-mbp"), LATER + 5000);
+    assert_eq!(outs.len(), 1);
+    assert_eq!(
+        (outs[0].role.as_str(), outs[0].to.as_str()),
+        ("fixer", "ada")
+    );
+    assert_eq!(outs[0].message.session, "cc-1");
+    assert_eq!(outs[0].message.repo.as_deref(), Some("monorepo"));
+    assert!(
+        brain
+            .heard(say("cc-2", "henrik-mbp"), LATER + 5000)
+            .is_empty()
+    );
+    assert!(
+        brain
+            .heard(say("cc-1", "other-mac"), LATER + 5000)
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_seat_is_learnt_not_said_while_the_sidecar_first_listens() {
+    let mut brain = brain();
+    take(&mut brain, "henrik-mbp", "cc-1", START);
+    assert!(brain.tick(START + 10_000).is_empty());
+    // Once it's listened long enough, the holder it learnt is said once.
+    let outs = brain.tick(LATER);
+    assert_eq!(outs.len(), 1);
+    assert!(brain.tick(LATER + 1000).is_empty());
+}
+
+#[test]
+fn leaving_says_so_and_keeps_the_last_holder() {
+    let mut brain = brain();
+    take(&mut brain, "henrik-mbp", "cc-1", LATER);
+    brain.tick(LATER + zirc_proto::leases::SETTLE);
+    let outs = brain.heard(
+        Input::Lease {
+            from: "henrik-mbp".into(),
+            event: LeaseEvent::Release {
+                id: format!("henrik-mbp-{LATER}-1"),
+                at: LATER + 9000,
+            },
+        },
+        LATER + 9000,
+    );
+    assert_eq!(outs.len(), 1);
+    assert_eq!(
+        SeatChange::of(&outs[0].message.event).unwrap().words(),
+        "cc-1 left the fixer role"
+    );
+    let seat = &brain.standing(LATER + 9000).seats[0];
+    assert!(seat.holder.is_none());
+    assert_eq!(seat.last.as_ref().unwrap().machine, "henrik-mbp");
+}
+
+#[test]
+fn another_machine_cant_give_back_a_seat() {
+    let mut brain = brain();
+    take(&mut brain, "henrik-mbp", "cc-1", LATER);
+    brain.tick(LATER + zirc_proto::leases::SETTLE);
+    let outs = brain.heard(
+        Input::Lease {
+            from: "other-mac".into(),
+            event: LeaseEvent::Release {
+                id: format!("henrik-mbp-{LATER}-1"),
+                at: LATER + 9000,
+            },
+        },
+        LATER + 9000,
+    );
+    assert!(outs.is_empty());
+    assert!(brain.standing(LATER + 9000).seats[0].holder.is_some());
+}

@@ -11,7 +11,7 @@
 //! Nothing runs on a timer: the engines are woken by what's heard and at their next time
 //! ([`Hosted::next_due`]).
 //!
-//! Joining a channel, a nick catches up on its history since [`WINDOW`] ago (`#workflows`
+//! Joining a channel, a nick catches up on its history since [`crate::nicks::WINDOW`] ago (`#workflows`
 //! whole) over IRC ([`connection`]): its workflow's own run events put its engine
 //! ([`zirc_workflows::Engine`]) where it was, and what came after its read marker there, if
 //! not more than [`MISSED`] ago, is acted on; the host keeps the markers ([`KEPT`]). A nick with no marker in a channel acts on
@@ -49,8 +49,9 @@ use zirc_proto::workflow::{self, Deploy, Listed, Refused, Workflow};
 use zirc_proto::{Event, Message};
 use zirc_workflows::{Actor, Did, Engine, Input, Said};
 
-use crate::exporter::{PRIVMSG, Said as Item, TAGMSG};
+use crate::exporter::{PRIVMSG, TAGMSG};
 use crate::machines::Machines;
+use crate::nicks::{RETRY, Row, WITHIN, connection};
 
 /// The nicks the server's workflows run as now: zirc's own accounts, always connected, which
 /// count as nobody (`crate::accounts::sessions`).
@@ -64,6 +65,7 @@ pub fn is_zircs_own(account: &str) -> bool {
     let account = account.to_lowercase();
     account == zirc_proto::activity::RECORDER
         || account == workflow::HOST
+        || crate::roles::is_role(&account)
         || NICKS
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -91,31 +93,8 @@ fn list(listed: Vec<Listed>, refused: Vec<Refused>) {
         .unwrap_or_else(std::sync::PoisonError::into_inner) = (listed, refused);
 }
 
-/// How long a nick's connection waits before connecting again, at first and at most.
-const RETRY: Duration = Duration::from_secs(5);
-const RETRY_MOST: Duration = Duration::from_mins(5);
-
-/// How long connecting may take.
-const WITHIN: Duration = Duration::from_secs(8);
-
 /// How many messages the host remembers the words of, for reactions to them.
 const RECENT: usize = 2000;
-
-/// How far back a nick catches up on a channel's history when it joins, but `#workflows`,
-/// which it reads whole.
-pub const WINDOW: Duration = Duration::from_hours(24);
-
-/// A message in a channel's history.
-pub(crate) struct Row {
-    /// Its id on the server.
-    pub msgid: String,
-    /// The channel, as the history keeps it.
-    pub channel: String,
-    /// When, in unix seconds, as the server says.
-    pub at: u64,
-    /// The message.
-    pub item: Item,
-}
 
 /// Who an account is, for a workflow: a person, a machine's session, or nobody who may act.
 pub type Who<'a> = &'a dyn Fn(&str, Option<&str>) -> Option<Actor>;
@@ -1552,7 +1531,6 @@ enum Login {
     Unknown,
 }
 
-mod connection;
 pub mod runs;
 
 #[cfg(test)]

@@ -125,6 +125,23 @@ pub fn client_host(owner: &str) -> String {
     format!("{CLIENT_HOST_PREFIX}{}", owner.to_lowercase())
 }
 
+/// What the host of a role's nick starts with, before the role's name: [`role_host`].
+pub const ROLE_HOST_PREFIX: &str = "role/";
+
+/// The host the server gives a role's nick ([`crate::roles`]), `role/fixer`, set by its
+/// operator as a machine's is: what tells apps a member is a role, not a person.
+#[must_use]
+pub fn role_host(role: &str) -> String {
+    format!("{ROLE_HOST_PREFIX}{}", role.to_lowercase())
+}
+
+/// The role whose nick has `host`, if it's a [`role_host`].
+#[must_use]
+pub fn role_from_host(host: &str) -> Option<&str> {
+    host.strip_prefix(ROLE_HOST_PREFIX)
+        .filter(|role| role_problem(role).is_none())
+}
+
 /// What the server says an account is, by the host its operator gave it: the one place a
 /// host is read. An account with neither is a person's own or an integration's,
 /// as its name says, which only zirc.dev registers.
@@ -258,6 +275,9 @@ mod tests {
         );
         // A person's client is no machine, to those that ask whose machine it is.
         assert_eq!(owner_from_host("client/mattias"), None);
+        assert_eq!(role_from_host(&role_host("fixer")), Some("fixer"));
+        assert_eq!(role_from_host("role/Not A Role"), None);
+        assert_eq!(owner_from_host(&role_host("fixer")), None);
         for host in ["client/", "client/a-b", "person/mattias", "a1b2.cloak"] {
             assert_eq!(Hosted::of(host), None, "{host}");
         }
