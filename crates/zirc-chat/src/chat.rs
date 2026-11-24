@@ -64,6 +64,10 @@ mod names;
 mod navigate;
 mod new_message;
 mod notify;
+mod onboarding;
+pub use onboarding::{
+    NEXT_STEP_LABEL, Prompt, PromptAction, PromptButton, PromptContext, PromptPlace,
+};
 mod org;
 mod people;
 mod plain;

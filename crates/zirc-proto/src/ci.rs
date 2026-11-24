@@ -144,6 +144,11 @@ pub const SECRET_ONLY_COMMAND: &str = "zirc ci connect --secret-only";
 pub const TEST_FAILURE_COMMAND: &str = "zirc ci test-failure";
 
 /// What a person's app sends their agent, as a direct message of the person's own, when they
+/// press "Ask <agent> to do it" on the CI step's prompt: the agent connects CI, as the
+/// person would with [`CONNECT_COMMAND`]. One line for every app.
+pub const CONNECT_ASK: &str = "Please connect CI";
+
+/// What a person's app sends their agent, as a direct message of the person's own, when they
 /// press Send a test failure: the agent runs it on its machine, where `gh` is (the user's
 /// choice, 24 Nov 2026: "Ask the agent to run it"), until zirc.dev can start a run itself.
 /// One line for every app, so none words it its own way.
