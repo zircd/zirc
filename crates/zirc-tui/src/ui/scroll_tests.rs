@@ -289,24 +289,27 @@ fn frame_times(app: &mut App, width: u16, height: u16, frames: usize) -> (Durati
 ///
 /// The 60 Hz budget holds for an optimised build on an idle machine, as the Mac's hitch
 /// budget does: `bazel test -c opt --test_env=ZIRC_PERF=1 //crates/zirc-tui:zirc-tui_test`.
-/// Otherwise, as in CI's unoptimised run on a busy agent, the times are only printed: no
-/// ceiling held there (50 ms was missed at 57 and 94 ms with nothing changed), and what a
-/// frame lays out is counted, whatever the machine, by
-/// `lays_out_only_what_it_shows_and_each_item_once`.
+/// Otherwise, as in CI's unoptimised run on a busy agent, no ceiling held (50 ms was missed
+/// at 57 and 94 ms with nothing changed), and what a frame lays out is counted, whatever the
+/// machine, by `lays_out_only_what_it_shows_and_each_item_once`. So unmeasured it only walks
+/// the same path through a channel of two hundred for a few frames: the five thousand,
+/// timed and unheld, were 28 of the 30 seconds these 120 tests take, and 168 on a CI agent
+/// (build 10058).
 #[test]
 fn a_frame_of_five_thousand_messages_is_quick() {
     let measured = !cfg!(debug_assertions) && std::env::var("ZIRC_PERF").as_deref() == Ok("1");
     let budget = Duration::from_millis(16);
+    let (messages, frames) = if measured { (5_000, 40) } else { (200, 4) };
     for (width, height) in [(80, 40), (200, 50)] {
         let mut app = joined(6_000);
-        arrive(&mut app, 0, 5_000);
-        let (median, worst) = frame_times(&mut app, width, height, 40);
+        arrive(&mut app, 0, messages);
+        let (median, worst) = frame_times(&mut app, width, height, frames);
         println!("at the end, {width}x{height}: median {median:?}, worst {worst:?}");
         assert!(!measured || median < budget, "{median:?}");
-        for _ in 0..40 {
+        for _ in 0..frames {
             app.key(KeyEvent::from(KeyCode::PageUp));
         }
-        let (median, worst) = frame_times(&mut app, width, height, 40);
+        let (median, worst) = frame_times(&mut app, width, height, frames);
         println!("scrolled up, {width}x{height}: median {median:?}, worst {worst:?}");
         assert!(!measured || median < budget, "{median:?}");
     }
