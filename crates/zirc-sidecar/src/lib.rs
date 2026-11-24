@@ -10,6 +10,7 @@ pub mod exporter;
 pub mod hints;
 pub mod history;
 pub mod index;
+pub mod items;
 pub mod janitor;
 pub mod limits;
 pub mod machines;
@@ -90,6 +91,12 @@ pub async fn stopped() {
         _ = tokio::signal::ctrl_c() => {}
         _ = term.recv() => {}
     }
+}
+
+/// Now, in unix seconds.
+#[must_use]
+pub fn now() -> u64 {
+    u64::try_from(jiff::Timestamp::now().as_second()).unwrap_or_default()
 }
 
 /// The HMAC-SHA256 of `body` under `secret`, in lowercase hex: what the sidecar signs with

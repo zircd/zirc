@@ -440,6 +440,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
             get(list_workflows).post(deploy_workflow),
         )
         .route(zirc_proto::workflow::RUNS_PATH, get(workflow_runs))
+        .route(zirc_proto::role_report::ITEMS_PATH, get(role_items))
         .route("/v1/channels", get(list_channels))
         .route("/v1/channels/purge", get(old_channels).post(purge_channels))
         .route("/v1/history", get(read_history))
@@ -1206,6 +1207,17 @@ async fn find_messages(State(ergo): State<Arc<Ergo>>, Query(search): Query<Searc
     match found {
         Ok(Ok(messages)) => Json(json!({"messages": messages})).into_response(),
         Ok(Err(failure)) => history_failed(failure),
+        Err(failure) => history_failed(failure),
+    }
+}
+
+/// `GET /v1/roles/<role>/items`: the role's open items and those closed today
+/// ([`crate::items`]), for the dashboard's card of the role.
+async fn role_items(State(ergo): State<Arc<Ergo>>, Path(role): Path<String>) -> Response {
+    let history = ergo.history.clone();
+    let items = tokio::task::spawn_blocking(move || crate::items::kept(&history)).await;
+    match items {
+        Ok(items) => Json(items.listing(&role, crate::now())).into_response(),
         Err(failure) => history_failed(failure),
     }
 }

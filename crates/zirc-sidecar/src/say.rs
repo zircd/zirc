@@ -109,7 +109,8 @@ impl Say {
         if self.ci {
             if !zirc_proto::ci::may_say(&self.kind) {
                 return Err(
-                    "CI says a landing, a deploy, a check, a state or a team's own kind".into(),
+                    "CI says a landing, a deploy, a check, a state, a report or a team's own kind"
+                        .into(),
                 );
             }
         } else if self.kind.starts_with("x-zirc/") {
@@ -165,14 +166,21 @@ impl Say {
             }
             _ => data,
         };
-        let mut message = Message::new(
-            session,
+        // A report to a role is said as zirc words it, whatever text CI sent with it.
+        let event = if self.kind == zirc_proto::role_report::KIND {
+            serde_json::from_value::<zirc_proto::role_report::RoleReport>(data)
+                .map_err(|e| format!("the report: {e}"))?
+                .checked()
+                .map_err(|e| format!("the report: {e}"))?
+                .event()
+        } else {
             Event::Custom {
                 kind: self.kind.clone(),
                 data,
                 text,
-            },
-        );
+            }
+        };
+        let mut message = Message::new(session, event);
         message.app = zirc_proto::app_label(self.nick.trim_start_matches("zirc-"));
         message.level = level;
         message.repo.clone_from(&self.repo);
@@ -368,6 +376,30 @@ mod tests {
         assert!(ci("x-zirc/session", "x", json!({})).message().is_err());
         assert!(ci("x-zirc/decision", "x", json!({})).message().is_err());
         assert!(ci("x-acme/deploy", "x", json!({})).message().is_ok());
+    }
+
+    #[test]
+    fn cis_report_to_a_role_is_worded_by_zirc() {
+        let data = json!({"role": "fixer", "kind": "flaky", "key": "//web:e2e", "summary": "",
+                          "build": "612", "pipeline": "monorepo"});
+        let message = ci(zirc_proto::role_report::KIND, "anything", data)
+            .message()
+            .unwrap();
+        let report = zirc_proto::role_report::RoleReport::of(&message.event).unwrap();
+        assert_eq!(report.build.as_deref(), Some("612"));
+        let Event::Custom { text, .. } = &message.event else {
+            unreachable!()
+        };
+        assert!(
+            text.ends_with("flaky test in build 612: //web:e2e"),
+            "{text}"
+        );
+        let unkeyed = json!({"role": "fixer", "kind": "flaky", "key": "", "summary": ""});
+        assert!(
+            ci(zirc_proto::role_report::KIND, "x", unkeyed)
+                .message()
+                .is_err()
+        );
     }
 
     #[test]

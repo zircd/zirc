@@ -539,10 +539,6 @@ fn refused() -> Output {
     }
 }
 
-fn now() -> u64 {
-    u64::try_from(jiff::Timestamp::now().as_second()).unwrap_or_default()
-}
-
 /// Answers Ergo on the Unix socket at `path` until the process ends, and trims the log daily.
 ///
 /// # Errors
@@ -558,7 +554,9 @@ pub async fn serve(path: PathBuf, signin: Arc<Signin>) -> std::io::Result<()> {
         let mut daily = tokio::time::interval(std::time::Duration::from_hours(24));
         loop {
             daily.tick().await;
-            trimming.log.trim(i64::try_from(now()).unwrap_or(i64::MAX));
+            trimming
+                .log
+                .trim(i64::try_from(crate::now()).unwrap_or(i64::MAX));
         }
     });
     loop {
@@ -574,7 +572,7 @@ pub async fn serve(path: PathBuf, signin: Arc<Signin>) -> std::io::Result<()> {
                 return;
             }
             let input: Input = serde_json::from_str(&line).unwrap_or_default();
-            let output = signin.answer(&input, now()).await;
+            let output = signin.answer(&input, crate::now()).await;
             let mut answer = serde_json::to_vec(&output).unwrap_or_default();
             answer.push(b'\n');
             let _ = write.write_all(&answer).await;

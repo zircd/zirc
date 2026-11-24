@@ -317,10 +317,6 @@ async fn cors(State(ergo): State<Arc<Ergo>>, request: Request, next: Next) -> Re
     response
 }
 
-fn now() -> u64 {
-    u64::try_from(jiff::Timestamp::now().as_second()).unwrap_or_default()
-}
-
 /// `GET /hints`: the team's hints.
 /// `GET /roles`: how the organisation's roles stand ([`zirc_proto::roles::Standing`]).
 async fn roles_standing(State(ergo): State<Arc<Ergo>>) -> Response {
@@ -438,13 +434,17 @@ async fn authenticate(State(ergo): State<Arc<Ergo>>, mut request: Request, next:
         return refused("there's none");
     };
     let account = if zirc_proto::device_key::parse(&token).is_ok() {
-        match ergo.signin.check_for(&token, &content.server, now()).await {
+        match ergo
+            .signin
+            .check_for(&token, &content.server, crate::now())
+            .await
+        {
             Ok((account, _, _)) => account,
             Err((_, why)) => return refused(why),
         }
     } else {
         let keys = ergo.token_keys.lock().await.clone();
-        match browser_account(&token, &keys, &content.server, now()) {
+        match browser_account(&token, &keys, &content.server, crate::now()) {
             Ok(account) => account,
             Err(why) => return refused(why),
         }
@@ -509,7 +509,7 @@ async fn audit(State(ergo): State<Arc<Ergo>>, request: Request, next: Next) -> R
     let response = next.run(request).await;
     if logged && let Some((account, request)) = entry {
         ergo.access.add(&Access {
-            at: i64::try_from(now()).unwrap_or(i64::MAX),
+            at: i64::try_from(crate::now()).unwrap_or(i64::MAX),
             account,
             request,
             status: response.status().as_u16(),

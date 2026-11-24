@@ -107,6 +107,9 @@ pub enum What {
     Committed,
     /// A post in a topic it joined, or that names its files.
     Posted,
+    /// Something was reported to the role it holds ([`crate::role_report`]), or an item of
+    /// it is still open ([`Woke::reminder`]).
+    Reported,
     /// One a newer zircd says that this reader doesn't know.
     #[serde(other)]
     Other,
@@ -204,6 +207,22 @@ pub struct Woke {
     /// with it, `Woke: master is broken (fixer)`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
+    /// For a report: the item it opened ([`crate::role_report::OpenItem::id`]) and what was
+    /// reported, which its line says, as CI's build is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report: Option<Reported>,
+}
+
+/// What a report's wake says of it ([`What::Reported`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reported {
+    /// The item's id.
+    pub id: String,
+    /// What was reported.
+    pub report: crate::role_report::RoleReport,
+    /// Whether it's a reminder of an item still open.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reminder: bool,
 }
 
 impl Woke {
@@ -224,6 +243,22 @@ impl Woke {
             landing: false,
             wake: None,
             role: None,
+            report: None,
+        }
+    }
+
+    /// A wake for an item reported to `role`: new, or a reminder of one still open.
+    #[must_use]
+    pub fn reported(item: &crate::role_report::OpenItem, reminder: bool) -> Self {
+        Self {
+            role: Some(item.report.role.clone()),
+            build: item.report.build.clone(),
+            report: Some(Reported {
+                id: item.id.clone(),
+                report: item.report.clone(),
+                reminder,
+            }),
+            ..Self::new(What::Reported, By::Zirc)
         }
     }
 
@@ -300,7 +335,10 @@ impl Woke {
         let branch = self.branch.as_deref();
         // CI's or zirc's own word that isn't how a build went or how something stands.
         if matches!(self.by, By::Ci | By::Zirc)
-            && !matches!(self.what, What::Build | What::State | What::Landed)
+            && !matches!(
+                self.what,
+                What::Build | What::State | What::Landed | What::Reported
+            )
         {
             return format!("{who} has news for it");
         }
@@ -333,6 +371,17 @@ impl Woke {
             What::StackedOn => format!("{who} built on its branch"),
             What::Committed => format!("{who} committed to its files"),
             What::Posted => format!("{who} posted{place}"),
+            What::Reported => match &self.report {
+                Some(Reported {
+                    id,
+                    report,
+                    reminder,
+                }) => {
+                    let still = if *reminder { "still open: " } else { "" };
+                    format!("{still}{} [{id}]", report.words())
+                }
+                None => "something was reported".to_owned(),
+            },
             What::Other => "something concerned it".to_owned(),
         }
     }
@@ -691,5 +740,32 @@ mod tests {
             settled.sentences("one", "two")[3],
             "Same lines: two resolves the conflict."
         );
+    }
+
+    #[test]
+    fn a_report_says_what_was_reported_and_its_item() {
+        let report = crate::role_report::RoleReport {
+            build: Some("612".into()),
+            ..crate::role_report::RoleReport::new(
+                "fixer",
+                crate::role_report::Subject::Warning,
+                "unused import",
+            )
+        };
+        let item = crate::role_report::OpenItem::opened(report, 0);
+        let woke = Woke::reported(&item, false);
+        assert_eq!(
+            woke.words(None),
+            format!(
+                "new warning in build 612: unused import [{}] (fixer)",
+                item.id
+            )
+        );
+        assert!(
+            Woke::reported(&item, true)
+                .words(None)
+                .starts_with("still open: ")
+        );
+        assert_eq!(Woke::of(&woke.event()), Some(woke));
     }
 }
