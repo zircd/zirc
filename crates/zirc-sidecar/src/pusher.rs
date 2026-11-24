@@ -757,17 +757,15 @@ fn pushes_after(history: &Path, store: &Path) -> rusqlite::Result<Vec<Push>> {
     }
 }
 
-/// Watches the directory of the history at `history` for writes to it and its WAL, each
-/// one coalesced into the channel: one waiting at most. On Linux, where tenants run, the
-/// kernel says each write at once (inotify). macOS's file events don't say writes to a file a
-/// process keeps open, as Ergo keeps its WAL, so there, in development, it looks at the files'
-/// size and time every [`THROTTLE`] instead.
-fn watch(
-    history: &Path,
-) -> notify::Result<(
-    Box<dyn notify::Watcher + Send>,
-    tokio::sync::mpsc::Receiver<()>,
-)> {
+/// Watches the history at `history` for writes to it and its WAL, each one coalesced into the
+/// channel: one waiting at most; it watches until what it returns is dropped. On Linux, where
+/// tenants run, the kernel says each write at once (inotify). macOS's file events don't say
+/// writes to a file a process keeps open, as Ergo keeps its WAL, so there, in development, it
+/// looks at the two files' size and time every [`THROTTLE`] instead: to the nanosecond, as
+/// `notify`'s `PollWatcher` keeps a file's time only to the second, so it missed a write in the
+/// second it last looked, when SQLite had made and removed the WAL between its looks and the
+/// file kept its size (flaky-159, 24 Nov 2026).
+fn watch(history: &Path) -> notify::Result<(Box<dyn Send>, tokio::sync::mpsc::Receiver<()>)> {
     let (written, heard) = tokio::sync::mpsc::channel(1);
     // The file and its log, where Ergo writes each message: not its shared memory (`-shm`),
     // which reading it touches too.
@@ -776,30 +774,66 @@ fn watch(
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     let names = [name.clone(), format!("{name}-wal")];
-    let handler = move |event: notify::Result<notify::Event>| {
-        let ours = event.is_ok_and(|event| {
-            (event.kind.is_modify() || event.kind.is_create())
-                && event.paths.iter().any(|path| {
-                    path.file_name().is_some_and(|file| {
-                        names.iter().any(|name| file.to_string_lossy() == *name)
-                    })
-                })
-        });
-        if ours {
-            let _ = written.try_send(());
-        }
-    };
-    #[cfg(target_os = "linux")]
-    let mut watcher: Box<dyn notify::Watcher + Send> =
-        Box::new(notify::recommended_watcher(handler)?);
-    #[cfg(not(target_os = "linux"))]
-    let mut watcher: Box<dyn notify::Watcher + Send> = Box::new(notify::PollWatcher::new(
-        handler,
-        notify::Config::default().with_poll_interval(THROTTLE),
-    )?);
     let directory = history.parent().unwrap_or_else(|| Path::new("."));
-    watcher.watch(directory, notify::RecursiveMode::NonRecursive)?;
-    Ok((watcher, heard))
+    #[cfg(target_os = "linux")]
+    {
+        use notify::Watcher as _;
+        let handler = move |event: notify::Result<notify::Event>| {
+            let ours = event.is_ok_and(|event| {
+                (event.kind.is_modify() || event.kind.is_create())
+                    && event.paths.iter().any(|path| {
+                        path.file_name().is_some_and(|file| {
+                            names.iter().any(|name| file.to_string_lossy() == *name)
+                        })
+                    })
+            });
+            if ours {
+                let _ = written.try_send(());
+            }
+        };
+        let mut watcher = notify::recommended_watcher(handler)?;
+        watcher.watch(directory, notify::RecursiveMode::NonRecursive)?;
+        Ok((Box::new(watcher), heard))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // As inotify can't watch a directory that isn't there.
+        std::fs::metadata(directory).map_err(notify::Error::io)?;
+        let files = names.map(|name| directory.join(name));
+        let seen = move || {
+            files
+                .iter()
+                .map(|file| {
+                    std::fs::metadata(file)
+                        .ok()
+                        .map(|metadata| (metadata.len(), metadata.modified().ok()))
+                })
+                .collect::<Vec<_>>()
+        };
+        let mut last = seen();
+        let looking = tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(THROTTLE).await;
+                let now = seen();
+                if now != last {
+                    last = now;
+                    let _ = written.try_send(());
+                }
+            }
+        });
+        Ok((Box::new(Looking(looking.abort_handle())), heard))
+    }
+}
+
+/// What keeps [`watch`] looking at the history on macOS: dropped, it stops.
+#[cfg(not(target_os = "linux"))]
+struct Looking(tokio::task::AbortHandle);
+
+#[cfg(not(target_os = "linux"))]
+impl Drop for Looking {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 #[cfg(test)]
