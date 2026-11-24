@@ -30,7 +30,7 @@ def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, tes
     its crate's surface, and its kind. The crate's own tests are unit tests; a file in
     tests/ is an integration test, several pieces in one process, unless its crate's tests
     start Ergo or are tagged e2e: then it's end to end, against a real server."""
-    whole = "kind:e2e" if ergo or "e2e" in test_tags else "kind:integration"
+    whole = "kind:end-to-end" if ergo or "e2e" in test_tags else "kind:integration"
     rust_test(
         name = name + "_test",
         crate = crate,

@@ -67,7 +67,7 @@ sh_test(
     tags = [
         "e2e",
         "surface:install",
-        "kind:e2e",
+        "kind:end-to-end",
     ],
 )
 
@@ -89,7 +89,7 @@ sh_test(
     tags = [
         "e2e",
         "surface:install",
-        "kind:e2e",
+        "kind:end-to-end",
     ],
 )
 
