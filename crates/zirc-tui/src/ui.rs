@@ -19,8 +19,8 @@ use crate::jump::{self, Jumping};
 use crate::picker::{self, Picker};
 use crate::rows::{self, Row, Tone, fit, wrap};
 use zirc_core::chat::{
-    AGENT_TAG, APP_TAG, APPS_SECTION, ROLES_SECTION, Avatar, HeaderLineKind, Icon, Kind, OrgHeader, Presence,
-    Profile, SearchHit, SearchScreen, away_label, members_label, mentions_label,
+    AGENT_TAG, APP_TAG, APPS_SECTION, Avatar, HeaderLineKind, Icon, Kind, OrgHeader, Presence,
+    Profile, ROLES_SECTION, SearchHit, SearchScreen, away_label, members_label, mentions_label,
 };
 use zirc_core::emoji;
 use zirc_theme::{Design, Rgb, Theme, Type};

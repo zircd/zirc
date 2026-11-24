@@ -600,6 +600,9 @@ pub struct Chat {
     /// Folded nicks of the organisation's roles, as their hosts say (`role/<name>`, which
     /// only the server sets): see [`Chat::is_role`].
     roles: std::collections::BTreeSet<String>,
+    /// Folded nick → how that role stands, as the newest of its own lines heard says, and
+    /// when it said it: see [`Chat::role_seat`].
+    role_seats: HashMap<String, (DateTime<Utc>, zirc_proto::roles::Seat)>,
     /// Folded nick → the account they're logged in to, `None` for none, as extended-join,
     /// WHOX and messages' account tags say.
     accounts: HashMap<String, Option<String>>,
@@ -748,6 +751,7 @@ impl Chat {
             realnames: HashMap::new(),
             machines: HashMap::new(),
             roles: std::collections::BTreeSet::new(),
+            role_seats: HashMap::new(),
             accounts: HashMap::new(),
             names: names::Names::new(),
             asked_profiles: std::collections::HashSet::new(),

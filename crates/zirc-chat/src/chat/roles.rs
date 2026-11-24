@@ -10,6 +10,8 @@ use serde::Serialize;
 use ts_rs::TS;
 use zirc_proto::roles::{self, Holder, Seat, SeatChange, Vacant};
 
+use chrono::{DateTime, Utc};
+
 use super::conversation::{Entry, EntryKind, fold};
 use super::face::Face;
 use super::woke::Callout;
@@ -35,15 +37,20 @@ pub struct RoleMember {
     pub face: Face,
 }
 
-/// What `entry` says of a role's seat, when it's one of a role's own lines.
-fn seat_of(entry: &Entry) -> Option<Seat> {
-    let EntryKind::Zirc(message) = &entry.kind else {
-        return None;
-    };
-    if let Some(vacant) = Vacant::of(&message.event) {
+impl RoleMember {
+    /// It as one line, where an app has one: `fixer · main-fix · Henrik's mbp`.
+    #[must_use]
+    pub fn said(&self) -> String {
+        format!("{} · {}", self.label, self.line)
+    }
+}
+
+/// What `event` says of a role's seat, when it's one of a role's own lines.
+fn seat_of(event: &zirc_proto::Event) -> Option<Seat> {
+    if let Some(vacant) = Vacant::of(event) {
         return Some(vacant.seat);
     }
-    let change = SeatChange::of(&message.event)?;
+    let change = SeatChange::of(event)?;
     let (holder, last) = if change.took {
         (Some(change.holder), None)
     } else {
@@ -85,17 +92,33 @@ impl Chat {
         }
     }
 
-    /// How the role `nick` stands, as the newest of its own lines we have says, in any
+    /// Takes in what `event`, from `from` at `time`, says of the role `from` is, if it's
+    /// one of its own lines and newer than what's known: history comes in any order.
+    pub(super) fn learn_seat(
+        &mut self,
+        from: &str,
+        time: DateTime<Utc>,
+        event: &zirc_proto::Event,
+    ) {
+        let Some(seat) = seat_of(event) else {
+            return;
+        };
+        let known = self
+            .role_seats
+            .entry(fold(from))
+            .or_insert((time, seat.clone()));
+        if known.0 <= time {
+            *known = (time, seat);
+        }
+    }
+
+    /// How the role `nick` stands, as the newest of its own lines heard says, in any
     /// conversation: `None` before it's said anything.
     #[must_use]
     pub fn role_seat(&self, nick: &str) -> Option<Seat> {
-        self.conversations
-            .iter()
-            .flat_map(|conversation| conversation.entries.iter())
-            .filter(|entry| entry.from.eq_ignore_ascii_case(nick))
-            .filter_map(|entry| Some((entry.time, seat_of(entry)?)))
-            .max_by_key(|(time, _)| *time)
-            .map(|(_, seat)| seat)
+        self.role_seats
+            .get(&fold(nick))
+            .map(|(_, seat)| seat.clone())
     }
 
     /// The machine `holder` works on, as people read it: `Henrik's mbp`, `your mbp`.
@@ -235,7 +258,7 @@ mod tests {
     }
 
     /// Puts `event`, from the fixer, in the conversation `name` at `time`.
-    fn from_fixer(chat: &mut Chat, name: &str, time: &str, event: zirc_proto::Event) {
+    fn from_fixer(chat: &mut Chat, name: &str, time: &str, event: &zirc_proto::Event) {
         feed(
             chat,
             &[&at(
@@ -251,7 +274,10 @@ mod tests {
             .position(if name == "me" { "fixer" } else { name })
             .unwrap();
         let entry = chat.conversations[at].entries.last_mut().unwrap();
-        entry.kind = EntryKind::Zirc(Message::new("fixer", event));
+        entry.kind = EntryKind::Zirc(Message::new("fixer", event.clone()));
+        let time = entry.time;
+        // Put in by hand, as the event is longer than a fed line: taken in as heard.
+        chat.learn_seat("fixer", time, event);
     }
 
     #[test]
@@ -278,7 +304,7 @@ mod tests {
             holder: holder(),
             took: true,
         };
-        from_fixer(&mut chat, "#api", "10:00:00", took.event());
+        from_fixer(&mut chat, "#api", "10:00:00", &took.event());
         let members = chat.role_members("#api");
         assert_eq!(members[0].line, "main-fix · henrik-mbp");
         assert!(!members[0].vacant);
@@ -298,7 +324,7 @@ mod tests {
             },
             reply_to: None,
         };
-        from_fixer(&mut chat, "me", "10:00:00", vacant.event());
+        from_fixer(&mut chat, "me", "10:00:00", &vacant.event());
         assert_eq!(
             chat.header_line("fixer").unwrap().text,
             "Private to you · Vacant in monorepo"
