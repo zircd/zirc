@@ -696,6 +696,7 @@ mod tests {
                 .next_line
                 .contains(crate::ci::TEST_FAILURE_COMMAND)
         );
+        assert!(step(2).unwrap().next_line.contains(REPO_ADD_COMMAND));
         assert!(step(4).unwrap().next_line.contains(APP_PAGE));
         // An agent has something to say of the phone, CI and a first wake, by kinds that are.
         let hinted: Vec<&str> = STEPS.iter().filter_map(|step| step.agent_hint).collect();
