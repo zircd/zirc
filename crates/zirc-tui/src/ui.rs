@@ -19,7 +19,7 @@ use crate::jump::{self, Jumping};
 use crate::picker::{self, Picker};
 use crate::rows::{self, Row, Tone, fit, wrap};
 use zirc_core::chat::{
-    AGENT_TAG, APP_TAG, APPS_SECTION, Avatar, HeaderLineKind, Icon, Kind, OrgHeader, Presence,
+    AGENT_TAG, APP_TAG, APPS_SECTION, ROLES_SECTION, Avatar, HeaderLineKind, Icon, Kind, OrgHeader, Presence,
     Profile, SearchHit, SearchScreen, away_label, members_label, mentions_label,
 };
 use zirc_core::emoji;
@@ -2034,6 +2034,32 @@ fn members(frame: &mut Frame<'_>, app: &App, area: Rect) {
             Span::styled(label, style),
         ])
     }));
+    // The organisation's roles on their own under the people: the role's name, then who
+    // holds it or that it's vacant, zirc-chat's words, muted.
+    let roles = app.chat.role_members(&app.current().name);
+    if !roles.is_empty() {
+        lines.push(Line::raw(""));
+        lines.push(Line::styled(
+            format!(" {}", section_label(ROLES_SECTION)),
+            fg(theme.muted).add_modifier(Modifier::BOLD),
+        ));
+        lines.extend(roles.iter().map(|role| {
+            let line = format!(" · {}", role.line);
+            let label = fit(&role.label, width.saturating_sub(line.width() + 1));
+            let style = if role.vacant {
+                fg(theme.muted)
+            } else {
+                fg(theme.text)
+            };
+            Line::from(vec![
+                Span::styled(format!(" {label}"), style),
+                Span::styled(
+                    fit(&line, width.saturating_sub(label.width() + 1)),
+                    fg(theme.muted),
+                ),
+            ])
+        }));
+    }
     // zirc's apps, CI and the like, on their own under the people: by their label, with
     // no presence, as they're always there.
     let apps = app.chat.app_rows(&app.current().name);
@@ -3095,6 +3121,18 @@ mod tests {
         let (rows, _) = draw(&app, 120, 24);
         row_with(&rows, "↪ zirc-chat: tests pass");
         assert!(!rows.iter().any(|row| row.contains("↪ mattias-mbp")));
+    }
+
+    #[test]
+    fn lists_the_roles_apart_from_the_people_with_who_holds_them() {
+        let mut app = app();
+        let _ = app.select(1);
+        let host = zirc_proto::names::role_host("fixer");
+        app.handle(format!(":fixer!u@{host} JOIN #api").parse().unwrap());
+        let (rows, _) = draw(&app, 120, 20);
+        assert!(row_with(&rows, ROLES_SECTION).ends_with(&format!("│ {ROLES_SECTION}")));
+        // Before it's said who holds it, it's vacant, in zirc-chat's word.
+        assert!(row_with(&rows, "fixer · vacant").ends_with("│ fixer · vacant"));
     }
 
     #[test]

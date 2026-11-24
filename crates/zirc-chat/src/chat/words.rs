@@ -580,6 +580,8 @@ pub struct Words {
     pub people: String,
     /// The heading over a conversation's apps: `Apps`.
     pub apps: String,
+    /// The heading over a conversation's roles: `Roles`.
+    pub roles: String,
     /// The pill on an agent's name: `AGENT`.
     pub agent_tag: String,
     /// The pill on an app's name: `APP`.
@@ -902,6 +904,7 @@ pub fn words() -> Words {
         message: agent_card::MESSAGE.to_owned(),
         people: plain::PEOPLE_SECTION.to_owned(),
         apps: plain::APPS_SECTION.to_owned(),
+        roles: super::roles::ROLES_SECTION.to_owned(),
         agent_tag: speaker::AGENT_TAG.to_owned(),
         app_tag: speaker::APP_TAG.to_owned(),
         searching: search::SEARCHING_OLDER.to_owned(),
