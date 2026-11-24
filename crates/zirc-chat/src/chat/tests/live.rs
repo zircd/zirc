@@ -510,6 +510,36 @@ fn a_row_folds_once_its_task_lands_and_is_back_when_spoken_to() {
     assert!(listed(&chat));
 }
 
+/// A server stamps lines to the millisecond, and the `done:` line is itself something the
+/// session said: its row still folds, though `done:` is kept to the second.
+#[test]
+fn a_row_folds_once_its_task_lands_at_a_time_with_milliseconds() {
+    let mut chat = with_mbp();
+    let done = Message::new(
+        "cc-1",
+        Event::Text {
+            body: "done: the login bug".to_owned(),
+        },
+    );
+    feed(
+        &mut chat,
+        &[
+            &zirc("me-mbp", &live(&["cc-1"])),
+            &dm("me-mbp", "cc-1", "on it", 1),
+        ],
+    );
+    let _ = chat.mark_read("me-mbp/cc-1");
+    feed(
+        &mut chat,
+        &[&format!(
+            "@time=2026-10-30T12:05:00.500Z {}",
+            zirc("me-mbp", &done)
+        )],
+    );
+    chat.clock = || noon() + chrono::Duration::minutes(6);
+    assert!(find(&rows(&chat), "me-mbp/cc-1").is_none());
+}
+
 #[test]
 fn a_row_folds_after_twelve_hours_away() {
     let mut chat = with_mbp();

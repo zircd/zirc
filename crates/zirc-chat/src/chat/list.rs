@@ -918,11 +918,13 @@ impl Chat {
     #[must_use]
     pub fn agent_folds(&self, nick: &str, session: &str, active: Option<DateTime<Utc>>) -> bool {
         let now = (self.clock)();
+        // To the second, as `done:` is kept: the line that says it is itself the last thing
+        // the session said, at the server's time, which has milliseconds.
         let landed = self
             .presence
             .done_at(nick, session)
-            .and_then(|at| DateTime::from_timestamp(i64::try_from(at).ok()?, 0))
-            .is_some_and(|done| active.is_none_or(|active| done >= active));
+            .and_then(|at| i64::try_from(at).ok())
+            .is_some_and(|done| active.is_none_or(|active| done >= active.timestamp()));
         let long_away = |since: Option<DateTime<Utc>>| {
             since.is_none_or(|since| now - since >= super::live::away_fold())
         };
