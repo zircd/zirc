@@ -199,3 +199,43 @@ async fn a_session_whose_watch_has_gone_three_minutes_gives_back_its_leases() {
     // cc-gone's back looked at it too.
     assert_eq!(holders(&alpha, "simulator").await.0, ["cc-here"]);
 }
+
+#[tokio::test]
+async fn an_integration_joining_hears_no_working_set_said_again() {
+    let ergo = require_ergo!();
+    let alpha = Machine::start_with(&ergo, "alpha", "announce_every = 3600\n").await;
+    let clone = clone();
+    std::fs::write(clone.path().join("README.md"), "alpha's take\n").unwrap();
+    alpha.add_repo(None, clone.path()).await.unwrap();
+    alpha
+        .eventually(
+            |status| status.channels.iter().any(|c| c == "#agents"),
+            "joining #agents",
+        )
+        .await;
+    let (ada, mut ada_in) = zirc_test_irc::person(&ergo, "ada").await;
+    zirc_test_irc::joins(&ada, &mut ada_in, "#agents").await;
+    assert_eq!(
+        next_working_tagmsg(&mut ada_in, "alpha").await,
+        ["README.md"]
+    );
+
+    // CI joins for each line it says: nothing is said again for it.
+    let (ci, mut ci_in) = zirc_test_irc::person(&ergo, zirc_proto::ci::NICK).await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
+    assert!(
+        tokio::time::timeout(
+            Duration::from_secs(3),
+            next_working_tagmsg(&mut ada_in, "alpha")
+        )
+        .await
+        .is_err(),
+        "said again for CI"
+    );
+    // A person's app asking still hears it.
+    ada.send(zirc_core::presence::ask("#agents")).unwrap();
+    assert_eq!(
+        next_working_tagmsg(&mut ada_in, "alpha").await,
+        ["README.md"]
+    );
+}

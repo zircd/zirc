@@ -113,9 +113,18 @@ impl Daemon {
     /// what we're working on, at once when it's us, and when the next announcement's due
     /// when it's someone else, as the apps join and leave all the time. `#agents` is every
     /// watched repository's: this machine in it is in each one's scope.
-    pub(super) fn someone_joined(&mut self, channel: &str, ours: bool) {
+    ///
+    /// When `who` is one of zirc's integrations, only which sessions are live is said again
+    /// (the workflows' host reads roles from it): they post or read history and go, and
+    /// never read working sets, intents or leases. CI joins for each line it says, and saying
+    /// all of it again for each, some 370 lines here every 8 seconds, was more than Ergo lets
+    /// a connection send: it held every line this machine sent back by minutes (24 Nov 2026).
+    pub(super) fn someone_joined(&mut self, channel: &str, who: &str, ours: bool) {
         // Which sessions are live is out of history too.
         self.live.say_again(channel);
+        if !ours && zirc_proto::names::is_integration_nick(who) {
+            return;
+        }
         if ours {
             self.joined.insert(channel.to_owned());
             if self.invite_owner.remove(channel)

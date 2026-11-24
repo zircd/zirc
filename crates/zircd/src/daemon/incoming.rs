@@ -166,7 +166,7 @@ impl Daemon {
             return;
         }
         match (line.command.as_str(), param(0), param(1)) {
-            ("JOIN", Some(channel), _) => self.someone_joined(channel, ours),
+            ("JOIN", Some(channel), _) => self.someone_joined(channel, from, ours),
             ("PART", Some(channel), _) if ours => self.left_channel(channel),
             ("PART", Some(channel), _) => self.someone_left(channel, from),
             ("KICK", Some(channel), Some(nick)) if nick == me => self.left_channel(channel),
@@ -203,7 +203,7 @@ impl Daemon {
             // An app joined, or attached to an account that's in the channel: say again what
             // we're working on, as for someone joining.
             ("TAGMSG", Some(channel), _) if !ours && zirc_core::presence::asks(line) => {
-                self.someone_joined(channel, false);
+                self.someone_joined(channel, from, false);
             }
             ("TAGMSG", Some(_), _) if !ours && self.heard_receipt(from, line) => {}
             ("TAGMSG", Some(target), _) if !ours => self.reacted(target, from, line),
