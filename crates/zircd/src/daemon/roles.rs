@@ -112,6 +112,7 @@ impl Daemon {
             last: None,
             waiting: 0,
             wakes_on: definition.wakes_on(),
+            woke_today: 0,
         });
         Ok(Response::RoleTaken {
             role: definition.clone(),

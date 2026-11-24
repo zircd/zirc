@@ -47,6 +47,9 @@ pub const KEPT: &str = "zirc-roles.json";
 /// that seems vacant may not be, and no seat is said taken or left.
 pub const LISTEN_FIRST: u64 = 90_000;
 
+/// A day, in milliseconds.
+const DAY_MS: u64 = 86_400_000;
+
 /// The most messages that wait for a vacant role's next holder: the oldest go first.
 pub const MAX_WAITING: usize = 50;
 
@@ -79,6 +82,10 @@ pub struct Kept {
     /// When each role's trigger last came round and was dealt with, by role and trigger.
     #[serde(default)]
     pub fired: BTreeMap<String, BTreeMap<usize, u64>>,
+    /// How many times each role woke on the day it last did, by role: the day (days since
+    /// 1970, UTC) and the count.
+    #[serde(default)]
+    pub woke: BTreeMap<String, (u64, u32)>,
 }
 
 /// Who sent something, as the server's accounts say.
@@ -272,6 +279,12 @@ impl Brain {
             waiting: u32::try_from(self.kept.waiting.get(&role.name).map_or(0, Vec::len))
                 .unwrap_or(u32::MAX),
             wakes_on: role.wakes_on(),
+            woke_today: self
+                .kept
+                .woke
+                .get(&role.name)
+                .filter(|(day, _)| *day == now / DAY_MS)
+                .map_or(0, |(_, count)| *count),
         }
     }
 
@@ -387,6 +400,13 @@ impl Brain {
             role: Some(role.clone()),
             ..woke
         };
+        let today = now / DAY_MS;
+        let count = self.kept.woke.entry(role.clone()).or_insert((today, 0));
+        if count.0 != today {
+            *count = (today, 0);
+        }
+        count.1 = count.1.saturating_add(1);
+        self.changed = true;
         if let Some(holder) = self.holder(&role, now) {
             return vec![wake_out(&role, &holder, woke, text, now / 1000)];
         }

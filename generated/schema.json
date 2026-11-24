@@ -3109,6 +3109,12 @@
             "type": "string"
           },
           "description": "What wakes it, as people read it ([`Definition::wakes_on`]): said here for readers\nthat can't run this crate, such as zirc.dev's Roles tab."
+        },
+        "woke_today": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many times it woke today, UTC: by a direct message, a trigger or a report."
         }
       },
       "required": [

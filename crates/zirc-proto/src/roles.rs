@@ -255,6 +255,9 @@ pub struct Seat {
     /// that can't run this crate, such as zirc.dev's Roles tab.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub wakes_on: Vec<String>,
+    /// How many times it woke today, UTC: by a direct message, a trigger or a report.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub woke_today: u32,
 }
 
 impl Seat {
@@ -481,19 +484,40 @@ pub struct SeatChange {
 
 impl SeatChange {
     /// Its line, in the agents' room and the role's conversations: `main-fix took the fixer
-    /// role in monorepo`, `main-fix left the fixer role`.
+    /// role in monorepo · zirc role take fixer`, `main-fix left the fixer role`. What plain
+    /// IRC clients show; apps say whose the session is ([`SeatChange::words_with`]).
     #[must_use]
     pub fn words(&self) -> String {
+        self.words_with(None)
+    }
+
+    /// Its line, `whose` being the session's owner as the reader's app says it, possessive:
+    /// `main-fix (Henrik's) took the fixer role in monorepo · zirc role take fixer`. Zirc
+    /// can't know who asked the session to take it, so it names whose the session is.
+    #[must_use]
+    pub fn words_with(&self, whose: Option<&str>) -> String {
+        let who = match whose {
+            Some(whose) => format!("{} ({whose})", self.holder.session.who()),
+            None => self.holder.session.who().to_owned(),
+        };
         if self.took {
             format!(
-                "{} took the {} role in {}",
-                self.holder.session.who(),
+                "{who} took the {} role in {} · {}",
                 self.role,
-                self.repository
+                self.repository,
+                take_command(&self.role)
             )
         } else {
-            format!("{} left the {} role", self.holder.session.who(), self.role)
+            format!("{who} left the {} role", self.role)
         }
+    }
+
+    /// Its line in its session's owner's own conversation with the role: `your main-fix took
+    /// the role`, `your main-fix left the role`.
+    #[must_use]
+    pub fn words_yours(&self) -> String {
+        let did = if self.took { "took" } else { "left" };
+        format!("your {} {did} the role", self.holder.session.who())
     }
 
     /// Its event.
@@ -614,6 +638,7 @@ mod tests {
                 last: Some(holder()),
                 waiting: 1,
                 wakes_on: Vec::new(),
+                woke_today: 0,
             },
             reply_to: None,
         };
@@ -638,6 +663,7 @@ mod tests {
             last: None,
             waiting: 0,
             wakes_on: Vec::new(),
+            woke_today: 0,
         };
         assert_eq!(
             seat.status("Henrik's MacBook"),
@@ -653,7 +679,11 @@ mod tests {
             holder: holder(),
             took: true,
         };
-        assert_eq!(change.words(), "main-fix took the fixer role in monorepo");
+        assert_eq!(
+            change.words_with(Some("Henrik's")),
+            "main-fix (Henrik's) took the fixer role in monorepo · zirc role take fixer"
+        );
+        assert_eq!(change.words_yours(), "your main-fix took the role");
         assert_eq!(SeatChange::of(&change.event()), Some(change));
     }
 }

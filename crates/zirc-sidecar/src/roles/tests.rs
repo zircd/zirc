@@ -89,7 +89,10 @@ fn the_next_holder_is_woken_by_what_waited_and_its_writer_told() {
     let to: Vec<&str> = outs.iter().map(|out| out.to.as_str()).collect();
     assert_eq!(to, ["ada", zirc_proto::AGENTS_CHANNEL, "henrik-mbp"]);
     let change = SeatChange::of(&outs[1].message.event).unwrap();
-    assert_eq!(change.words(), "cc-1 took the fixer role in monorepo");
+    assert_eq!(
+        change.words(),
+        "cc-1 took the fixer role in monorepo · zirc role take fixer"
+    );
     let (wake, text) = wake_of(&outs[2]);
     assert_eq!(
         (wake.session.as_str(), text.as_str()),
@@ -111,6 +114,7 @@ fn a_message_to_a_held_role_wakes_its_holder_alone() {
     let (wake, _) = wake_of(&outs[0]);
     assert_eq!(wake.woke.what, What::Wrote);
     assert_eq!(wake.woke.line.as_deref(), Some("m1"));
+    assert_eq!(brain.standing(LATER + 5000).seats[0].woke_today, 1);
 }
 
 #[test]

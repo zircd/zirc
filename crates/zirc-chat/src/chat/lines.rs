@@ -1022,9 +1022,10 @@ impl<'a> Layout<'a> {
             Item::Event {
                 entry,
                 text,
-                parts,
+                mut parts,
                 continues,
             } => {
+                let text = self.seat_words(entry, text, &mut parts);
                 let mut line = self.said(entry, LineKind::Event, &text, continues);
                 let mut system = self.system(&parts, parts.session.clone(), line.id.as_deref());
                 // A post's words read as a message's: drawn, and cut when long, as one is,
@@ -1068,6 +1069,19 @@ impl<'a> Layout<'a> {
                 line
             }
         }
+    }
+
+    /// An event's words, `text`, but for a role's seat taken or left, which names whose the
+    /// session is as we read it, in its line and its details.
+    fn seat_words(&self, entry: &Entry, text: String, parts: &mut Parts) -> String {
+        let Some(change) = super::roles::seat_change_of(entry) else {
+            return text;
+        };
+        let words = self.chat.seat_words(&change, &self.conversation.name);
+        if !parts.details.is_empty() {
+            parts.details.clone_from(&words);
+        }
+        words
     }
 
     /// A wake's line or a settled overlap's, `entry`: its callout, and its words whole for

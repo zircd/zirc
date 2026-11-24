@@ -63,7 +63,17 @@ fn seat_of(event: &zirc_proto::Event) -> Option<Seat> {
         last,
         waiting: 0,
         wakes_on: Vec::new(),
+        woke_today: 0,
     })
+}
+
+/// What `entry` says, when it's a role's seat taken or left.
+#[must_use]
+pub fn seat_change_of(entry: &Entry) -> Option<SeatChange> {
+    match &entry.kind {
+        EntryKind::Zirc(message) => SeatChange::of(&message.event),
+        _ => None,
+    }
 }
 
 /// What `entry` says, when it's a vacant role's answer to us.
@@ -147,6 +157,23 @@ impl Chat {
             .map(|holder| self.holder_machine(holder))
             .unwrap_or_default();
         Some(format!("{} · {}", roles::PRIVATE, seat.status(&machine)))
+    }
+
+    /// A seat taken or left as the conversation called `name` says it: in our own
+    /// conversation with the role, of one of our sessions, `your main-fix took the role`;
+    /// elsewhere, whose the session is, `main-fix (Henrik's) took the fixer role in monorepo ·
+    /// zirc role take fixer`.
+    #[must_use]
+    pub fn seat_words(&self, change: &SeatChange, name: &str) -> String {
+        let owner = self.whose(&change.holder.machine).map(|(owner, _)| owner);
+        let ours = owner
+            .as_deref()
+            .is_some_and(|owner| owner.eq_ignore_ascii_case(self.me()));
+        if ours && self.is_role(name) {
+            return change.words_yours();
+        }
+        let whose = owner.map(|owner| super::possessive(&self.owner_name(&owner)));
+        change.words_with(whose.as_deref())
     }
 
     /// The roles in the conversation called `name`, by name: the people list's Roles part,
@@ -321,6 +348,7 @@ mod tests {
                 last: Some(holder()),
                 waiting: 1,
                 wakes_on: Vec::new(),
+                woke_today: 0,
             },
             reply_to: None,
         };
