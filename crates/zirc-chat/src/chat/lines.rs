@@ -906,7 +906,35 @@ impl<'a> Layout<'a> {
         }
         self.receipt(&mut lines);
         self.once(&mut lines);
+        self.next_step(&mut lines);
         lines
+    }
+
+    /// Puts getting started's next step's card under the message its prompt is about, when
+    /// it's this conversation's ([`Chat::next_step_card`]): a callout as a one-time note is.
+    fn next_step(&mut self, lines: &mut Vec<Line>) {
+        let Some((under, callout)) = self.chat.next_step_card(&self.conversation.name) else {
+            return;
+        };
+        let Some(at) = lines.iter().position(|line| line.key == under) else {
+            return;
+        };
+        let Some(time) = DateTime::from_timestamp_millis(lines[at].time_ms) else {
+            return;
+        };
+        let mut line = self.blank(format!("{under}-next"), None, time, LineKind::Note);
+        line.text = callout.said();
+        line.shape = RowShape::Once;
+        line.callout = Some(callout);
+        // Under a note already there, which is about the same line.
+        let below = at
+            + 1
+            + usize::from(
+                lines
+                    .get(at + 1)
+                    .is_some_and(|next| next.shape == RowShape::Once),
+            );
+        lines.insert(below, line);
     }
 
     /// Puts, under our latest message in a conversation with an agent session, what its

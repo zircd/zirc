@@ -136,3 +136,56 @@ fn a_prompt_acted_on_says_so_in_its_buttons_place() {
     // Every step of getting started done: nothing to prompt.
     assert_eq!(shown(&chat, &[1, 2, 3, 4, 5, 6, 7, 8], PHONE), None);
 }
+
+/// The lines of the conversation with `cc-tls`, as an app draws them.
+fn tls_lines(chat: &Chat) -> Vec<crate::chat::lines::Line> {
+    chat.lines(
+        "me-mbp/cc-tls",
+        chrono::FixedOffset::east_opt(0).unwrap(),
+        false,
+    )
+}
+
+#[test]
+fn the_next_steps_card_is_in_the_agents_conversation_under_its_first_answer() {
+    let mut chat = answered();
+    chat.set_prompting(Some(progress(&[1, 2, 3, 4])), PHONE);
+    let shown = tls_lines(&chat);
+    let at = shown
+        .iter()
+        .position(|line| line.key == "me-mbp1")
+        .expect("the answer");
+    let card = &shown[at + 1];
+    assert_eq!(card.key, "me-mbp1-next");
+    assert_eq!(card.shape, crate::chat::RowShape::Once);
+    let callout = card.callout.as_ref().expect("a callout");
+    assert_eq!(callout.label, "Zirc · next step");
+    assert_eq!(callout.tone, "ok");
+    assert_eq!(callout.button.as_deref(), Some("Ask cc-tls to do it"));
+    assert_eq!(callout.action.as_deref(), Some("prompt:ci"));
+    assert!(
+        card.text.contains("Your phone reaches cc-tls."),
+        "{}",
+        card.text
+    );
+}
+
+#[test]
+fn the_next_steps_card_is_nowhere_else_and_goes_once_its_step_is_done() {
+    let mut chat = answered();
+    let card = |lines: Vec<crate::chat::lines::Line>| {
+        lines.into_iter().any(|line| line.key.ends_with("-next"))
+    };
+    // Before an app says the steps, no card.
+    assert!(!card(tls_lines(&chat)));
+    chat.set_prompting(Some(progress(&[1, 2, 3, 4])), PHONE);
+    assert!(card(tls_lines(&chat)));
+    // Not in another conversation.
+    assert!(!card(chat.lines(
+        "#api",
+        chrono::FixedOffset::east_opt(0).unwrap(),
+        false
+    )));
+    chat.set_prompting(Some(progress(&[1, 2, 3, 4, 5, 6, 7, 8])), PHONE);
+    assert!(!card(tls_lines(&chat)));
+}

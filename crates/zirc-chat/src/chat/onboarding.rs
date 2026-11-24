@@ -13,11 +13,17 @@ use ts_rs::TS;
 use zirc_proto::ci;
 use zirc_proto::onboarding::{Progress, State, id};
 
+use super::flat::RichSpan;
 use super::lines::Keys;
-use super::{Chat, EntryKind, agent};
+use super::rich::Span;
+use super::{Callout, Chat, EntryKind, agent};
 
 /// What the card over an agent's conversation is headed, in every app.
 pub const NEXT_STEP_LABEL: &str = "Zirc · next step";
+
+/// What starts a next-step card's button's action, as an app hands it back
+/// ([`super::Callout::action`]): `prompt:ci`, the step's id after it.
+pub const PROMPT_ACTION: &str = "prompt:";
 
 /// Where a prompt shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -99,6 +105,51 @@ pub struct PromptContext {
 }
 
 impl Chat {
+    /// Keeps the person's steps of getting started as zirc.dev says they stand, and what the
+    /// app knows of them, for the next step's card in a conversation ([`Chat::lines`]).
+    pub fn set_prompting(&mut self, progress: Option<Progress>, context: PromptContext) {
+        self.prompting = progress.map(|progress| (progress, context));
+    }
+
+    /// The next step's card for the conversation called `name`, when its prompt is in it: the
+    /// key of the message it goes under, and what it says, as a callout every app draws.
+    pub(super) fn next_step_card(&self, name: &str) -> Option<(String, Callout)> {
+        let (progress, context) = self.prompting.as_ref()?;
+        let prompt = self.prompt(progress, *context)?;
+        let PromptPlace::Conversation { name: there, after } = &prompt.place else {
+            return None;
+        };
+        if !there.eq_ignore_ascii_case(name) {
+            return None;
+        }
+        let span = |text: String, bold: bool| -> RichSpan {
+            Span {
+                text,
+                bold,
+                ..Span::default()
+            }
+            .into()
+        };
+        let mut spans = Vec::new();
+        if let Some(title) = prompt.title {
+            spans.push(span(format!("{title} "), true));
+        }
+        spans.push(span(prompt.body, false));
+        if let Some(done) = prompt.done {
+            spans.push(span(format!(" {done}"), true));
+        }
+        let callout = Callout {
+            label: prompt.label.unwrap_or_else(|| NEXT_STEP_LABEL.to_owned()),
+            spans,
+            tone: "ok".to_owned(),
+            button: prompt.button.as_ref().map(|button| button.label.clone()),
+            action: prompt
+                .button
+                .map(|_| format!("{PROMPT_ACTION}{}", prompt.step)),
+        };
+        Some((after.clone(), callout))
+    }
+
     /// Getting started's prompt to show now, given the person's steps as `progress` says
     /// they stand: the next step's, where this app can prompt for it, or none.
     #[must_use]
