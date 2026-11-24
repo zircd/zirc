@@ -662,7 +662,7 @@ async fn said_next(
     if how.hints.lock().is_ok_and(|hints| hints.next_asked()) {
         return Ok(false);
     }
-    let Some((step, _)) = crate::next::step(home, socket, None).await else {
+    let Some((step, _, _)) = crate::next::step(home, socket, None).await else {
         return Ok(false);
     };
     let Some(hint) = how

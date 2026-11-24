@@ -10,7 +10,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 
-use zirc_proto::onboarding::{Outcome, PromptSeen, Step, Surface};
+use zirc_proto::onboarding::{Outcome, Progress, PromptSeen, State, Step, Surface};
 
 use crate::search::Team;
 
@@ -23,14 +23,14 @@ pub(crate) async fn step(
     home: &Path,
     socket: &Path,
     org: Option<&str>,
-) -> Option<(&'static Step, Team)> {
+) -> Option<(&'static Step, Team, Progress)> {
     let asked = async {
         let org = crate::search::one_org(home, socket, org).await.ok()?;
         let team = crate::search::team(&org)?;
         let progress = team.client.steps(&team.account).await.ok()??;
         // By its number in this zirc's own list: its words are declared there.
         let step = zirc_proto::onboarding::step(progress.next?)?;
-        Some((step, team))
+        Some((step, team, progress))
     };
     tokio::time::timeout(WITHIN, asked).await.ok()?
 }
@@ -46,18 +46,32 @@ pub(crate) fn line(step: &Step) -> String {
 }
 
 /// Ends a command with the person's next step, after a blank line, and tells zirc.dev the
-/// prompt was shown in a terminal.
+/// prompt was shown in a terminal. `did` is the step the command itself does, by its id: once
+/// zirc.dev has it reached, the command says the person's Get started page ticked it off.
 pub(crate) async fn say(
     home: &Path,
     socket: &Path,
     org: Option<&str>,
+    did: Option<&str>,
     out: &mut impl Write,
 ) -> std::io::Result<()> {
-    let Some((step, team)) = step(home, socket, org).await else {
+    let Some((step, team, progress)) = step(home, socket, org).await else {
         return Ok(());
     };
     writeln!(out)?;
     writeln!(out, "{}", line(step))?;
+    let ticked = progress
+        .steps
+        .iter()
+        .any(|it| Some(it.id.as_str()) == did && it.state == State::Done);
+    if ticked {
+        writeln!(
+            out,
+            "  Your Get started page has ticked this step off: {}/orgs/{}",
+            team.client.web(),
+            team.name
+        )?;
+    }
     let seen = PromptSeen {
         prompt: step.id.to_owned(),
         surface: Surface::Terminal,
@@ -81,7 +95,14 @@ pub(crate) async fn repo(
     );
     crate::setup::repo_first(home, socket, command, out).await?;
     if person_adds {
-        say(home, socket, None, out).await?;
+        say(
+            home,
+            socket,
+            None,
+            Some(zirc_proto::onboarding::id::COMPUTER),
+            out,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -107,12 +128,41 @@ mod tests {
         let (web, served) = zirc_test_ergo::web::serve(vec![(200, progress), (204, String::new())]);
         let home = signed_in(&web);
         let mut out = Vec::new();
-        say(home.path(), &home.path().join("no-socket"), None, &mut out)
-            .await
-            .unwrap();
+        say(
+            home.path(),
+            &home.path().join("no-socket"),
+            None,
+            None,
+            &mut out,
+        )
+        .await
+        .unwrap();
         let out = String::from_utf8(out).unwrap();
         let agent = zirc_proto::onboarding::step(3).unwrap();
         assert_eq!(out, format!("\nNext: {}\n", agent.next_line));
+        // Said by the command that did step 2, it says the page ticked it off.
+        let progress = serde_json::to_string(&zirc_proto::onboarding::progress(&[1, 2])).unwrap();
+        let (web, _served) =
+            zirc_test_ergo::web::serve(vec![(200, progress), (204, String::new())]);
+        let home = signed_in(&web);
+        let mut out = Vec::new();
+        let did = Some(zirc_proto::onboarding::id::COMPUTER);
+        say(
+            home.path(),
+            &home.path().join("no-socket"),
+            None,
+            did,
+            &mut out,
+        )
+        .await
+        .unwrap();
+        let out = String::from_utf8(out).unwrap();
+        assert!(
+            out.ends_with(&format!(
+                "  Your Get started page has ticked this step off: {web}/orgs/acme\n"
+            )),
+            "{out}"
+        );
         let requests = served.join().unwrap();
         assert!(
             requests[0].to_lowercase().starts_with("get /api/me/steps "),
@@ -141,14 +191,21 @@ mod tests {
         let (web, _served) = zirc_test_ergo::web::serve(vec![(200, done)]);
         let home = signed_in(&web);
         let mut out = Vec::new();
-        say(home.path(), &home.path().join("no-socket"), None, &mut out)
-            .await
-            .unwrap();
+        say(
+            home.path(),
+            &home.path().join("no-socket"),
+            None,
+            None,
+            &mut out,
+        )
+        .await
+        .unwrap();
         assert!(out.is_empty());
         let refused = signed_in("http://127.0.0.1:9");
         say(
             refused.path(),
             &refused.path().join("no-socket"),
+            None,
             None,
             &mut out,
         )

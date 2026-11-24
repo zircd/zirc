@@ -239,7 +239,7 @@ pub const STEPS: [Step; 8] = [
         early: false,
         title: "Your agent",
         about: "Start Claude Code or Codex in that repository. It joins Zirc on its own.",
-        next_line: "start your agent here (or restart it) and give it a task. It joins Zirc by itself.",
+        next_line: "start your agent here (or restart it) and give it a task. It joins Zirc by itself and tells you how to reach it from your phone.",
         agent_hint: None,
     },
     Step {

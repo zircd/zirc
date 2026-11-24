@@ -570,8 +570,11 @@ pub async fn connect(
     writeln!(out, "✓ Heard run {build}: {}", outcome(&said))?;
     writeln!(out)?;
     writeln!(out, "{}", bold("CI is connected."))?;
-    crate::next::say(home, socket, args.org.org.as_deref(), out).await?;
-    Ok(())
+    let (org, did) = (
+        args.org.org.as_deref(),
+        Some(zirc_proto::onboarding::id::CI),
+    );
+    Ok(crate::next::say(home, socket, org, did, out).await?)
 }
 
 /// Commits `changes` on [`CONNECT_BRANCH`], from the default branch, in a worktree of its
