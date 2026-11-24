@@ -34,6 +34,10 @@ pub struct Session {
     pub machine: String,
     /// The session's id.
     pub session: String,
+    /// Its short name, as its card says: `tls-rotation`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub name: Option<String>,
     /// What it's working on, as its card says: the title its agent tool shows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -50,6 +54,9 @@ pub struct Session {
     /// every app says ([`crate::session::not_listening`]): `Not listening for 17 min · 1
     /// message waiting`.
     pub says: String,
+    /// It in one line, where a line names it ([`line`]): `tls-rotation · Claude Code ·
+    /// listening`.
+    pub line: String,
 }
 
 /// What a session with a watch open is said to be.
@@ -57,6 +64,30 @@ pub const ONLINE: &str = "Online";
 
 /// What a session with no watch open, and nothing waiting for it, is said to be.
 pub const AWAY: &str = "Away";
+
+/// What a person's agent is said to be doing while a watch of its is open, where a line names
+/// it rather than a column: `tls-rotation · Claude Code · listening`.
+pub const LISTENING: &str = "listening";
+
+/// A session in a line, where a line names it: its name, its tool and, online, [`LISTENING`],
+/// or how it stands away: `tls-rotation · Claude Code · listening`.
+#[must_use]
+pub fn line(session: &Session) -> String {
+    let standing = if session.online {
+        LISTENING
+    } else {
+        session.says.as_str()
+    };
+    [
+        Some(session.name.as_deref().unwrap_or(&session.session)),
+        session.tool.as_deref(),
+        Some(standing),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ")
+}
 
 /// What [`PATH`] answers: every session the machines connected now said online or away.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
@@ -80,6 +111,7 @@ pub fn standing(
         (
             card.map(|card| card.title.clone()),
             card.and_then(|card| card.tool.as_deref().map(crate::tool_name)),
+            card.and_then(|card| card.name.clone()),
         )
     };
     let mut sessions = Vec::new();
@@ -92,11 +124,13 @@ pub fn standing(
                     Session {
                         machine: machine.clone(),
                         session: session.clone(),
+                        name: named(machine, session).2,
                         title: named(machine, session).0,
                         tool: named(machine, session).1,
                         online: true,
                         waiting: 0,
                         says: ONLINE.to_owned(),
+                        line: String::new(),
                     },
                 );
             }
@@ -112,15 +146,20 @@ pub fn standing(
                 Session {
                     machine: machine.clone(),
                     session: session.clone(),
+                    name: named(machine, session).2,
                     title: named(machine, session).0,
                     tool: named(machine, session).1,
                     online: false,
                     waiting: away.waiting,
                     says,
+                    line: String::new(),
                 },
             );
         }
-        sessions.extend(of_machine.into_values());
+        sessions.extend(of_machine.into_values().map(|mut session| {
+            session.line = line(&session);
+            session
+        }));
     }
     Standing { sessions }
 }
@@ -197,6 +236,15 @@ mod tests {
             Some("Rotate the server's TLS certificates")
         );
         assert_eq!(said.sessions[0].tool.as_deref(), Some("Claude Code"));
+        assert_eq!(said.sessions[0].name.as_deref(), Some("tls-rotation"));
         assert_eq!(said.sessions[1].title, None);
+        assert_eq!(
+            said.sessions[0].line,
+            "tls-rotation · Claude Code · listening"
+        );
+        assert_eq!(
+            line(&said.sessions[1]),
+            "cc-b · Not listening for 17 min · 1 message waiting"
+        );
     }
 }
