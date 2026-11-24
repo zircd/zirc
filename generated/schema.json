@@ -4398,6 +4398,35 @@
           "properties": {
             "op": {
               "type": "string",
+              "const": "role"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session."
+            },
+            "role": {
+              "type": "string",
+              "description": "The role, as [`zirc_proto::workflow::check_role`] takes it."
+            },
+            "join": {
+              "type": "boolean",
+              "description": "Joining it, or leaving it."
+            }
+          },
+          "required": [
+            "op",
+            "session",
+            "role",
+            "join"
+          ],
+          "description": "Join or leave one of the workflows' roles (`role:fixers`) as `session`: the machine\nsays each live session's roles with the list of them ([`zirc_proto::session::Live`]),\nso a workflow gives a role's steps to its members. A session's roles end with its\n`done:` or `dropped:`, or once it's no longer live. Answered with [`Response::Roles`].\nIt goes with workflows; a role's seat is [`Request::RoleTake`].",
+          "title": "RoleRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
               "const": "local-sessions"
             }
           },
@@ -5533,6 +5562,28 @@
           ],
           "description": "The answer to [`Request::Lease`], [`Request::LeaseRelease`] and [`Request::Leases`].",
           "title": "LeasesResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "roles"
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Its roles, sorted."
+            }
+          },
+          "required": [
+            "kind",
+            "roles"
+          ],
+          "description": "The answer to [`Request::Role`]: the session's workflow roles now.",
+          "title": "RolesResponse"
         },
         {
           "type": "object",

@@ -435,6 +435,19 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         link: Option<String>,
     },
+    /// Join or leave one of the workflows' roles (`role:fixers`) as `session`: the machine
+    /// says each live session's roles with the list of them ([`zirc_proto::session::Live`]),
+    /// so a workflow gives a role's steps to its members. A session's roles end with its
+    /// `done:` or `dropped:`, or once it's no longer live. Answered with [`Response::Roles`].
+    /// It goes with workflows; a role's seat is [`Request::RoleTake`].
+    Role {
+        /// The session.
+        session: String,
+        /// The role, as [`zirc_proto::workflow::check_role`] takes it.
+        role: String,
+        /// Joining it, or leaving it.
+        join: bool,
+    },
     /// This machine's named sessions, with their titles and links, for its owner's apps:
     /// answered with [`Response::LocalSessions`].
     LocalSessions,
@@ -811,6 +824,11 @@ pub enum Response {
     Leases {
         /// The leases, by name.
         leases: Vec<crate::leases::Lease>,
+    },
+    /// The answer to [`Request::Role`]: the session's workflow roles now.
+    Roles {
+        /// Its roles, sorted.
+        roles: Vec<String>,
     },
     /// The answer to [`Request::RoleTake`]: the role, whose brief its holder is given, and
     /// how it stood when taken, its last holder among it.

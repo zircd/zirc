@@ -137,7 +137,8 @@ impl Daemon {
             bail!("{session} holds no role");
         }
         for turn in turns {
-            let text = format!("{session} left role {}", turn.want.name);
+            let role = roles::of_lease(&turn.want.name).unwrap_or_default();
+            let text = format!("{session} left the {role} role");
             let event = LeaseEvent::Release {
                 id: turn.want.id,
                 at: now,
