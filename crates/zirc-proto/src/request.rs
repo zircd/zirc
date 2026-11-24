@@ -432,11 +432,11 @@ impl Request {
     pub fn card(&self) -> Card {
         let yes = Field {
             label: "👍 yes".into(),
-            value: clip(&self.yes, 120),
+            value: crate::clip_line(&self.yes, 120),
         };
         let no = Field {
             label: "👎 no".into(),
-            value: clip(&self.no, 120),
+            value: crate::clip_line(&self.no, 120),
         };
         let fields = match self.recommend {
             Some(Answer::No) => vec![no, yes],
@@ -445,10 +445,10 @@ impl Request {
         let (state, note) = self.standing();
         Card {
             state,
-            about: Some(clip(&self.session, 64)),
+            about: Some(crate::clip_line(&self.session, 64)),
             fields,
-            note: Some(clip(&note, 120)),
-            ..Card::new(self.id.clone(), clip(&self.question, 80))
+            note: Some(crate::clip_line(&note, 120)),
+            ..Card::new(self.id.clone(), crate::clip_line(&self.question, 80))
         }
     }
 }
@@ -530,11 +530,6 @@ pub fn waiting(posted: impl IntoIterator<Item = Posted>, by: &str) -> Vec<Waitin
         }
     }
     waiting
-}
-
-/// `text` on one line, within `max` characters, cut with `…`.
-fn clip(text: &str, max: usize) -> String {
-    crate::clip(&text.replace(['\n', '\r'], " "), max)
 }
 
 /// An RFC 3339 time in UTC as people read it on a card, `14:32 UTC` (with seconds,

@@ -44,6 +44,9 @@ pub const KEY_MAX: usize = 300;
 /// The most characters a summary, or details, keep.
 pub const SUMMARY_MAX: usize = 300;
 
+/// The most characters a build's name keeps.
+pub const BUILD_MAX: usize = 32;
+
 /// What a report is about. Kinds are added here; a sidecar older than a kind doesn't read its
 /// reports, as it couldn't say what they are.
 #[derive(
@@ -132,32 +135,12 @@ pub struct RoleReport {
 /// Why a report can't be sent.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Refused {
-    /// The role isn't a role's name.
-    #[error("a role is a name such as fixer: letters, digits and -")]
-    Role,
+    /// The role isn't a role's name ([`crate::roles::check_name`] says why).
+    #[error("{0}")]
+    Role(String),
     /// Its key is empty.
     #[error("a report needs a key: what makes it the same as an earlier one")]
     Key,
-}
-
-/// Whether `name` is a role's name: what [`RoleReport::checked`] takes.
-#[must_use]
-pub fn is_role_name(name: &str) -> bool {
-    (1..=32).contains(&name.len())
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-}
-
-/// `text` on one line, its whitespace runs one space, cut to `most` characters.
-fn one_line(text: &str, most: usize) -> String {
-    let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if line.chars().count() <= most {
-        return line;
-    }
-    let mut cut: String = line.chars().take(most - 1).collect();
-    cut.push('…');
-    cut
 }
 
 impl RoleReport {
@@ -180,13 +163,13 @@ impl RoleReport {
     /// has none.
     #[must_use]
     pub fn tidied(self) -> Self {
-        let key = one_line(&self.key, KEY_MAX);
-        let summary = match one_line(&self.summary, SUMMARY_MAX) {
-            summary if summary.is_empty() => one_line(&key, SUMMARY_MAX),
+        let key = crate::clip_line(&self.key, KEY_MAX);
+        let summary = match crate::clip_line(&self.summary, SUMMARY_MAX) {
+            summary if summary.is_empty() => crate::clip_line(&key, SUMMARY_MAX),
             summary => summary,
         };
         let some = |text: Option<String>, most: usize| {
-            text.map(|text| one_line(&text, most))
+            text.map(|text| crate::clip_line(&text, most))
                 .filter(|text| !text.is_empty())
         };
         Self {
@@ -195,7 +178,7 @@ impl RoleReport {
             summary,
             link: some(self.link, SUMMARY_MAX),
             details: some(self.details, SUMMARY_MAX),
-            build: some(self.build, 32),
+            build: some(self.build, BUILD_MAX),
             key,
         }
     }
@@ -207,8 +190,8 @@ impl RoleReport {
     /// When its role or key isn't one: [`Refused`].
     pub fn checked(self) -> Result<Self, Refused> {
         let report = self.tidied();
-        if !is_role_name(&report.role) {
-            return Err(Refused::Role);
+        if let Some(problem) = crate::roles::check_name(&report.role) {
+            return Err(Refused::Role(problem));
         }
         if report.key.is_empty() {
             return Err(Refused::Key);
@@ -282,6 +265,23 @@ pub fn item_id(role: &str, kind: Subject, key: &str) -> String {
         hash.update([0]);
     }
     crate::hex(&hash.finalize()[..4])
+}
+
+/// The trailer a landing's commit closes item `id` with, when it passes: `Fixes: report <id>`.
+#[must_use]
+pub fn fixes_trailer(id: &str) -> String {
+    format!("Fixes: {FIXES_PREFIX}{id}")
+}
+
+/// The kinds, as a reader is told them: `warning, flaky or container`.
+#[must_use]
+pub fn kinds_said() -> String {
+    let names: Vec<&str> = Subject::ALL.iter().map(|kind| kind.as_str()).collect();
+    match names.split_last() {
+        Some((last, [])) => (*last).to_owned(),
+        Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+        None => String::new(),
+    }
 }
 
 /// The ids of the items a landing's `Fixes:` trailers close ([`crate::ci::Data::fixes`]),
@@ -525,11 +525,21 @@ mod tests {
         assert!(report.key.ends_with('…'));
         assert_eq!(
             RoleReport::new("", Subject::Flaky, "a").checked(),
-            Err(Refused::Role)
+            Err(Refused::Role(crate::roles::check_name("").unwrap()))
         );
         assert_eq!(
             RoleReport::new("fixer", Subject::Flaky, " ").checked(),
             Err(Refused::Key)
+        );
+    }
+
+    #[test]
+    fn the_kinds_and_a_trailer_are_said_once() {
+        assert_eq!(kinds_said(), "warning, flaky or container");
+        assert_eq!(fixes_trailer("3f2a1b9c"), "Fixes: report 3f2a1b9c");
+        assert_eq!(
+            fixed_by(&[fixes_trailer("3f2a1b9c")["Fixes: ".len()..].to_owned()]),
+            vec!["3f2a1b9c".to_owned()]
         );
     }
 

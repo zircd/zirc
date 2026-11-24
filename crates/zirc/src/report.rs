@@ -10,7 +10,7 @@ use std::path::Path;
 use anyhow::Result;
 use clap::Args;
 use zirc_core::ipc::{Request, Response};
-use zirc_proto::role_report::{Closing, End, RoleReport, Subject};
+use zirc_proto::role_report::{self, Closing, End, RoleReport, Subject};
 
 use crate::args::{OrgArg, session_or_user};
 use crate::client::{ask_in, here, org_here};
@@ -56,7 +56,7 @@ pub(super) struct ReportArgs {
 
 /// The kind `word` names, for clap.
 fn subject(word: &str) -> Result<Subject, String> {
-    Subject::named(word).ok_or_else(|| format!("{word}: say warning, flaky or container"))
+    Subject::named(word).ok_or_else(|| format!("{word}: say {}", role_report::kinds_said()))
 }
 
 /// `zirc report`.
@@ -107,9 +107,10 @@ pub(super) async fn report(socket: &Path, args: ReportArgs, out: &mut impl Write
         )?,
         None => writeln!(
             out,
-            "reported to {} [{id}] in {channel}: {}; a landing closes it with the trailer Fixes: report {id}",
+            "reported to {} [{id}] in {channel}: {}; a landing closes it with the trailer {}",
             report.role,
-            report.words()
+            report.words(),
+            role_report::fixes_trailer(&id)
         )?,
     }
     Ok(())

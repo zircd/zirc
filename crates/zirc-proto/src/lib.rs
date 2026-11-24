@@ -879,6 +879,13 @@ pub fn clip(text: &str, max: usize) -> String {
     cut
 }
 
+/// `text` on one line, its runs of whitespace one space each, within `max` characters, cut
+/// with `…` ([`clip`]).
+#[must_use]
+pub fn clip_line(text: &str, max: usize) -> String {
+    clip(&text.split_whitespace().collect::<Vec<_>>().join(" "), max)
+}
+
 /// The longest a session's name is: see [`session_name`].
 pub const MAX_SESSION_NAME: usize = 24;
 
