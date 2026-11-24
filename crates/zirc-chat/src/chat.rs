@@ -77,6 +77,7 @@ mod profile;
 pub mod push;
 mod rich;
 mod role;
+mod roles;
 mod roster;
 mod row_menu;
 mod run;
@@ -196,6 +197,7 @@ pub use rich::{
     Block, CellAlign, LINK_LABEL_CHARS, ListItem, Span, SpanKind, TableSource, addressed,
     each_span, link_label, map_spans, media_link, rich, tables_in,
 };
+pub use roles::{ROLES_SECTION, RoleMember, vacant_of};
 pub use row_menu::{LevelChoice, MuteChoice, RowMenu};
 pub use run::{Here, Ran};
 pub use scroll::{SCROLL_RULES, ScrollRules, Splice, splices};
@@ -595,6 +597,9 @@ pub struct Chat {
     /// (`machine/<owner>`, which only the server sets): from every line it sends, WHO and
     /// `CHGHOST`. A person, or a machine whose host doesn't say, isn't here.
     machines: HashMap<String, String>,
+    /// Folded nicks of the organisation's roles, as their hosts say (`role/<name>`, which
+    /// only the server sets): see [`Chat::is_role`].
+    roles: std::collections::BTreeSet<String>,
     /// Folded nick → the account they're logged in to, `None` for none, as extended-join,
     /// WHOX and messages' account tags say.
     accounts: HashMap<String, Option<String>>,
@@ -742,6 +747,7 @@ impl Chat {
             both: both::Known::default(),
             realnames: HashMap::new(),
             machines: HashMap::new(),
+            roles: std::collections::BTreeSet::new(),
             accounts: HashMap::new(),
             names: names::Names::new(),
             asked_profiles: std::collections::HashSet::new(),

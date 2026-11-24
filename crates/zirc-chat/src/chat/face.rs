@@ -154,6 +154,7 @@ impl Chat {
     #[must_use]
     pub fn face(&self, avatar: &Avatar) -> Face {
         match avatar {
+            Avatar::Person { nick } if self.is_role(nick) => self.role_face(nick),
             Avatar::Person { nick } => Face::Person {
                 nick: nick.clone(),
                 initials: self.avatar_initials(nick),

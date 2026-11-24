@@ -53,6 +53,9 @@ impl Chat {
             };
             return line(header.line, kind);
         }
+        if let Some(role) = self.role_header(name) {
+            return line(role, HeaderLineKind::Topic);
+        }
         if !super::is_channel(name)
             && let Some(why) = self.away(name)
         {

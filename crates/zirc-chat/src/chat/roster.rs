@@ -29,11 +29,12 @@ impl Chat {
     /// [`PersonRow`].
     #[must_use]
     pub fn people_rows(&self, name: &str) -> Vec<PersonRow> {
-        // zirc's apps have a part of their own: see [`Chat::app_rows`].
+        // zirc's apps and the roles have parts of their own: see [`Chat::app_rows`] and
+        // [`Chat::role_members`].
         let people = self
             .people(name)
             .into_iter()
-            .filter(|person| person.app.is_none())
+            .filter(|person| person.app.is_none() && !self.is_role(&person.nick))
             .collect();
         let mut rows = people::rows(
             people,
@@ -155,6 +156,7 @@ impl Chat {
 
     /// `nick`'s host, as a line from it or WHO says: whose machine it is, when it says.
     pub(super) fn hosted(&mut self, nick: &str, host: &str) {
+        self.role_hosted(nick, host);
         match zirc_proto::names::owner_from_host(host) {
             Some(owner) => {
                 self.machines.insert(fold(nick), owner.to_owned());

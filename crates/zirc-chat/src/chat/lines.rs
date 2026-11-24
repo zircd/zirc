@@ -1013,7 +1013,9 @@ impl<'a> Layout<'a> {
                 continues,
             } => self.said(entry, LineKind::Action, text, continues),
             Item::Event { entry, .. }
-                if woke_of(entry).is_some() || settled_of(entry).is_some() =>
+                if woke_of(entry).is_some()
+                    || settled_of(entry).is_some()
+                    || super::vacant_of(entry).is_some() =>
             {
                 self.callout(entry)
             }
@@ -1086,7 +1088,12 @@ impl<'a> Layout<'a> {
                 }
                 (RowShape::Settled, callout)
             }
-            (None, None) => unreachable!("only a wake's or a settled overlap's line is a callout"),
+            (None, None) => {
+                let vacant = super::vacant_of(entry).expect(
+                    "only a wake's, a settled overlap's or a vacant role's line is a callout",
+                );
+                (RowShape::Settled, self.chat.vacant_callout(&vacant))
+            }
         };
         line.id = None;
         line.text = callout.said();

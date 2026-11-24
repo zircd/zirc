@@ -64,7 +64,7 @@ impl Callout {
     }
 }
 
-fn text(words: impl Into<String>) -> RichSpan {
+pub(super) fn text(words: impl Into<String>) -> RichSpan {
     Span {
         text: words.into(),
         ..Span::default()
@@ -81,7 +81,7 @@ fn bold(words: impl Into<String>) -> RichSpan {
     .into()
 }
 
-fn code(words: impl Into<String>) -> RichSpan {
+pub(super) fn code(words: impl Into<String>) -> RichSpan {
     Span {
         text: words.into(),
         kind: SpanKind::Code,

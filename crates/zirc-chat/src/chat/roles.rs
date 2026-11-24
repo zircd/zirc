@@ -1,0 +1,320 @@
+//! The organisation's roles ([`zirc_proto::roles`]) as every app shows them: a nick the
+//! server gives the host `role/<name>`, listed in the people list's Roles part rather than
+//! among the people, with who holds it; our private conversation with it in Messages, its
+//! header saying who holds it; and a vacant role's answer to what we wrote it, the box
+//! saying how to fill it. How it stands is what the role's own lines last said: a seat taken
+//! or left ([`SeatChange`]), or its vacant answer to us ([`Vacant`]). Every word is
+//! `zirc_proto::roles`'; apps only draw.
+
+use serde::Serialize;
+use ts_rs::TS;
+use zirc_proto::roles::{self, Holder, Seat, SeatChange, Vacant};
+
+use super::conversation::{Entry, EntryKind, fold};
+use super::face::Face;
+use super::woke::Callout;
+use super::{Chat, nick_degrees};
+
+/// What heads the people list's part for roles, under the people and over the apps.
+pub const ROLES_SECTION: &str = "Roles";
+
+/// A role in a conversation's people list, as the Roles part draws it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct RoleMember {
+    /// Its nick, `fixer`, whose conversation a click opens.
+    pub nick: String,
+    /// What it's called: its name.
+    pub label: String,
+    /// Its row's second line: `main-fix · Henrik's mbp`, or `vacant` ([`Seat::member_line`]).
+    pub line: String,
+    /// Whether nobody holds it, which apps draw muted.
+    pub vacant: bool,
+    /// Its face: its bot.
+    pub face: Face,
+}
+
+/// What `entry` says of a role's seat, when it's one of a role's own lines.
+fn seat_of(entry: &Entry) -> Option<Seat> {
+    let EntryKind::Zirc(message) = &entry.kind else {
+        return None;
+    };
+    if let Some(vacant) = Vacant::of(&message.event) {
+        return Some(vacant.seat);
+    }
+    let change = SeatChange::of(&message.event)?;
+    let (holder, last) = if change.took {
+        (Some(change.holder), None)
+    } else {
+        (None, Some(change.holder))
+    };
+    Some(Seat {
+        role: change.role,
+        repository: change.repository,
+        holder,
+        last,
+        waiting: 0,
+        wakes_on: Vec::new(),
+    })
+}
+
+/// What `entry` says, when it's a vacant role's answer to us.
+#[must_use]
+pub fn vacant_of(entry: &Entry) -> Option<Vacant> {
+    match &entry.kind {
+        EntryKind::Zirc(message) => Vacant::of(&message.event),
+        _ => None,
+    }
+}
+
+impl Chat {
+    /// Whether `nick` is one of the organisation's roles, as its host says (`role/<name>`,
+    /// which only the server sets).
+    #[must_use]
+    pub fn is_role(&self, nick: &str) -> bool {
+        self.roles.contains(&fold(nick))
+    }
+
+    /// `nick`'s host, as a line from it or WHO says: whether it's a role.
+    pub(super) fn role_hosted(&mut self, nick: &str, host: &str) {
+        if zirc_proto::names::role_from_host(host).is_some() {
+            self.roles.insert(fold(nick));
+        } else {
+            self.roles.remove(&fold(nick));
+        }
+    }
+
+    /// How the role `nick` stands, as the newest of its own lines we have says, in any
+    /// conversation: `None` before it's said anything.
+    #[must_use]
+    pub fn role_seat(&self, nick: &str) -> Option<Seat> {
+        self.conversations
+            .iter()
+            .flat_map(|conversation| conversation.entries.iter())
+            .filter(|entry| entry.from.eq_ignore_ascii_case(nick))
+            .filter_map(|entry| Some((entry.time, seat_of(entry)?)))
+            .max_by_key(|(time, _)| *time)
+            .map(|(_, seat)| seat)
+    }
+
+    /// The machine `holder` works on, as people read it: `Henrik's mbp`, `your mbp`.
+    fn holder_machine(&self, holder: &Holder) -> String {
+        match self.whose(&holder.machine) {
+            Some((owner, machine)) => {
+                format!("{} {machine}", super::possessive(&self.owner_name(&owner)))
+            }
+            None => holder.machine.clone(),
+        }
+    }
+
+    /// The line under a role's name in our conversation with it: `Private to you · held by
+    /// main-fix on Henrik's mbp`, `Private to you · Vacant in monorepo`.
+    #[must_use]
+    pub fn role_header(&self, nick: &str) -> Option<String> {
+        if !self.is_role(nick) {
+            return None;
+        }
+        let Some(seat) = self.role_seat(nick) else {
+            return Some(roles::PRIVATE.to_owned());
+        };
+        let machine = seat
+            .holder
+            .as_ref()
+            .map(|holder| self.holder_machine(holder))
+            .unwrap_or_default();
+        Some(format!("{} · {}", roles::PRIVATE, seat.status(&machine)))
+    }
+
+    /// The roles in the conversation called `name`, by name: the people list's Roles part,
+    /// apart from its people.
+    #[must_use]
+    pub fn role_members(&self, name: &str) -> Vec<RoleMember> {
+        let mut members: Vec<RoleMember> = self
+            .people(name)
+            .into_iter()
+            .filter(|person| self.is_role(&person.nick))
+            .map(|person| {
+                let seat = self.role_seat(&person.nick);
+                let holder = seat.as_ref().and_then(|seat| seat.holder.as_ref());
+                let machine = holder
+                    .map(|holder| self.holder_machine(holder))
+                    .unwrap_or_default();
+                RoleMember {
+                    line: seat.as_ref().map_or_else(
+                        || roles::VACANT.to_owned(),
+                        |seat| seat.member_line(&machine),
+                    ),
+                    vacant: holder.is_none(),
+                    face: self.role_face(&person.nick),
+                    label: person.nick.clone(),
+                    nick: person.nick,
+                }
+            })
+            .collect();
+        members.sort_by(|a, b| a.label.cmp(&b.label));
+        members
+    }
+
+    /// The role `nick`'s face: its bot ([`zirc_proto::agent_picture`]) on its colour, with
+    /// its holder's owner small, as an agent's is; none while it's vacant.
+    #[must_use]
+    pub fn role_face(&self, nick: &str) -> Face {
+        let holder = self.role_seat(nick).and_then(|seat| seat.holder);
+        let owner = holder
+            .as_ref()
+            .and_then(|holder| self.whose(&holder.machine))
+            .map(|(owner, _)| owner)
+            .unwrap_or_default();
+        Face::Agent {
+            tool: holder
+                .as_ref()
+                .and_then(|holder| holder.session.tool.clone()),
+            hue: nick_degrees(nick),
+            owner_initials: self.avatar_initials(&owner),
+            owner_hue: nick_degrees(&owner),
+            owner_photo: self.photo(&owner),
+            owner,
+            session: None,
+            picture: Some(zirc_proto::agent_picture(Some(&fold(nick)), Some(nick)).to_owned()),
+        }
+    }
+
+    /// A vacant role's answer to us, as the box every app draws ([`super::RowShape::Settled`]):
+    /// who it is that nobody is, what waits, how to fill it, and who held it last.
+    #[must_use]
+    pub fn vacant_callout(&self, vacant: &Vacant) -> Callout {
+        let machine = vacant
+            .seat
+            .last
+            .as_ref()
+            .map(|last| self.holder_machine(last));
+        Callout {
+            label: vacant.title(),
+            spans: vec![
+                super::woke::text(format!("{} ", vacant.body())),
+                super::woke::code(vacant.command()),
+                super::woke::text(format!(". {}", vacant.footer(machine.as_deref()))),
+            ],
+            tone: zirc_proto::woke::Tone::Person.role().to_owned(),
+            button: None,
+            action: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use zirc_proto::Message;
+    use zirc_proto::roles::{Holder, SeatChange};
+    use zirc_proto::session::SessionCard;
+
+    use super::*;
+    use crate::chat::RowShape;
+    use crate::chat::lines::tests::{at, chat, feed, utc};
+
+    /// The fixer, its host saying it's a role, in `#api` with us.
+    fn with_fixer() -> Chat {
+        let mut chat = chat();
+        let host = zirc_proto::names::role_host("fixer");
+        feed(&mut chat, &[&format!(":fixer!u@{host} JOIN #api")]);
+        chat
+    }
+
+    fn holder() -> Holder {
+        Holder {
+            machine: "henrik-mbp".into(),
+            since: 1,
+            session: SessionCard {
+                session: "cc-1".into(),
+                name: Some("main-fix".into()),
+                title: String::new(),
+                tool: Some(zirc_proto::CLAUDE_CODE.into()),
+            },
+        }
+    }
+
+    /// Puts `event`, from the fixer, in the conversation `name` at `time`.
+    fn from_fixer(chat: &mut Chat, name: &str, time: &str, event: zirc_proto::Event) {
+        feed(
+            chat,
+            &[&at(
+                time,
+                Some(&format!("f{time}")),
+                &format!(
+                    ":fixer!u@{} PRIVMSG {name} :x",
+                    zirc_proto::names::role_host("fixer")
+                ),
+            )],
+        );
+        let at = chat
+            .position(if name == "me" { "fixer" } else { name })
+            .unwrap();
+        let entry = chat.conversations[at].entries.last_mut().unwrap();
+        entry.kind = EntryKind::Zirc(Message::new("fixer", event));
+    }
+
+    #[test]
+    fn a_role_is_listed_apart_from_the_people_with_who_holds_it() {
+        let mut chat = with_fixer();
+        assert!(chat.is_role("fixer"));
+        assert!(
+            !chat
+                .people_rows("#api")
+                .iter()
+                .any(|row| row.person.nick == "fixer")
+        );
+        let members = chat.role_members("#api");
+        assert_eq!(members.len(), 1);
+        assert_eq!(
+            (members[0].line.as_str(), members[0].vacant),
+            ("vacant", true)
+        );
+        assert!(matches!(&members[0].face, Face::Agent { picture: Some(p), .. } if p == "fixer"));
+
+        let took = SeatChange {
+            role: "fixer".into(),
+            repository: "monorepo".into(),
+            holder: holder(),
+            took: true,
+        };
+        from_fixer(&mut chat, "#api", "10:00:00", took.event());
+        let members = chat.role_members("#api");
+        assert_eq!(members[0].line, "main-fix · henrik-mbp");
+        assert!(!members[0].vacant);
+    }
+
+    #[test]
+    fn a_vacant_role_answers_with_the_box_saying_how_to_fill_it() {
+        let mut chat = with_fixer();
+        let vacant = Vacant {
+            seat: Seat {
+                role: "fixer".into(),
+                repository: "monorepo".into(),
+                holder: None,
+                last: Some(holder()),
+                waiting: 1,
+                wakes_on: Vec::new(),
+            },
+            reply_to: None,
+        };
+        from_fixer(&mut chat, "me", "10:00:00", vacant.event());
+        assert_eq!(
+            chat.header_line("fixer").unwrap().text,
+            "Private to you · Vacant in monorepo"
+        );
+        let lines = chat.lines("fixer", utc(), false);
+        let line = lines
+            .iter()
+            .find(|line| line.shape == RowShape::Settled)
+            .expect("the vacant box");
+        let callout = line.callout.as_ref().unwrap();
+        assert_eq!(callout.label, "Nobody is the fixer in monorepo");
+        assert!(callout.said().contains("zirc role take fixer"));
+        assert!(
+            callout
+                .said()
+                .contains("Last held by main-fix (Claude Code) on henrik-mbp")
+        );
+    }
+}
