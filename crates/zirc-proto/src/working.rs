@@ -69,7 +69,8 @@ pub const AWAY: &str = "Away";
 /// it rather than a column: `tls-rotation · Claude Code · listening`.
 pub const LISTENING: &str = "listening";
 
-/// A session in a line, where a line names it: its name, its tool and, online, [`LISTENING`],
+/// A session in a line, where a line names it: what it's called ([`crate::session::agent_title`]),
+/// its tool and, online, [`LISTENING`],
 /// or how it stands away: `tls-rotation · Claude Code · listening`.
 #[must_use]
 pub fn line(session: &Session) -> String {
@@ -78,8 +79,14 @@ pub fn line(session: &Session) -> String {
     } else {
         session.says.as_str()
     };
+    // Called as every app calls an agent (session::agent_title): its name, else its task.
+    let called = crate::session::agent_title(
+        session.name.as_deref(),
+        session.title.as_deref(),
+        &session.session,
+    );
     [
-        Some(session.name.as_deref().unwrap_or(&session.session)),
+        Some(called.as_str()),
         session.tool.as_deref(),
         Some(standing),
     ]
