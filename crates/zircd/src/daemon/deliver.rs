@@ -466,11 +466,13 @@ impl Daemon {
         // A gotcha is for whoever changes its paths later, when zircd tells it them; its
         // retiring is no one's news either, nor the team's hints changing, which zircd reads.
         // Nor a wake's own line or an overlap settled, which are for people to see: a wake
-        // that woke another would never end.
+        // that woke another would never end. Nor a report to a role, whose holder the
+        // tenant's sidecar wakes once for each open item, however often it's reported.
         if let Event::Custom { kind, .. } = &delivery.message.event
             && (zirc_core::gotchas::is_kind(kind)
                 || kind == zirc_proto::hints::CHANGED_KIND
-                || zirc_proto::woke::is_kind(kind))
+                || zirc_proto::woke::is_kind(kind)
+                || zirc_proto::role_report::is_kind(kind))
         {
             return None;
         }

@@ -38,6 +38,7 @@ pub mod receipt;
 pub mod report;
 pub mod request;
 pub mod role;
+pub mod role_report;
 pub mod roles;
 pub mod run;
 pub mod sealed;

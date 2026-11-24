@@ -245,6 +245,8 @@ pub(super) fn acting(request: &Request) -> Option<(&str, Acted)> {
         Request::Emit { session, .. }
         | Request::Workflow { session, .. }
         | Request::SetState { session, .. }
+        | Request::Report { session, .. }
+        | Request::CloseReport { session, .. }
         | Request::Lease { session, .. } => Some((session, Acted::Asked)),
         Request::Decide { session, .. } => session.as_deref().map(|s| (s, Acted::Asked)),
         _ => None,

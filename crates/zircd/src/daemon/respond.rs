@@ -113,6 +113,25 @@ impl Daemon {
                 let channel = self.set_state(&repo, &session, state).await?;
                 Response::channel(channel)
             }
+            Request::Report {
+                repo,
+                session,
+                report,
+            } => {
+                let report = report.checked()?;
+                Response::channel(self.say_in_ops(&repo, &session, report.event()).await?)
+            }
+            Request::CloseReport {
+                repo,
+                session,
+                closing,
+            } => {
+                anyhow::ensure!(
+                    closing.end != zirc_proto::role_report::End::Landed,
+                    "only CI says an item landed, from a landing's `Fixes: report <id>`"
+                );
+                Response::channel(self.say_in_ops(&repo, &session, closing.event()).await?)
+            }
             Request::AskOwner {
                 session,
                 question,

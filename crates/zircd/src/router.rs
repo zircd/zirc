@@ -487,6 +487,8 @@ fn repo_of(request: &Request) -> Option<&Path> {
         | Request::Leave { repo, .. }
         | Request::Decide { repo, .. }
         | Request::SetState { repo, .. }
+        | Request::Report { repo, .. }
+        | Request::CloseReport { repo, .. }
         | Request::React { repo, .. } => Some(repo),
         _ => None,
     }

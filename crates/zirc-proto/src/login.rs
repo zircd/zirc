@@ -461,7 +461,7 @@ pub fn typescript() -> String {
          // state's types and rules,\n\
          // generated from\n\
          // zirc-proto (crates/zirc-proto/src/login.rs, media.rs, profile.rs, card.rs,\n\
-         // report.rs, workflow.rs, trigger.rs, role.rs, roles.rs, names.rs, desired.rs, onboarding.rs, push.rs, and lib.rs's, request.rs's and session.rs's message types) by `bazel run //web:zirc_proto_types`, which a test checks.\n\
+         // report.rs, role_report.rs, workflow.rs, trigger.rs, role.rs, roles.rs, names.rs, desired.rs, onboarding.rs, push.rs, and lib.rs's, request.rs's and session.rs's message types) by `bazel run //web:zirc_proto_types`, which a test checks.\n\
          // Don't edit: change them there and generate this again.\n",
     );
     for decl in [
@@ -492,6 +492,7 @@ pub fn typescript() -> String {
     .chain(crate::profile::typescript(&config))
     .chain(crate::card::typescript(&config))
     .chain(crate::report::typescript(&config))
+    .chain(crate::role_report::typescript(&config))
     .chain(crate::workflow::typescript(&config))
     .chain(crate::roles::typescript(&config))
     .chain(crate::hints::typescript(&config))

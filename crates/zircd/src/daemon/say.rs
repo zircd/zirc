@@ -113,13 +113,26 @@ impl Daemon {
             repo: watched.scope.clone(),
             ..state
         };
+        self.holds.said(session, &state);
+        self.say_in_ops(repo, session, state.event()).await
+    }
+
+    /// Says `event` as `session` in the organisation's `#ops` of the repository containing
+    /// `repo`, joining it first: how something stands, or a report to a role
+    /// ([`zirc_proto::role_report`]).
+    pub(super) async fn say_in_ops(
+        &mut self,
+        repo: &Path,
+        session: &str,
+        event: Event,
+    ) -> Result<String> {
+        self.watched(repo).await?;
         let ops = zirc_core::states::CHANNEL.to_owned();
         let client = self.connected()?;
         if !self.joined.contains(&ops) {
             client.send(Line::new("JOIN", [ops.as_str()]))?;
         }
-        self.holds.said(session, &state);
-        self.publish(&ops, session, state.event());
+        self.publish(&ops, session, event);
         Ok(ops)
     }
 

@@ -88,6 +88,118 @@
       ],
       "description": "How it stands."
     },
+    "RoleReport": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "The role it's for, such as `fixer`."
+        },
+        "kind": {
+          "$ref": "#/$defs/Subject",
+          "description": "What it's about."
+        },
+        "key": {
+          "type": "string",
+          "description": "What makes it the same as an earlier one: a warning's line, a test, a workload."
+        },
+        "summary": {
+          "type": "string",
+          "description": "What it says, in a line; the key when its sender says nothing more."
+        },
+        "link": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Where to read more, such as the build's log."
+        },
+        "details": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "More of what's known, such as a container's exit code and restarts."
+        },
+        "build": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The CI build it was seen in."
+        }
+      },
+      "required": [
+        "role",
+        "kind",
+        "key",
+        "summary"
+      ],
+      "description": "A report to a role: what an [`Event::Custom`] of [`KIND`] carries."
+    },
+    "Subject": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "warning",
+          "description": "A new warning or deprecation notice in CI's logs: its key is the warning's line, as\n`ops/lib.sh`'s `warnings` prints it."
+        },
+        {
+          "type": "string",
+          "const": "flaky",
+          "description": "A test that failed, then passed when run again: its key is the test."
+        },
+        {
+          "type": "string",
+          "const": "container",
+          "description": "A container that restarted, or a tenant's server that stays not ready: its key is\nthe workload, `<namespace>/<name>`."
+        }
+      ],
+      "description": "What a report is about. Kinds are added here; a sidecar older than a kind doesn't read its\nreports, as it couldn't say what they are."
+    },
+    "Closing": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "The role it's for."
+        },
+        "id": {
+          "type": "string",
+          "description": "The item's id ([`item_id`])."
+        },
+        "end": {
+          "$ref": "#/$defs/End",
+          "description": "How it ended: done or baselined, never landed, which only CI says."
+        }
+      },
+      "required": [
+        "role",
+        "id",
+        "end"
+      ],
+      "description": "The holder says an item is done or baselined: what an [`Event::Custom`] of\n[`CLOSED_KIND`] carries."
+    },
+    "End": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "landed",
+          "description": "A landing that names it passed."
+        },
+        {
+          "type": "string",
+          "const": "done",
+          "description": "Its holder said it's done."
+        },
+        {
+          "type": "string",
+          "const": "baselined",
+          "description": "Its holder added it to the baseline: it can't be fixed here, as a dependency's own\nwarning."
+        }
+      ],
+      "description": "How an item ended."
+    },
     "DecisionAnswer": {
       "oneOf": [
         {
@@ -3215,6 +3327,64 @@
           ],
           "description": "Say how something in the repository containing `repo` stands now\n([`zirc_proto::state`]), such as its default branch broken and who's fixing it: in\nthe organisation's `#ops`, where `zirc state` reads it. Answered with\n[`Response::Channel`].",
           "title": "SetStateRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "report"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside a watched repository."
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's reporting: an agent session, a person, or a script."
+            },
+            "report": {
+              "$ref": "#/$defs/RoleReport",
+              "description": "The report."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "report"
+          ],
+          "description": "Report something to a role ([`zirc_proto::role_report`]), in the organisation's\n`#ops`, where the tenant's sidecar keeps one open item per kind and key and wakes the\nrole's holder for a new one. Answered with [`Response::Channel`].",
+          "title": "ReportRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "close-report"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside a watched repository."
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's saying it: the role's holder."
+            },
+            "closing": {
+              "$ref": "#/$defs/Closing",
+              "description": "Which item, and how it ended."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "closing"
+          ],
+          "description": "Say a role's open item is done or baselined ([`zirc_proto::role_report::Closing`]),\nin `#ops`. Answered with [`Response::Channel`].",
+          "title": "CloseReportRequest"
         },
         {
           "type": "object",

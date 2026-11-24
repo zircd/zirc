@@ -234,6 +234,27 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         until: Option<String>,
     },
+    /// Report something to a role ([`zirc_proto::role_report`]), in the organisation's
+    /// `#ops`, where the tenant's sidecar keeps one open item per kind and key and wakes the
+    /// role's holder for a new one. Answered with [`Response::Channel`].
+    Report {
+        /// Anywhere inside a watched repository.
+        repo: PathBuf,
+        /// Who's reporting: an agent session, a person, or a script.
+        session: String,
+        /// The report.
+        report: zirc_proto::role_report::RoleReport,
+    },
+    /// Say a role's open item is done or baselined ([`zirc_proto::role_report::Closing`]),
+    /// in `#ops`. Answered with [`Response::Channel`].
+    CloseReport {
+        /// Anywhere inside a watched repository.
+        repo: PathBuf,
+        /// Who's saying it: the role's holder.
+        session: String,
+        /// Which item, and how it ended.
+        closing: zirc_proto::role_report::Closing,
+    },
     /// Ask this machine's owner `question` in `#decisions` ([`zirc_proto::request`]), to
     /// answer with a reaction: answered with [`Response::Requested`], and their answer, once
     /// they give it, comes to `session`'s watch as [`Response::Answered`].

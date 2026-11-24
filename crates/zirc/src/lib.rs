@@ -22,6 +22,7 @@ mod post;
 mod queries;
 mod react;
 mod repo;
+mod report;
 mod safety;
 mod sealed;
 mod search;
@@ -179,6 +180,13 @@ const EXAMPLES: &[(&str, &[&str])] = &[
         ],
     ),
     (
+        "report",
+        &[
+            "zirc report fixer --kind flaky --key //web:e2e --build 612 --link https://ci.example/612",
+            "zirc report fixer --kind flaky --key //web:e2e --done",
+        ],
+    ),
+    (
         "wait",
         &[
             "zirc wait landed login",
@@ -253,7 +261,7 @@ const EXAMPLES: &[(&str, &[&str])] = &[
     ("update", &["zirc update", "zirc update --check"]),
     ("skill", &["zirc skill install"]),
     ("block", &["zirc block mal"]),
-    ("report", &["zirc report mal --reason harassment"]),
+    ("flag", &["zirc flag mal --reason harassment"]),
 ];
 
 /// `command`'s examples ([`EXAMPLES`]), as the end of its `--help` shows them, before `more`
@@ -289,7 +297,7 @@ const GROUPS: &[(&str, &[&str])] = &[
         "Coordinate",
         &[
             "who", "intend", "settle", "lease", "state", "wait", "stack", "gotcha", "playbook",
-            "join", "workflow", "role", "step",
+            "join", "report", "workflow", "role", "step",
         ],
     ),
     (
@@ -306,7 +314,7 @@ const GROUPS: &[(&str, &[&str])] = &[
     (
         "Manage",
         &[
-            "logout", "agents", "ci", "daemon", "update", "skill", "block", "report", "team-key",
+            "logout", "agents", "ci", "daemon", "update", "skill", "block", "flag", "team-key",
         ],
     ),
 ];
@@ -809,11 +817,11 @@ enum Command {
     ///
     /// Report a person or a message to the organisation's owners and to zirc.
     ///
-    /// Such as zirc report mal --reason harassment, or with --message <id> --in <channel> for
+    /// Such as zirc flag mal --reason harassment, or with --message <id> --in <channel> for
     /// one message (its id is in `zirc search`'s output). Never sends what was said: the
     /// owners read it on their dashboard. Reports are acted on within 24 hours.
-    #[command(after_long_help = examples("report", ""))]
-    Report(safety::ReportArgs),
+    #[command(after_long_help = examples("flag", ""))]
+    Flag(safety::ReportArgs),
     /// Block a person.
     ///
     /// Block a person: their messages and notifications stop reaching you.
@@ -871,6 +879,17 @@ enum Command {
     /// --check fails when one shown is broken, for a one-off check in a CI script.
     #[command(after_long_help = examples("state", ""))]
     State(state::StateArgs),
+    /// Report something to a role, such as a flaky test to the fixer.
+    ///
+    /// Report something for a role's holder to do, such as a flaky test or a new warning
+    /// in CI's logs to the fixer. It goes to #ops, where the server keeps one open item per
+    /// kind and key: the same reported again adds nothing, and only a new one wakes the
+    /// holder, or waits for the next while no one holds the role. One left open is said
+    /// again later. A landing whose commit has the trailer Fixes: report <id> closes it when
+    /// it passes; the holder closes one with --done, or --baselined when it can't be fixed
+    /// here.
+    #[command(after_long_help = examples("report", ""))]
+    Report(report::ReportArgs),
     /// Show who holds and who's waiting for each lease.
     #[command(hide = true)]
     Leases {
@@ -1075,6 +1094,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
             lease::lease(&socket, args, out).await
         }
         Command::State(args) => state::state(&socket, args, out).await,
+        Command::Report(args) => report::report(&socket, args, out).await,
         Command::Leases { json, org } => lease::leases(&socket, json, org, out).await,
         Command::Name(args) => sessions::name(&socket, name, args, out).await,
         Command::Task(args) => sessions::task(&socket, args, out).await,
@@ -1085,7 +1105,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         }
         Command::Search(args) => search::search(&home, &socket, args, out).await,
         Command::File(args) => file::file(&home, &socket, args, out).await,
-        Command::Report(args) => safety::report(&home, &socket, &args, out).await,
+        Command::Flag(args) => safety::report(&home, &socket, &args, out).await,
         Command::Block(args) => safety::block(&home, &socket, &args, true, out).await,
         Command::Unblock(args) => safety::block(&home, &socket, &args, false, out).await,
         Command::Blocked(args) => safety::blocked(&home, &socket, &args, out).await,

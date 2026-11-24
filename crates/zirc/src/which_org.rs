@@ -72,6 +72,7 @@ const ACTS: &[(&str, Acts)] = &[
     ("search", Acts::One),
     ("file", Acts::One),
     ("report", Acts::One),
+    ("flag", Acts::One),
     ("block", Acts::One),
     ("unblock", Acts::One),
     ("blocked", Acts::One),

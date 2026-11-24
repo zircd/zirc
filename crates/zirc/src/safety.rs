@@ -1,4 +1,4 @@
-//! `zirc report`, `zirc block`, `zirc unblock` and `zirc blocked`: reporting a person or a
+//! `zirc flag`, `zirc block`, `zirc unblock` and `zirc blocked`: reporting a person or a
 //! message to the organisation's owners and to zirc, and the account's own blocklist, which
 //! the apps share ([`zirc_proto::report`]). All through zirc.dev as this machine's account,
 //! which acts as its person.
@@ -84,7 +84,7 @@ fn report_from(args: &ReportArgs) -> Result<Report> {
     })
 }
 
-/// Runs `zirc report`.
+/// Runs `zirc flag`.
 pub async fn report(
     home: &Path,
     socket: &Path,
@@ -189,7 +189,7 @@ mod tests {
         let said = zirc(
             &web,
             &[
-                "report",
+                "flag",
                 "mal",
                 "--reason",
                 "spam",
@@ -207,7 +207,7 @@ mod tests {
         );
         zirc(
             &web,
-            &["report", "mal", "--reason", "hate", "--note", " rude "],
+            &["flag", "mal", "--reason", "hate", "--note", " rude "],
         )
         .await
         .unwrap();
@@ -229,12 +229,9 @@ mod tests {
 
     #[tokio::test]
     async fn refuses_an_unknown_reason_before_asking() {
-        let err = zirc(
-            "http://127.0.0.1:1",
-            &["report", "mal", "--reason", "boring"],
-        )
-        .await
-        .unwrap_err();
+        let err = zirc("http://127.0.0.1:1", &["flag", "mal", "--reason", "boring"])
+            .await
+            .unwrap_err();
         assert!(err.contains("--reason is one of harassment"), "{err}");
     }
 

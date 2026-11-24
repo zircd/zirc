@@ -46,8 +46,8 @@ pub const NICK: &str = "zirc-ci";
 pub const SESSION: &str = "ci";
 
 /// Whether CI may say an event of `kind`: its own ([`LANDING_KIND`], [`DEPLOY_KIND`],
-/// [`CHECK_KIND`]), how something in the repository stands ([`crate::state::KIND`]), or a
-/// team's own. Never zirc's other kinds, which say who is changing what.
+/// [`CHECK_KIND`]), how something in the repository stands ([`crate::state::KIND`]), a report
+/// to a role ([`crate::role_report::KIND`]), or a team's own. Never zirc's other kinds, which say who is changing what.
 #[must_use]
 pub fn may_say(kind: &str) -> bool {
     KINDS.iter().any(|(_, own)| *own == kind) || !kind.starts_with("x-zirc/")
@@ -98,11 +98,12 @@ pub fn level(
 pub const MAX_TEXT: usize = 2000;
 
 /// Each kind CI says with the short name CI's scripts use for it.
-pub const KINDS: [(&str, &str); 4] = [
+pub const KINDS: [(&str, &str); 5] = [
     ("landing", LANDING_KIND),
     ("deploy", DEPLOY_KIND),
     ("check", CHECK_KIND),
     ("state", crate::state::KIND),
+    ("report", crate::role_report::KIND),
 ];
 
 /// These as TypeScript, for the web app's generated file.
