@@ -149,7 +149,7 @@ pub struct RoleReport {
 /// Why a report can't be sent.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Refused {
-    /// The role isn't a role's name ([`crate::roles::check_name`] says why).
+    /// The role isn't a role's name ([`crate::names::role_problem`] says why).
     #[error("{0}")]
     Role(String),
     /// Its key is empty.
@@ -204,7 +204,7 @@ impl RoleReport {
     /// When its role or key isn't one: [`Refused`].
     pub fn checked(self) -> Result<Self, Refused> {
         let report = self.tidied();
-        if let Some(problem) = crate::roles::check_name(&report.role) {
+        if let Some(problem) = crate::names::role_problem(&report.role) {
             return Err(Refused::Role(problem));
         }
         if report.key.is_empty() {
@@ -592,7 +592,7 @@ mod tests {
         assert!(report.key.ends_with('…'));
         assert_eq!(
             RoleReport::new("", Subject::Flaky, "a").checked(),
-            Err(Refused::Role(crate::roles::check_name("").unwrap()))
+            Err(Refused::Role(crate::names::role_problem("").unwrap()))
         );
         assert_eq!(
             RoleReport::new("fixer", Subject::Flaky, " ").checked(),
