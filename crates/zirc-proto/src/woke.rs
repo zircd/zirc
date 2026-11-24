@@ -210,7 +210,7 @@ pub struct Woke {
     /// For a report: the item it opened ([`crate::role_report::OpenItem::id`]) and what was
     /// reported, which its line says, as CI's build is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub report: Option<Reported>,
+    pub report: Option<Box<Reported>>,
 }
 
 /// What a report's wake says of it ([`What::Reported`]).
@@ -253,11 +253,11 @@ impl Woke {
         Self {
             role: Some(item.report.role.clone()),
             build: item.report.build.clone(),
-            report: Some(Reported {
+            report: Some(Box::new(Reported {
                 id: item.id.clone(),
                 report: item.report.clone(),
                 reminder,
-            }),
+            })),
             ..Self::new(What::Reported, By::Zirc)
         }
     }
@@ -371,7 +371,7 @@ impl Woke {
             What::StackedOn => format!("{who} built on its branch"),
             What::Committed => format!("{who} committed to its files"),
             What::Posted => format!("{who} posted{place}"),
-            What::Reported => match &self.report {
+            What::Reported => match self.report.as_deref() {
                 Some(Reported {
                     id,
                     report,
