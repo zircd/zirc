@@ -58,11 +58,14 @@ pub enum Verdict {
 }
 
 impl Verdict {
-    /// Whether it's worth asking the other session now: what both will change could
-    /// conflict. The rest merge on their own, and zircd says so if that changes.
+    /// Whether it's worth asking the other session now: both have changed a file, on the
+    /// same lines or on lines not known. The rest merge on their own or aren't written
+    /// yet, and zircd says so if that changes. A plan that names a file isn't one: in five
+    /// days' conflicts between sessions (20 to 24 Nov 2026) each side had been told of the
+    /// other by its changes, and no plan had kept two apart.
     #[must_use]
     pub fn asks(self) -> bool {
-        self >= Verdict::Named
+        self >= Verdict::SameFiles
     }
 }
 
@@ -229,18 +232,19 @@ mod tests {
             ..Fit::default()
         };
         assert_eq!(fit.verdict(), Verdict::SameFiles);
+        assert!(fit.verdict().asks());
         assert!(fit.text().starts_with("both change a.rs, lines unknown: "));
     }
 
     #[test]
-    fn a_file_of_mine_named_before_they_start_is_worth_asking_about() {
+    fn a_file_of_mine_named_before_they_start_is_only_a_plan() {
         let fit = Fit {
             mine: paths(&["src/a.rs"]),
             named: paths(&["src/a.rs"]),
             ..Fit::default()
         };
         assert_eq!(fit.verdict(), Verdict::Named);
-        assert!(fit.verdict().asks());
+        assert!(!fit.verdict().asks());
         assert_eq!(
             fit.text(),
             "names your src/a.rs, not changed by them yet: you change src/a.rs"

@@ -668,15 +668,18 @@ enum Command {
     ///
     /// Say what you're about to change, before you start changing it.
     ///
-    /// Whoever else is changing it hears now, rather than when you collide, and it says who
-    /// else is on those paths, or that nobody is. It goes to #agents and
+    /// It says who else is working near those paths, or that nobody is; they read it with
+    /// their next wake, and are woken only if your changes reach their lines. It goes to
+    /// #agents and
     /// lasts until it expires, a new one replaces it, or you post `done: …` or `dropped: …`.
     /// A session on no task takes its message on as one: it posts `taking: <message>` first,
     /// and zircd says `done:` when that task's landing lands.
     #[command(after_long_help = examples("intend", ""))]
     Intend {
-        /// Files or directories you're about to change.
-        #[arg(required = true, num_args = 1..)]
+        /// Files or directories you're about to change, if you'd say: without any, it
+        /// only takes the task on. zircd sees what you change as you change it, and it's
+        /// those changes, not these, that other sessions are woken by.
+        #[arg(num_args = 0..)]
         paths: Vec<PathBuf>,
         /// What you're about to do, in a line.
         #[arg(short, long)]

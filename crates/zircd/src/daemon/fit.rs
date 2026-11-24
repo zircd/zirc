@@ -131,18 +131,54 @@ impl Daemon {
         told
     }
 
-    /// Whether `response`, another session's intent, needs nothing of `session` by how it
-    /// meets its work: it changes other files, or other parts of the same ones. Such an
-    /// intent waits for the session's next wake rather than making one: "different files"
-    /// woke sessions for nothing they then did, ten times in a day (15 Nov 2026). One that
-    /// has changed nothing there yet still wakes: it's a plan, said before the files show it.
+    /// Whether `response`, another session's intent, needs nothing of `session` now by how
+    /// it meets its work: all but one where both have changed the same lines of a file, or,
+    /// from another machine, the same file, whose lines this one can't compare. Such an
+    /// intent waits for the session's next wake rather than making one. A plan, with nothing
+    /// changed under it yet, woke every session working in the folders it named, which then
+    /// said there was nothing to do; and between this machine's own worktrees a file both
+    /// change is compared as it changes, which wakes them if the lines meet
+    /// ([`Daemon::predicted`]). The user's choice, 24 Nov 2026: "only actual range overlaps
+    /// wake other agents".
     pub(super) fn quiet_intent(&self, response: &Response, session: &str) -> bool {
         let Response::Delivery(delivery) = response else {
             return false;
         };
-        self.intent_fit(delivery, session).is_some_and(|fit| {
-            matches!(fit.verdict(), Verdict::DifferentFiles | Verdict::Elsewhere)
-        })
+        let local = self
+            .client
+            .as_ref()
+            .is_some_and(|client| client.nick() == delivery.from);
+        self.intent_fit(delivery, session)
+            .is_some_and(|fit| match fit.verdict() {
+                Verdict::SameLines => false,
+                Verdict::SameFiles => local,
+                _ => true,
+            })
+    }
+
+    /// Whether `delivery`, from another session on this machine, changes each of `paths`
+    /// in other parts than `session` does, as last compared: then its commit needs nothing
+    /// of the session, whose own changes merge with it.
+    pub(super) fn apart_here(&self, delivery: &Delivery, session: &str, paths: &[&str]) -> bool {
+        let local = self
+            .client
+            .as_ref()
+            .is_some_and(|client| client.nick() == delivery.from);
+        let worktrees = |of: &str| -> Vec<&PathBuf> {
+            self.repos
+                .iter()
+                .filter(|(_, watched)| watched.is_of(of))
+                .map(|(root, _)| root)
+                .collect()
+        };
+        let (ours, others) = (worktrees(session), worktrees(&delivery.message.session));
+        local
+            && !paths.is_empty()
+            && paths.iter().all(|path| {
+                ours.iter()
+                    .flat_map(|a| others.iter().map(move |b| (a, b)))
+                    .any(|(a, b)| self.predictions.shared(a, b, path) == Shared::Apart)
+            })
     }
 
     /// Keeps for later, rather than waking them, the watching sessions whose reason in

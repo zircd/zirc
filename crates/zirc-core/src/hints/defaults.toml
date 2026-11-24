@@ -36,17 +36,17 @@ text = "Update onto their push before going further there, and tell the user."
 [[hint]]
 kind = "intent"
 level = "tell"
-text = "Tell the user in one line; if you'd both restructure it, ask who goes first."
+text = "A plan, with nothing to compare yet: nothing to do or to ask. zircd wakes you if their changes reach your lines."
 
 [[hint]]
 kind = "intent.elsewhere"
 level = "tell"
-text = "Different files, or different parts of yours, as zircd compared them: nothing to agree, so don't ask. Carry on; zircd says so if their changes reach your lines."
+text = "Different files, different parts of yours, or a plan with nothing changed yet, as zircd compared them: nothing to agree, so don't ask. Carry on; zircd says so if their changes reach your lines."
 
 [[hint]]
 kind = "intent.same-lines"
 level = "tell"
-text = "Your files, as zircd compared them: ask the other session now with zirc ask --session <your session> --to <machine>/<session>, naming what you change in each file and asking what it changes there and who lands first. Tell the user its answer; once you've agreed, say it for people to see: zirc settle --session <your session> --with <their session> --first <me|them> <files>, with --same-lines if so."
+text = "The same lines of your files, or the same files from another machine, as zircd compared them: ask the other session now with zirc ask --session <your session> --to <machine>/<session>, naming what you change in each file and asking what it changes there and who lands first. Tell the user its answer; once you've agreed, say it for people to see: zirc settle --session <your session> --with <their session> --first <me|them> <files>, with --same-lines if so."
 
 [[hint]]
 kind = "push"

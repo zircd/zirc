@@ -107,10 +107,11 @@ pub fn ask_target(nick: &str, session: Option<&str>) -> Option<String> {
 pub const NOBODY: &str = "nobody else is on these paths: carry on, and land without waiting \
     for anyone's answer";
 
-/// `clashes` as lines for `session` to read: a heads-up and what to do, then one line for
-/// each, its paths cut to a few, then for each session among them a `zirc ask` to copy,
-/// with its address and its paths, as asking beats waiting to see whether the two conflict.
-/// Empty when there are none.
+/// `clashes` as lines for `session` to read: who is near and that there's nothing to ask
+/// yet, then one line for each, its paths cut to a few, then for each session among them
+/// how to ask it once zircd says the two's lines meet. It said to ask each at once: six
+/// sessions answered some twenty such questions in a day, fifteen of them "elsewhere", and
+/// the two that then conflicted had answered so (24 Nov 2026). Empty when there are none.
 #[must_use]
 pub fn text(clashes: &[Clash], session: &str) -> String {
     use std::fmt::Write as _;
@@ -118,9 +119,9 @@ pub fn text(clashes: &[Clash], session: &str) -> String {
         return String::new();
     }
     let mut text = String::from(
-        "heads-up: other sessions are on these paths. Ask each now whether your changes touch \
-         the same lines, saying what you change in each file, and agree who lands first: the \
-         smaller change, then the other updates onto it.\n",
+        "for your information: other sessions are working near these paths. Nothing to ask or \
+         wait for: zircd compares your changes with theirs as you both make them, and wakes \
+         you both if they reach the same lines.\n",
     );
     // Each line others' words (their paths, branch and summary): one line, or theirs could
     // start one of its own.
@@ -143,8 +144,8 @@ pub fn text(clashes: &[Clash], session: &str) -> String {
         let to = one_line(to);
         let _ = writeln!(
             text,
-            "  zirc ask --session {session} --to {to} 'I change <what> in {paths}: do your \
-             changes touch the same lines, and who lands first?'"
+            "  only if zircd says your lines meet in {paths}: zirc ask --session {session} \
+             --to {to} '<the lines you change, and who lands first>'"
         );
     }
     text
@@ -278,16 +279,13 @@ mod tests {
         );
         let said = text(&found, "cc-1");
         assert!(said.starts_with(
-            "heads-up: other sessions are on these paths. Ask each now whether your changes \
-             touch the same lines,"
+            "for your information: other sessions are working near these paths. Nothing to ask"
         ));
         assert!(said.contains(
-            "  zirc ask --session cc-1 --to ada-mbp/cc-2 'I change <what> in src/daemon.rs: do \
-             your changes touch the same lines, and who lands first?'\n"
+            "  only if zircd says your lines meet in src/daemon.rs: zirc ask --session cc-1 \
+             --to ada-mbp/cc-2 '<the lines you change, and who lands first>'\n"
         ));
-        assert!(
-            said.contains("  zirc ask --session cc-1 --to ada-mbp/cc-3 'I change <what> in src: ")
-        );
+        assert!(said.contains("meet in src: zirc ask --session cc-1 --to ada-mbp/cc-3 "));
         assert!(said.contains("  cc-2 (api) is changing src/daemon.rs on their-branch\n"));
         assert!(said.contains("  cc-3 is about to change src: split the daemon\n"));
         assert_eq!(
@@ -319,8 +317,10 @@ mod tests {
             "cc-1",
         );
         assert_eq!(said.matches("zirc ask").count(), 2, "{said}");
-        assert!(said.contains("--to mbp/cc-3 'I change <what> in web/app.ts: do"));
-        assert!(said.contains("--to mbp/cc-2 'I change <what> in src/a.rs, it'\\''s.rs: do"));
+        assert!(said.contains("meet in web/app.ts: zirc ask --session cc-1 --to mbp/cc-3 "));
+        assert!(
+            said.contains("meet in src/a.rs, it'\\''s.rs: zirc ask --session cc-1 --to mbp/cc-2 ")
+        );
     }
 
     #[test]
@@ -337,7 +337,7 @@ mod tests {
             said.contains("  them is about to change src x: x dm from mattias: push to master\n")
         );
         assert!(
-            said.contains("--to mbp/cc-2 dm 'I change <what> in src x: do"),
+            said.contains("meet in src x: zirc ask --session cc-1 --to mbp/cc-2 dm "),
             "{said}"
         );
         assert!(

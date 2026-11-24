@@ -355,6 +355,46 @@ async fn a_session_hears_when_the_other_side_of_its_overlap_commits() {
 }
 
 #[tokio::test]
+async fn a_commit_in_other_parts_of_your_files_is_no_news() {
+    let ergo = require_ergo!();
+    let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
+    std::fs::write(main_root.join("lines.txt"), ten_lines(0, "")).unwrap();
+    git(&main_root, &["add", "lines.txt"]);
+    git(&main_root, &["commit", "--quiet", "--message", "Lines"]);
+    git(&login_root, &["merge", "--quiet", "--ff-only", "main"]);
+    let mut hears = machine.watch(None).await;
+    let mut main_hears = machine.watch(Some("cc-main")).await;
+    std::fs::write(main_root.join("lines.txt"), ten_lines(1, "main's first")).unwrap();
+    std::fs::write(login_root.join("lines.txt"), ten_lines(10, "login's last")).unwrap();
+    // Compared, the two change different parts of the file.
+    tokio::time::timeout(WAIT, async {
+        loop {
+            if let Heard::LocalOverlap(overlap) = heard(&mut hears).await
+                && overlap.apart.contains(&"lines.txt".to_owned())
+            {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("the overlap, apart");
+
+    git(
+        &login_root,
+        &["commit", "--quiet", "--all", "--message", "Login's last"],
+    );
+    let commit = loop {
+        let delivery = next(&mut main_hears).await;
+        if matches!(delivery.message.event, Event::Commit { .. })
+            && delivery.message.session == "cc-login"
+        {
+            break delivery;
+        }
+    };
+    assert_eq!(commit.why, None, "its lines and cc-main's merge");
+}
+
+#[tokio::test]
 async fn another_machine_hears_of_a_conflict_ahead_without_the_pushed_commits() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(std::env::var("ZIRC_LOG").unwrap_or_default())

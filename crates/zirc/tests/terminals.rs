@@ -225,7 +225,7 @@ async fn the_terminals_are_as_stored() {
         "zirc intend --session cc-7d3a tests/e2e/reconnect.rs tests/e2e/harness.rs -m \"reconnect test: bind port 0\"",
         &said,
     );
-    watch.printed(&heard(&mut lines).await);
+    // The plan wakes no one: Raj's watch says it with the overlap, which does.
     henrik.edit("tests/e2e/harness.rs", "pub const RETRIES: u32 = 2;\n");
     // Raj's watch hears the overlap once Raj's zircd has Henrik's set, which her machine holds
     // till UPDATE_EVERY after it last told #backend one, at `repo add`: some 12 s from now.

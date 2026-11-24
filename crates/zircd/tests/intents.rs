@@ -8,7 +8,7 @@ mod common;
 use common::*;
 
 #[tokio::test]
-async fn an_intent_wakes_the_sessions_changing_what_it_names() {
+async fn a_plan_reaches_the_sessions_changing_what_it_names_and_wakes_none() {
     let fleet = Fleet::with_sessions(require_ergo!()).await;
     fleet.beta.edits("web/login.ts", "export {}\n");
     fleet.beta.sees_changes_by("beta").await;
@@ -16,13 +16,11 @@ async fn an_intent_wakes_the_sessions_changing_what_it_names() {
 
     let told = fleet.alpha.intends("split the login page", &["web"]).await;
 
-    // An intent is agents' news: in the agents' room, counted as the repository's.
+    // An intent is agents' news: in the agents' room, counted as the repository's. With
+    // nothing changed under it yet there are no lines to compare: it wakes no one.
     assert!(matches!(told, Response::Channel { channel, .. } if channel == "#agents"));
     let delivery = next_intent(&mut watching).await;
-    assert_eq!(
-        (delivery.from.as_str(), delivery.why),
-        ("alpha", Some(Why::Intent))
-    );
+    assert_eq!((delivery.from.as_str(), delivery.why), ("alpha", None));
     let Event::Intent { paths, expires, .. } = delivery.message.event else {
         unreachable!()
     };
@@ -474,7 +472,8 @@ async fn the_gotchas_told_one_session_dont_wake_the_session_that_learnt_them() {
     assert_eq!(woke, Vec::<&str>::new());
 }
 
-/// The intents among `heard` that woke the session watching, by what they said.
+/// The intents among `heard` told to the session watching for a reason, as a wake or with
+/// one, by what they said.
 fn intent_wakes(heard: &[Heard]) -> Vec<String> {
     heard
         .iter()
@@ -489,15 +488,16 @@ fn intent_wakes(heard: &[Heard]) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn an_automatic_intent_said_again_for_the_same_directory_wakes_a_session_once() {
+async fn an_automatic_intent_said_again_for_the_same_directory_is_told_once() {
     let fleet = Fleet::with_sessions(require_ergo!()).await;
     fleet.beta.edits("web/login.ts", "export {}\n");
     fleet.beta.sees_changes_by("beta").await;
     let mut watching = fleet.beta.watch().await;
-    // cc-a starts changing cc-b's file in web/: its automatic intent for it wakes cc-b.
+    // cc-a starts changing cc-b's file in web/: its automatic intent for the directory
+    // comes before its files are known here, and wakes no one (the overlap does).
     fleet.alpha.edits("web/login.ts", "export {}\n");
     let first = next_intent(&mut watching).await;
-    assert_eq!(first.why, Some(Why::Intent));
+    assert_eq!(first.why, None);
     // Committed, its changes are gone and the intent withdrawn; then it changes web/ again,
     // and zircd says the same intent again: nothing new to cc-b.
     std::fs::remove_file(fleet.alpha.clone.path().join("web/login.ts")).unwrap();
@@ -510,12 +510,13 @@ async fn an_automatic_intent_said_again_for_the_same_directory_wakes_a_session_o
         .sees_intent_of("cc-a", |paths| paths == ["web"])
         .await;
     fleet.alpha.says("marker for cc-b").await;
+    // What waited comes once, before the line that next wakes cc-b.
     let heard = until_marker(&mut watching, |heard| says(heard, "marker")).await;
-    assert_eq!(intent_wakes(&heard), Vec::<String>::new());
+    assert_eq!(intent_wakes(&heard).len(), 1, "{heard:?}");
 }
 
 #[tokio::test]
-async fn on_one_machine_an_automatic_intent_said_again_wakes_another_session_once() {
+async fn on_one_machine_an_automatic_intent_said_again_is_told_once() {
     let ergo = require_ergo!();
     let machine = Machine::start(&ergo, "alpha").await;
     let (theirs, mine) = (clone(), clone());
@@ -557,16 +558,18 @@ async fn on_one_machine_an_automatic_intent_said_again_wakes_another_session_onc
                 == present
         }
     };
+    // cc-b has only said it will change the file: no lines of its own to meet cc-a's.
     edit(&theirs, "web/login.ts", "export {}\n");
     let first = next_intent(&mut watching).await;
-    assert_eq!(first.why, Some(Why::Intent));
+    assert_eq!(first.why, None);
     std::fs::remove_file(theirs.path().join("web/login.ts")).unwrap();
     until_who(&machine, lists("cc-a", false), "cc-a's intent withdrawn").await;
     edit(&theirs, "web/login.ts", "export const total = 0\n");
     until_who(&machine, lists("cc-a", true), "cc-a's intent again").await;
     post(&machine, theirs.path(), "cc-a", "marker for cc-b").await;
+    // What waited comes once, before the line that next wakes cc-b.
     let heard = until_marker(&mut watching, |heard| says(heard, "marker")).await;
-    assert_eq!(intent_wakes(&heard), Vec::<String>::new());
+    assert_eq!(intent_wakes(&heard).len(), 1, "{heard:?}");
 }
 
 #[tokio::test]

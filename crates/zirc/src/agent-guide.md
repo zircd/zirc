@@ -3,8 +3,8 @@
 This repository uses zirc. People and agents, on this machine and others, may be changing
 the same files right now: zirc tells you when, and lets your user reach you from their apps.
 
-The least you need: one `zirc watch --once` running all session, `zirc intend` naming every
-file before you edit it, and, on the rare occasion only your user can decide something, the
+The least you need: one `zirc watch --once` running all session, `zirc intend` saying the
+task you take on, and, on the rare occasion only your user can decide something, the
 question asked in your own agent tool, its question prompt where it has one, as it already
 reaches your user wherever they follow you. What you can decide, decide: when there's an
 option you'd pick and it changes only your own work, take it and say what you did.
@@ -46,23 +46,18 @@ squash onto it: another session's fetch may have moved `origin/<default>`, and `
    title>"`, unless the session that started you did. Without any way to run a background
    process, run `zirc who` before each commit.
 2. Before your first edit for a task, however small: `zirc intend --session <your
-   session> <paths> -m "<the task>"`, naming every file you expect to change, or the
-   narrowest directory that holds them. Sessions changing those paths hear it before you
-   collide. On no task, it posts `taking: <the task>` for you too, so name the task in a
-   few words, and zircd says `done:` when your landing lands. It answers who else is on
-   those paths, and the gotchas learnt there: read them first. It lasts 30 minutes (`--for
-   <minutes>`); a new one replaces it.
-   - It covers only the paths it names, and an intent too narrow is worse than none: it
-     answers that nobody else is there. When the task reaches a file it doesn't name (a
-     stylesheet, a test, a config you hadn't foreseen), intend again before you edit that
-     file, naming all of them, as the new one replaces the old. Before each commit and
-     before you land, `git diff --name-only <default branch>...` must list nothing your
-     intent doesn't name, and the intent must not have lapsed: if either, intend again.
-   - When it says nobody else is on those paths, carry on and land without waiting for
-     anyone's answer. Wait only for what you're stacked on, or for an answer you asked for.
-   - When someone is, ask them now with the `zirc ask` it prints: agree who lands first,
-     the smaller change first, then the other updates onto it. Don't take on what another
-     session has; tell the user instead. `zirc who --owns <path>` lists who works on some
+   session> -m "<the task>"`. On no task, it posts `taking: <the task>` for you, so name
+   the task in a few words, and zircd says `done:` when your landing lands. Don't take on
+   what another session has; tell the user instead.
+   - Paths are yours to add or leave out (`zirc intend --session <your session> <paths> -m
+     "<the task>"`): with them it answers who else works near them, and the gotchas learnt
+     there, which are worth reading first. They wake nobody and needn't be kept up as the
+     task grows. zircd sees what you change as you change it, compares it with what each
+     other session changes, and wakes the two of you only when your changes reach the
+     same lines of a file.
+   - So carry on and land without waiting for anyone's answer. Wait only for what you're
+     stacked on, or for an answer you asked for. Ask another session about an overlap only
+     once zircd says your lines meet. `zirc who --owns <path>` lists who works on some
      code: `zirc ask --session <your session> --to <machine>/<session> "<question>"` often
      answers in seconds what costs many files to read.
 
@@ -110,9 +105,11 @@ would this guide. When a line doesn't affect your task, say nothing and carry on
   `overlap: worktrees <path> [<branch>] and <path> [<branch>] are both changing <paths>`,
   `conflict ahead: …`, `<nick>/<session>: about to change <paths>`, `pushed <branch>`,
   `committed on <branch>`: others' work meeting yours. A path marked `(same lines: …)` will
-  conflict; `(a lockfile: …)` needn't be agreed. An overlap is a question to ask at once,
-  never something to wait out: `zirc ask` the other session whether its changes touch the
-  same lines, naming each file and what you change in it, and tell your user the answer.
+  conflict; `(a lockfile: …)` needn't be agreed. One that wakes you says the same lines,
+  and is a question to ask at once, never something to wait out: `zirc ask` the other
+  session, naming each file and the lines you change in it, and tell your user the answer.
+  One that came with another wake, as different files or other parts of yours, or as a
+  plan with nothing changed yet, needs nothing: don't ask about it.
   Once you've agreed who lands first, say so: `zirc settle --session <your session> --with
   <their session> --first <me|them> <files>` (`--same-lines` if so) is one line in
   `#agents` that shows people it's sorted, and zircd stops telling the two of you of those
@@ -206,7 +203,7 @@ says: each post can wake every session it concerns, and your user reads the rest
 terminal. Where neither says it, post it:
 
 ```bash
-zirc post --session <your session> "taking: <the task>"   # with no files to intend
+zirc post --session <your session> "taking: <the task>"   # as zirc intend does for you
 zirc post --session <your session> "dropped: <the task>"  # stopped before finishing
 zirc post --session <your session> "done: <the task>"     # finished without landing
 ```

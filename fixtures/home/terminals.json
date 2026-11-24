@@ -79,7 +79,7 @@
         "output": "told #agents"
       },
       {
-        "output": "heads-up: other sessions are on these paths. Ask each now whether your changes touch the same lines, saying what you change in each file, and agree who lands first: the smaller change, then the other updates onto it."
+        "output": "for your information: other sessions are working near these paths. Nothing to ask or wait for: zircd compares your changes with theirs as you both make them, and wakes you both if they reach the same lines."
       },
       {
         "output": "  cc-91b7 is changing tests/e2e/harness.rs on main"
@@ -88,7 +88,7 @@
         "output": "  cc-91b7 is about to change tests/e2e: changing tests/e2e/harness.rs on main (said by zircd)"
       },
       {
-        "output": "  zirc ask --session cc-7d3a --to raj-studio/cc-91b7 'I change <what> in tests/e2e/harness.rs: do your changes touch the same lines, and who lands first?'"
+        "output": "  only if zircd says your lines meet in tests/e2e/harness.rs: zirc ask --session cc-7d3a --to raj-studio/cc-91b7 '<the lines you change, and who lands first>'"
       },
       {
         "command": "zirc who"
@@ -177,10 +177,13 @@
         "command": "zirc watch --session cc-91b7"
       },
       {
+        "output": "#agents raj-studio/watcher: cc-91b7: meanwhile, for you and needing nothing yet:"
+      },
+      {
         "output": "#agents henrik-mbp/cc-7d3a: about to change tests/e2e/reconnect.rs, tests/e2e/harness.rs: reconnect test: bind port 0 — names your tests/e2e/harness.rs, not changed by them yet: you change tests/e2e/harness.rs [id 7f3a2c]"
       },
       {
-        "output": "  ↳ hint (default): Your files, as zircd compared them: ask the other session now with zirc ask --session <your session> --to <machine>/<session>, naming what you change in each file and asking what it changes there and who lands first. Tell the user its answer; once you've agreed, say it for people to see: zirc settle --session <your session> --with <their session> --first <me|them> <files>, with --same-lines if so."
+        "output": "  ↳ hint (default): Different files, different parts of yours, or a plan with nothing changed yet, as zircd compared them: nothing to agree, so don't ask. Carry on; zircd says so if their changes reach your lines."
       },
       {
         "output": "#backend overlap: henrik-mbp is also changing tests/e2e/harness.rs"

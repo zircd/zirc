@@ -544,10 +544,17 @@ impl Daemon {
                 if self.partner(delivery, branch, session) {
                     Some(Why::Overlap)
                 } else {
-                    paths
+                    // Only where the lines may meet: a commit elsewhere in the session's
+                    // files merges with them, and is no news to it.
+                    let shared: Vec<&str> = paths
                         .iter()
-                        .any(|path| mine.contains(path.as_str()))
-                        .then_some(Why::Paths)
+                        .map(String::as_str)
+                        .filter(|path| mine.contains(path))
+                        .collect();
+                    (!shared.is_empty()
+                        && !session
+                            .is_some_and(|session| self.apart_here(delivery, session, &shared)))
+                    .then_some(Why::Paths)
                 }
             }
             _ => None,

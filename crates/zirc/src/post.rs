@@ -120,6 +120,15 @@ pub(crate) async fn intend(
     if takes {
         take_task(socket, &cwd, &session, &summary, out).await?;
     }
+    // No paths: the task alone. What the session changes says the rest.
+    if paths.is_empty() {
+        if !takes {
+            bail!("say which paths, or whose task it is with --session");
+        }
+        write!(out, "{}", start_hint(socket, home, &session).await)?;
+        write!(out, "{}", siblings(socket, &session).await)?;
+        return Ok(());
+    }
     let request = Request::Intend {
         paths: paths.iter().map(|path| cwd.join(path)).collect(),
         repo: cwd.clone(),
