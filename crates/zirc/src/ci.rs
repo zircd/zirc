@@ -9,6 +9,8 @@ use std::path::Path;
 
 use anyhow::{Context as _, Result, bail};
 use clap::{Args, Subcommand};
+use zirc_proto::AGENTS_CHANNEL;
+use zirc_proto::ci::SECRET_NAME;
 use zirc_proto::login::{CI_PATH, CI_TOKEN_NAME};
 
 /// What zirc.dev says of an account it no longer takes.
@@ -105,7 +107,7 @@ pub async fn ci(
             writeln!(out)?;
             writeln!(
                 out,
-                "That is {}'s CI token {}, shown this once. Keep it as a secret in your CI, as ZIRC_TOKEN.",
+                "That is {}'s CI token {}, shown this once. Keep it as a secret in your CI, as {SECRET_NAME}.",
                 made.organisation, made.name
             )?;
             writeln!(
@@ -115,12 +117,12 @@ pub async fn ci(
             writeln!(out)?;
             writeln!(
                 out,
-                "  curl -fsS {}{CI_PATH} -H \"Authorization: Bearer $ZIRC_TOKEN\" \\",
+                "  curl -fsS {}{CI_PATH} -H \"Authorization: Bearer ${SECRET_NAME}\" \\",
                 team.client.web()
             )?;
             writeln!(
                 out,
-                "    -d '{{\"channel\":\"#<repository>\",\"session\":\"<session>\",\"state\":\"failed\",\"text\":\"build 7 failed\"}}'"
+                "    -d '{{\"channel\":\"{AGENTS_CHANNEL}\",\"repository\":\"<repository>\",\"session\":\"<session>\",\"state\":\"failed\",\"text\":\"build 7 failed\"}}'"
             )?;
             writeln!(out)?;
             writeln!(
@@ -213,7 +215,7 @@ mod tests {
         assert!(out.contains("acme's CI token github"), "{out}");
         assert!(
             out.contains(&format!(
-                "curl -fsS {web}/ci -H \"Authorization: Bearer $ZIRC_TOKEN\""
+                "curl -fsS {web}/ci -H \"Authorization: Bearer $ZIRC_CI_TOKEN\""
             )),
             "{out}"
         );

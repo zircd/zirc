@@ -578,7 +578,7 @@ pub async fn connect(
 /// address.
 fn push(tools: &mut dyn Tools, root: &Path, remote: &Remote, changes: &[Change]) -> Result<String> {
     // A directory of its own, which git makes and `worktree remove` takes away.
-    let tree = std::env::temp_dir().join(format!("zirc-ci-connect-{}", std::process::id()));
+    let tree = std::env::temp_dir().join(format!("{CONNECT_BRANCH}-{}", std::process::id()));
     let at = tree.to_string_lossy().into_owned();
     let from = format!("origin/{}", remote.default);
     tools.run(

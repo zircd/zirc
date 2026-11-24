@@ -188,11 +188,11 @@ pub fn actions_step(web: &str, repository: &str) -> String {
           jq -nc --arg state "$STATE" --arg build "$GITHUB_RUN_ID" --arg branch "$BRANCH" \
             --arg text "$BRANCH $STATE in $GITHUB_WORKFLOW ($GITHUB_JOB)" --argjson test "$ZIRC_TEST" \
             --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            '{{channel: "{AGENTS}", repository: "{repository}", state: $state, build: $build, branch: $branch, text: $text, url: $url, data: {{test: $test, job: env.GITHUB_JOB}}}}' |
+            '{{channel: "{AGENTS_CHANNEL}", repository: "{repository}", state: $state, build: $build, branch: $branch, text: $text, url: $url, data: {{test: $test, job: env.GITHUB_JOB}}}}' |
             curl -fsS {web}{CI_PATH} -H "Authorization: Bearer ${SECRET_NAME}" -d @-
           if [ "$ZIRC_TEST" = true ]; then echo "A test failure, sent with {TEST_FAILURE_COMMAND}: nothing is wrong."; exit 1; fi
 "#,
-        AGENTS = "#agents",
+        AGENTS_CHANNEL = crate::AGENTS_CHANNEL,
         CI_PATH = crate::login::CI_PATH,
     )
 }
