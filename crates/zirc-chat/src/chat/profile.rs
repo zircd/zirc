@@ -101,8 +101,8 @@ pub const LOCKED_AWAY: &str = "locked";
 /// The away message a phone's app gives itself in the background: last active then.
 pub const BACKGROUND_AWAY: &str = "in the background";
 
-/// Someone's dot, green, amber or grey, as every app draws it beside their avatar in
-/// lists, headers and profiles: [`Standing`] without why they're away.
+/// Someone's dot, as every app draws it beside their avatar in lists, headers and profiles
+/// ([`Presence::dot`]): [`Standing`] without why they're away.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
@@ -113,6 +113,38 @@ pub enum Presence {
     Away,
     /// Not connected, or not known.
     Gone,
+}
+
+/// How a [`Presence`] is drawn, in every app (the user's choice, 23 Nov 2026: a filled
+/// green dot online, a hollow grey ring away): apps only draw it ([`Presence::dot`]).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct PresenceDot {
+    /// The theme role it's coloured in, by zirc-theme's name: `presence-here`,
+    /// `presence-away`, `presence-gone`.
+    pub tone: String,
+    /// Whether it's a ring on the ground behind it, not a filled dot.
+    pub hollow: bool,
+    /// A ring's stroke, as a share of the dot's size.
+    pub stroke: f32,
+}
+
+impl Presence {
+    /// How it's drawn: here a filled dot, away and gone rings, gone's fainter.
+    #[must_use]
+    pub fn dot(self) -> PresenceDot {
+        let (tone, hollow) = match self {
+            Self::Here => ("presence-here", false),
+            Self::Away => ("presence-away", true),
+            Self::Gone => ("presence-gone", true),
+        };
+        PresenceDot {
+            tone: tone.to_owned(),
+            hollow,
+            stroke: 0.22,
+        }
+    }
 }
 
 impl Standing {

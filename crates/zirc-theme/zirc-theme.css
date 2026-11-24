@@ -290,6 +290,7 @@
   --zirc-presence-here: #1E9E57;
   --zirc-presence-away: #5B6573;
   --zirc-presence-busy: #D93036;
+  --zirc-presence-gone: #808894;
   --zirc-reaction-mine-ground: #E6ECF7;
   --zirc-reaction-mine-border: #9DB8E8;
   --zirc-reaction-mine-text: #0B52A3;
@@ -342,6 +343,7 @@
     --zirc-presence-here: #3FB66B;
     --zirc-presence-away: #8C96A5;
     --zirc-presence-busy: #E5484D;
+    --zirc-presence-gone: #66707E;
     --zirc-reaction-mine-ground: #23345A;
     --zirc-reaction-mine-border: #4A6FB8;
     --zirc-reaction-mine-text: #DCE7FF;
@@ -394,6 +396,7 @@
   --zirc-presence-here: #3FB66B;
   --zirc-presence-away: #8C96A5;
   --zirc-presence-busy: #E5484D;
+  --zirc-presence-gone: #66707E;
   --zirc-reaction-mine-ground: #23345A;
   --zirc-reaction-mine-border: #4A6FB8;
   --zirc-reaction-mine-text: #DCE7FF;

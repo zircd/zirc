@@ -184,8 +184,8 @@ pub use plain::{
 pub use preview::Preview;
 pub use profile::{
     BACKGROUND_AWAY, BARE_AWAY, Card, CardWork, IDLE_AFTER_SECS, IDLE_AWAY, LOCKED_AWAY,
-    OFFLINE_AWAY, Presence, Profile, Standing, ago, ago_short, away_label, away_reason, away_title,
-    card_time, clock, list_when, span,
+    OFFLINE_AWAY, Presence, PresenceDot, Profile, Standing, ago, ago_short, away_label,
+    away_reason, away_title, card_time, clock, list_when, span,
 };
 pub use rich::{
     Block, CellAlign, LINK_LABEL_CHARS, ListItem, Span, SpanKind, TableSource, addressed,

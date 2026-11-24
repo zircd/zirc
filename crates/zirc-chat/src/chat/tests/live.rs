@@ -461,6 +461,22 @@ fn an_agent_away_with_messages_waiting_says_it_isnt_listening() {
 }
 
 #[test]
+fn a_dot_is_filled_here_and_a_ring_away_or_gone_each_in_its_own_role() {
+    let dots = [Presence::Here, Presence::Away, Presence::Gone].map(|presence| {
+        let dot = presence.dot();
+        (dot.tone, dot.hollow)
+    });
+    assert_eq!(
+        dots,
+        [
+            ("presence-here".to_owned(), false),
+            ("presence-away".to_owned(), true),
+            ("presence-gone".to_owned(), true),
+        ]
+    );
+}
+
+#[test]
 fn our_agent_is_named_by_its_task_until_it_says_a_name() {
     let mut chat = with_mbp();
     feed(
@@ -487,6 +503,10 @@ fn our_agent_is_named_by_its_task_until_it_says_a_name() {
     assert_eq!(title(&chat), "the login page");
     assert_eq!(chat.title("me-mbp/cc-1"), "the login page");
     assert_eq!(chat.short_title("me-mbp/cc-1"), "the login page");
+    assert_eq!(
+        chat.agent_intro("me-mbp/cc-1").map(|intro| intro.title),
+        Some("the login page".to_owned())
+    );
     // A name it says comes first.
     let named = Message {
         name: Some("checkout".into()),

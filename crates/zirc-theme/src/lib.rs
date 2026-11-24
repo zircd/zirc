@@ -628,8 +628,10 @@ pub struct Theme {
     pub presence_here: Rgb,
     /// Someone's dot when they're away.
     pub presence_away: Rgb,
-    /// Someone's dot when they're busy. Gone is a ring in [`Theme::muted`].
+    /// Someone's dot when they're busy.
     pub presence_busy: Rgb,
+    /// Someone's ring when they're gone: fainter than [`Theme::presence_away`]'s.
+    pub presence_gone: Rgb,
     /// A reaction you made: its ground.
     pub reaction_mine_ground: Rgb,
     /// A reaction you made: its border.
@@ -675,7 +677,7 @@ impl Theme {
 
     /// Every role, by its name in `tokens.json`, and its colour.
     #[must_use]
-    pub fn roles(&self) -> [(&'static str, Rgb); 45] {
+    pub fn roles(&self) -> [(&'static str, Rgb); 46] {
         [
             ("ground", self.ground),
             ("panel", self.panel),
@@ -717,6 +719,7 @@ impl Theme {
             ("presence-here", self.presence_here),
             ("presence-away", self.presence_away),
             ("presence-busy", self.presence_busy),
+            ("presence-gone", self.presence_gone),
             ("reaction-mine-ground", self.reaction_mine_ground),
             ("reaction-mine-border", self.reaction_mine_border),
             ("reaction-mine-text", self.reaction_mine_text),
@@ -1194,6 +1197,7 @@ struct Colors {
     presence_here: Pair,
     presence_away: Pair,
     presence_busy: Pair,
+    presence_gone: Pair,
     reaction_mine_ground: Pair,
     reaction_mine_border: Pair,
     reaction_mine_text: Pair,
@@ -1261,6 +1265,7 @@ static THEMES: LazyLock<(Theme, Theme)> = LazyLock::new(|| {
             presence_here: pick(c.presence_here),
             presence_away: pick(c.presence_away),
             presence_busy: pick(c.presence_busy),
+            presence_gone: pick(c.presence_gone),
             reaction_mine_ground: pick(c.reaction_mine_ground),
             reaction_mine_border: pick(c.reaction_mine_border),
             reaction_mine_text: pick(c.reaction_mine_text),

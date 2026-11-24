@@ -83,7 +83,8 @@ impl super::Chat {
     /// [`AgentCard`].
     #[must_use]
     pub fn agent_card(&self, nick: &str, session: &str, now: DateTime<Utc>) -> AgentCard {
-        let handle = self.session_label(session);
+        // By its name, else its task, as its row and header (the user's choice, 23 Nov 2026).
+        let handle = self.agent_label(nick, session);
         let whose_parts = self.whose(nick);
         let mine = whose_parts
             .as_ref()

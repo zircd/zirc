@@ -1937,13 +1937,10 @@ const PRESENCE_MARK: usize = 2;
 
 /// Someone's presence as a small mark in its colour: ● here, ○ away, ○ gone (fainter).
 fn presence_mark(theme: &Theme, presence: Presence) -> Span<'static> {
-    let (mark, colour) = match presence {
-        Presence::Here => ("● ", theme.presence_here),
-        // A ring away, as every app draws it (the user's choice, 23 Nov 2026), fainter gone.
-        Presence::Away => ("○ ", theme.presence_away),
-        Presence::Gone => ("○ ", theme.faint),
-    };
-    Span::styled(mark, fg(colour))
+    // A filled dot or a ring, in the theme role zirc-chat names, as every app draws it.
+    let dot = presence.dot();
+    let mark = if dot.hollow { "○ " } else { "● " };
+    Span::styled(mark, fg(theme.role(&dot.tone).unwrap_or(theme.muted)))
 }
 
 fn members_block() -> Block<'static> {
