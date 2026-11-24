@@ -759,12 +759,16 @@ mod tests {
         let mut watch = Watch::load(home.path(), Some("cc-1"), &[]).0;
         assert!(watch.nexts_left());
         let shown = watch.at_next("phone").expect("the phone's hint");
+        // The phone's, naming the app's page, and kept for its usage record.
         assert_eq!(
-            (shown.kind.as_str(), shown.layer),
-            (kind::NEXT_PHONE, Layer::Default)
+            (
+                shown.kind.as_str(),
+                shown.layer,
+                shown.text.contains(zirc_proto::onboarding::APP_PAGE),
+                watch.take_shown().len()
+            ),
+            (kind::NEXT_PHONE, Layer::Default, true, 1)
         );
-        assert!(shown.text.contains("zirc.dev/app"), "{}", shown.text);
-        assert_eq!(watch.take_shown().len(), 1, "for its usage record");
         // A later watch of the session says the phone's no more, but the next step's once.
         let mut again = Watch::load(home.path(), Some("cc-1"), &[]).0;
         assert_eq!(again.at_next("phone"), None);
