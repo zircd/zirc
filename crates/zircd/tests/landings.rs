@@ -208,7 +208,7 @@ async fn landings_and_a_broken_state_are_said_with_a_sessions_next_wake() {
 }
 
 #[tokio::test]
-async fn the_apple_apps_passing_with_a_landing_waits_for_the_next_wake() {
+async fn the_apple_apps_passing_with_a_landing_wakes_the_session_waiting_on_it() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), _] = two_machines(&ergo).await;
     alpha
@@ -237,26 +237,16 @@ async fn the_apple_apps_passing_with_a_landing_waits_for_the_next_wake() {
             return (text, delivery.why);
         }
     };
-    // They compile: awaited, but needing nothing, so it wakes nobody yet.
+    // They compile: what it waits on, so it wakes it, as //ops:land and `zirc watch` say it
+    // will (the user's choice, 24 Nov 2026: build 10258's pass, held for the next wake since
+    // 0b14e18, went unheard by a session idle until it was said).
     let pass = "cc-1 (apple/login): build 7's Apple apps compile on 1a2b3c4";
     ci.privmsg("#agents", &landing(pass)).unwrap();
-    assert_eq!(next_landing(&mut cc1).await, (pass.into(), None));
-    // The next line that wakes it brings it first.
-    let failed = "cc-1: build 8 of login failed in test: //api:unit";
-    ci.privmsg("#agents", failed).unwrap();
     assert_eq!(
-        next_post_why(&mut cc1).await,
-        (
-            "cc-1: meanwhile, for you and needing nothing yet:".into(),
-            Some(Why::Mention)
-        )
+        next_landing(&mut cc1).await,
+        (pass.into(), Some(Why::Awaited))
     );
-    assert_eq!(next_landing(&mut cc1).await.0, pass);
-    assert_eq!(
-        next_post_why(&mut cc1).await,
-        (failed.into(), Some(Why::Mention))
-    );
-    // Their failure wakes it at once.
+    // Their failure wakes it too.
     let broke = "cc-1 (apple/login): build 9's Apple apps failed to compile on 1a2b3c4";
     ci.privmsg("#agents", &landing(broke)).unwrap();
     assert_eq!(

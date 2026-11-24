@@ -46,20 +46,6 @@ pub(super) fn waits(response: &Response) -> bool {
     report(response) || ci_success(response) || housekeeping(response)
 }
 
-/// Whether `response` is CI saying the Apple apps compile, or pass, with a landing:
-/// `cc-1 (apple/login): build 7's Apple apps compile on 1a2b3c4`. A session waits for it
-/// (`//ops:land` waits on `apple/<branch>` for a change to them) but needs nothing of it,
-/// so it comes with the next wake rather than making one: such passes were 4 of a
-/// session's 16 wakes on 11 Nov 2026. Their failure says so, and wakes it.
-pub(super) fn apple_pass(response: &Response) -> bool {
-    ci_success(response)
-        && matches!(response, Response::Delivery(delivery) if {
-            let text = delivery.message.event.human_text();
-            let said = zirc_proto::said(&text);
-            said.starts_with("build ") && said.to_lowercase().contains("apple apps")
-        })
-}
-
 /// Whether `response` is an integration's line saying something went as it should
 /// ([`super::routine`]), such as `cc-1: landed login as 1a2b3c4 (build 7)`.
 fn ci_success(response: &Response) -> bool {
@@ -183,14 +169,13 @@ impl Daemon {
     pub(super) fn hold_reports(&mut self, response: &Response, reasons: &mut [Option<Why>]) {
         let report = waits(response);
         let chatter = agent_chatter(response);
-        let apple = apple_pass(response);
         let broadcast: BTreeSet<String> = self
             .watchers
             .iter()
             .filter_map(|watcher| watcher.session.clone())
             .filter(|session| self.broadcast_waits(response, session))
             .collect();
-        if !report && !chatter && !apple && broadcast.is_empty() {
+        if !report && !chatter && broadcast.is_empty() {
             return;
         }
         let waiting: Vec<(String, Why)> = self
@@ -202,7 +187,6 @@ impl Daemon {
                 let held = match *why {
                     Some(Why::Mention) if report || broadcast.contains(&session) => Why::Mention,
                     Some(Why::Topic) if chatter => Why::Topic,
-                    Some(Why::Awaited) if apple => Why::Awaited,
                     _ => return None,
                 };
                 *why = None;
@@ -305,36 +289,6 @@ impl Daemon {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_apple_apps_passing_is_held_for_one_session_and_for_several() {
-        let said = |text: &str| {
-            Response::Delivery(Delivery::new(
-                "#api",
-                "zirc-ci",
-                Message::new(
-                    "ci",
-                    Event::Custom {
-                        kind: zirc_proto::ci::LANDING_KIND.into(),
-                        data: serde_json::Value::Null,
-                        text: text.into(),
-                    },
-                ),
-            ))
-        };
-        for pass in [
-            "cc-1 (apple/login): build 7's Apple apps compile on 1a2b3c4",
-            "cc-1 (apple/login), cc-2 (apple/rail): build 7's Apple apps compile on 1a2b3c4",
-        ] {
-            assert!(apple_pass(&said(pass)), "{pass}");
-        }
-        for other in [
-            "cc-1 (apple/login), cc-2 (apple/rail): build 9's Apple apps failed to compile on 1a2b3c4",
-            "cc-1: landed login as 1a2b3c4 (build 7)",
-        ] {
-            assert!(!apple_pass(&said(other)), "{other}");
-        }
-    }
 
     #[test]
     fn a_report_says_only_that_something_is_done() {

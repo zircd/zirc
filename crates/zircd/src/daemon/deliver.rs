@@ -218,7 +218,6 @@ impl Daemon {
             if (why == Why::Mention
                 && (later::waits(response) || self.broadcast_waits(response, &session)))
                 || (why == Why::Topic && later::agent_chatter(response))
-                || (why == Why::Awaited && later::apple_pass(response))
             {
                 self.keep_for_later(&session, response, why);
                 continue;
