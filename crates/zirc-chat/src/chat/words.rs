@@ -142,6 +142,9 @@ pub const NEW_TAG: &str = "NEW";
 /// What puts a question off, such as the offer to turn notifications on.
 pub const NOT_NOW: &str = "Not now";
 
+/// What asks a teammate in: getting started's invite card's button.
+pub const INVITE: &str = "Invite";
+
 /// [`ACTIVITY`]'s empty line.
 pub const NOTHING_YET: &str = "Nothing yet";
 

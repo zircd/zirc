@@ -16,7 +16,7 @@ use zirc_proto::onboarding::{INVITE_PATH, Progress, State, Today, id};
 use super::flat::RichSpan;
 use super::lines::Keys;
 use super::rich::Span;
-use super::words::{DISMISS, NOT_NOW};
+use super::words::{DISMISS, INVITE, NOT_NOW};
 use super::{Callout, Chat, EntryKind, agent};
 
 /// What the card over an agent's conversation is headed, in every app.
@@ -309,7 +309,7 @@ impl Chat {
             // The step's own words, as Get started and the terminal say it.
             body: teammate_about(),
             button: Some(PromptButton {
-                label: "Invite".to_owned(),
+                label: INVITE.to_owned(),
                 action: PromptAction::Page {
                     path: INVITE_PATH.to_owned(),
                 },
