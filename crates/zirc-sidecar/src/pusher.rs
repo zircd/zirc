@@ -320,7 +320,7 @@ fn line_of(kept: &Kept, target: &str) -> Option<Line> {
         ("time".to_owned(), Some(format!("{time:.3}"))),
         ("msgid".to_owned(), Some(kept.msgid.clone())),
     ];
-    if !said.account.is_empty() && said.account != "*" {
+    if crate::exporter::known_account(&said.account).is_some() {
         line.tags
             .push(("account".to_owned(), Some(said.account.clone())));
     }
@@ -360,8 +360,8 @@ pub fn told(line: &Line) -> Option<(String, String, Said)> {
     }
     let account = line
         .tag("account")
-        .map(str::to_lowercase)
-        .filter(|account| !account.is_empty() && account != "*")?;
+        .and_then(crate::exporter::known_account)
+        .map(str::to_lowercase)?;
     let nick = line.source.as_deref()?.split('!').next()?.to_owned();
     Some((account, nick, Said::of(line.tag(TAG)?)?))
 }

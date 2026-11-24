@@ -59,6 +59,16 @@ impl Wake {
     }
 }
 
+/// What a [`Items::catch_up`] did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Read {
+    /// Whether anything changed.
+    pub changed: bool,
+    /// The row it stopped before, as Ergo is still writing it: passed over if it's still
+    /// there next time.
+    pub unplaced: Option<i64>,
+}
+
 /// Every role's items, and the history row they're read up to.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Items {
@@ -208,33 +218,36 @@ impl Items {
     }
 
     /// Takes in every history row after [`Items::row`] in `#ops` and `#agents`, from the
-    /// history at `history`, and says whether anything changed. A history whose schema this
-    /// doesn't know is left unread.
+    /// history at `history`, up to one Ergo is still writing (passed over when it's `pass`),
+    /// and says what it did. A history whose schema this doesn't know is left unread.
     ///
     /// # Errors
     ///
     /// When the history can't be read.
-    pub fn catch_up(&mut self, history: &Path) -> rusqlite::Result<bool> {
+    pub fn catch_up(&mut self, history: &Path, pass: Option<i64>) -> rusqlite::Result<Read> {
         let Opened::Open(connection) = exporter::open_history(history)? else {
-            return Ok(false);
+            return Ok(Read::default());
         };
         let channels = [zirc_proto::state::CHANNEL, zirc_proto::AGENTS_CHANNEL];
-        let mut changed = false;
+        let mut read = Read::default();
         loop {
-            let (heard, last) = exporter::messages_after(&connection, self.row, &channels, BATCH)?;
-            let Some(last) = last else {
-                return Ok(changed);
-            };
-            for each in heard {
-                changed |= self.heard(
+            let after = exporter::messages_after(&connection, self.row, &channels, BATCH, pass)?;
+            for each in after.heard {
+                read.changed |= self.heard(
                     &each.channel,
                     each.account.as_deref(),
                     &each.message,
                     each.at,
                 );
             }
-            changed |= self.row != last;
-            self.row = last;
+            if let Some(last) = after.last {
+                read.changed |= self.row != last;
+                self.row = last;
+            }
+            if after.unplaced.is_some() || after.last.is_none() {
+                read.unplaced = after.unplaced;
+                return Ok(read);
+            }
         }
     }
 }
@@ -253,19 +266,21 @@ where
 {
     let path = path_for(&history);
     let mut items = Items::load(&path);
+    let mut unplaced = None;
     loop {
         let read = {
             let mut copy = items.clone();
             let history = history.clone();
             tokio::task::spawn_blocking(move || {
-                copy.catch_up(&history).map(|changed| (copy, changed))
+                copy.catch_up(&history, unplaced).map(|read| (copy, read))
             })
             .await
         };
         let mut changed = match read {
-            Ok(Ok((read, changed))) => {
+            Ok(Ok((read, said))) => {
                 items = read;
-                changed
+                unplaced = said.unplaced;
+                said.changed
             }
             Ok(Err(error)) => {
                 warn!(%error, "couldn't read the history for roles' items");
@@ -413,5 +428,52 @@ mod tests {
         items.row = 42;
         items.save(&path).unwrap();
         assert_eq!(Items::load(&path), items);
+    }
+
+    #[test]
+    fn the_history_is_read_up_to_a_row_ergo_is_still_writing() {
+        use crate::trim::testing::{add, add_message, history};
+        let dir = tempfile::tempdir().unwrap();
+        let path = history(dir.path());
+        let said = |message: &Message| zirc_proto::encode(message).unwrap();
+        add(
+            &path,
+            "m1",
+            "#ops",
+            1_000_000_000,
+            "zirc-ci",
+            &said(&flaky("//a:b")),
+        );
+        add(
+            &path,
+            "m2",
+            "#general",
+            2_000_000_000,
+            "ada",
+            &said(&flaky("//c:d")),
+        );
+        let unplaced = add_message(&path, "m3", "ada", "half written");
+        add(
+            &path,
+            "m4",
+            "#ops",
+            4_000_000_000,
+            "zirc-ci",
+            &said(&flaky("//e:f")),
+        );
+        let mut items = Items::default();
+        let read = items.catch_up(&path, None).unwrap();
+        assert_eq!((read.changed, read.unplaced), (true, Some(unplaced)));
+        assert_eq!(
+            items.listing("fixer", 1).open.len(),
+            1,
+            "#ops's before the unplaced row"
+        );
+        assert_eq!(items.items[0].opened, 1);
+        // Still unplaced next time, it's passed over.
+        let read = items.catch_up(&path, Some(unplaced)).unwrap();
+        assert_eq!(read.unplaced, None);
+        assert_eq!(items.listing("fixer", 4).open.len(), 2);
+        assert!(!items.catch_up(&path, None).unwrap().changed);
     }
 }

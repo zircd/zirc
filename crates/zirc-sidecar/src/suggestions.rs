@@ -15,7 +15,7 @@
 //! to notice anything, and nothing of what anyone said is logged.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use rusqlite::Connection;
@@ -473,10 +473,7 @@ pub fn kept(history: &Path) -> Kept {
 ///
 /// When it can't be written.
 pub fn keep(history: &Path, kept: &Kept) -> std::io::Result<()> {
-    let path: PathBuf = history.with_file_name(KEPT);
-    let partial = path.with_extension("json.partial");
-    std::fs::write(&partial, serde_json::to_vec(kept)?)?;
-    std::fs::rename(&partial, &path)
+    crate::save_json(&history.with_file_name(KEPT), kept)
 }
 
 /// One round, at `now` (seconds): reads the history's new rows, lets the time pass and, when

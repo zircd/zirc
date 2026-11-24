@@ -126,14 +126,7 @@ impl Seen {
         }
         let remembered = i64::try_from(REMEMBERED.as_secs()).unwrap_or(i64::MAX);
         self.last.retain(|_, seen| *seen > now - remembered);
-        let saved = serde_json::to_vec(&self.last)
-            .map_err(std::io::Error::other)
-            .and_then(|bytes| {
-                let partial = self.path.with_extension("json.partial");
-                std::fs::write(&partial, bytes)?;
-                std::fs::rename(&partial, &self.path)
-            });
-        if let Err(error) = saved {
+        if let Err(error) = crate::save_json(&self.path, &self.last) {
             warn!(%error, path = %self.path.display(), "couldn't save who was connected");
         }
     }
@@ -173,8 +166,7 @@ fn message(data: &[u8]) -> Option<String> {
         _ => return None,
     }
     // Someone without an account, in through the gate, isn't counted.
-    let account = said.account.to_lowercase();
-    (!account.is_empty() && account != "*").then_some(account)
+    said.account()
 }
 
 /// From Ergo's history, the accounts that sent a channel message since `week` and since

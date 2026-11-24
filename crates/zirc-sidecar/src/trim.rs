@@ -96,7 +96,7 @@ pub fn find(
                 .map(|t| t.to_string())
                 .unwrap_or_default(),
             nick: item.nick,
-            account: Some(item.account).filter(|a| a != "*" && !a.is_empty()),
+            account: crate::exporter::known_account(&item.account).map(str::to_owned),
             text: readable(&item.message.message),
         });
     }

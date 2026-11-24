@@ -482,10 +482,15 @@ pub(crate) struct Said {
     pub tags: std::collections::BTreeMap<String, String>,
 }
 
+/// `account` as Ergo says a sender's, if it's one: not empty, nor Ergo's `*` for none.
+pub(crate) fn known_account(account: &str) -> Option<&str> {
+    (!account.is_empty() && account != "*").then_some(account)
+}
+
 impl Said {
-    /// The sender's account, lowercased; `None` when it had none (empty, or Ergo's `*`).
+    /// The sender's account, lowercased; `None` when it had none ([`known_account`]).
     pub fn account(&self) -> Option<String> {
-        Some(self.account.to_lowercase()).filter(|a| !a.is_empty() && a != "*")
+        known_account(&self.account).map(str::to_lowercase)
     }
 }
 
@@ -501,9 +506,24 @@ pub(crate) struct Heard {
     pub message: zirc_proto::Message,
 }
 
+/// What [`messages_after`] read.
+pub(crate) struct After {
+    /// The zirc messages said in the channels asked for, oldest first.
+    pub heard: Vec<Heard>,
+    /// The last row read, to read after next time; `None` when there was none new.
+    pub last: Option<i64>,
+    /// The row the read stopped before, as Ergo is still writing it: it has no place yet.
+    pub unplaced: Option<i64>,
+}
+
 /// The zirc messages said in `channels` after history row `row`, at most `most` rows, from
-/// the history open at `connection`, oldest first, with the last row read (which may be
-/// another channel's or not a zirc message), so the next read starts after it.
+/// the history open at `connection`.
+///
+/// Ergo keeps a message in several statements, each its own transaction: the message, then
+/// where it was said (a channel's `sequence`, a direct message's copies). Read between them, a
+/// row has no place yet, and read past it would never be heard; so the read stops before the
+/// first such row ([`After::unplaced`]), unless it's `pass`, which the caller has waited on
+/// long enough (as `pusher::kept::after` does).
 ///
 /// # Errors
 ///
@@ -513,46 +533,57 @@ pub(crate) fn messages_after(
     row: i64,
     channels: &[&str],
     most: i64,
-) -> rusqlite::Result<(Vec<Heard>, Option<i64>)> {
-    let wanted = (0..channels.len())
-        .map(|i| format!("?{}", i + 3))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let mut statement = connection.prepare_cached(&format!(
-        "SELECT h.id, s.target, s.nanotime, h.data FROM history h \
-         JOIN sequence s ON s.history_id = h.id \
-         WHERE h.id > ?1 AND lower(s.target) IN ({wanted}) ORDER BY h.id LIMIT ?2"
-    ))?;
-    let lowered: Vec<String> = channels.iter().map(|c| c.to_lowercase()).collect();
-    let bound: Vec<&dyn rusqlite::ToSql> = [&row as &dyn rusqlite::ToSql, &most]
-        .into_iter()
-        .chain(lowered.iter().map(|c| c as &dyn rusqlite::ToSql))
-        .collect();
+    pass: Option<i64>,
+) -> rusqlite::Result<After> {
+    let mut statement = connection.prepare_cached(
+        "SELECT h.id, s.target, s.nanotime, h.data, \
+         EXISTS (SELECT 1 FROM conversations c WHERE c.history_id = h.id) \
+         FROM history h LEFT JOIN sequence s ON s.history_id = h.id \
+         WHERE h.id > ?1 ORDER BY h.id LIMIT ?2",
+    )?;
     let rows = statement
-        .query_map(bound.as_slice(), |row| {
+        .query_map(rusqlite::params![row, most], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<i64>>(2)?,
                 row.get::<_, Vec<u8>>(3)?,
+                row.get::<_, bool>(4)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    let last = rows.last().map(|row| row.0);
-    let heard = rows
-        .into_iter()
-        .filter_map(|(_, channel, nanotime, data)| {
-            let said = said(&data).filter(|said| said.kind == PRIVMSG)?;
-            let message = zirc_proto::decode(&said.text).ok().flatten()?;
-            Some(Heard {
-                channel,
-                account: said.account(),
-                at: u64::try_from(nanotime / 1_000_000_000).unwrap_or_default(),
-                message,
-            })
-        })
-        .collect();
-    Ok((heard, last))
+    let mut after = After {
+        heard: Vec::new(),
+        last: None,
+        unplaced: None,
+    };
+    for (id, channel, nanotime, data, direct) in rows {
+        let Some((channel, nanotime)) = channel.zip(nanotime) else {
+            if !direct && Some(id) != pass {
+                after.unplaced = Some(id);
+                break;
+            }
+            after.last = Some(id);
+            continue;
+        };
+        after.last = Some(id);
+        if !channels.iter().any(|c| c.eq_ignore_ascii_case(&channel)) {
+            continue;
+        }
+        let Some(said) = said(&data).filter(|said| said.kind == PRIVMSG) else {
+            continue;
+        };
+        let Ok(Some(message)) = zirc_proto::decode(&said.text) else {
+            continue;
+        };
+        after.heard.push(Heard {
+            channel,
+            account: said.account(),
+            at: u64::try_from(nanotime / 1_000_000_000).unwrap_or_default(),
+            message,
+        });
+    }
+    Ok(after)
 }
 
 /// A history item's message, or `None` when it isn't one this reads.

@@ -101,14 +101,7 @@ impl Keys {
     }
 
     fn save(&self) {
-        let saved = serde_json::to_vec(&self.accounts)
-            .map_err(std::io::Error::other)
-            .and_then(|bytes| {
-                let partial = self.path.with_extension("json.partial");
-                std::fs::write(&partial, bytes)?;
-                std::fs::rename(&partial, &self.path)
-            });
-        if let Err(error) = saved {
+        if let Err(error) = crate::save_json(&self.path, &self.accounts) {
             warn!(%error, "couldn't save the device keys");
         }
     }

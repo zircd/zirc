@@ -105,8 +105,8 @@ pub fn record_in(line: &Line) -> Option<(Option<String>, i64, zirc_proto::Messag
     let message = zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG)?).ok()?;
     let account = line
         .tag("account")
-        .map(str::to_lowercase)
-        .filter(|account| !account.is_empty() && account != "*");
+        .and_then(crate::exporter::known_account)
+        .map(str::to_lowercase);
     let nanotime = line
         .tag("time")
         .and_then(|time| time.parse::<jiff::Timestamp>().ok())
