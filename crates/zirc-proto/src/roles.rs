@@ -220,11 +220,6 @@ impl Definition {
         }
         for trigger in &self.triggers {
             trigger.check()?;
-            if !trigger.inputs.is_empty() || !trigger.with.is_empty() {
-                return Err(
-                    "a role's trigger has no inputs or with: they were a workflow's".into(),
-                );
-            }
         }
         Ok(())
     }

@@ -3010,66 +3010,52 @@
               "type": "null"
             }
           ],
-          "description": "The level that starts a run."
-        },
-        "inputs": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "description": "Which input each thing the trigger knows fills: `input = \"field\"`, where the field\nis one its kind has ([`TriggerKind::fields`])."
+          "description": "The level that wakes it."
         },
         "said": {
           "type": [
             "string",
             "null"
           ],
-          "description": "Words that start a run when a person or an integration says them where the workflow\nlistens, whatever their case, as words of their own: `refund` isn't in `refunded`."
+          "description": "Words that wake it when a person or an integration says them, whatever their case, as\nwords of their own: `refund` isn't in `refunded`."
         },
         "reaction": {
           "type": [
             "string",
             "null"
           ],
-          "description": "The reaction that starts a run when a person gives it to a message the workflow\nheard, such as `🐛`."
+          "description": "The reaction that wakes it when a person gives it to a message, such as `🐛`."
         },
         "landed": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Paths a landing changes to start a run: a file, or a directory for everything under\nit; `.` for any landing. As CI says what a landing changed ([`crate::ci::Data`])."
+          "description": "Paths a landing changes to wake it: a file, or a directory for everything under\nit; `.` for any landing. As CI says what a landing changed ([`crate::ci::Data`])."
         },
         "every": {
           "type": [
             "string",
             "null"
           ],
-          "description": "How often a run starts by itself, such as `1d` ([`seconds`]): at every whole multiple\nof it since 1 January 1970 UTC, so `1d` is each midnight and `6h` is 0, 6, 12 and 18."
+          "description": "How often it wakes by itself, such as `1d` ([`seconds`]): at every whole multiple\nof it since 1 January 1970 UTC, so `1d` is each midnight and `6h` is 0, 6, 12 and 18."
         },
         "at": {
           "type": [
             "string",
             "null"
           ],
-          "description": "The time of day it starts at, `HH:MM` in UTC, when `every` is whole days."
+          "description": "The time of day it wakes at, `HH:MM` in UTC, when `every` is whole days."
         },
         "day": {
           "type": [
             "string",
             "null"
           ],
-          "description": "The day of the week it starts on, `mon` to `sun`, when `every` is `7d`."
-        },
-        "with": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "description": "What a run started by `every` is given: `input = \"value\"`."
+          "description": "The day of the week it wakes on, `mon` to `sun`, when `every` is `7d`."
         }
       },
-      "description": "What starts a run on its own, each trigger one of: a state ([`crate::state`]) being said, a\ntime coming round (`every`), words someone says where the workflow listens (`said`), a\nperson's reaction to a message there (`reaction`), or a landing that changes some paths\n(`landed`). What it knows of that fills the run's inputs (`inputs`), but a time, which\nknows nothing and is given them (`with`).\n\n```toml\n[[on]]\nstate = \"master\"\nlevel = \"broken\"\ninputs = { owner = \"owner\" }\n\n[[on]]\nevery = \"7d\"          # at least [`MIN_EVERY`]\nday = \"mon\"           # with 7d alone; Thursdays without it\nat = \"09:00\"          # UTC, when `every` is whole days; midnight without it\nwith = { what = \"update dependencies\" }\n\n[[on]]\nsaid = \"refund\"       # a person or an integration says it, as words of its own\ninputs = { ask = \"text\", who = \"by\" }   # of [`SAID_FIELDS`]\n\n[[on]]\nreaction = \"🐛\"        # a person's, on a message the workflow heard\ninputs = { report = \"text\", from = \"author\" }   # of [`REACTION_FIELDS`]\n\n[[on]]\nlanded = [\"server\", \"MODULE.bazel\"]   # files, or everything under a directory\ninputs = { commit = \"commit\", by = \"session\" } # of [`LANDED_FIELDS`]\n```"
+      "description": "What wakes a role's holder on its own ([`crate::roles`]), each trigger one of: a state\n([`crate::state`]) being said, a time coming round (`every`), words someone says\n(`said`), a person's reaction to a message (`reaction`), or a landing that changes some\npaths (`landed`).\n\n```toml\nstate = \"master\"\nlevel = \"broken\"\n\nevery = \"7d\"          # at least [`MIN_EVERY`]\nday = \"mon\"           # with 7d alone; Thursdays without it\nat = \"09:00\"          # UTC, when `every` is whole days; midnight without it\n\nsaid = \"refund\"       # a person or an integration says it, as words of its own\n\nreaction = \"🐛\"        # a person's, on a message\n\nlanded = [\"server\", \"MODULE.bazel\"]   # files, or everything under a directory\n```"
     },
     "Seat": {
       "type": "object",

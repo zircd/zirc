@@ -1,13 +1,11 @@
 //! What wakes something on its own, said once for whatever it wakes: a state ([`crate::state`])
 //! being said, a time coming round (`every`), words someone says (`said`), a person's
 //! reaction to a message (`reaction`), or a landing that changes some paths (`landed`).
-//! Workflows started runs on them; a role ([`crate::roles`]) wakes its holder on them. What
+//! A role ([`crate::roles`]) wakes its holder on them. What
 //! a trigger is, the rules it keeps ([`Trigger::check`]), whether something that happened
 //! matches it ([`Trigger::matches`]), when a time comes round ([`Schedule`], [`came_round`])
 //! and how people read it ([`Trigger::words`]) are all here, so the sidecar, zirc.dev and
 //! the apps never decide them twice.
-
-use std::collections::BTreeMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -15,35 +13,24 @@ use ts_rs::TS;
 
 use crate::state::Level;
 
-/// What starts a run on its own, each trigger one of: a state ([`crate::state`]) being said, a
-/// time coming round (`every`), words someone says where the workflow listens (`said`), a
-/// person's reaction to a message there (`reaction`), or a landing that changes some paths
-/// (`landed`). What it knows of that fills the run's inputs (`inputs`), but a time, which
-/// knows nothing and is given them (`with`).
+/// What wakes a role's holder on its own ([`crate::roles`]), each trigger one of: a state
+/// ([`crate::state`]) being said, a time coming round (`every`), words someone says
+/// (`said`), a person's reaction to a message (`reaction`), or a landing that changes some
+/// paths (`landed`).
 ///
 /// ```toml
-/// [[on]]
 /// state = "master"
 /// level = "broken"
-/// inputs = { owner = "owner" }
 ///
-/// [[on]]
 /// every = "7d"          # at least [`MIN_EVERY`]
 /// day = "mon"           # with 7d alone; Thursdays without it
 /// at = "09:00"          # UTC, when `every` is whole days; midnight without it
-/// with = { what = "update dependencies" }
 ///
-/// [[on]]
 /// said = "refund"       # a person or an integration says it, as words of its own
-/// inputs = { ask = "text", who = "by" }   # of [`SAID_FIELDS`]
 ///
-/// [[on]]
-/// reaction = "🐛"        # a person's, on a message the workflow heard
-/// inputs = { report = "text", from = "author" }   # of [`REACTION_FIELDS`]
+/// reaction = "🐛"        # a person's, on a message
 ///
-/// [[on]]
 /// landed = ["server", "MODULE.bazel"]   # files, or everything under a directory
-/// inputs = { commit = "commit", by = "session" } # of [`LANDED_FIELDS`]
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -52,38 +39,30 @@ pub struct Trigger {
     /// The state's name, such as `master`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
-    /// The level that starts a run.
+    /// The level that wakes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub level: Option<Level>,
-    /// Which input each thing the trigger knows fills: `input = "field"`, where the field
-    /// is one its kind has ([`TriggerKind::fields`]).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub inputs: BTreeMap<String, String>,
-    /// Words that start a run when a person or an integration says them where the workflow
-    /// listens, whatever their case, as words of their own: `refund` isn't in `refunded`.
+    /// Words that wake it when a person or an integration says them, whatever their case, as
+    /// words of their own: `refund` isn't in `refunded`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub said: Option<String>,
-    /// The reaction that starts a run when a person gives it to a message the workflow
-    /// heard, such as `🐛`.
+    /// The reaction that wakes it when a person gives it to a message, such as `🐛`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reaction: Option<String>,
-    /// Paths a landing changes to start a run: a file, or a directory for everything under
+    /// Paths a landing changes to wake it: a file, or a directory for everything under
     /// it; `.` for any landing. As CI says what a landing changed ([`crate::ci::Data`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub landed: Vec<String>,
-    /// How often a run starts by itself, such as `1d` ([`seconds`]): at every whole multiple
+    /// How often it wakes by itself, such as `1d` ([`seconds`]): at every whole multiple
     /// of it since 1 January 1970 UTC, so `1d` is each midnight and `6h` is 0, 6, 12 and 18.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub every: Option<String>,
-    /// The time of day it starts at, `HH:MM` in UTC, when `every` is whole days.
+    /// The time of day it wakes at, `HH:MM` in UTC, when `every` is whole days.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<String>,
-    /// The day of the week it starts on, `mon` to `sun`, when `every` is `7d`.
+    /// The day of the week it wakes on, `mon` to `sun`, when `every` is `7d`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub day: Option<String>,
-    /// What a run started by `every` is given: `input = "value"`.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub with: BTreeMap<String, String>,
 }
 
 /// What a trigger is, by which of its fields it has.
@@ -100,18 +79,6 @@ pub enum TriggerKind {
     /// `landed`.
     Landed,
 }
-
-/// What a `said` trigger can pass on as inputs: the message's text, who said it, where, and
-/// its id on the server.
-pub const SAID_FIELDS: [&str; 4] = ["text", "by", "channel", "id"];
-
-/// What a `reaction` trigger can pass on: the message's text, who wrote it, who reacted,
-/// where, and the message's id.
-pub const REACTION_FIELDS: [&str; 5] = ["text", "author", "by", "channel", "id"];
-
-/// What a `landed` trigger can pass on: the landing's commit, branch, the session that
-/// queued it, its build, the build's page and the commit's subject.
-pub const LANDED_FIELDS: [&str; 6] = ["commit", "branch", "session", "build", "link", "subject"];
 
 /// The longest `said` is, in characters.
 pub const MAX_SAID: usize = 80;
@@ -142,18 +109,6 @@ impl TriggerKind {
         }
     }
 
-    /// The fields its `inputs` may read; none for a time, which is given `with`.
-    #[must_use]
-    pub fn fields(self) -> &'static [&'static str] {
-        match self {
-            Self::State => &STATE_FIELDS,
-            Self::Every => &[],
-            Self::Said => &SAID_FIELDS,
-            Self::Reaction => &REACTION_FIELDS,
-            Self::Landed => &LANDED_FIELDS,
-        }
-    }
-
     /// The field of a trigger that makes it this kind, as a file writes it.
     #[must_use]
     pub const fn word(self) -> &'static str {
@@ -167,7 +122,7 @@ impl TriggerKind {
     }
 }
 
-/// Whether a landing that changed `changed` starts a run of a trigger on `paths`: a changed
+/// Whether a landing that changed `changed` wakes a trigger on `paths`: a changed
 /// file is one of them or under one; `.` is any landing. A changed path ending in `/` is a
 /// directory CI named in place of the many files it changed there: anything in it may have.
 #[must_use]
@@ -185,10 +140,10 @@ pub fn landed_under(paths: &[String], changed: &[String]) -> bool {
     })
 }
 
-/// The shortest `every` may be, in seconds: a workflow isn't a clock.
+/// The shortest `every` may be, in seconds: a role isn't a clock.
 pub const MIN_EVERY: u64 = 300;
 
-/// How long after its time a run `every` starts may still start, in seconds, as when the
+/// How long after its time an `every` may still wake, in seconds, as when the
 /// server was restarting then: later, that time is passed over.
 pub const EVERY_GRACE: u64 = 3600;
 
@@ -288,11 +243,8 @@ impl Trigger {
     }
 }
 
-/// The fields of a state a trigger can pass on as inputs.
-pub const STATE_FIELDS: [&str; 5] = ["repo", "name", "why", "owner", "link"];
-
 /// How many seconds `text` says, as every length of time is written ([`crate::duration`]),
-/// such as `30m`: what a trigger's `every` and a workflow's waits take.
+/// such as `30m`: what a trigger's `every` takes.
 ///
 /// # Errors
 ///
@@ -365,19 +317,14 @@ impl Trigger {
         let kind = self.kind()?;
         let word = kind.word();
         self.schedule().map_err(|e| format!("a trigger: {e}"))?;
-        if kind != TriggerKind::Every
-            && (!self.with.is_empty() || self.at.is_some() || self.day.is_some())
-        {
+        if kind != TriggerKind::Every && (self.at.is_some() || self.day.is_some()) {
             return Err(format!(
-                "the trigger on {word} has with, at or day, which only every has"
+                "the trigger on {word} has at or day, which only every has"
             ));
         }
-        if (kind != TriggerKind::State && self.level.is_some())
-            || (kind == TriggerKind::Every && !self.inputs.is_empty())
-        {
+        if kind != TriggerKind::State && self.level.is_some() {
             return Err(format!(
-                "a trigger with {word} has a level or inputs, which only a state has: \
-                 give a time's inputs as with"
+                "a trigger with {word} has a level, which only a state has"
             ));
         }
         match kind {
