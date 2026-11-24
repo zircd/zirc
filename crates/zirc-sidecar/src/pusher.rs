@@ -543,6 +543,7 @@ impl Running {
             if let Some(channel) = &push.channel
                 && !self.is_member(&push.account, channel).await
             {
+                info!("a push not sent: its person isn't in the channel now");
                 continue;
             }
             let running = Arc::clone(&self);
@@ -612,6 +613,7 @@ impl Running {
                 .get(&key)
                 .is_some_and(|read| *read >= push.nanotime)
             {
+                info!("a push not sent: read on another device meanwhile");
                 return;
             }
             let pushed = memory.pushed.entry(key).or_default();
@@ -621,6 +623,8 @@ impl Running {
         let subscription = self.subscription(&push.endpoint).await;
         if let Some(subscription) = subscription {
             self.send(&subscription, &push.line, true).await;
+        } else {
+            info!("a push not sent: its phone is no longer on file");
         }
     }
 
@@ -661,6 +665,7 @@ impl Running {
     async fn send(&self, subscription: &Subscription, line: &str, urgent: bool) {
         // Kept before the pusher checked them: never posted to.
         if !relayed(&subscription.endpoint, &self.pusher.subscriber) {
+            warn!("a phone on file whose endpoint isn't zirc.dev's relay: forgetting it");
             self.forget(&subscription.endpoint).await;
             return;
         }
@@ -713,7 +718,7 @@ impl Running {
                 continue;
             }
             match sent {
-                Ok(status) if status.is_success() => {}
+                Ok(status) if status.is_success() => info!(urgent, "a push was taken by the relay"),
                 Ok(status) if status == 404 || status == 410 => {
                     info!(%status, "a phone's push endpoint is gone: forgetting it");
                     self.forget(&subscription.endpoint).await;
@@ -775,6 +780,21 @@ fn pushes_after(
                 .transpose()?
                 .flatten();
             pushes.extend(decide(row, &phones, answered.as_ref(), now));
+        }
+        // What it read and made of it, in counts: why nothing reached a phone is otherwise
+        // invisible (step 0, 24 Nov 2026: no push for a day, and nothing said why).
+        if !read.kept.is_empty() {
+            let accounts: BTreeSet<&str> = phones
+                .iter()
+                .map(|phone| phone.subscription.account.as_str())
+                .collect();
+            info!(
+                messages = read.kept.len(),
+                phones = phones.len(),
+                accounts = accounts.len(),
+                pushes = pushes.len(),
+                "the pusher read new messages"
+            );
         }
         let moved = read.newest != last;
         if moved {
