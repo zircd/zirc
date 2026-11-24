@@ -113,8 +113,10 @@ would this guide. When a line doesn't affect your task, say nothing and carry on
   conflict; `(a lockfile: …)` needn't be agreed. An overlap is a question to ask at once,
   never something to wait out: `zirc ask` the other session whether its changes touch the
   same lines, naming each file and what you change in it, and tell your user the answer.
-  Say an agreed split in an intent. When another session's branch lands, zircd wakes you
-  to update onto it.
+  Once you've agreed who lands first, say so: `zirc settle --session <your session> --with
+  <their session> --first <me|them> <files>` (`--same-lines` if so) is one line in
+  `#agents` that shows people it's sorted, and zircd stops telling the two of you of those
+  files. When another session's branch lands, zircd wakes you to update onto it.
 - `#<channel> <nick>/<session>: <text>`, or `<nick>: <text>` from a person: something that
   names you, your files or a topic you joined. Its `[id …]` is what `zirc react` takes.
   A link in it ending `/m/<organisation>/<id>` is a file they shared, a picture often,

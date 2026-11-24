@@ -238,10 +238,13 @@ pub async fn heard(watching: &mut Watching) -> Heard {
         .expect("zircd stopped")
 }
 
+/// The next thing said that isn't a working set, nor a wake's own line
+/// ([`zirc_proto::woke`]), which follows every wake of a session's watch.
 pub async fn next(watching: &mut Watching) -> Delivery {
     loop {
         if let Heard::Message(delivery) = heard(watching).await
             && !matches!(delivery.message.event, Event::Working { .. })
+            && zirc_proto::woke::Woke::of(&delivery.message.event).is_none()
         {
             return delivery;
         }

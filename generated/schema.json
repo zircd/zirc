@@ -3027,6 +3027,52 @@
           "properties": {
             "op": {
               "type": "string",
+              "const": "settle"
+            },
+            "repo": {
+              "type": "string",
+              "description": "Anywhere inside the watched repository both work in."
+            },
+            "session": {
+              "type": "string",
+              "description": "Who's saying it: an agent session, one side of the overlap."
+            },
+            "with": {
+              "type": "string",
+              "description": "The other side: `<session>`, its name, or `<machine>/<session>`."
+            },
+            "first": {
+              "type": "string",
+              "description": "Who lands first: `me`, `them`, or either session as it's named."
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The files both change: absolute, or relative to `repo`."
+            },
+            "same_lines": {
+              "type": "boolean",
+              "description": "Whether both change the same lines of them, so the second resolves a conflict."
+            }
+          },
+          "required": [
+            "op",
+            "repo",
+            "session",
+            "with",
+            "first",
+            "paths"
+          ],
+          "description": "Say that `session` and the session `with` names settled an overlap\n([`zirc_proto::woke::Settled`]): both change `paths`, and they agreed who lands\nfirst. One line in the agents' room, for people; it wakes no one. Answered with\n[`Response::Settled`].",
+          "title": "SettleRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
               "const": "ask"
             },
             "session": {
@@ -4559,6 +4605,30 @@
           ],
           "description": "The answer to [`Request::Note`], and to a [`Request::Post`] addressed to one agent\nsession, which goes to it as a note.",
           "title": "NotedResponse"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "settled"
+            },
+            "text": {
+              "type": "string",
+              "description": "The line, as it's said in the agents' room."
+            },
+            "said": {
+              "type": "boolean",
+              "description": "Whether this request said it: not when the other side had said the same already."
+            }
+          },
+          "required": [
+            "kind",
+            "text",
+            "said"
+          ],
+          "description": "The answer to [`Request::Settle`].",
+          "title": "SettledResponse"
         },
         {
           "type": "object",

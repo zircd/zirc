@@ -298,6 +298,10 @@ fn is_activity_of(nick: &str, session: &str, entry: &Entry) -> bool {
     if entry.from.eq_ignore_ascii_case(nick) && message.session == session {
         return true;
     }
+    // An overlap it settled is its own whichever side said so.
+    if let Some(settled) = zirc_proto::woke::Settled::of(&message.event) {
+        return settled.first.is(nick, session) || settled.second.is(nick, session);
+    }
     // CI says a landing or deploy from its own nick, and names the session that queued it,
     // and its machine: a session's id is unique only on its machine. An older CI's event
     // names no machine, and goes by the session alone.

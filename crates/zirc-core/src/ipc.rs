@@ -152,6 +152,25 @@ pub enum Request {
         /// What it says.
         text: String,
     },
+    /// Say that `session` and the session `with` names settled an overlap
+    /// ([`zirc_proto::woke::Settled`]): both change `paths`, and they agreed who lands
+    /// first. One line in the agents' room, for people; it wakes no one. Answered with
+    /// [`Response::Settled`].
+    Settle {
+        /// Anywhere inside the watched repository both work in.
+        repo: PathBuf,
+        /// Who's saying it: an agent session, one side of the overlap.
+        session: String,
+        /// The other side: `<session>`, its name, or `<machine>/<session>`.
+        with: String,
+        /// Who lands first: `me`, `them`, or either session as it's named.
+        first: String,
+        /// The files both change: absolute, or relative to `repo`.
+        paths: Vec<PathBuf>,
+        /// Whether both change the same lines of them, so the second resolves a conflict.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        same_lines: bool,
+    },
     /// Ask agents something, as `session` ([`zirc_proto::Event::Query`]): those of the
     /// machine `to` names, `<machine>/<session>` for one of them, or a person's nick for
     /// those of each of their machines here. Their watches hear it if their machine lets
@@ -714,6 +733,13 @@ pub enum Response {
     Noted {
         /// Where it went: `<machine>/<session>`.
         to: String,
+    },
+    /// The answer to [`Request::Settle`].
+    Settled {
+        /// The line, as it's said in the agents' room.
+        text: String,
+        /// Whether this request said it: not when the other side had said the same already.
+        said: bool,
     },
     /// The answer to [`Request::Ask`].
     Asked {

@@ -204,11 +204,14 @@ pub mod glyphs {
     pub const LOCK: &str = "lock";
     /// Notifications: a bell.
     pub const BELL: &str = "bell";
+    /// An overlap two agents settled: two arrows passing.
+    pub const SETTLED: &str = "settled";
 
     /// Every glyph: its name and its SVG.
     pub const ALL: &[(&str, &[u8])] = &[
         (LOCK, include_bytes!("../glyphs/lock.svg")),
         (BELL, include_bytes!("../glyphs/bell.svg")),
+        (SETTLED, include_bytes!("../glyphs/settled.svg")),
     ];
 
     /// The glyph called `name`, as an SVG: `None` for one there isn't.
@@ -575,6 +578,8 @@ pub struct Theme {
     pub warning: Rgb,
     /// What went wrong.
     pub error: Rgb,
+    /// Another agent's doing, as the edge of a wake line it caused (`zirc_proto::woke`).
+    pub agent: Rgb,
     /// Inline code and code blocks sit on it.
     pub code_ground: Rgb,
     /// A message that mentions you: a tinted row, with a [`Theme::warning`] bar.
@@ -670,7 +675,7 @@ impl Theme {
 
     /// Every role, by its name in `tokens.json`, and its colour.
     #[must_use]
-    pub fn roles(&self) -> [(&'static str, Rgb); 44] {
+    pub fn roles(&self) -> [(&'static str, Rgb); 45] {
         [
             ("ground", self.ground),
             ("panel", self.panel),
@@ -686,6 +691,7 @@ impl Theme {
             ("ok", self.ok),
             ("warning", self.warning),
             ("error", self.error),
+            ("agent", self.agent),
             ("code-ground", self.code_ground),
             ("mention-ground", self.mention_ground),
             ("pill-ground", self.pill_ground),
@@ -1146,6 +1152,7 @@ struct Colors {
     ok: Pair,
     warning: Pair,
     error: Pair,
+    agent: Pair,
     code_ground: Pair,
     mention_ground: Pair,
     pill_ground: Pair,
@@ -1212,6 +1219,7 @@ static THEMES: LazyLock<(Theme, Theme)> = LazyLock::new(|| {
             ok: pick(c.ok),
             warning: pick(c.warning),
             error: pick(c.error),
+            agent: pick(c.agent),
             code_ground: pick(c.code_ground),
             mention_ground: pick(c.mention_ground),
             pill_ground: pick(c.pill_ground),

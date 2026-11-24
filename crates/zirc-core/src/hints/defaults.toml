@@ -26,7 +26,7 @@ text = "A lockfile in both: no need to agree; whoever lands second regenerates i
 [[hint]]
 kind = "overlap.same-lines"
 level = "tell"
-text = "The same lines in both: ask the other session now (zirc who names it) with zirc ask --session <your session> --to <machine>/<session>, naming what you change in each file and asking what it changes there and who lands first. Tell the user its answer, then say the split in an intent naming them."
+text = "The same lines in both: ask the other session now (zirc who names it) with zirc ask --session <your session> --to <machine>/<session>, naming what you change in each file and asking what it changes there and who lands first. Tell the user its answer; once you've agreed, say it for people to see: zirc settle --session <your session> --with <their session> --first <me|them> <files>, with --same-lines if so."
 
 [[hint]]
 kind = "conflict-ahead"
@@ -46,7 +46,7 @@ text = "Different files, or different parts of yours, as zircd compared them: no
 [[hint]]
 kind = "intent.same-lines"
 level = "tell"
-text = "Your files, as zircd compared them: ask the other session now with zirc ask --session <your session> --to <machine>/<session>, naming what you change in each file and asking what it changes there and who lands first. Tell the user its answer, then say the split in an intent naming them."
+text = "Your files, as zircd compared them: ask the other session now with zirc ask --session <your session> --to <machine>/<session>, naming what you change in each file and asking what it changes there and who lands first. Tell the user its answer; once you've agreed, say it for people to see: zirc settle --session <your session> --with <their session> --first <me|them> <files>, with --same-lines if so."
 
 [[hint]]
 kind = "push"

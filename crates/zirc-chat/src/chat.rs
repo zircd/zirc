@@ -91,6 +91,7 @@ mod typing;
 mod unread;
 mod view;
 mod waiting;
+mod woke;
 mod words;
 mod working;
 
@@ -231,6 +232,7 @@ pub use waiting::{
     WAITING_FOR_YOU, WaitingAction, WaitingButton, WaitingCard, WaitingDoes, WaitingItem,
     WaitingKind,
 };
+pub use woke::{Callout, EXCERPT as WOKE_EXCERPT, settled_of, woke_of};
 pub use words::labels;
 pub use words::{
     ACTIVITY, ACTIVITY_HINT, ADD_REACTION, ADVANCED, ASKING_ZIRC_DEV, ATTACH, BACK,
@@ -541,6 +543,9 @@ pub struct Chat {
     /// Channels asked for while not connected, to join on connecting, the latest first: a
     /// channel opened offline is joined once back, never dropped.
     offline_joins: Vec<String>,
+    /// The one-time notes our person has seen, in any of their apps, once an app said
+    /// ([`Chat::set_notes_seen`]): `None` until then, and no note shows.
+    notes_seen: Option<HashSet<zirc_proto::onboarding::Note>>,
     /// Whether the channel shown was shown as the first joined, and nothing's been shown
     /// since: one earlier in the order takes its place, whichever the server joins first.
     first_shown: bool,
@@ -709,6 +714,7 @@ impl Chat {
             targets: HashSet::new(),
             show_on_join: None,
             offline_joins: Vec::new(),
+            notes_seen: None,
             first_shown: false,
             divider: None,
             divider_seen: None,

@@ -1,0 +1,680 @@
+//! What agents do, said where people see it (the user's decisions, 23 and 24 Nov 2026):
+//! each wake of a session's watch as one line in the session's own conversation
+//! ([`Woke`], [`KIND`]: `Woke: build 612 failed on main`), and each overlap two sessions
+//! settled as one line in the agents' room ([`Settled`], [`SETTLED_KIND`]), which the
+//! session that agreed says with `zirc settle`. zircd says a wake for the session it woke,
+//! in the room its posts go to, at info, so history keeps it; apps show it only in the
+//! session's conversation, and it's nothing unread, nothing pushed and wakes no one.
+//!
+//! Every word of both lines is decided here, and which of [`Tone`]'s colours a wake's edge
+//! has; who is named, as people read them, is the apps' to say ([`Woke::words`]'s `who`).
+//! A wake says what happened, never what anyone said: an app adds the words of the line
+//! that woke it ([`Woke::line`]) only where its reader can read that line anyway.
+
+use serde::{Deserialize, Serialize};
+
+use crate::Event;
+use crate::card::State;
+use crate::state::Level;
+
+/// The kind of a wake's event.
+pub const KIND: &str = "x-zirc/woke";
+
+/// The kind of a settled overlap's event.
+pub const SETTLED_KIND: &str = "x-zirc/overlap-settled";
+
+/// What a wake's line starts with, set in bold before its words: `Woke: build 612 failed`.
+pub const LABEL: &str = "Woke:";
+
+/// What a settled overlap's line is headed by.
+pub const SETTLED_LABEL: &str = "Overlap settled";
+
+/// Whether `event` is a wake's line: what a room keeps to Everything, never counts unread
+/// and never pushes.
+#[must_use]
+pub fn is_woke(event: &Event) -> bool {
+    matches!(event, Event::Custom { kind, .. } if kind == KIND)
+}
+
+/// What says so, read leniently: one a newer zircd says that this reader doesn't know is
+/// none, rather than a wake that can't be read.
+fn known<'de, D, T>(from: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let said = serde_json::Value::deserialize(from)?;
+    Ok(serde_json::from_value(said).ok())
+}
+
+/// Whether `kind` is one of these: neither wakes any session's watch.
+#[must_use]
+pub fn is_kind(kind: &str) -> bool {
+    kind == KIND || kind == SETTLED_KIND
+}
+
+/// Whose doing a wake was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum By {
+    /// CI, or how something in the repository stands.
+    Ci,
+    /// Another agent session.
+    Agent,
+    /// A person.
+    Person,
+    /// zirc itself, or one a newer zircd says that this reader doesn't know.
+    #[serde(other)]
+    Zirc,
+}
+
+/// What happened, that woke the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum What {
+    /// CI said how a build, a landing or a deploy went ([`Woke::build`], [`Woke::state`]).
+    Build,
+    /// How something the team shares stands changed, such as the default branch broken.
+    State,
+    /// Someone wrote to it directly.
+    Wrote,
+    /// Someone named it in a channel.
+    Mentioned,
+    /// Someone replied to it in a channel.
+    Replied,
+    /// Another agent asked it something.
+    Asked,
+    /// Another agent answered what it asked.
+    Answered,
+    /// Another agent sent it a note.
+    Noted,
+    /// Someone reacted to what it said.
+    Reacted,
+    /// Its person answered its request.
+    Decided,
+    /// Another session is about to change its files.
+    Intends,
+    /// Another session is changing the same files.
+    Overlap,
+    /// Another's push changes the same lines as its work.
+    Conflict,
+    /// Changes to its files landed, or went onto its branch.
+    Landed,
+    /// Another session built on its branch.
+    StackedOn,
+    /// Another session committed to files it changes.
+    Committed,
+    /// A post in a topic it joined, or that names its files.
+    Posted,
+    /// One a newer zircd says that this reader doesn't know.
+    #[serde(other)]
+    Other,
+}
+
+/// The colour of a wake line's edge, which each app's theme has a role for: the outcome
+/// when CI said one, else whose doing it was (the user's choice, 24 Nov 2026).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Tone {
+    /// Red: a build failed, or the default branch broke.
+    Failed,
+    /// Green: a build passed, a branch landed, the default branch is fine again.
+    Passed,
+    /// Amber: a person wrote, replied, reacted or answered.
+    Person,
+    /// Purple: another agent asked, answered, or is changing the same files.
+    Agent,
+    /// Grey: anything else.
+    Quiet,
+}
+
+impl Tone {
+    /// Every tone.
+    pub const ALL: [Self; 5] = [
+        Self::Failed,
+        Self::Passed,
+        Self::Person,
+        Self::Agent,
+        Self::Quiet,
+    ];
+
+    /// The theme role its edge is drawn in, as `zirc-theme` names them.
+    #[must_use]
+    pub const fn role(self) -> &'static str {
+        match self {
+            Self::Failed => "error",
+            Self::Passed => "ok",
+            Self::Person => "warning",
+            Self::Agent => "agent",
+            Self::Quiet => "muted",
+        }
+    }
+}
+
+/// A session's watch woke: what an [`Event::Custom`] of [`KIND`] carries, from the session.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Woke {
+    /// What happened.
+    pub what: What,
+    /// Whose doing it was.
+    pub by: By,
+    /// Who: the nick it came from, a person's or a machine's. `None` for CI and zirc.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    /// The agent session on [`Self::from`] it came from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// The channel the line that woke it was said in, as it's called on the server; `None`
+    /// for what was sent to it directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    /// That line's id on the server, for an app to add its words where its reader has it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<String>,
+    /// For CI's line: the build's number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
+    /// For CI's line, how it stands ([`crate::card::State`], as [`crate::ci::Data::state`]
+    /// says it).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "known"
+    )]
+    pub state: Option<State>,
+    /// For how something the team shares stands, its level.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "known"
+    )]
+    pub level: Option<Level>,
+    /// The branch it's about: the one CI built or that landed, or the state's name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// For CI's line, whether it's a landing's ([`crate::ci::LANDING_KIND`]): one that
+    /// passed landed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub landing: bool,
+    /// The wake's id ([`crate::activity::Wake::id`]), which joins the line to its record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wake: Option<String>,
+}
+
+impl Woke {
+    /// A wake by `what`, `by` someone, with nothing more said.
+    #[must_use]
+    pub fn new(what: What, by: By) -> Self {
+        Self {
+            what,
+            by,
+            from: None,
+            session: None,
+            channel: None,
+            line: None,
+            build: None,
+            state: None,
+            level: None,
+            branch: None,
+            landing: false,
+            wake: None,
+        }
+    }
+
+    /// The wake `event` says, if it's one.
+    #[must_use]
+    pub fn of(event: &Event) -> Option<Self> {
+        match event {
+            Event::Custom { kind, data, .. } if kind == KIND => {
+                serde_json::from_value(data.clone()).ok()
+            }
+            _ => None,
+        }
+    }
+
+    /// Its event, whose text plain IRC clients show: its words with no one named, so it
+    /// names no session, branch or path for another's watch to wake on.
+    ///
+    /// # Panics
+    /// Never: a wake always serialises.
+    #[must_use]
+    pub fn event(&self) -> Event {
+        Event::Custom {
+            kind: KIND.to_owned(),
+            data: serde_json::to_value(self).expect("a wake serialises"),
+            text: format!(
+                "woke: {}",
+                Self {
+                    branch: None,
+                    ..self.clone()
+                }
+                .words(None)
+            ),
+        }
+    }
+
+    /// The colour of its edge.
+    #[must_use]
+    pub fn tone(&self) -> Tone {
+        match (self.by, self.state, self.level) {
+            (By::Ci, Some(State::Failed), _) | (By::Ci, _, Some(Level::Broken)) => Tone::Failed,
+            (By::Ci, Some(State::Passed), _) | (By::Ci, _, Some(Level::Ok)) => Tone::Passed,
+            (By::Person, ..) => Tone::Person,
+            (By::Agent, ..) => Tone::Agent,
+            _ => Tone::Quiet,
+        }
+    }
+
+    /// What its line says after [`LABEL`], `who` being whoever did it as people read them
+    /// (`Rajesh Iyer`, `replay-index`), which the reader's app knows: `build 612 failed on
+    /// main`, `Rajesh Iyer replied in #agents`. With no `who`, whose doing it was in a
+    /// word: `a person`, `another agent`.
+    #[must_use]
+    pub fn words(&self, who: Option<&str>) -> String {
+        let who = who.unwrap_or(match self.by {
+            By::Ci => "CI",
+            By::Agent => "another agent",
+            By::Person => "a person",
+            By::Zirc => crate::NAME,
+        });
+        let place = self
+            .channel
+            .as_deref()
+            .map(|channel| format!(" in {channel}"))
+            .unwrap_or_default();
+        let branch = self.branch.as_deref();
+        // CI's or zirc's own word that isn't how a build went or how something stands.
+        if matches!(self.by, By::Ci | By::Zirc)
+            && !matches!(self.what, What::Build | What::State | What::Landed)
+        {
+            return format!("{who} has news for it");
+        }
+        match self.what {
+            What::Build => self.build_words(),
+            What::State => {
+                let name = branch.unwrap_or("the default branch");
+                match self.level {
+                    Some(Level::Broken) => format!("{name} is broken"),
+                    Some(Level::Ok) => format!("{name} is fine again"),
+                    Some(Level::Warning) => format!("{name} needs a look"),
+                    None => format!("{name} changed"),
+                }
+            }
+            What::Wrote => format!("{who} wrote to it"),
+            What::Mentioned => format!("{who} named it{place}"),
+            What::Replied => format!("{who} replied{place}"),
+            What::Asked => format!("{who} asked it"),
+            What::Answered => format!("{who} answered"),
+            What::Noted => format!("{who} sent it a note"),
+            What::Reacted => format!("{who} reacted to what it said"),
+            What::Decided => format!("{who} answered its request"),
+            What::Intends => format!("{who} is about to change its files"),
+            What::Overlap => format!("{who} is changing the same files"),
+            What::Conflict => format!("{who} pushed changes to the same lines"),
+            What::Landed => match branch {
+                Some(branch) => format!("{branch} landed changes to its files"),
+                None => "changes to its files landed".to_owned(),
+            },
+            What::StackedOn => format!("{who} built on its branch"),
+            What::Committed => format!("{who} committed to its files"),
+            What::Posted => format!("{who} posted{place}"),
+            What::Other => "something concerned it".to_owned(),
+        }
+    }
+
+    /// CI's line in words: `build 612 failed on main`, `CI landed main-fix · build 613`,
+    /// `build 614 passed on main-fix`.
+    fn build_words(&self) -> String {
+        let build = self
+            .build
+            .as_deref()
+            .map_or_else(|| "a build".to_owned(), |build| format!("build {build}"));
+        let on = self
+            .branch
+            .as_deref()
+            .map(|branch| format!(" on {branch}"))
+            .unwrap_or_default();
+        match (self.state, self.branch.as_deref()) {
+            (Some(State::Passed), Some(branch)) if self.landing => {
+                format!("CI landed {branch} · {build}")
+            }
+            (Some(State::Passed), None) if self.landing => format!("CI landed {build}"),
+            (Some(State::Passed), _) => format!("{build} passed{on}"),
+            (Some(State::Failed), _) => format!("{build} failed{on}"),
+            (Some(State::Cancelled), _) => format!("{build} was cancelled{on}"),
+            (Some(State::Warning), _) => format!("{build}{on} needs a look"),
+            (Some(State::Pending), _) => format!("{build}{on} is waiting"),
+            (Some(State::Running), _) => format!("{build}{on} is running"),
+            (Some(State::Info) | None, _) => format!("CI has news of {build}{on}"),
+        }
+    }
+}
+
+/// One side of a settled overlap: an agent session and the machine it runs on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Side {
+    /// Its machine's nick.
+    pub machine: String,
+    /// The session's id.
+    pub session: String,
+    /// What it's called ([`crate::Message::name`]), when its machine says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl Side {
+    /// It as its event's text names it, for plain clients: its name, else its id.
+    fn label(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.session)
+    }
+
+    /// Whether it's `session` on `machine`.
+    #[must_use]
+    pub fn is(&self, machine: &str, session: &str) -> bool {
+        self.machine.eq_ignore_ascii_case(machine) && self.session == session
+    }
+}
+
+/// Two sessions agreed an order over files both change: what an [`Event::Custom`] of
+/// [`SETTLED_KIND`] carries, from the session that says so (`zirc settle`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Settled {
+    /// The session whose changes land first.
+    pub first: Side,
+    /// The one that updates onto them.
+    pub second: Side,
+    /// The files both change, from the repository's root.
+    pub paths: Vec<String>,
+    /// Whether they change the same lines of them, so the second resolves a conflict;
+    /// else different parts, which merge by themselves.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub same_lines: bool,
+}
+
+/// How many of a settled overlap's files its line names before `and N more`: few, as they're
+/// part of one sentence. An event's paths listed one a line fold at zirc-chat's
+/// `SHOWN_PATHS` instead, with words of their own; a change to how either says "more" is one
+/// to make at both.
+pub const SETTLED_PATHS: usize = 3;
+
+impl Settled {
+    /// The settled overlap `event` says, if it's one.
+    #[must_use]
+    pub fn of(event: &Event) -> Option<Self> {
+        match event {
+            Event::Custom { kind, data, .. } if kind == SETTLED_KIND => {
+                serde_json::from_value(data.clone()).ok()
+            }
+            _ => None,
+        }
+    }
+
+    /// Its event, whose text says it for plain clients and `zirc watch`.
+    ///
+    /// # Panics
+    /// Never: it always serialises.
+    #[must_use]
+    pub fn event(&self) -> Event {
+        Event::Custom {
+            kind: SETTLED_KIND.to_owned(),
+            data: serde_json::to_value(self).expect("a settled overlap serialises"),
+            // Short, as an event's words go in its line twice: once for plain clients.
+            text: format!(
+                "overlap settled: {} lands first, {} rebases onto it: {} ({})",
+                self.first.label(),
+                self.second.label(),
+                self.files(),
+                if self.same_lines {
+                    "same lines"
+                } else {
+                    "different lines, no conflict"
+                }
+            ),
+        }
+    }
+
+    /// Whether it's between `a` and `b`, each a `(machine, session)`, either way round.
+    #[must_use]
+    pub fn between(&self, a: (&str, &str), b: (&str, &str)) -> bool {
+        (self.first.is(a.0, a.1) && self.second.is(b.0, b.1))
+            || (self.first.is(b.0, b.1) && self.second.is(a.0, a.1))
+    }
+
+    /// The files it names, `and N more` after the first [`SETTLED_PATHS`]: each a part of
+    /// its own, for an app to set the paths in monospace.
+    #[must_use]
+    pub fn listed(&self) -> (Vec<&str>, Option<String>) {
+        let shown: Vec<&str> = self
+            .paths
+            .iter()
+            .take(SETTLED_PATHS)
+            .map(String::as_str)
+            .collect();
+        let more = self.paths.len().saturating_sub(shown.len());
+        (shown, (more > 0).then(|| format!("{more} more")))
+    }
+
+    /// Its line in parts, `first` and `second` being the two sessions as people read them:
+    /// `tls-rotation and replay-metrics both change `, the files, `. Agreed: tls-rotation
+    /// lands first; replay-metrics rebases onto it. `, and `Different lines, no conflict.`
+    /// The second part is [`Self::files`]; apps set the names in bold and the files in
+    /// monospace, and read no other meaning into where the parts are cut.
+    #[must_use]
+    pub fn sentences(&self, first: &str, second: &str) -> [String; 4] {
+        [
+            format!("{second} and {first} both change "),
+            self.files(),
+            format!(". Agreed: {first} lands first; {second} rebases onto it. "),
+            if self.same_lines {
+                format!("Same lines: {second} resolves the conflict.")
+            } else {
+                "Different lines, no conflict.".to_owned()
+            },
+        ]
+    }
+
+    /// Its files as one phrase: `a.rs`, `a.rs and b.rs`, `a.rs, b.rs, c.rs and 2 more`.
+    #[must_use]
+    pub fn files(&self) -> String {
+        let (shown, more) = self.listed();
+        let mut parts: Vec<String> = shown.into_iter().map(str::to_owned).collect();
+        parts.extend(more);
+        match parts.split_last() {
+            None => "the same files".to_owned(),
+            Some((only, [])) => only.clone(),
+            Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        }
+    }
+}
+
+/// What the button that puts a one-time note away says.
+pub const GOT_IT: &str = "Got it";
+
+/// A one-time note's words ([`crate::onboarding::Note`]), shown once to each person under
+/// their first wake or their first settled overlap: its title, set in bold, and what
+/// follows it. For a wake, `agent` is the session it woke as the reader's app names it,
+/// and `what` the wake's own words ([`Woke::words`]): `Build 612 failed on main, so Zirc
+/// woke tls-rotation: …`.
+#[must_use]
+pub fn note_words(
+    note: crate::onboarding::Note,
+    agent: &str,
+    what: &str,
+) -> (&'static str, String) {
+    match note {
+        crate::onboarding::Note::FirstWake => {
+            let mut what = what.to_owned();
+            if let Some(first) = what.get(..1) {
+                let upper = first.to_uppercase();
+                what.replace_range(..1, &upper);
+            }
+            (
+                "This is a wake.",
+                format!(
+                    "{what}, so {} woke {agent}: no polling, no terminal. From now on it \
+                     happens by itself, and you hear what it did here.",
+                    crate::NAME
+                ),
+            )
+        }
+        crate::onboarding::Note::FirstOverlap => (
+            "Your first overlap.",
+            format!(
+                "{} saw two agents about to change the same files, and they agreed an order \
+                 before either pushed. You don't need to do anything: every overlap gets one \
+                 line like the one above.",
+                crate::NAME
+            ),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build(state: State, landing: bool) -> Woke {
+        Woke {
+            build: Some("612".into()),
+            state: Some(state),
+            branch: Some("main-fix".into()),
+            landing,
+            ..Woke::new(What::Build, By::Ci)
+        }
+    }
+
+    #[test]
+    fn ci_says_how_the_build_went_and_colours_by_outcome() {
+        let failed = build(State::Failed, true);
+        assert_eq!(failed.words(None), "build 612 failed on main-fix");
+        assert_eq!(failed.tone(), Tone::Failed);
+        let landed = build(State::Passed, true);
+        assert_eq!(landed.words(None), "CI landed main-fix · build 612");
+        assert_eq!(landed.tone(), Tone::Passed);
+        let passed = build(State::Passed, false);
+        assert_eq!(passed.words(None), "build 612 passed on main-fix");
+        assert_eq!(build(State::Running, true).tone(), Tone::Quiet);
+        let named = Woke::new(What::Mentioned, By::Ci);
+        assert_eq!(named.words(None), "CI has news for it");
+        let broken = Woke {
+            level: Some(Level::Broken),
+            branch: Some("master".into()),
+            ..Woke::new(What::State, By::Ci)
+        };
+        assert_eq!(broken.words(None), "master is broken");
+        assert_eq!(broken.tone(), Tone::Failed);
+    }
+
+    #[test]
+    fn names_whoever_did_it_as_the_reader_knows_them() {
+        let replied = Woke {
+            from: Some("rajesh".into()),
+            channel: Some("#agents".into()),
+            ..Woke::new(What::Replied, By::Person)
+        };
+        assert_eq!(
+            replied.words(Some("Rajesh Iyer")),
+            "Rajesh Iyer replied in #agents"
+        );
+        assert_eq!(replied.tone(), Tone::Person);
+        let asked = Woke::new(What::Asked, By::Agent);
+        assert_eq!(asked.words(Some("replay-index")), "replay-index asked it");
+        assert_eq!(asked.tone(), Tone::Agent);
+    }
+
+    #[test]
+    fn its_event_reads_back_and_its_text_names_no_one() {
+        let woke = Woke {
+            from: Some("ada-mbp".into()),
+            session: Some("cc-2".into()),
+            branch: Some("login".into()),
+            wake: Some("w1".into()),
+            ..Woke::new(What::Landed, By::Agent)
+        };
+        let event = woke.event();
+        assert_eq!(Woke::of(&event), Some(woke));
+        let Event::Custom { text, .. } = &event else {
+            panic!("a wake is a custom event");
+        };
+        assert_eq!(text, "woke: changes to its files landed");
+        assert_eq!(Settled::of(&event), None);
+    }
+
+    #[test]
+    fn a_newer_wake_still_reads() {
+        let woke: Woke =
+            serde_json::from_value(serde_json::json!({"what": "sang", "by": "choir", "later": 1}))
+                .unwrap();
+        assert_eq!((woke.what, woke.by), (What::Other, By::Zirc));
+        // A state it doesn't know is none, and the rest still reads.
+        let later: Woke = serde_json::from_value(
+            serde_json::json!({"what": "build", "by": "ci", "state": "paused", "build": "7"}),
+        )
+        .unwrap();
+        assert_eq!((later.state, later.build.as_deref()), (None, Some("7")));
+        assert_eq!(woke.words(None), "Zirc has news for it");
+        assert_eq!(woke.tone(), Tone::Quiet);
+    }
+
+    #[test]
+    fn the_first_wakes_note_says_what_happened() {
+        use crate::onboarding::Note;
+        let (title, body) = note_words(
+            Note::FirstWake,
+            "tls-rotation",
+            &build(State::Failed, false).words(None),
+        );
+        assert_eq!(title, "This is a wake.");
+        assert!(
+            body.starts_with("Build 612 failed on main-fix, so Zirc woke tls-rotation: no polling"),
+            "{body}"
+        );
+        assert_eq!(
+            note_words(Note::FirstOverlap, "", "").0,
+            "Your first overlap."
+        );
+    }
+
+    fn side(session: &str, name: &str) -> Side {
+        Side {
+            machine: "ada-mbp".into(),
+            session: session.into(),
+            name: Some(name.into()),
+        }
+    }
+
+    #[test]
+    fn a_settled_overlap_says_who_lands_first_and_whether_it_conflicts() {
+        let mut settled = Settled {
+            first: side("cc-1", "tls-rotation"),
+            second: side("cc-2", "replay-metrics"),
+            paths: vec!["server/src/config.rs".into()],
+            same_lines: false,
+        };
+        let event = settled.event();
+        assert_eq!(Settled::of(&event), Some(settled.clone()));
+        let Event::Custom { text, .. } = &event else {
+            panic!("a settled overlap is a custom event");
+        };
+        assert_eq!(
+            text,
+            "overlap settled: tls-rotation lands first, replay-metrics rebases onto it: \
+             server/src/config.rs (different lines, no conflict)"
+        );
+        assert_eq!(
+            settled.sentences("tls-rotation", "replay-metrics").concat(),
+            "replay-metrics and tls-rotation both change server/src/config.rs. Agreed: \
+             tls-rotation lands first; replay-metrics rebases onto it. Different lines, no \
+             conflict."
+        );
+        assert!(settled.between(("ada-mbp", "cc-2"), ("ADA-MBP", "cc-1")));
+        assert!(!settled.between(("ada-mbp", "cc-2"), ("bob-mbp", "cc-1")));
+        settled.same_lines = true;
+        settled.paths = ["a", "b", "c", "d", "e"].map(String::from).to_vec();
+        assert_eq!(settled.files(), "a, b, c and 2 more");
+        assert_eq!(
+            settled.sentences("one", "two")[3],
+            "Same lines: two resolves the conflict."
+        );
+    }
+}

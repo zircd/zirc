@@ -207,12 +207,14 @@ impl Entry {
     /// rule, what orders every list by recency ([`Conversation::last_said`]), so a row never
     /// sorts by a time it doesn't show. Something someone said, a message, action, notice or
     /// zirc post, but never a card's live update, which only redraws its card: a running
-    /// landing's steps come every few seconds.
+    /// landing's steps come every few seconds; nor a wake's line ([`Entry::is_woke`]), which
+    /// is for whoever opens the agent's conversation.
     #[must_use]
     pub fn is_shown_in_list(&self) -> bool {
         !self.from.is_empty()
             && !self.is_session_card()
             && self.live_card().is_none()
+            && !self.is_woke()
             && matches!(
                 self.kind,
                 EntryKind::Message(_)
@@ -245,6 +247,14 @@ impl Entry {
         matches!(&self.kind, EntryKind::Zirc(message)
             if matches!(message.event, zirc_proto::Event::Commit { .. } | zirc_proto::Event::Push { .. })
                 && message.level_or_info() == Level::Info)
+    }
+
+    /// Whether it's a wake's line ([`zirc_proto::woke`]): history keeps it for the agent's
+    /// own conversation, where it's shown; a room shows it only under Everything, as it
+    /// shows commits and pushes, and it's never unread there.
+    #[must_use]
+    pub fn is_woke(&self) -> bool {
+        matches!(&self.kind, EntryKind::Zirc(message) if zirc_proto::woke::is_woke(&message.event))
     }
 
     /// The id of the card it updates, when it's a live update of one ([`Message::is_live`]):
@@ -440,7 +450,8 @@ impl Conversation {
     /// work is whole.
     #[must_use]
     pub fn shows(&self, entry: &Entry) -> bool {
-        let level = if self.kind == Kind::Channel && entry.is_commit_or_push() {
+        let level = if self.kind == Kind::Channel && (entry.is_commit_or_push() || entry.is_woke())
+        {
             COMMITS_AND_PUSHES_SHOW_AT
         } else {
             entry.level()

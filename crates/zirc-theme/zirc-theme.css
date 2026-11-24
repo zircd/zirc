@@ -261,6 +261,7 @@
   --zirc-ok: #128246;
   --zirc-warning: #8A5300;
   --zirc-error: #B3261E;
+  --zirc-agent: #6B46C1;
   --zirc-code-ground: #EEF1F5;
   --zirc-mention-ground: #FFF4DD;
   --zirc-pill-ground: #E3ECFB;
@@ -312,6 +313,7 @@
     --zirc-ok: #5FD08A;
     --zirc-warning: #F2B84B;
     --zirc-error: #FF8A7A;
+    --zirc-agent: #B9A0F5;
     --zirc-code-ground: #1A2030;
     --zirc-mention-ground: #2A2414;
     --zirc-pill-ground: #1C2A45;
@@ -363,6 +365,7 @@
   --zirc-ok: #5FD08A;
   --zirc-warning: #F2B84B;
   --zirc-error: #FF8A7A;
+  --zirc-agent: #B9A0F5;
   --zirc-code-ground: #1A2030;
   --zirc-mention-ground: #2A2414;
   --zirc-pill-ground: #1C2A45;

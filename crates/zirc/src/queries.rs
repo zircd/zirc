@@ -1,7 +1,7 @@
 //! Agents asking each other: `zirc note`, `ask`, `reply`, and who may query this machine's.
 
 use std::io::{IsTerminal as _, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
@@ -63,6 +63,27 @@ pub(crate) struct NoteArgs {
     pub(crate) org: OrgArg,
 }
 
+// `zirc settle`'s arguments: their doc comments are its --help.
+#[derive(Debug, Args)]
+pub(crate) struct SettleArgs {
+    /// The files both of you change.
+    #[arg(required = true, num_args = 1..)]
+    pub(crate) paths: Vec<PathBuf>,
+    /// The other session: its id, its name, or <machine>/<session>.
+    #[arg(long, value_name = "SESSION")]
+    pub(crate) with: String,
+    /// Who lands first: me, them, or either session's id or name.
+    #[arg(long, value_name = "WHO")]
+    pub(crate) first: String,
+    /// Both change the same lines, so whoever lands second resolves a conflict. Without
+    /// it, different parts of the files, which merge by themselves.
+    #[arg(long)]
+    pub(crate) same_lines: bool,
+    /// Who's saying it: your agent session's id. Defaults to $ZIRC_SESSION, then $USER.
+    #[arg(long, env = "ZIRC_SESSION")]
+    pub(crate) session: Option<String>,
+}
+
 // `zirc ask`'s arguments: their doc comments are its --help.
 #[derive(Debug, Args)]
 pub(crate) struct AskArgs {
@@ -111,6 +132,35 @@ pub(crate) async fn note(socket: &Path, args: NoteArgs, out: &mut impl Write) ->
         text: words(&text)?,
     };
     print_posted(ask_in(socket, org.as_deref(), request).await?, out)
+}
+
+/// `zirc settle`.
+pub(crate) async fn settle(socket: &Path, args: SettleArgs, out: &mut impl Write) -> Result<()> {
+    let SettleArgs {
+        paths,
+        with,
+        first,
+        same_lines,
+        session,
+    } = args;
+    let cwd = std::env::current_dir()?;
+    let request = Request::Settle {
+        paths: paths.iter().map(|path| cwd.join(path)).collect(),
+        repo: cwd,
+        session: session_or_user(session),
+        with,
+        first,
+        same_lines,
+    };
+    let Response::Settled { text, said } = ask(socket, request).await? else {
+        return Err(crate::client::unexpected());
+    };
+    if said {
+        writeln!(out, "said in #agents: {text}")?;
+    } else {
+        writeln!(out, "already said in #agents, so not again: {text}")?;
+    }
+    Ok(())
 }
 
 /// `zirc ask`.

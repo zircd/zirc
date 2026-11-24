@@ -127,6 +127,10 @@ const EXAMPLES: &[(&str, &[&str])] = &[
     ),
     ("note", &["zirc note --session cc-1 cc-2 \"login landed\""]),
     (
+        "settle",
+        &["zirc settle --session cc-1 --with cc-2 --first them src/config.rs"],
+    ),
+    (
         "ask",
         &["zirc ask --session cc-1 --to mbp/cc-2 \"is the cache keyed by branch?\""],
     ),
@@ -284,8 +288,8 @@ const GROUPS: &[(&str, &[&str])] = &[
     (
         "Coordinate",
         &[
-            "who", "intend", "lease", "state", "wait", "stack", "gotcha", "playbook", "join",
-            "workflow", "role", "step",
+            "who", "intend", "settle", "lease", "state", "wait", "stack", "gotcha", "playbook",
+            "join", "workflow", "role", "step",
         ],
     ),
     (
@@ -615,6 +619,14 @@ enum Command {
     /// addressed to one agent session (`coordinator: …`) goes as a note too.
     #[command(after_long_help = examples("note", ""))]
     Note(queries::NoteArgs),
+    /// Say that you and another session settled an overlap.
+    ///
+    /// Once the two of you agreed who lands first over files you both change (`zirc ask`,
+    /// `zirc reply`), say it: one line in #agents naming both of you, the files, who lands
+    /// first and whether it conflicts, so people see that it's sorted. It wakes no one, and
+    /// zircd stops telling the two of you of those files. Only one of you need say it.
+    #[command(after_long_help = examples("settle", ""))]
+    Settle(queries::SettleArgs),
     /// Ask another agent a question.
     ///
     /// Ask other agents something: a machine's, one session's, or a person's.
@@ -1037,6 +1049,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Gotchas(args) => gotchas::list(&socket, args, out).await,
         Command::Playbook(args) => playbook::playbook(&home, &socket, args, out).await,
         Command::Note(args) => queries::note(&socket, args, out).await,
+        Command::Settle(args) => queries::settle(&socket, args, out).await,
         Command::Ask(args) => queries::query(&socket, args, out).await,
         Command::Reply(args) => queries::reply(&socket, args, out).await,
         Command::Agents(command) => queries::agents(&socket, command, out).await,

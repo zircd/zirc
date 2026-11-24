@@ -46,6 +46,7 @@ impl Daemon {
     /// Tells every watcher, each with why it concerns the session watching, if it does.
     pub(super) fn tell_watchers(&mut self, response: &Response) {
         self.keep_said(response);
+        self.settled_heard(response);
         // An intent's renewal is only noted as told, to whomever it touches: it's no news
         // to anyone, no watch's line, and wakes nobody (zirc_proto::renewal).
         if let Response::Delivery(delivery) = response
@@ -85,8 +86,12 @@ impl Daemon {
             .collect();
         let automatic = wakes::automatic(response);
         let line = wakes::Line::of(response);
+        // Each wake's line where people see it, said once every watcher has heard what woke it.
+        let mut wakes = Vec::new();
         for (session, why) in woken {
-            self.woke(&session, why, automatic, line.clone());
+            if let Some(wake) = self.woke(&session, why, automatic, line.clone()) {
+                wakes.push((session.clone(), wake, why));
+            }
             self.heard_now(&session, response);
         }
         self.awaits_heard(response);
@@ -143,6 +148,9 @@ impl Daemon {
         self.keep_missed(response, &stale, away);
         self.broadcast_told(response);
         self.say_trips();
+        for (session, wake, why) in wakes {
+            self.say_woke(&session, wake, why, response);
+        }
     }
 
     /// Takes in what was kept for sessions with no watch open before zircd last stopped,
@@ -457,8 +465,12 @@ impl Daemon {
         }
         // A gotcha is for whoever changes its paths later, when zircd tells it them; its
         // retiring is no one's news either, nor the team's hints changing, which zircd reads.
+        // Nor a wake's own line or an overlap settled, which are for people to see: a wake
+        // that woke another would never end.
         if let Event::Custom { kind, .. } = &delivery.message.event
-            && (zirc_core::gotchas::is_kind(kind) || kind == zirc_proto::hints::CHANGED_KIND)
+            && (zirc_core::gotchas::is_kind(kind)
+                || kind == zirc_proto::hints::CHANGED_KIND
+                || zirc_proto::woke::is_kind(kind))
         {
             return None;
         }
@@ -712,14 +724,18 @@ impl Daemon {
     }
 
     /// Whether `overlap` is news to `session` on `me`: between its work and another's, one
-    /// side its own and the other not, and not a split it's agreed on.
+    /// side its own and the other not, and neither a split it's agreed on nor one the two
+    /// settled ([`Daemon::settled`]).
     pub(super) fn news_to(&self, overlap: &LocalOverlap, me: &str, session: &str) -> bool {
         let (its, others): (Vec<&Worktree>, Vec<&Worktree>) = overlap
             .worktrees
             .iter()
             .partition(|worktree| self.works_in(worktree, session));
         let others = others.len();
-        !its.is_empty() && others > 0 && !self.agreed(overlap, me, session)
+        !its.is_empty()
+            && others > 0
+            && !self.agreed(overlap, me, session)
+            && !self.settled(overlap, me, session)
     }
 
     /// Whether `session` has agreed on `overlap` with the session on its other side: it said

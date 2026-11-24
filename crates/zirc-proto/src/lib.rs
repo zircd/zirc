@@ -46,6 +46,7 @@ pub mod suggestions;
 pub mod telemetry;
 pub mod thread;
 pub mod uploads;
+pub mod woke;
 pub mod workflow;
 
 use std::collections::BTreeMap;

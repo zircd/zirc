@@ -15,6 +15,7 @@ use super::face::{Face, LineSpeaker};
 use super::flat::{RichBlock, RichSpan, is_plain};
 use super::rich::{Block, Span, SpanKind};
 use super::view::{Item, Landing, Parts};
+use super::woke::{Callout, settled_of, woke_of};
 use super::{Chat, Icon, Presence, Standing, activity_conversation, file, first_link, link_blocks};
 
 /// The largest an image or a video's poster is drawn, in points: wider ones are fitted.
@@ -103,6 +104,16 @@ pub enum RowShape {
     /// A card's update said further down: one muted line, [`Line::text`], which brings the
     /// card ([`SystemLine::points_to`]) into view when clicked or tapped.
     Pointer,
+    /// A wake of the agent's watch ([`zirc_proto::woke`]): one small line with an edge in
+    /// [`Callout::tone`], its [`Callout::label`] in bold, its words and its time. No face,
+    /// no name, no menu.
+    Woke,
+    /// An overlap two agents settled: a tinted box with an icon in [`Callout::tone`], its
+    /// [`Callout::label`] in bold with its time, and its words under it.
+    Settled,
+    /// A one-time note under the line before it: a dashed box, its [`Callout::label`] in
+    /// bold, its words, and [`Callout::button`], which puts it away ([`Chat::see_note`]).
+    Once,
 }
 
 /// How a message's words are styled, decided here for every app, which never styles them
@@ -137,6 +148,7 @@ impl RowShape {
     /// The shape of `line`'s row, from what it is.
     fn of(line: &Line) -> Self {
         match (&line.system, &line.speaker) {
+            _ if line.callout.is_some() => line.shape,
             (Some(system), _) if system.points_to.is_some() => Self::Pointer,
             (Some(system), Some(_)) if system.brief.is_some() => Self::Brief,
             _ if matches!(line.kind, LineKind::Membership | LineKind::Note) => Self::Quiet,
@@ -234,6 +246,9 @@ pub struct Line {
     /// For a message, the files attached to it, to draw under its words as [`Line::file`]
     /// is drawn ([`zirc_proto::attached`]): none on any other line.
     pub files: Vec<LineFile>,
+    /// For a wake's line, a settled overlap's or a one-time note ([`RowShape::Woke`],
+    /// [`RowShape::Settled`], [`RowShape::Once`]): what it draws.
+    pub callout: Option<Callout>,
     /// What can be done with it, which its hover bar, menu and long-press sheet offer.
     pub actions: LineActions,
 }
@@ -826,6 +841,12 @@ struct Layout<'a> {
     /// The room each line of an agent's activity was said in, by its entry.
     rooms: HashMap<*const Entry, String>,
     keys: Keys,
+    /// The newest wake's line, by its key, which the first-wake note goes under
+    /// ([`Layout::once`]).
+    woken: Option<(String, zirc_proto::woke::Woke)>,
+    /// The newest settled overlap's line that names one of our agents, by its key, which
+    /// the first-overlap note goes under.
+    settled: Option<(String, zirc_proto::woke::Settled)>,
 }
 
 impl<'a> Layout<'a> {
@@ -841,6 +862,8 @@ impl<'a> Layout<'a> {
             offset,
             rooms,
             keys: Keys::default(),
+            woken: None,
+            settled: None,
         }
     }
 
@@ -856,7 +879,7 @@ impl<'a> Layout<'a> {
         };
         let now = (self.chat.clock)();
         let today = now.with_timezone(&offset).date_naive();
-        let mut lines = Vec::with_capacity(items.len());
+        let mut lines: Vec<Line> = Vec::with_capacity(items.len());
         let mut day = None;
         for item in items {
             if let Item::Day(date) = item {
@@ -871,9 +894,18 @@ impl<'a> Layout<'a> {
             line.actions = LineActions::of(line.kind, line.id.as_deref(), line.mine, editable);
             line.shape = RowShape::of(&line);
             line.style = WordStyle::of(line.kind);
+            // A callout has no head for the line after it to carry on from.
+            if lines.last().is_some_and(|last| last.callout.is_some()) {
+                line.continues = false;
+            }
+            // Nothing is done with a callout but reading it.
+            if line.callout.is_some() {
+                line.actions = LineActions::default();
+            }
             lines.push(line);
         }
         self.receipt(&mut lines);
+        self.once(&mut lines);
         lines
     }
 
@@ -947,6 +979,11 @@ impl<'a> Layout<'a> {
                 text,
                 continues,
             } => self.said(entry, LineKind::Action, text, continues),
+            Item::Event { entry, .. }
+                if woke_of(entry).is_some() || settled_of(entry).is_some() =>
+            {
+                self.callout(entry)
+            }
             Item::Event {
                 entry,
                 text,
@@ -998,6 +1035,65 @@ impl<'a> Layout<'a> {
         }
     }
 
+    /// A wake's line or a settled overlap's, `entry`: its callout, and its words whole for
+    /// copying. Headed by no one, and nothing to do with it but read it.
+    fn callout(&mut self, entry: &Entry) -> Line {
+        let key = self.keys.of(entry);
+        let mut line = self.blank(key, Some(entry), entry.time, LineKind::Event);
+        let (shape, callout) = match (woke_of(entry), settled_of(entry)) {
+            (Some(woke), _) => {
+                let callout = self.chat.woke_callout(&woke);
+                self.woken = Some((line.key.clone(), woke));
+                (RowShape::Woke, callout)
+            }
+            (_, Some(settled)) => {
+                let callout = self.chat.settled_callout(&settled, entry.repo());
+                if self.chat.settled_ours(&settled) {
+                    self.settled = Some((line.key.clone(), settled));
+                }
+                (RowShape::Settled, callout)
+            }
+            (None, None) => unreachable!("only a wake's or a settled overlap's line is a callout"),
+        };
+        line.id = None;
+        line.text = callout.said();
+        line.shape = shape;
+        line.callout = Some(callout);
+        line
+    }
+
+    /// Puts the one-time note our person hasn't seen under the newest line it's about: the
+    /// first-wake note under the newest wake in a conversation with one of our agents, the
+    /// first-overlap note under the newest settled overlap in a channel that names one of
+    /// them (the user's choice, 24 Nov 2026).
+    fn once(&mut self, lines: &mut Vec<Line>) {
+        // In an agent's conversation, its wakes; in a channel, the overlaps settled there.
+        let note = if self.conversation.kind == super::Kind::Channel {
+            self.settled
+                .take()
+                .and_then(|(key, settled)| Some((key, self.chat.first_overlap_note(&settled)?)))
+        } else {
+            self.woken.take().and_then(|(key, woke)| {
+                let note = self.chat.first_wake_note(&self.conversation.name, &woke)?;
+                Some((key, note))
+            })
+        };
+        let Some((under, callout)) = note else {
+            return;
+        };
+        let Some(at) = lines.iter().position(|line| line.key == under) else {
+            return;
+        };
+        let Some(time) = DateTime::from_timestamp_millis(lines[at].time_ms) else {
+            return;
+        };
+        let mut line = self.blank(format!("{under}-once"), None, time, LineKind::Note);
+        line.text = callout.said();
+        line.shape = RowShape::Once;
+        line.callout = Some(callout);
+        lines.insert(at + 1, line);
+    }
+
     /// A line with only its key, id, room, time and kind.
     fn blank(
         &self,
@@ -1032,6 +1128,7 @@ impl<'a> Layout<'a> {
             system: None,
             file: None,
             files: Vec::new(),
+            callout: None,
             actions: LineActions::default(),
         }
     }
@@ -1473,7 +1570,7 @@ impl Chat {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::chat) mod tests {
     use chrono::TimeZone as _;
     use zirc_proto::card::{Action, Card, State, Who};
     use zirc_proto::{Event, Message};
@@ -1485,18 +1582,18 @@ mod tests {
         Utc.with_ymd_and_hms(2026, 10, 30, 12, 0, 0).unwrap()
     }
 
-    fn utc() -> FixedOffset {
+    pub(in crate::chat) fn utc() -> FixedOffset {
         FixedOffset::east_opt(0).unwrap()
     }
 
-    fn feed(chat: &mut Chat, lines: &[&str]) {
+    pub(in crate::chat) fn feed(chat: &mut Chat, lines: &[&str]) {
         for line in lines {
             let _ = chat.receive(line.parse().unwrap());
         }
     }
 
     /// A chat as `me`, connected and in `#api` with alice and bob, at noon on 30 October.
-    fn chat() -> Chat {
+    pub(in crate::chat) fn chat() -> Chat {
         let mut chat = Chat::new("me", "irc.zirc.test", Vec::new(), Options::default());
         chat.clock = noon;
         chat.connected(Link {
@@ -1520,14 +1617,14 @@ mod tests {
     }
 
     /// `line` said at `time` on 30 October, with the id `id` when there is one.
-    fn at(time: &str, id: Option<&str>, line: &str) -> String {
+    pub(in crate::chat) fn at(time: &str, id: Option<&str>, line: &str) -> String {
         let id = id.map(|id| format!(";msgid={id}")).unwrap_or_default();
         format!("@time=2026-10-30T{time}.000Z{id} {line}")
     }
 
     /// `message` from `nick` in `room`, as a line to feed.
     /// `me-mbp` is our machine, as its host says.
-    fn zirc(nick: &str, room: &str, message: &Message) -> String {
+    pub(in crate::chat) fn zirc(nick: &str, room: &str, message: &Message) -> String {
         let mut line = crate::presence::line_from(nick, room, message).unwrap();
         if nick == "me-mbp" {
             line.source = Some(format!(
@@ -1538,14 +1635,14 @@ mod tests {
         line.to_string()
     }
 
-    fn named(session: &str, name: &str, event: Event) -> Message {
+    pub(in crate::chat) fn named(session: &str, name: &str, event: Event) -> Message {
         Message {
             name: Some(name.into()),
             ..Message::new(session, event)
         }
     }
 
-    fn text(body: &str) -> Event {
+    pub(in crate::chat) fn text(body: &str) -> Event {
         Event::Text { body: body.into() }
     }
 

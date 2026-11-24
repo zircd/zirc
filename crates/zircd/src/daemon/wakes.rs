@@ -237,6 +237,7 @@ pub(super) fn acting(request: &Request) -> Option<(&str, Acted)> {
         | Request::Dm { session, .. }
         | Request::Ask { session, .. }
         | Request::Note { session, .. }
+        | Request::Settle { session, .. }
         | Request::AskOwner { session, .. }
         | Request::Reply { session, .. } => Some((session, Acted::Posted)),
         Request::Intend { session, .. } => Some((session, Acted::Intended)),
@@ -287,14 +288,20 @@ impl Daemon {
         }
     }
 
-    /// Counts `why` waking `session`'s watch on `line`, and tells the recorder.
-    pub(super) fn woke(&mut self, session: &str, why: Why, automatic: bool, line: Line) {
-        let Some(id) = self.wakes.woke(session, why, automatic, now()) else {
-            return;
-        };
+    /// Counts `why` waking `session`'s watch on `line`, and tells the recorder. Returns the
+    /// wake's id when it was one of its own, not part of the wake just before, for its line
+    /// where people see it ([`Daemon::say_woke`]).
+    pub(super) fn woke(
+        &mut self,
+        session: &str,
+        why: Why,
+        automatic: bool,
+        line: Line,
+    ) -> Option<String> {
+        let id = self.wakes.woke(session, why, automatic, now())?;
         self.save_wakes();
         let record = activity::Wake {
-            id,
+            id: id.clone(),
             why: reason(why),
             kind: line.kind,
             level: line.level,
@@ -302,6 +309,7 @@ impl Daemon {
             automatic,
         };
         self.record(session, record.event());
+        Some(id)
     }
 
     /// Counts `session` acting, `how`, for the wakes before it, and tells the recorder.

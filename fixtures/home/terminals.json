@@ -180,7 +180,7 @@
         "output": "#agents henrik-mbp/cc-7d3a: about to change tests/e2e/reconnect.rs, tests/e2e/harness.rs: reconnect test: bind port 0 — names your tests/e2e/harness.rs, not changed by them yet: you change tests/e2e/harness.rs [id 7f3a2c]"
       },
       {
-        "output": "  ↳ hint (default): Your files, as zircd compared them: ask the other session now with zirc ask --session <your session> --to <machine>/<session>, naming what you change in each file and asking what it changes there and who lands first. Tell the user its answer, then say the split in an intent naming them."
+        "output": "  ↳ hint (default): Your files, as zircd compared them: ask the other session now with zirc ask --session <your session> --to <machine>/<session>, naming what you change in each file and asking what it changes there and who lands first. Tell the user its answer; once you've agreed, say it for people to see: zirc settle --session <your session> --with <their session> --first <me|them> <files>, with --same-lines if so."
       },
       {
         "output": "#backend overlap: henrik-mbp is also changing tests/e2e/harness.rs"

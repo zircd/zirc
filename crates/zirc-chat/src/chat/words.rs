@@ -252,7 +252,10 @@ pub const SAVE: &str = "Save";
 pub const NOTIFICATION_CHANNEL: &str = "Messages";
 
 /// How many of an event's paths show, one a line, before [`show_more_paths_label`] folds
-/// the rest away until pressed (the user's decision, 11 Nov): a big push stays short.
+/// the rest away until pressed (the user's decision, 11 Nov): a big push stays short. A
+/// settled overlap's line names its files in a sentence, and fewer of them
+/// (`zirc_proto::woke::SETTLED_PATHS`): a change to how either says "more" is one to make at
+/// both.
 pub const SHOWN_PATHS: usize = 8;
 
 /// Where a search looks, on its scope's chip: `In #web`.

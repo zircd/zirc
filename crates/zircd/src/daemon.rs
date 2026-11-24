@@ -58,12 +58,14 @@ mod scans;
 mod scope;
 mod sealing;
 mod sessions;
+mod settled;
 mod tasks;
 mod team_hints;
 mod undone;
 mod unowned;
 mod wakes;
 mod warn_once;
+mod woke;
 mod worktree_updates;
 
 /// A repository is scanned once its files have been quiet this long...
@@ -637,6 +639,8 @@ pub struct Daemon {
     auto_intents: auto_intents::AutoIntents,
     /// How sessions' watches woke, and whether they acted on it.
     wakes: wakes::Wakes,
+    /// The overlaps sessions settled lately ([`settled`]).
+    settled_lately: settled::SettledLately,
     /// The sessions the recorder was told have started watching, since zircd started
     /// ([`zirc_proto::activity::Watching`]).
     watching_told: BTreeSet<String>,
@@ -811,6 +815,7 @@ impl Daemon {
             requests: requests::Requests::default(),
             auto_intents: auto_intents::AutoIntents::default(),
             wakes: wakes::Wakes::default(),
+            settled_lately: settled::SettledLately::default(),
             watching_told: BTreeSet::new(),
             broadcasts: broadcast::Broadcasts::default(),
             awaits: awaits::Awaits::default(),

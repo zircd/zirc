@@ -74,6 +74,11 @@ pub fn why(settings: &NotifySettings, now: i64, me: &str, heard: &Heard<'_>) -> 
         return None;
     }
     let (kind, words) = entry_of(heard.body, false)?;
+    // A wake's line is for whoever opens the agent's conversation: never pushed, whatever
+    // the room's level.
+    if matches!(&kind, EntryKind::Zirc(message) if zirc_proto::woke::is_woke(&message.event)) {
+        return None;
+    }
     if asks(&kind, me) {
         return settings
             .notifies(name, direct, true, now)
@@ -183,6 +188,19 @@ mod tests {
             ..said("#api", "ada: deploy done")
         };
         assert_eq!(why(&none, NOW, "ada", &notice), None);
+    }
+
+    #[test]
+    fn never_pushes_a_wakes_line() {
+        use zirc_proto::woke::{By, What, Woke};
+        let all = settings(&[("#agents", Level::All)], &[]);
+        let woke = Woke::new(What::Asked, By::Agent).event();
+        let body = zirc_proto::encode(&zirc_proto::Message::new("cc-1", woke)).unwrap();
+        assert_eq!(why(&all, NOW, "ada", &said("#agents", &body)), None);
+        assert_eq!(
+            why(&all, NOW, "ada", &said("#agents", "taking: the login page")),
+            Some(Why::All)
+        );
     }
 
     #[test]

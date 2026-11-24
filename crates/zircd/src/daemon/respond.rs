@@ -130,6 +130,17 @@ impl Daemon {
                 let to = self.note(&session, &to, &text)?;
                 Response::Noted { to }
             }
+            Request::Settle {
+                repo,
+                session,
+                with,
+                first,
+                paths,
+                same_lines,
+            } => {
+                self.settle(&repo, &session, &with, &first, &paths, same_lines)
+                    .await?
+            }
             Request::Reply {
                 session,
                 query,
