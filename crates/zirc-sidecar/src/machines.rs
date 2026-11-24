@@ -243,18 +243,14 @@ fn save(known: &Known) {
     let (Some(path), Some(owners)) = (&known.path, &known.owners) else {
         return;
     };
-    let keep = |path: &Path, bytes: serde_json::Result<Vec<u8>>| {
-        let saved = bytes.map_err(std::io::Error::other).and_then(|bytes| {
-            let partial = path.with_extension("json.partial");
-            std::fs::write(&partial, bytes)?;
-            std::fs::rename(&partial, path)
-        });
+    let keep = |path: &Path, saved: std::io::Result<()>| {
         if let Err(error) = saved {
             warn!(%error, path = %path.display(), "couldn't keep whose machines are");
         }
     };
-    keep(path, serde_json::to_vec(owners));
-    keep(&clients_beside(path), serde_json::to_vec(&known.clients));
+    keep(path, crate::save_json(path, owners));
+    let clients = clients_beside(path);
+    keep(&clients, crate::save_json(&clients, &known.clients));
 }
 
 #[cfg(test)]

@@ -104,10 +104,7 @@ impl Profiles {
     pub fn keep(&mut self, account: &str, profile: Profile) -> std::io::Result<()> {
         self.said.insert(account.to_owned(), profile);
         self.set.remove(account);
-        let bytes = serde_json::to_vec(&self.said).map_err(std::io::Error::other)?;
-        let partial = self.path.with_extension("json.partial");
-        std::fs::write(&partial, bytes)?;
-        std::fs::rename(&partial, &self.path)
+        crate::save_json(&self.path, &self.said)
     }
 }
 

@@ -462,7 +462,7 @@ pub fn metadata(message: &Message) -> Option<Value> {
 /// JOIN).
 fn fact_of(data: &[u8]) -> Option<Fact> {
     let said = exporter::said(data)?;
-    let account = Some(said.account.to_lowercase()).filter(|a| !a.is_empty() && a != "*");
+    let account = said.account();
     match said.kind {
         PRIVMSG => Some(match zirc_proto::decode(&said.text).ok().flatten() {
             Some(message) => Fact::of_message(account, &message),

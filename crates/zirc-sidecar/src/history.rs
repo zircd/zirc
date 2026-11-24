@@ -661,7 +661,7 @@ pub(crate) fn indexed(data: &[u8]) -> Option<Indexed> {
             .as_ref()
             .is_none_or(|m| matches!(m.event, zirc_proto::Event::Text { .. }));
     Some(Indexed {
-        sender: Some(said.account.to_lowercase()).filter(|a| !a.is_empty() && a != "*"),
+        sender: said.account(),
         said: by_someone,
         session: zirc.as_ref().map(|m| m.session.clone()),
         text: match zirc {
@@ -674,7 +674,7 @@ pub(crate) fn indexed(data: &[u8]) -> Option<Indexed> {
 /// The message in `row`, if it's one `query` wants.
 fn read(row: &Row, query: &Query) -> Option<Message> {
     let said = exporter::said(&row.data)?;
-    let account = Some(said.account.to_lowercase()).filter(|a| !a.is_empty() && a != "*");
+    let account = said.account();
     let kind_of = |account: &Option<String>| {
         if account.as_deref().is_some_and(crate::usage::is_agent) {
             "agent"

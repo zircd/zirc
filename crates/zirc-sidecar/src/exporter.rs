@@ -482,6 +482,79 @@ pub(crate) struct Said {
     pub tags: std::collections::BTreeMap<String, String>,
 }
 
+impl Said {
+    /// The sender's account, lowercased; `None` when it had none (empty, or Ergo's `*`).
+    pub fn account(&self) -> Option<String> {
+        Some(self.account.to_lowercase()).filter(|a| !a.is_empty() && a != "*")
+    }
+}
+
+/// A zirc message said in a channel, as [`messages_after`] reads it from the history.
+pub(crate) struct Heard {
+    /// The channel.
+    pub channel: String,
+    /// Its sender's account ([`Said::account`]).
+    pub account: Option<String>,
+    /// When, in unix seconds.
+    pub at: u64,
+    /// The message.
+    pub message: zirc_proto::Message,
+}
+
+/// The zirc messages said in `channels` after history row `row`, at most `most` rows, from
+/// the history open at `connection`, oldest first, with the last row read (which may be
+/// another channel's or not a zirc message), so the next read starts after it.
+///
+/// # Errors
+///
+/// When the history can't be read.
+pub(crate) fn messages_after(
+    connection: &Connection,
+    row: i64,
+    channels: &[&str],
+    most: i64,
+) -> rusqlite::Result<(Vec<Heard>, Option<i64>)> {
+    let wanted = (0..channels.len())
+        .map(|i| format!("?{}", i + 3))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut statement = connection.prepare_cached(&format!(
+        "SELECT h.id, s.target, s.nanotime, h.data FROM history h \
+         JOIN sequence s ON s.history_id = h.id \
+         WHERE h.id > ?1 AND lower(s.target) IN ({wanted}) ORDER BY h.id LIMIT ?2"
+    ))?;
+    let lowered: Vec<String> = channels.iter().map(|c| c.to_lowercase()).collect();
+    let bound: Vec<&dyn rusqlite::ToSql> = [&row as &dyn rusqlite::ToSql, &most]
+        .into_iter()
+        .chain(lowered.iter().map(|c| c as &dyn rusqlite::ToSql))
+        .collect();
+    let rows = statement
+        .query_map(bound.as_slice(), |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Vec<u8>>(3)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let last = rows.last().map(|row| row.0);
+    let heard = rows
+        .into_iter()
+        .filter_map(|(_, channel, nanotime, data)| {
+            let said = said(&data).filter(|said| said.kind == PRIVMSG)?;
+            let message = zirc_proto::decode(&said.text).ok().flatten()?;
+            Some(Heard {
+                channel,
+                account: said.account(),
+                at: u64::try_from(nanotime / 1_000_000_000).unwrap_or_default(),
+                message,
+            })
+        })
+        .collect();
+    Ok((heard, last))
+}
+
 /// A history item's message, or `None` when it isn't one this reads.
 pub(crate) fn said(data: &[u8]) -> Option<Said> {
     #[derive(Deserialize)]

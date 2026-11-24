@@ -186,14 +186,7 @@ impl Store {
         let Some(path) = &self.path else {
             return;
         };
-        let saved = serde_json::to_vec(kept)
-            .map_err(std::io::Error::other)
-            .and_then(|bytes| {
-                let partial = path.with_extension("json.partial");
-                std::fs::write(&partial, bytes)?;
-                std::fs::rename(&partial, path)
-            });
-        if let Err(error) = saved {
+        if let Err(error) = crate::save_json(path, kept) {
             warn!(%error, path = %path.display(), "couldn't keep the team's hints");
         }
     }

@@ -214,7 +214,7 @@ pub struct Woke {
 }
 
 /// What a report's wake says of it ([`What::Reported`]).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Reported {
     /// The item's id.
     pub id: String,

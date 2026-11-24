@@ -99,6 +99,19 @@ pub fn now() -> u64 {
     u64::try_from(jiff::Timestamp::now().as_second()).unwrap_or_default()
 }
 
+/// Keeps `value` at `path` as JSON, whole or not at all: written beside it, then renamed over
+/// it.
+///
+/// # Errors
+///
+/// When it can't be written.
+pub fn save_json(path: &std::path::Path, value: &impl serde::Serialize) -> std::io::Result<()> {
+    let bytes = serde_json::to_vec(value).map_err(std::io::Error::other)?;
+    let partial = path.with_extension("json.partial");
+    std::fs::write(&partial, bytes)?;
+    std::fs::rename(&partial, path)
+}
+
 /// The HMAC-SHA256 of `body` under `secret`, in lowercase hex: what the sidecar signs with
 /// and derives passphrases by.
 #[must_use]

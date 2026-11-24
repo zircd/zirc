@@ -16,14 +16,13 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 use zirc_proto::ci::{self, LANDING_KIND};
 use zirc_proto::role_report::{self, Closing, End, OpenItem, OpenItems, RoleReport};
 use zirc_proto::{Event, Message};
 
-use crate::exporter::{self, Opened, PRIVMSG};
+use crate::exporter::{self, Opened};
 
 /// How long a closed item is kept: the dashboard shows what closed today.
 pub const KEEP_CLOSED: u64 = 24 * 60 * 60;
@@ -87,9 +86,7 @@ impl Items {
     ///
     /// When the file can't be written.
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        let fresh = path.with_extension("json.new");
-        std::fs::write(&fresh, serde_json::to_vec(self)?)?;
-        std::fs::rename(fresh, path)
+        crate::save_json(path, self)
     }
 
     /// The open item `id` names for `role`.
@@ -203,14 +200,11 @@ impl Items {
             .cloned()
             .collect();
         closed_today.sort_by_key(|item| std::cmp::Reverse(item.closed));
-        OpenItems {
-            role: role.to_owned(),
-            open: of_role()
-                .filter(|item| item.closed.is_none())
-                .cloned()
-                .collect(),
-            closed_today,
-        }
+        let open = of_role()
+            .filter(|item| item.closed.is_none())
+            .cloned()
+            .collect();
+        OpenItems::new(role, open, closed_today)
     }
 
     /// Takes in every history row after [`Items::row`] in `#ops` and `#agents`, from the
@@ -224,39 +218,20 @@ impl Items {
         let Opened::Open(connection) = exporter::open_history(history)? else {
             return Ok(false);
         };
+        let channels = [zirc_proto::state::CHANNEL, zirc_proto::AGENTS_CHANNEL];
         let mut changed = false;
         loop {
-            let rows: Vec<(i64, String, i64, Vec<u8>)> = {
-                let mut statement = connection.prepare_cached(
-                    "SELECT h.id, s.target, s.nanotime, h.data FROM history h \
-                     JOIN sequence s ON s.history_id = h.id \
-                     WHERE h.id > ?1 AND lower(s.target) IN (?2, ?3) ORDER BY h.id LIMIT ?4",
-                )?;
-                statement
-                    .query_map(
-                        params![
-                            self.row,
-                            zirc_proto::state::CHANNEL,
-                            zirc_proto::AGENTS_CHANNEL,
-                            BATCH
-                        ],
-                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-                    )?
-                    .collect::<rusqlite::Result<_>>()?
-            };
-            let Some(last) = rows.last().map(|row| row.0) else {
+            let (heard, last) = exporter::messages_after(&connection, self.row, &channels, BATCH)?;
+            let Some(last) = last else {
                 return Ok(changed);
             };
-            for (_, channel, nanotime, data) in rows {
-                let Some(said) = exporter::said(&data).filter(|said| said.kind == PRIVMSG) else {
-                    continue;
-                };
-                let Ok(Some(message)) = zirc_proto::decode(&said.text) else {
-                    continue;
-                };
-                let account = Some(said.account.as_str()).filter(|a| !a.is_empty() && *a != "*");
-                let at = u64::try_from(nanotime / 1_000_000_000).unwrap_or_default();
-                changed |= self.heard(&channel, account, &message, at);
+            for each in heard {
+                changed |= self.heard(
+                    &each.channel,
+                    each.account.as_deref(),
+                    &each.message,
+                    each.at,
+                );
             }
             changed |= self.row != last;
             self.row = last;
@@ -392,6 +367,7 @@ mod tests {
         let listing = items.listing("fixer", 3);
         assert!(listing.open.is_empty());
         assert_eq!(listing.closed_today[0].end, Some(End::Landed));
+        assert_eq!(listing.closed_today_words, "Closed today: 1 (fixed)");
         // Reported again once it's closed, it's a new item.
         items.heard(OPS, None, &flaky("//a:b"), 4);
         assert_eq!(items.listing("fixer", 4).open.len(), 1);
