@@ -742,6 +742,81 @@ fn read(row: &Row, query: &Query) -> Option<Message> {
     })
 }
 
+/// The agent sessions with a request waiting for their person's answer, by the machine that
+/// asked and the session, as every app says it ([`zirc_proto::request::waiting`]): read from
+/// the newest of `#decisions`, never counted again here. A request counts only from a machine
+/// `owner` says is its person's own, as the rule asks of its caller.
+///
+/// # Errors
+///
+/// When Ergo's history can't be read.
+pub fn asking(
+    history: &Path,
+    owner: impl Fn(&str) -> Option<String>,
+) -> rusqlite::Result<BTreeSet<(String, String)>> {
+    use zirc_proto::request::{self, Posted, Request};
+    let channel = request::CHANNEL.to_lowercase();
+    let viewer = Viewer {
+        account: String::new(),
+        machines: BTreeSet::new(),
+        channels: [channel.clone()].into(),
+        policy: Visibility::Participant,
+    };
+    let query = Query {
+        conversation: Some(Conversation::Channel(channel)),
+        until: i64::MAX,
+        limit: 500,
+        events: true,
+        ..Query::default()
+    };
+    let page = search(history, &viewer, &query)?;
+    // Oldest first, as the rule takes them, each with the machine that sent it.
+    let mut posted: Vec<(String, Posted)> = Vec::new();
+    for message in page.messages.into_iter().rev() {
+        let (Some(account), Some(zirc)) = (message.sender.account, message.zirc) else {
+            continue;
+        };
+        if zirc.get("kind").and_then(Value::as_str) != Some(request::KIND) {
+            continue;
+        }
+        let Some(asked) = zirc
+            .get("data")
+            .and_then(|data| data.get("request"))
+            .and_then(|asked| serde_json::from_value::<Request>(asked.clone()).ok())
+        else {
+            continue;
+        };
+        let theirs = owner(&account).is_some_and(|whose| whose.eq_ignore_ascii_case(&asked.by));
+        if theirs {
+            posted.push((
+                account,
+                Posted {
+                    msgid: message.msgid,
+                    request: asked,
+                },
+            ));
+        }
+    }
+    let people: BTreeSet<String> = posted
+        .iter()
+        .map(|(_, p)| p.request.by.to_lowercase())
+        .collect();
+    let mut asking = BTreeSet::new();
+    for person in people {
+        let theirs = posted.iter().map(|(_, p)| p.clone());
+        for waiting in request::waiting(theirs, &person) {
+            for (asked, msgid) in std::iter::once((&waiting.request, &waiting.msgid))
+                .chain(waiting.also.iter().map(|(r, m)| (r, m)))
+            {
+                if let Some((account, _)) = posted.iter().find(|(_, p)| &p.msgid == msgid) {
+                    asking.insert((account.clone(), asked.session.clone()));
+                }
+            }
+        }
+    }
+    Ok(asking)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1121,5 +1196,63 @@ mod tests {
             ),
             ("person", "#team", "privmsg")
         );
+    }
+
+    #[test]
+    fn asking_is_the_sessions_whose_request_waits_for_their_person() {
+        use zirc_proto::request::{Request, State, Withdrawal};
+        let dir = tempfile::tempdir().unwrap();
+        let path = history(dir.path());
+        // A request's card is longer than a line: sent as a multiline message, kept whole.
+        let said = |request: &Request| {
+            let message = zirc_proto::Message::new(&request.session, request.event());
+            zirc_proto::encode_up_to(&message, 16 * 1024).unwrap()
+        };
+        let open = Request::open("ada-mbp/1", "cc-1", "ada", "Revoke it?", "revoked", "kept");
+        add(
+            &path,
+            "r1",
+            "#decisions",
+            10 * SECOND,
+            "ada-mbp",
+            &said(&open),
+        );
+        // Asked and withdrawn: no longer waiting.
+        let mut gone = Request::open("ada-mbp/2", "cc-2", "ada", "Bump?", "bumped", "left");
+        add(
+            &path,
+            "r2",
+            "#decisions",
+            20 * SECOND,
+            "ada-mbp",
+            &said(&gone),
+        );
+        gone.state = State::Withdrawn {
+            at: "2026-11-24T10:00:00Z".into(),
+            why: Withdrawal::Asked,
+        };
+        add(
+            &path,
+            "r3",
+            "#decisions",
+            30 * SECOND,
+            "ada-mbp",
+            &said(&gone),
+        );
+        // Sent by a machine that isn't Ada's: not hers to answer.
+        let other = Request::open("bob-mbp/1", "cc-3", "ada", "Ship?", "shipped", "held");
+        add(
+            &path,
+            "r4",
+            "#decisions",
+            40 * SECOND,
+            "bob-mbp",
+            &said(&other),
+        );
+
+        let owners = |account: &str| account.strip_suffix("-mbp").map(str::to_owned);
+        let asking = asking(&path, owners).unwrap();
+
+        assert_eq!(asking, [("ada-mbp".to_owned(), "cc-1".to_owned())].into());
     }
 }

@@ -1243,7 +1243,20 @@ async fn sessions_standing(State(ergo): State<Arc<Ergo>>) -> Response {
     let mut machines = crate::recorder::live(now);
     machines.retain(|account, _| connected.contains(account));
     let cards = crate::recorder::cards();
-    Json(zirc_proto::working::standing(&machines, &cards, now)).into_response()
+    // Those waiting for their person's answer, from #decisions as every app reads it; a
+    // history that can't be read says nobody is, rather than failing the rest.
+    let (history, owners) = (ergo.history.clone(), ergo.machines.clone());
+    let asking = tokio::task::spawn_blocking(move || {
+        crate::history::asking(&history, |account| owners.owner(account))
+    })
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .unwrap_or_default();
+    Json(zirc_proto::working::standing(
+        &machines, &cards, &asking, now,
+    ))
+    .into_response()
 }
 
 async fn remove_message(State(ergo): State<Arc<Ergo>>, Path(msgid): Path<String>) -> Response {

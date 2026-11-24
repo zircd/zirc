@@ -7,7 +7,7 @@
 //! app says ([`crate::session::not_listening`]), with what its card says it's working on and
 //! its tool, which the machine tells the recorder too. Nothing a session said in a message.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -50,6 +50,8 @@ pub struct Session {
     pub online: bool,
     /// How many messages from people wait for it, when it's away.
     pub waiting: u32,
+    /// Whether a request of its waits for its person's answer ([`crate::request::waiting`]).
+    pub asking: bool,
     /// How it stands in words: [`ONLINE`], [`AWAY`], or, away with messages waiting, what
     /// every app says ([`crate::session::not_listening`]): `Not listening for 17 min · 1
     /// message waiting`.
@@ -61,6 +63,10 @@ pub struct Session {
 
 /// What a session with a watch open is said to be.
 pub const ONLINE: &str = "Online";
+
+/// What a session online is said to be while a request of its waits for its person's answer
+/// ([`crate::request::waiting`]), in place of [`ONLINE`].
+pub const WAITING_FOR_ANSWER: &str = "Waiting for your answer";
 
 /// What a session with no watch open, and nothing waiting for it, is said to be.
 pub const AWAY: &str = "Away";
@@ -105,14 +111,18 @@ pub struct Standing {
 }
 
 /// How the sessions stand at `now` (seconds since the epoch), by what each machine last said
-/// (`machines`, by account). A session in neither of a machine's lists has been away longer
+/// (`machines`, by account), with what each card says (`cards`) and those with a request
+/// waiting for their person (`asking`, by machine and session). A session in neither of a machine's lists has been away longer
 /// than an app keeps it, and isn't here.
 #[must_use]
 pub fn standing(
     machines: &BTreeMap<String, Live>,
     cards: &BTreeMap<(String, String), SessionCard>,
+    asking: &BTreeSet<(String, String)>,
     now: u64,
 ) -> Standing {
+    let asks =
+        |machine: &str, session: &str| asking.contains(&(machine.to_owned(), session.to_owned()));
     let named = |machine: &str, session: &str| {
         let card = cards.get(&(machine.to_owned(), session.to_owned()));
         (
@@ -136,7 +146,13 @@ pub fn standing(
                         tool: named(machine, session).1,
                         online: true,
                         waiting: 0,
-                        says: ONLINE.to_owned(),
+                        asking: asks(machine, session),
+                        says: if asks(machine, session) {
+                            WAITING_FOR_ANSWER
+                        } else {
+                            ONLINE
+                        }
+                        .to_owned(),
                         line: String::new(),
                     },
                 );
@@ -158,6 +174,7 @@ pub fn standing(
                     tool: named(machine, session).1,
                     online: false,
                     waiting: away.waiting,
+                    asking: asks(machine, session),
                     says,
                     line: String::new(),
                 },
@@ -191,7 +208,7 @@ mod tests {
     fn adas() -> Standing {
         let away = |since, waiting| Away { since, waiting };
         let live = Live {
-            sessions: vec!["cc-a".into(), "cc-b".into()],
+            sessions: vec!["cc-a".into(), "cc-b".into(), "cc-d".into()],
             away: [
                 ("cc-b".to_owned(), away(1_000, 1)),
                 ("cc-c".to_owned(), away(400, 0)),
@@ -207,7 +224,8 @@ mod tests {
         };
         let machines = [("ada-mbp".to_owned(), live)].into();
         let cards = [(("ada-mbp".to_owned(), "cc-a".to_owned()), card)].into();
-        standing(&machines, &cards, 1_000 + 17 * 60)
+        let asking = [("ada-mbp".to_owned(), "cc-d".to_owned())].into();
+        standing(&machines, &cards, &asking, 1_000 + 17 * 60)
     }
 
     #[test]
@@ -226,6 +244,8 @@ mod tests {
                 // Within the grace a session is still in `sessions`, and away all the same.
                 "cc-b false Not listening for 17 min · 1 message waiting",
                 "cc-c false Away",
+                // A request of its waits for Ada's answer.
+                "cc-d true Waiting for your answer",
             ]
         );
     }
