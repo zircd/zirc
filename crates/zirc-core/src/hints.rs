@@ -320,6 +320,13 @@ fn message_kind(
             if let Some(commit) = fields.get_mut("commit") {
                 commit.truncate(7);
             }
+            // A test failure is one whoever it reaches: nothing to fix.
+            if ci.test && ci.state.as_deref() == Some("failed") {
+                return Some(kind::BUILD_TEST);
+            }
+            if why == Some(Why::Awaited) && delivery.own_branch {
+                return Some(kind::BUILD_FAILED);
+            }
             Some(ci_kind(kind, why, session, &ci, text))
         }
         Event::Text { .. } => Some(kind::POST),
@@ -1077,6 +1084,25 @@ mod tests {
         assert_eq!(
             super::seen(&theirs, Some("cc-1")).unwrap().kind,
             kind::AWAITED_UNLANDED
+        );
+        // A build of a branch the session pushed, from a CI that names no session; and a
+        // test failure, which is one whoever's branch it ran on.
+        let build = |test: bool| Event::Custom {
+            kind: zirc_proto::ci::LANDING_KIND.into(),
+            data: serde_json::json!({"state": "failed", "build": "9917", "branch": "login", "test": test}),
+            text: "login failed in CI (test)".into(),
+        };
+        let Heard::Message(mut delivery) = heard("ci", build(false), Some(Why::Awaited)) else {
+            panic!("a message");
+        };
+        delivery.own_branch = true;
+        let seen = super::seen(&Heard::Message(delivery), Some("cc-1")).unwrap();
+        assert_eq!(seen.kind, kind::BUILD_FAILED);
+        assert_eq!(seen.fields["branch"], "login");
+        let test = heard("ci", build(true), Some(Why::Awaited));
+        assert_eq!(
+            super::seen(&test, Some("cc-1")).unwrap().kind,
+            kind::BUILD_TEST
         );
         // One zircd waited on for it, as it changed its files.
         let overlapping = heard("ci", landed("cc-9"), Some(Why::BranchLanded));

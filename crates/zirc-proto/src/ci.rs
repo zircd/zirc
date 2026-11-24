@@ -119,7 +119,70 @@ pub fn typescript() -> Vec<String> {
             "const CI_KINDS: Readonly<Record<string, string>> = {{ {} }};",
             kinds.join(", ")
         ),
+        format!("const CI_CONNECT_COMMAND = {CONNECT_COMMAND:?};"),
+        format!("const CI_SECRET_ONLY_COMMAND = {SECRET_ONLY_COMMAND:?};"),
+        format!("const CI_TEST_FAILURE_COMMAND = {TEST_FAILURE_COMMAND:?};"),
+        format!("const CI_SECRET_NAME = {SECRET_NAME:?};"),
+        format!("const CI_STEP_NAME = {STEP_NAME:?};"),
+        format!(
+            "const CI_ACTIONS_STEP = {:?};",
+            actions_step("https://zirc.dev", "<repository>")
+        ),
     ]
+}
+
+/// The command that connects a repository's CI to an organisation: it finds the CI's
+/// workflows, keeps a token as [`SECRET_NAME`], adds [`actions_step`] and opens a pull request.
+pub const CONNECT_COMMAND: &str = "zirc ci connect";
+
+/// [`CONNECT_COMMAND`] setting only the secret again: the fix when CI's posts are refused.
+pub const SECRET_ONLY_COMMAND: &str = "zirc ci connect --secret-only";
+
+/// The command that sends a test failure: a real run of a branch that fails on purpose and
+/// says so ([`Data::test`]), for a person to see their agent wake.
+pub const TEST_FAILURE_COMMAND: &str = "zirc ci test-failure";
+
+/// The secret a repository's CI keeps an organisation's CI token as.
+pub const SECRET_NAME: &str = "ZIRC_CI_TOKEN";
+
+/// The repository variable that names the branch whose next run is a test failure
+/// ([`TEST_FAILURE_COMMAND`] sets it, re-runs the branch's last run, and clears it).
+pub const TEST_VARIABLE: &str = "ZIRC_TEST_FAILURE";
+
+/// The name of the step [`actions_step`] is, by which a workflow that has it is known.
+pub const STEP_NAME: &str = "Tell Zirc";
+
+/// The branch [`CONNECT_COMMAND`] pushes its change on.
+pub const CONNECT_BRANCH: &str = "zirc-ci-connect";
+
+/// The step that ends each job of a GitHub Actions workflow, saying in `#agents` how the job
+/// went on its branch, as one card a run: `web` is zirc.dev's address and `repository` the
+/// repository's name, as zirc's own lines say it. Indented as a job's steps are, six spaces.
+/// Without the secret, as on a fork's pull request, it does nothing. While
+/// [`TEST_VARIABLE`] names its branch it says the job failed, as a test, and fails it.
+#[must_use]
+pub fn actions_step(web: &str, repository: &str) -> String {
+    format!(
+        r#"      - name: {STEP_NAME}
+        if: always()
+        env:
+          {SECRET_NAME}: ${{{{ secrets.{SECRET_NAME} }}}}
+          ZIRC_TEST: ${{{{ vars.{TEST_VARIABLE} == (github.head_ref || github.ref_name) }}}}
+          STATE: ${{{{ job.status == 'success' && 'passed' || job.status == 'cancelled' && 'cancelled' || 'failed' }}}}
+          BRANCH: ${{{{ github.head_ref || github.ref_name }}}}
+        run: |
+          [ -n "${SECRET_NAME}" ] || exit 0
+          if [ "$ZIRC_TEST" = true ]; then STATE=failed; fi
+          jq -nc --arg state "$STATE" --arg build "$GITHUB_RUN_ID" --arg branch "$BRANCH" \
+            --arg text "$BRANCH $STATE in $GITHUB_WORKFLOW ($GITHUB_JOB)" --argjson test "$ZIRC_TEST" \
+            --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{{channel: "{AGENTS}", repository: "{repository}", state: $state, build: $build, branch: $branch, text: $text, url: $url, data: {{test: $test, job: env.GITHUB_JOB}}}}' |
+            curl -fsS {web}{CI_PATH} -H "Authorization: Bearer ${SECRET_NAME}" -d @-
+          if [ "$ZIRC_TEST" = true ]; then echo "A test failure, sent with {TEST_FAILURE_COMMAND}: nothing is wrong."; exit 1; fi
+"#,
+        AGENTS = "#agents",
+        CI_PATH = crate::login::CI_PATH,
+    )
 }
 
 /// The kind CI's scripts call `name` (`landing`, `deploy`, `check`, `state`), if it's one.
@@ -210,6 +273,10 @@ pub struct Data {
     /// at `info`, never `passed`, which counts as landed.
     #[serde(default, rename = "try", skip_serializing_if = "std::ops::Not::not")]
     pub tried: bool,
+    /// Whether it's a test failure a person sent to see their agent wake (`zirc ci
+    /// test-failure`): a real run that failed on purpose, so there's nothing to fix.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub test: bool,
     /// The branches, still to land, whose commits the branch held as CI found it: what it was
     /// tested on, for a try, and why it failed, for a landing, which CI refuses then, as it
     /// would land their commits as its own.
@@ -451,6 +518,38 @@ mod tests {
 
     /// A try, and what a branch was stacked on, as ops/say.sh says them; neither said, it's a
     /// landing of a branch stacked on nothing, and says so the same way back.
+    #[test]
+    fn the_actions_step_says_a_job_in_agents_and_a_test_when_asked() {
+        let step = actions_step("https://zirc.dev", "server");
+        assert!(
+            step.starts_with("      - name: Tell Zirc\n        if: always()\n"),
+            "{step}"
+        );
+        assert!(
+            step.contains("ZIRC_CI_TOKEN: ${{ secrets.ZIRC_CI_TOKEN }}"),
+            "{step}"
+        );
+        assert!(
+            step.contains(
+                "ZIRC_TEST: ${{ vars.ZIRC_TEST_FAILURE == (github.head_ref || github.ref_name) }}"
+            ),
+            "{step}"
+        );
+        assert!(
+            step.contains(r##"'{channel: "#agents", repository: "server", state: $state"##),
+            "{step}"
+        );
+        assert!(
+            step.contains(
+                r#"curl -fsS https://zirc.dev/ci -H "Authorization: Bearer $ZIRC_CI_TOKEN" -d @-"#
+            ),
+            "{step}"
+        );
+        // A test's mark is read back as one.
+        assert!(Data::of(&serde_json::json!({"state": "failed", "test": true})).test);
+        assert!(!Data::of(&serde_json::json!({"state": "failed", "test": false})).test);
+    }
+
     #[test]
     fn reads_a_try_and_its_stack() {
         let it = Data::of(&serde_json::json!({

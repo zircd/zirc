@@ -88,7 +88,8 @@ command of its own: it ends when CI says it happened or failed, or when someone 
 you. Work that depends on another branch needn't wait: branch from it, carry on, and `zirc
 stack --session <your session>` wakes you when it lands, for `zirc stack --rebase`, or when
 it's deleted unlanded: then never land it yourself, but rebase past it. Where CI builds
-pushed branches without landing them, `zirc wait-for --session <your session> <branch>`.
+pushed branches without landing them, your watch wakes by itself when a build of a branch
+you pushed fails; to hear it pass too, `zirc wait-for --session <your session> <branch>`.
 Where no CI says landings in zirc at all, `zirc wait landed <session>` ends when that
 session's work is pushed to the default branch: how to wait for another session's unfinished
 change in a checkout you share with it.

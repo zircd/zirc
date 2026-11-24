@@ -622,10 +622,12 @@ impl Daemon {
             && kind == LANDING_KIND
             && !under_way(&delivery.message, data)
             && let Some(session) = session
+            && let ci = zirc_proto::ci::Data::of(data)
             && let Some(why) = self.awaits.concerns(
                 session,
                 text,
-                zirc_proto::ci::Data::of(data).branch.as_deref(),
+                ci.branch.as_deref(),
+                ci.state.as_deref() == Some("failed"),
             )
         {
             return ControlFlow::Break(Some(why));

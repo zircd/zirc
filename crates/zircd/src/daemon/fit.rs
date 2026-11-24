@@ -118,6 +118,16 @@ impl Daemon {
         {
             delivery.fit = self.intent_fit(delivery, session).map(Box::new);
         }
+        // CI on a branch the session pushed, which zircd waits on for it: its hint is its
+        // own build's, not one for a landing it said it waits on.
+        if why == Some(Why::Awaited)
+            && let (Response::Delivery(delivery), Some(session)) = (&mut told, session)
+            && let zirc_proto::Event::Custom { kind, data, .. } = &delivery.message.event
+            && kind == zirc_proto::ci::LANDING_KIND
+            && let Some(branch) = zirc_proto::ci::Data::of(data).branch
+        {
+            delivery.own_branch = self.awaits.owns(session, &branch);
+        }
         told
     }
 

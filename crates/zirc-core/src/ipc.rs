@@ -980,6 +980,10 @@ pub struct Delivery {
     /// it has some: each is a `[sealed]` in its text, which `zirc unseal` opens.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sealed: Option<String>,
+    /// For CI's line on a build ([`Why::Awaited`]): whether it's of a branch the watching
+    /// session pushed, which zircd waits on for it, rather than one it said it waits on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub own_branch: bool,
 }
 
 impl Delivery {
@@ -1013,6 +1017,7 @@ impl Delivery {
             decided: None,
             fit: None,
             sealed: None,
+            own_branch: false,
         }
     }
 }

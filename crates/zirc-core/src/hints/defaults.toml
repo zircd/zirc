@@ -100,6 +100,16 @@ level = "act"
 text = "The default branch broke and names you: check it's yours, then fix it or revert your landing."
 
 [[hint]]
+kind = "build.yours.failed"
+level = "act"
+text = "CI failed on {branch}, which you pushed: read its log, fix it there and push again, and tell the user in one line what failed."
+
+[[hint]]
+kind = "build.yours.test"
+level = "act"
+text = "A test failure your user sent to see you wake, not a real one: fix nothing. Tell them in one line that CI's failure reached you, and carry on."
+
+[[hint]]
 kind = "landing.awaited"
 level = "act"
 text = "What you were waiting on moved: carry on with what it unblocks."

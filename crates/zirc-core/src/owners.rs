@@ -208,6 +208,7 @@ mod tests {
             decided: None,
             fit: None,
             sealed: None,
+            own_branch: false,
         }
     }
 

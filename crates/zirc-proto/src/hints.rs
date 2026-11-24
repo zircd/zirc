@@ -52,6 +52,10 @@ pub mod kind {
     /// CI: a landing you wait on failed or conflicts, which ends the wait: it may land later,
     /// on another build or under another branch's name.
     pub const AWAITED_UNLANDED: &str = "landing.awaited.unlanded";
+    /// CI: a build failed on a branch you pushed, which zircd waits on for you.
+    pub const BUILD_FAILED: &str = "build.yours.failed";
+    /// CI: a test failure your user sent to see you wake (`zirc ci test-failure`).
+    pub const BUILD_TEST: &str = "build.yours.test";
     /// CI: a branch zircd told you changes files you're changing landed.
     pub const OVERLAPPING_LANDED: &str = "landing.overlapping";
     /// The default branch moved since your work was built, said with your next wake.
@@ -92,7 +96,7 @@ pub mod kind {
     pub const REACTION_OTHER: &str = "reaction.other";
 
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 36] = [
+    pub const ALL: [&str; 38] = [
         START,
         OVERLAP,
         OVERLAP_SAME_LINES,
@@ -112,6 +116,8 @@ pub mod kind {
         DEFAULT_MOVED,
         AWAITED,
         AWAITED_UNLANDED,
+        BUILD_FAILED,
+        BUILD_TEST,
         OVERLAPPING_LANDED,
         STATE_OK,
         STATE_NOT_OK,

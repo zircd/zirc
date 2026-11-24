@@ -325,6 +325,7 @@ impl Daemon {
                 self.check_push(&channel, &me.unwrap_or_default(), &event);
                 self.check_undone(root, &session, &event);
                 self.note_stack(root, &session, &event);
+                self.await_own_branch(root, &session, &event);
             }
         }
     }

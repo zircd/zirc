@@ -14,6 +14,12 @@
 //! session's news, and it lands later. It ends when the branch lands, when this machine had
 //! the branch and has it no more, or after [`FOLLOWS`].
 //!
+//! And on a session's own branch, once it pushes it ([`Awaits::own`], the user's choice,
+//! 24 Nov 2026: "Yes, wait automatically"): CI that knows no session, as GitHub Actions,
+//! names only the branch, and a new user's first failed build reached nobody, as nobody
+//! remembered `zirc wait-for`. Only a build that failed wakes the session ([`Why::Awaited`]),
+//! each time one does; a passed build stays quiet. It lasts [`FOLLOWS`] from the last push.
+//!
 //! A session stacked on another's branch (`zirc stack`), building on it before it lands,
 //! waits on it the same way, and on it moving: CI's line saying it landed wakes the session
 //! ([`Why::BranchLanded`]), and so does a push that moves its head from the one the session
@@ -108,6 +114,9 @@ struct Wait {
     /// For a reaction, `on` being its emoji: the messages it woke the session for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     reaction: Option<Reacting>,
+    /// Whether it's the session's own branch, which it pushed ([`Awaits::own`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    own: bool,
 }
 
 /// A wait for a reaction, past when it started.
@@ -178,6 +187,7 @@ impl Wait {
         let lasts = match (&self.stack, self.followed) {
             _ if self.reaction.is_some() => REACTS,
             (Some(_), _) => STACKED,
+            _ if self.own => FOLLOWS,
             (None, true) => FOLLOWS,
             (None, false) => LASTS,
         };
@@ -209,6 +219,7 @@ impl Awaits {
                 state: None,
                 stack: None,
                 reaction: None,
+                own: false,
             });
         }
         if waits.is_empty() {
@@ -233,6 +244,7 @@ impl Awaits {
                 state: Some(Stood { repo, level }),
                 stack: None,
                 reaction: None,
+                own: false,
             });
         }
     }
@@ -268,6 +280,7 @@ impl Awaits {
                     started: now(),
                     woken: Vec::new(),
                 }),
+                own: false,
             });
         }
         if waits.is_empty() {
@@ -381,8 +394,46 @@ impl Awaits {
             state: None,
             stack: None,
             reaction: None,
+            own: false,
         });
         true
+    }
+
+    /// Waits, for `session`, on its own `branch`, which it just pushed: a build of it that
+    /// fails wakes it. Nothing new when the session waits on it already, as said or its own,
+    /// though its own lasts from now. Says whether it's new.
+    pub(super) fn own(&mut self, session: &str, branch: &str) -> bool {
+        let waits = self.0.entry(session.to_owned()).or_default();
+        waits.retain(Wait::live);
+        if let Some(wait) = waits
+            .iter_mut()
+            .find(|wait| wait.on_landing() && wait.on == branch)
+        {
+            if wait.own {
+                wait.since = now();
+            }
+            return false;
+        }
+        waits.push(Wait {
+            on: branch.to_owned(),
+            since: now(),
+            followed: false,
+            seen: false,
+            state: None,
+            stack: None,
+            reaction: None,
+            own: true,
+        });
+        true
+    }
+
+    /// Whether `branch` is one `session` pushed, which zircd waits on for it.
+    pub(super) fn owns(&self, session: &str, branch: &str) -> bool {
+        self.0.get(session).is_some_and(|waits| {
+            waits
+                .iter()
+                .any(|wait| wait.live() && wait.own && wait.on == branch)
+        })
     }
 
     /// Notes that `session` is stacked on `branch`, whose head was `tip` as it built on it,
@@ -412,6 +463,7 @@ impl Awaits {
                 paths,
             }),
             reaction: None,
+            own: false,
         });
     }
 
@@ -587,11 +639,21 @@ impl Awaits {
 
     /// Why `text`, a landing line from CI about `branch` if its data says, concerns
     /// `session`, if it names something the session waits on: any line on what it said it
-    /// waits on, and only one saying it landed on a branch zircd follows for it.
-    pub(super) fn concerns(&self, session: &str, text: &str, branch: Option<&str>) -> Option<Why> {
+    /// waits on, only one saying a build `failed` on its own branch, and only one saying it
+    /// landed on a branch zircd follows for it.
+    pub(super) fn concerns(
+        &self,
+        session: &str,
+        text: &str,
+        branch: Option<&str>,
+        failed: bool,
+    ) -> Option<Why> {
         let waits = self.0.get(session)?;
         let live = || waits.iter().filter(|wait| wait.live() && wait.on_landing());
-        if live().any(|wait| !wait.followed && names(text, &wait.on)) {
+        if live().any(|wait| !wait.followed && !wait.own && names(text, &wait.on)) {
+            return Some(Why::Awaited);
+        }
+        if failed && live().any(|wait| wait.own && branch == Some(wait.on.as_str())) {
             return Some(Why::Awaited);
         }
         live()
@@ -619,7 +681,10 @@ impl Awaits {
                     }
                     return true;
                 }
-                if wait.followed {
+                if wait.own {
+                    // Its own branch's builds, until it lands: each failure is news.
+                    !landed(text, branch, &wait.on)
+                } else if wait.followed {
                     !landed(text, branch, &wait.on)
                 } else {
                     !(finished && wait.on_landing() && names(text, &wait.on))
@@ -738,6 +803,39 @@ impl Daemon {
         self.save_awaits();
     }
 
+    /// Waits, for `session`, on the branch `event` says it pushed from `root`, unless it's
+    /// the default branch: a build of it that fails wakes the session ([`Awaits::own`]). A
+    /// worktree with no session of its own yet is its repository's one session's.
+    pub(super) fn await_own_branch(
+        &mut self,
+        root: &std::path::Path,
+        session: &str,
+        event: &Event,
+    ) {
+        let Event::Push { branch, .. } = event else {
+            return;
+        };
+        if self
+            .repos
+            .get(root)
+            .is_none_or(|watched| watched.default_branch == *branch)
+        {
+            return;
+        }
+        let session = if session == super::WATCHER_SESSION {
+            let Some(only) = self.lone_session_of(root) else {
+                return;
+            };
+            only
+        } else {
+            session.to_owned()
+        };
+        if self.awaits.own(&session, branch) {
+            tracing::info!("{session} waits on its own {branch}: a failed build wakes it");
+        }
+        self.save_awaits();
+    }
+
     /// Ends the waits on followed branches deleted here.
     pub(super) fn followed_branches_now(&mut self) {
         let repos = &self.repos;
@@ -809,6 +907,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_failed_build_of_a_sessions_own_branch_wakes_it_each_time_and_a_pass_doesnt() {
+        let mut awaits = Awaits::default();
+        assert!(awaits.own("cc-1", "tls-rotation"));
+        assert!(!awaits.own("cc-1", "tls-rotation"), "once a branch");
+        assert!(awaits.owns("cc-1", "tls-rotation") && !awaits.owns("cc-2", "tls-rotation"));
+        let branch = Some("tls-rotation");
+        let failed = "tls-rotation failed in CI (test)";
+        let passed = "tls-rotation passed in CI (test)";
+        assert_eq!(
+            awaits.concerns("cc-1", failed, branch, true),
+            Some(Why::Awaited)
+        );
+        assert_eq!(awaits.concerns("cc-1", passed, branch, false), None);
+        // Another branch's failure, or one whose data names no branch, is someone else's.
+        assert_eq!(awaits.concerns("cc-1", failed, Some("other"), true), None);
+        assert_eq!(awaits.concerns("cc-1", failed, None, true), None);
+        assert_eq!(awaits.concerns("cc-2", failed, branch, true), None);
+    }
+
+    #[test]
+    fn a_sessions_own_branch_is_waited_on_until_it_lands_and_never_over_what_it_said() {
+        let mut awaits = Awaits::default();
+        awaits.own("cc-1", "tls-rotation");
+        let branch = Some("tls-rotation");
+        let failed = "tls-rotation failed in CI (test)";
+        // A failure doesn't end it: the next one wakes it too. Landing does.
+        awaits.heard(failed, branch);
+        assert_eq!(
+            awaits.concerns("cc-1", failed, branch, true),
+            Some(Why::Awaited)
+        );
+        awaits.heard("cc-1: tls-rotation landed as 0123456 (build 7)", branch);
+        assert_eq!(awaits.concerns("cc-1", failed, branch, true), None);
+        // One the session said it waits on stays as it said: any line that names it.
+        awaits.add("cc-1", ["fix-login".to_owned()]);
+        assert!(!awaits.own("cc-1", "fix-login"));
+        let line = "fix-login passed in CI (test)";
+        assert_eq!(
+            awaits.concerns("cc-1", line, Some("fix-login"), false),
+            Some(Why::Awaited)
+        );
+    }
+
+    #[test]
     fn reads_what_a_post_says_it_waits_on() {
         let sessions = ["cc-598aa1", "cc-ad4f7c"];
         assert_eq!(
@@ -830,20 +972,20 @@ mod tests {
         assert_eq!(awaits.of("cc-1"), ["1299", "cc-2"]);
         let deploying = "cc-3: deploying to production: web (build 1299)";
         let awaited = Some(Why::Awaited);
-        assert_eq!(awaits.concerns("cc-1", deploying, None), awaited);
+        assert_eq!(awaits.concerns("cc-1", deploying, None, false), awaited);
         let other = "cc-3: landed x as abc (build 12990)";
-        assert_eq!(awaits.concerns("cc-1", other, None), None);
-        assert_eq!(awaits.concerns("cc-9", deploying, None), None);
+        assert_eq!(awaits.concerns("cc-1", other, None, false), None);
+        assert_eq!(awaits.concerns("cc-9", deploying, None, false), None);
         // Under way: still waiting.
         awaits.heard(deploying, None);
-        assert_eq!(awaits.concerns("cc-1", deploying, None), awaited);
+        assert_eq!(awaits.concerns("cc-1", deploying, None, false), awaited);
         // Landed: that wait's over, the other isn't.
         let landed = "cc-3: landed fix-login as 1a2b3c4 (build 1299)";
-        assert_eq!(awaits.concerns("cc-1", landed, None), awaited);
+        assert_eq!(awaits.concerns("cc-1", landed, None, false), awaited);
         awaits.heard(landed, None);
-        assert_eq!(awaits.concerns("cc-1", landed, None), None);
+        assert_eq!(awaits.concerns("cc-1", landed, None, false), None);
         let failed = "cc-2: build 1301 failed: //web:e2e";
-        assert_eq!(awaits.concerns("cc-1", failed, None), awaited);
+        assert_eq!(awaits.concerns("cc-1", failed, None, false), awaited);
     }
 
     #[test]
@@ -858,23 +1000,30 @@ mod tests {
             "cc-2: build 1300 of fix-login failed in test: //api:unit",
             "cc-2: fix-login conflicts with master: rebase, resolve, land again",
         ] {
-            assert_eq!(awaits.concerns("cc-1", quiet, branch), None, "{quiet}");
+            assert_eq!(
+                awaits.concerns("cc-1", quiet, branch, false),
+                None,
+                "{quiet}"
+            );
             awaits.heard(quiet, branch);
         }
         let other = "cc-3: landed fix-login-2 as 5d6e7f8 (build 1301)";
-        assert_eq!(awaits.concerns("cc-1", other, Some("fix-login-2")), None);
+        assert_eq!(
+            awaits.concerns("cc-1", other, Some("fix-login-2"), false),
+            None
+        );
         let landed = "cc-2: landed fix-login as 1a2b3c4 (build 1302)";
         assert_eq!(
-            awaits.concerns("cc-1", landed, branch),
+            awaits.concerns("cc-1", landed, branch, false),
             Some(Why::BranchLanded)
         );
         // Without the line's data, by its words.
         assert_eq!(
-            awaits.concerns("cc-1", landed, None),
+            awaits.concerns("cc-1", landed, None, false),
             Some(Why::BranchLanded)
         );
         awaits.heard(landed, branch);
-        assert_eq!(awaits.concerns("cc-1", landed, branch), None);
+        assert_eq!(awaits.concerns("cc-1", landed, branch, false), None);
         assert!(awaits.of("cc-1").is_empty());
     }
 
@@ -923,11 +1072,11 @@ mod tests {
         let landed = "cc-2: landed api-auth as 1a2b3c4 (build 1302)";
         let branch = Some("api-auth");
         assert_eq!(
-            awaits.concerns("cc-1", landed, branch),
+            awaits.concerns("cc-1", landed, branch, false),
             Some(Why::BranchLanded)
         );
         assert!(awaits.heard(landed, branch));
-        assert_eq!(awaits.concerns("cc-1", landed, branch), None);
+        assert_eq!(awaits.concerns("cc-1", landed, branch, false), None);
         assert!(awaits.stacks("cc-1")[0].landed);
         // Deleted once landed: still there, until the session drops it.
         awaits.branches_now(|_| false);
@@ -946,7 +1095,7 @@ mod tests {
         assert!(!awaits.follow("cc-1", "fix-login"));
         let failed = "cc-2: build 1300 of fix-login failed in test: //api:unit";
         assert_eq!(
-            awaits.concerns("cc-1", failed, Some("fix-login")),
+            awaits.concerns("cc-1", failed, Some("fix-login"), false),
             Some(Why::Awaited)
         );
     }
@@ -962,7 +1111,10 @@ mod tests {
         assert_eq!(read.of("cc-1"), ["1299", "fix-login"]);
         // Still followed, and still known to have been here.
         let landed = "cc-2: landed fix-login as 1a2b3c4 (build 1300)";
-        assert_eq!(read.concerns("cc-1", landed, None), Some(Why::BranchLanded));
+        assert_eq!(
+            read.concerns("cc-1", landed, None, false),
+            Some(Why::BranchLanded)
+        );
         assert!(read.branches_now(|_| false));
         assert_eq!(read.of("cc-1"), ["1299"]);
         // Nothing to change, nothing to save.
@@ -994,7 +1146,10 @@ mod tests {
         awaits.add("cc-1", ["1299".to_owned()]);
         assert_eq!(awaits.of("cc-1"), ["state master", "1299"]);
         let landing = "cc-2: master conflicts with master (build 1299)";
-        assert_eq!(awaits.concerns("cc-1", landing, None), Some(Why::Awaited));
+        assert_eq!(
+            awaits.concerns("cc-1", landing, None, false),
+            Some(Why::Awaited)
+        );
         // Broken again, by another build: no change.
         assert!(!awaits.state_changed("cc-1", &said(Level::Broken)));
         assert!(!awaits.state_heard(&said(Level::Broken)));

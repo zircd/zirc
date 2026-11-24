@@ -141,7 +141,7 @@ impl Daemon {
 
     /// The one session working in the repository `root` is a checkout or worktree of, across
     /// its worktrees: none when there are several, or no one.
-    fn lone_session_of(&self, root: &Path) -> Option<String> {
+    pub(super) fn lone_session_of(&self, root: &Path) -> Option<String> {
         let common = &self.repos.get(root)?.common;
         let mut sessions = self
             .repos

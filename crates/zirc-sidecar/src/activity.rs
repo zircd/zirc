@@ -407,6 +407,7 @@ pub fn metadata(message: &Message) -> Option<Value> {
                     "fixes",
                     "try",
                     "stacked_on",
+                    "test",
                 ],
                 // A check of the default branch or a flaky test: which build, how it went and
                 // what failed, for counting flakes and broken heads.

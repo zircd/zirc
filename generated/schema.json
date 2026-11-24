@@ -1367,6 +1367,10 @@
             "null"
           ],
           "description": "Its sealed parts, the `+zirc.dev/sealed` tag's value ([`zirc_proto::sealed`]), when\nit has some: each is a `[sealed]` in its text, which `zirc unseal` opens."
+        },
+        "own_branch": {
+          "type": "boolean",
+          "description": "For CI's line on a build ([`Why::Awaited`]): whether it's of a branch the watching\nsession pushed, which zircd waits on for it, rather than one it said it waits on."
         }
       },
       "required": [
@@ -4867,6 +4871,10 @@
         "try": {
           "type": "boolean",
           "description": "A try (`//ops:land --try`): the branch tested as its landing would be, rebased onto\nthe default branch, and never landed, on every event of its build. Its end, passed, is\nat `info`, never `passed`, which counts as landed."
+        },
+        "test": {
+          "type": "boolean",
+          "description": "Whether it's a test failure a person sent to see their agent wake (`zirc ci\ntest-failure`): a real run that failed on purpose, so there's nothing to fix."
         },
         "stacked_on": {
           "type": "array",
