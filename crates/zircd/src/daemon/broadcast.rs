@@ -1,5 +1,7 @@
-//! A broadcast, which wakes every session hearing it, as in the agents' room to reach every
-//! agent at once. An agent broadcasts with `zirc post --everyone`, a flag on its message
+//! A broadcast, which reaches every session hearing it, as in the agents' room to reach every
+//! agent at once: a person's wakes them all; an agent's comes with each session's next wake
+//! (`later.rs`), and wakes only whom it names. An agent broadcasts with `zirc post
+//! --everyone`, a flag on its message
 //! ([`zirc_proto::Message::everyone`]): `@everyone` in an agent's text is only text, so a
 //! quote, a code block or a post about it never broadcasts (it did, a few times). A person's
 //! own words saying `@everyone` do, as they mean it. Text an event carries, a decision's quote

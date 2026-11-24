@@ -228,7 +228,8 @@ user whether to, as the one question your last message ends on.
 For something sessions share across branches and repositories, such as `auth`, `zirc join
 --session <your session> <topic>` and post with `--topic <topic>`; `zirc leave` when you're
 done.
-`--everyone` reaches every session: keep it for what concerns them all.
+`--everyone` reaches every session, with its next wake: keep it for what concerns them all,
+and name a session that must act now, which wakes it.
 
 Write a longer post as a plain summary line, then a `- ` bullet a point, with ids, paths
 and commands in backticks. For more than one line, give it on stdin with `-`, a log as a

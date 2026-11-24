@@ -424,8 +424,9 @@ pub(crate) struct PostArgs {
     /// channel (--to repo) from an agent session, when it isn't for a person.
     #[arg(long)]
     pub(crate) force: bool,
-    /// Wake every session that hears it, as a broadcast: rarely, for what they all need
-    /// now. Without it, @everyone written in the text is only text.
+    /// Reach every session that hears it, as a broadcast: each reads it with its next
+    /// wake, and it wakes only a session it names. Without it, @everyone written in the
+    /// text is only text.
     #[arg(long)]
     pub(crate) everyone: bool,
     /// Reply to a message, by the id zirc watch shows ([id 01jbx7ab]): it's said in the
@@ -614,7 +615,7 @@ pub(crate) async fn post(
     }
     let note = (!everyone && text.to_lowercase().contains("@everyone")).then_some(
         "note: it didn't broadcast: @everyone in a post's text is only text. Post with \
-         --everyone to wake every session, and only when they all need it",
+         --everyone to reach every session, with its next wake, and only when they all need it",
     );
     let answer = if zirc_core::sealed::split(&text).parts.is_empty() {
         let request = Request::Post {

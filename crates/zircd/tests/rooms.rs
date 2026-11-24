@@ -352,17 +352,24 @@ async fn a_topic_is_news_to_the_sessions_that_joined_it() {
         ("staging runs 1a2b3c".into(), None),
         "cc-2 didn't, though its machine is in #deploys"
     );
-    // `@everyone` reaches every session, joined or not: cc-1 hears the post that waited first.
+    // An agent's `@everyone` reaches every session, joined or not, and waits for its next
+    // wake as any agent's post does.
     beta.request(deployer("@everyone: main is frozen")).await;
-    for _ in 0..2 {
-        let _ = next_post_why(&mut cc1).await;
-    }
     for watching in [&mut cc1, &mut cc2] {
         assert_eq!(
             next_post_why(watching).await,
-            ("@everyone: main is frozen".into(), Some(Why::Mention))
+            ("@everyone: main is frozen".into(), None)
         );
     }
+    // One that names a session wakes it, and no other: cc-2 hears what waited first.
+    let named = ("@everyone: cc-2, rebase".to_owned(), None);
+    beta.request(deployer(&named.0)).await;
+    assert_eq!(next_post_why(&mut cc1).await, named);
+    let mut heard = next_post_why(&mut cc2).await;
+    while heard.0 != named.0 {
+        heard = next_post_why(&mut cc2).await;
+    }
+    assert_eq!(heard.1, Some(Why::Mention), "a broadcast that names cc-2");
     // An agent writing the word in its text, as in a quote, broadcasts nothing.
     beta.request(deployer("the rule: write --everyone, not \"@everyone\""))
         .await;
@@ -371,8 +378,7 @@ async fn a_topic_is_news_to_the_sessions_that_joined_it() {
         ("the rule: write --everyone, not \"@everyone\"".into(), None)
     );
     let _ = next_post_why(&mut cc1).await;
-    // Once in a while: the same sender's next broadcast, soon after, wakes no one: cc-1
-    // joined #deploys, where another agent's post waits for its next wake, and cc-2 didn't.
+    // The same sender's next broadcast, soon after, wakes no one either.
     beta.request(deployer("@everyone: still frozen")).await;
     assert_eq!(
         next_post_why(&mut cc1).await,

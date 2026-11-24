@@ -215,7 +215,8 @@ impl Daemon {
             let Some(why) = self.news_why(response, Some(&session), stale) else {
                 continue;
             };
-            if (why == Why::Mention && later::waits(response))
+            if (why == Why::Mention
+                && (later::waits(response) || self.broadcast_waits(response, &session)))
                 || (why == Why::Topic && later::agent_chatter(response))
                 || (why == Why::Awaited && later::apple_pass(response))
             {
@@ -672,6 +673,12 @@ impl Daemon {
         } else {
             topic.then_some(Why::Topic)
         }
+    }
+
+    /// Whether `body` names `session`, or a branch it's built on: what wakes it whoever
+    /// else the post is for.
+    pub(super) fn named(&self, body: &str, session: &str) -> bool {
+        mentions(body, &[session]) || self.stacked_on_named(body, Some(session))
     }
 
     /// Whether `body` names a branch `session` is stacked on that hasn't landed: what its

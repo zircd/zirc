@@ -153,15 +153,44 @@ pub(super) fn agent_chatter(response: &Response) -> bool {
         && sender_kind(from, None) != SenderKind::Integration
 }
 
+/// Whether `response` is an agent session's broadcast, `zirc post --everyone`: it reaches
+/// every session, with its next wake rather than as one (the user's choice, 24 Nov 2026:
+/// "Nobody; next wake"). One such post woke 15 sessions at once, and 6 of a day's 19 such
+/// wakes led to anything. A person's own `@everyone` still wakes them all.
+fn agent_broadcast(response: &Response) -> bool {
+    matches!(response, Response::Delivery(delivery) if delivery.message.everyone)
+        && agent_chatter(response)
+}
+
 impl Daemon {
+    /// Whether `response` concerns `session` only as an agent's broadcast
+    /// ([`agent_broadcast`]), which waits for its next wake: not one that names it, or a
+    /// branch it's built on, which wakes it as any post that does.
+    pub(super) fn broadcast_waits(&self, response: &Response, session: &str) -> bool {
+        let Response::Delivery(delivery) = response else {
+            return false;
+        };
+        let Event::Text { body } = &delivery.message.event else {
+            return false;
+        };
+        agent_broadcast(response) && !self.named(body, session)
+    }
+
     /// Keeps `response` for each watching session it would only wake as a report that names
     /// it, which then hears it now without a reason, in `reasons`.
-    /// So too what another agent session says in a topic a session joined.
+    /// So too what another agent session says in a topic a session joined, and an agent's
+    /// broadcast ([`Self::broadcast_waits`]).
     pub(super) fn hold_reports(&mut self, response: &Response, reasons: &mut [Option<Why>]) {
         let report = waits(response);
         let chatter = agent_chatter(response);
         let apple = apple_pass(response);
-        if !report && !chatter && !apple {
+        let broadcast: BTreeSet<String> = self
+            .watchers
+            .iter()
+            .filter_map(|watcher| watcher.session.clone())
+            .filter(|session| self.broadcast_waits(response, session))
+            .collect();
+        if !report && !chatter && !apple && broadcast.is_empty() {
             return;
         }
         let waiting: Vec<(String, Why)> = self
@@ -171,7 +200,7 @@ impl Daemon {
             .filter_map(|(watcher, why)| {
                 let session = watcher.session.clone()?;
                 let held = match *why {
-                    Some(Why::Mention) if report => Why::Mention,
+                    Some(Why::Mention) if report || broadcast.contains(&session) => Why::Mention,
                     Some(Why::Topic) if chatter => Why::Topic,
                     Some(Why::Awaited) if apple => Why::Awaited,
                     _ => return None,
