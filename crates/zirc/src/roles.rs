@@ -116,7 +116,7 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
     }
 }
 
-/// `zirc roles`, or with `avatars`, `zirc avatars`: the pictures `--role` takes.
+/// `zirc roles`, or with `avatars`, `zirc avatars`: the pictures `--avatar` takes.
 pub(crate) async fn list(socket: &Path, avatars: bool, out: &mut impl Write) -> Result<()> {
     if avatars {
         return Ok(write!(out, "{}", crate::avatars_text())?);
