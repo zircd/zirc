@@ -665,6 +665,21 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Today::decl(config),
         format!("const TODAY_PATH = {TODAY_PATH:?};"),
         format!("const ONBOARDING_APP_PAGE = {APP_PAGE:?};"),
+        format!(
+            "const STEP_ID = {{ {} }} as const;",
+            [
+                ("SERVER", id::SERVER),
+                ("COMPUTER", id::COMPUTER),
+                ("AGENT", id::AGENT),
+                ("PHONE", id::PHONE),
+                ("CI", id::CI),
+                ("FIRST_WAKE", id::FIRST_WAKE),
+                ("FIRST_OVERLAP", id::FIRST_OVERLAP),
+                ("TEAMMATE", id::TEAMMATE),
+            ]
+            .map(|(name, id)| format!("{name}: {id:?}"))
+            .join(", ")
+        ),
         State::decl(config),
         Check::decl(config),
         Stall::decl(config),
