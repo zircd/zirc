@@ -186,43 +186,33 @@ mod tests {
     use super::*;
     use crate::session::Away;
 
-    #[test]
-    fn a_session_is_online_or_away_with_what_waits_in_the_apps_words() {
+    /// Ada's machine: cc-a online with a card, cc-b away with a message waiting though still
+    /// within the grace, cc-c away with nothing waiting; said 17 minutes after cc-b went.
+    fn adas() -> Standing {
+        let away = |since, waiting| Away { since, waiting };
         let live = Live {
             sessions: vec!["cc-a".into(), "cc-b".into()],
             away: [
-                (
-                    "cc-b".to_owned(),
-                    Away {
-                        since: 1_000,
-                        waiting: 1,
-                    },
-                ),
-                (
-                    "cc-c".to_owned(),
-                    Away {
-                        since: 400,
-                        waiting: 0,
-                    },
-                ),
+                ("cc-b".to_owned(), away(1_000, 1)),
+                ("cc-c".to_owned(), away(400, 0)),
             ]
             .into(),
             ..Live::default()
         };
+        let card = SessionCard {
+            session: "cc-a".into(),
+            name: Some("tls-rotation".into()),
+            title: "Rotate the server's TLS certificates".into(),
+            tool: Some(crate::CLAUDE_CODE.into()),
+        };
         let machines = [("ada-mbp".to_owned(), live)].into();
+        let cards = [(("ada-mbp".to_owned(), "cc-a".to_owned()), card)].into();
+        standing(&machines, &cards, 1_000 + 17 * 60)
+    }
 
-        let cards = [(
-            ("ada-mbp".to_owned(), "cc-a".to_owned()),
-            SessionCard {
-                session: "cc-a".into(),
-                name: Some("tls-rotation".into()),
-                title: "Rotate the server's TLS certificates".into(),
-                tool: Some(crate::CLAUDE_CODE.into()),
-            },
-        )]
-        .into();
-
-        let said = standing(&machines, &cards, 1_000 + 17 * 60);
+    #[test]
+    fn a_session_is_online_or_away_with_what_waits_in_the_apps_words() {
+        let said = adas();
 
         let lines: Vec<String> = said
             .sessions
@@ -238,19 +228,24 @@ mod tests {
                 "cc-c false Away",
             ]
         );
+    }
+
+    #[test]
+    fn a_session_carries_its_cards_words_and_its_line() {
+        let said = adas();
+
+        let online = &said.sessions[0];
         assert_eq!(
-            said.sessions[0].title.as_deref(),
+            online.title.as_deref(),
             Some("Rotate the server's TLS certificates")
         );
-        assert_eq!(said.sessions[0].tool.as_deref(), Some("Claude Code"));
-        assert_eq!(said.sessions[0].name.as_deref(), Some("tls-rotation"));
+        assert_eq!(online.tool.as_deref(), Some("Claude Code"));
+        assert_eq!(online.name.as_deref(), Some("tls-rotation"));
+        assert_eq!(online.line, "tls-rotation · Claude Code · listening");
+        // No card heard: called by its id.
         assert_eq!(said.sessions[1].title, None);
         assert_eq!(
-            said.sessions[0].line,
-            "tls-rotation · Claude Code · listening"
-        );
-        assert_eq!(
-            line(&said.sessions[1]),
+            said.sessions[1].line,
             "cc-b · Not listening for 17 min · 1 message waiting"
         );
     }
