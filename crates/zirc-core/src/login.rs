@@ -374,7 +374,8 @@ impl Client {
         &self,
         account: &Account,
     ) -> Result<Option<zirc_proto::onboarding::Progress>, Error> {
-        self.read_me(account, zirc_proto::onboarding::STEPS_PATH).await
+        self.read_me(account, zirc_proto::onboarding::STEPS_PATH)
+            .await
     }
 
     /// What the person whose machine or app `account` is had their agents do today
@@ -387,7 +388,8 @@ impl Client {
         &self,
         account: &Account,
     ) -> Result<Option<zirc_proto::onboarding::Today>, Error> {
-        self.read_me(account, zirc_proto::onboarding::TODAY_PATH).await
+        self.read_me(account, zirc_proto::onboarding::TODAY_PATH)
+            .await
     }
 
     /// What one of the web app's `/api/me/*` reads at `path` answers `account`, its machine or
