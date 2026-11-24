@@ -159,6 +159,14 @@ pub struct Step {
     pub signals: &'static [Signal],
     /// Whether the dashboard's Get started lists it; the others tick off when they happen.
     pub get_started: bool,
+    /// Whether it can be begun before what it needs is reached, so it's offered any time: the
+    /// phone's app installs while the computer is being set up, though the step is reached
+    /// only once an agent answers there.
+    pub early: bool,
+    /// What it's called, wherever it's listed or suggested.
+    pub title: &'static str,
+    /// What it's for, in a line under its title.
+    pub about: &'static str,
 }
 
 /// The steps, in number order.
@@ -170,6 +178,9 @@ pub const STEPS: [Step; 8] = [
         needs: &[],
         signals: &[Signal::ServerReady],
         get_started: true,
+        early: false,
+        title: "Your server",
+        about: "Made when you signed up.",
     },
     Step {
         number: 2,
@@ -178,6 +189,9 @@ pub const STEPS: [Step; 8] = [
         needs: &[1],
         signals: &[Signal::Machine],
         get_started: true,
+        early: false,
+        title: "Your computer",
+        about: "In your repository, on the computer your agents run on.",
     },
     Step {
         number: 3,
@@ -186,6 +200,9 @@ pub const STEPS: [Step; 8] = [
         needs: &[2],
         signals: &[Signal::Agent],
         get_started: true,
+        early: false,
+        title: "Your agent",
+        about: "Start Claude Code or Codex in that repository. It joins Zirc on its own.",
     },
     Step {
         number: 4,
@@ -194,6 +211,9 @@ pub const STEPS: [Step; 8] = [
         needs: &[3],
         signals: &[Signal::Phone, Signal::AgentDirect],
         get_started: true,
+        early: true,
+        title: "Your phone",
+        about: "Get the app now; this ticks off when your agent answers you from it.",
     },
     Step {
         number: 5,
@@ -202,14 +222,20 @@ pub const STEPS: [Step; 8] = [
         needs: &[2],
         signals: &[Signal::Ci],
         get_started: true,
+        early: false,
+        title: "CI",
+        about: "So your agent wakes when a build fails.",
     },
     Step {
         number: 6,
         id: "first_wake",
         scope: Scope::Person,
-        needs: &[3],
+        needs: &[3, 5],
         signals: &[Signal::Wake],
         get_started: true,
+        early: false,
+        title: "Your first wake",
+        about: "See it happen, without waiting for a real failure.",
     },
     Step {
         number: 7,
@@ -218,6 +244,9 @@ pub const STEPS: [Step; 8] = [
         needs: &[3],
         signals: &[Signal::Overlap],
         get_started: false,
+        early: false,
+        title: "Your first overlap",
+        about: "Two agents changing the same files settle it between them.",
     },
     Step {
         number: 8,
@@ -226,6 +255,9 @@ pub const STEPS: [Step; 8] = [
         needs: &[1],
         signals: &[Signal::Teammate],
         get_started: false,
+        early: false,
+        title: "A teammate",
+        about: "Teammates' agents hear yours.",
     },
 ];
 
@@ -253,12 +285,153 @@ pub fn step(number: u8) -> Option<&'static Step> {
 }
 
 /// The next step for someone who has reached `reached` (numbers, theirs and their
-/// organisation's): the lowest-numbered one not reached whose needs all are.
+/// organisation's): the lowest-numbered one not reached that can be done now
+/// ([`progress`]'s `next`).
 #[must_use]
 pub fn next(reached: &[u8]) -> Option<&'static Step> {
-    STEPS.iter().find(|step| {
-        !reached.contains(&step.number) && step.needs.iter().all(|need| reached.contains(need))
-    })
+    progress(reached).next.and_then(step)
+}
+
+/// How a step stands for someone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "StepState")]
+#[serde(rename_all = "snake_case")]
+pub enum State {
+    /// Reached.
+    Done,
+    /// Not reached, and it can be done now: what it needs is reached, or it's one that can
+    /// be begun [`Step::early`].
+    Available,
+    /// Not reached, and it waits for the steps in [`StepProgress::after`].
+    Waiting,
+}
+
+/// What a surface says of a step that's done.
+pub const DONE_LABEL: &str = "Done";
+/// What a surface says of the next step, while it waits for the person to do it.
+pub const NEXT_LABEL: &str = "Waiting for it";
+/// What a surface says of a step that can be done now and isn't the next.
+pub const AVAILABLE_LABEL: &str = "Any time";
+
+/// One step as it stands for someone: what every surface draws, deciding nothing itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct StepProgress {
+    /// The step's number.
+    pub number: u8,
+    /// The step's id.
+    pub id: String,
+    /// How it stands.
+    pub state: State,
+    /// The steps it still waits for, by number, when it's [`State::Waiting`].
+    pub after: Vec<u8>,
+    /// Its state in words: `Done`, `Waiting for it` (the next), `Any time`, `After step 2`,
+    /// `After steps 3 and 5`.
+    pub label: String,
+    /// Whether it's the next step: the one to highlight and suggest.
+    pub next: bool,
+}
+
+/// Every step as it stands for someone, and which is next: what [`STEPS_PATH`] answers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct Progress {
+    /// Each step, in number order.
+    pub steps: Vec<StepProgress>,
+    /// The next step's number: the lowest-numbered one not reached that can be done now.
+    /// None once every step is reached.
+    pub next: Option<u8>,
+}
+
+/// Where a surface reads its person's [`Progress`] in an organisation: `GET`, as one of the
+/// member's apps or machines with its account (HTTP Basic), or in a browser as the signed-in
+/// member of `?org=<slug>`.
+pub const STEPS_PATH: &str = "/api/me/steps";
+
+/// `After step 2`, `After steps 3 and 5`, `After steps 2, 3 and 5`.
+fn after_label(after: &[u8]) -> String {
+    let numbers: Vec<String> = after.iter().map(u8::to_string).collect();
+    match numbers.split_last() {
+        Some((last, [])) => format!("After step {last}"),
+        Some((last, rest)) => format!("After steps {} and {last}", rest.join(", ")),
+        None => AVAILABLE_LABEL.to_owned(),
+    }
+}
+
+/// Every step as it stands for someone who has reached `reached` (numbers, theirs and their
+/// organisation's), and which is next. The one place that decides it: the dashboard, the
+/// command line, the agent's hint and the apps all show this.
+#[must_use]
+pub fn progress(reached: &[u8]) -> Progress {
+    let mut next = None;
+    let steps = STEPS
+        .iter()
+        .map(|step| {
+            let after: Vec<u8> = step
+                .needs
+                .iter()
+                .copied()
+                .filter(|need| !reached.contains(need))
+                .collect();
+            let state = if reached.contains(&step.number) {
+                State::Done
+            } else if after.is_empty() || step.early {
+                State::Available
+            } else {
+                State::Waiting
+            };
+            // The next is one whose needs are reached: one begun early isn't suggested
+            // before the steps it can't finish without.
+            let is_next = next.is_none() && state == State::Available && after.is_empty();
+            if is_next {
+                next = Some(step.number);
+            }
+            let label = match state {
+                State::Done => DONE_LABEL.to_owned(),
+                State::Available if is_next => NEXT_LABEL.to_owned(),
+                State::Available => AVAILABLE_LABEL.to_owned(),
+                State::Waiting => after_label(&after),
+            };
+            StepProgress {
+                number: step.number,
+                id: step.id.to_owned(),
+                state,
+                after: if state == State::Waiting {
+                    after
+                } else {
+                    Vec::new()
+                },
+                label,
+                next: is_next,
+            }
+        })
+        .collect();
+    Progress { steps, next }
+}
+
+/// [`progress`] for every set of steps reached, for the web app, which can't call it: each
+/// distinct [`StepProgress`] once, and for each set (bit `n - 1` set when step `n` is
+/// reached) the row of each step in number order.
+fn progress_table() -> (Vec<StepProgress>, Vec<Vec<usize>>) {
+    let mut rows: Vec<StepProgress> = Vec::new();
+    let by_reached = (0..1_u16 << STEPS.len())
+        .map(|set| {
+            let reached: Vec<u8> = STEPS
+                .iter()
+                .map(|step| step.number)
+                .filter(|number| set & (1 << (number - 1)) != 0)
+                .collect();
+            progress(&reached)
+                .steps
+                .into_iter()
+                .map(|step| {
+                    rows.iter().position(|row| *row == step).unwrap_or_else(|| {
+                        rows.push(step);
+                        rows.len() - 1
+                    })
+                })
+                .collect()
+        })
+        .collect();
+    (rows, by_reached)
 }
 
 /// Where a prompt was shown.
@@ -365,12 +538,25 @@ pub struct Firsts {
 #[must_use]
 pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
     let steps = serde_json::to_string(&STEPS).expect("the steps serialize");
+    let (rows, by_reached) = progress_table();
     vec![
         Scope::decl(config),
         Signal::decl(config),
         Step::decl(config),
         format!("const STEPS: readonly OnboardingStep[] = {steps};"),
         format!("const STEPS_RECORDED_FROM = {RECORDED_FROM:?};"),
+        State::decl(config),
+        StepProgress::decl(config),
+        Progress::decl(config),
+        format!("const STEPS_PATH = {STEPS_PATH:?};"),
+        format!(
+            "const STEP_PROGRESS_ROWS: readonly StepProgress[] = {};",
+            serde_json::to_string(&rows).expect("progress serializes")
+        ),
+        format!(
+            "const STEP_PROGRESS_BY_REACHED: readonly (readonly number[])[] = {};",
+            serde_json::to_string(&by_reached).expect("progress serializes")
+        ),
         format!(
             "const RECORDED_SIGNALS: readonly StepSignal[] = [{}];",
             Signal::ALL
@@ -421,6 +607,73 @@ mod tests {
         assert_eq!(next(&[1, 2, 5]).map(|s| s.id), Some("agent"));
         assert_eq!(next(&[1, 2, 3]).map(|s| s.id), Some("phone"));
         assert_eq!(next(&[1, 2, 3, 4, 5, 6, 7, 8]), None);
+    }
+
+    fn labels(reached: &[u8]) -> Vec<String> {
+        progress(reached)
+            .steps
+            .into_iter()
+            .filter(|step| super::step(step.number).is_some_and(|s| s.get_started))
+            .map(|step| step.label)
+            .collect()
+    }
+
+    #[test]
+    fn each_steps_state_in_words() {
+        // Just signed up: the server came with the account, and the phone's app can go on now.
+        assert_eq!(
+            labels(&[1]),
+            [
+                "Done",
+                "Waiting for it",
+                "After step 2",
+                "Any time",
+                "After step 2",
+                "After steps 3 and 5"
+            ]
+        );
+        // CI connected before the phone: it just ticks, the phone is next, the wake any time.
+        assert_eq!(
+            labels(&[1, 2, 3, 5]),
+            ["Done", "Done", "Done", "Waiting for it", "Done", "Any time"]
+        );
+        // CI not heard yet: the wake waits for it alone.
+        assert_eq!(
+            labels(&[1, 2, 3, 4]),
+            [
+                "Done",
+                "Done",
+                "Done",
+                "Done",
+                "Waiting for it",
+                "After step 5"
+            ]
+        );
+        let all = progress(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(all.next, None);
+        assert!(all.steps.iter().all(|step| step.state == State::Done));
+    }
+
+    #[test]
+    fn the_next_is_never_one_begun_early() {
+        // The phone is offered any time, but suggested only once an agent can answer there.
+        let just_signed_up = progress(&[1]);
+        assert_eq!(just_signed_up.next, Some(2));
+        let phone = &just_signed_up.steps[3];
+        assert_eq!((phone.state, phone.next), (State::Available, false));
+        assert!(phone.after.is_empty());
+    }
+
+    #[test]
+    fn the_web_apps_table_says_what_progress_says() {
+        let (rows, by_reached) = progress_table();
+        assert_eq!(by_reached.len(), 256);
+        // Steps 1, 2 and 5 reached: bits 0, 1 and 4.
+        let steps: Vec<StepProgress> = by_reached[0b1_0011]
+            .iter()
+            .map(|row| rows[*row].clone())
+            .collect();
+        assert_eq!(steps, progress(&[1, 2, 5]).steps);
     }
 
     #[test]
