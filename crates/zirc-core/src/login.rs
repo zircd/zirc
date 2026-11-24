@@ -395,7 +395,7 @@ impl Client {
     /// What one of the web app's `/api/me/*` reads at `path` answers `account`, its machine or
     /// app: `None` when the web app doesn't know that account and passphrase (401), or doesn't
     /// serve `path` at all, as a self-hosted server's or an older one (404).
-    async fn read_me<T: serde::de::DeserializeOwned>(
+    pub(crate) async fn read_me<T: serde::de::DeserializeOwned>(
         &self,
         account: &Account,
         path: &str,

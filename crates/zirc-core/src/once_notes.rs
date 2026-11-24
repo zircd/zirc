@@ -10,20 +10,15 @@ use zirc_proto::onboarding::{NOTES_PATH, Note, NoteSeen, NotesSeen};
 use crate::login::{Client, Error};
 
 impl Client {
-    /// The one-time notes `account`'s person has seen.
+    /// The one-time notes `account`'s person has seen: none where the web app doesn't keep
+    /// them, as a self-hosted server doesn't ([`Client::read_me`]).
     ///
     /// # Errors
     ///
     /// When zirc.dev can't be reached or refuses.
     pub async fn notes_seen(&self, account: &Account) -> Result<Vec<Note>, Error> {
-        let response = self
-            .http
-            .get(format!("{}{NOTES_PATH}", self.web))
-            .basic_auth(&account.name, Some(&account.password))
-            .send()
-            .await?;
-        let seen: NotesSeen = self.checked(response).await?.json().await?;
-        Ok(seen.seen)
+        let seen: Option<NotesSeen> = self.read_me(account, NOTES_PATH).await?;
+        Ok(seen.map(|seen| seen.seen).unwrap_or_default())
     }
 
     /// Marks `note` seen by `account`'s person, in every app of theirs.
@@ -53,6 +48,8 @@ mod tests {
         let (web, served) = zirc_test_ergo::web::serve(vec![
             (200, r#"{"seen":["first_wake"]}"#.into()),
             (204, String::new()),
+            // A self-hosted server keeps none: nothing seen, not an error.
+            (404, "{}".into()),
         ]);
         let client = Client::new(&web).unwrap();
         let account = Account {
@@ -65,6 +62,7 @@ mod tests {
             [Note::FirstWake]
         );
         client.see_note(&account, Note::FirstOverlap).await.unwrap();
+        assert_eq!(client.notes_seen(&account).await.unwrap(), []);
         let asked = served.join().unwrap();
         assert!(asked[0].starts_with("GET /api/me/notes "), "{}", asked[0]);
         assert!(asked[1].starts_with("POST /api/me/notes "), "{}", asked[1]);
