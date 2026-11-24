@@ -335,6 +335,7 @@ pub fn line_rows(look: &Look<'_>, line: &Line) -> Vec<Row> {
     }
     let start = rows.len();
     match (line.shape, &line.speaker) {
+        _ if line.callout.is_some() => callout_rows(look, line, &mut rows),
         (RowShape::Message, Some(speaker)) => message_rows(look, line, speaker, &mut rows),
         (RowShape::System, Some(speaker)) => system_rows(look, line, speaker, &mut rows),
         (RowShape::Brief | RowShape::Pointer, _) => brief_rows(look, line, &mut rows),
@@ -602,6 +603,52 @@ fn quiet_rows(look: &Look<'_>, line: &Line, rows: &mut Vec<Row>) {
         mention: false,
     });
     rows.extend(runs.map(|run| run.row(line, String::new())));
+}
+
+/// The mark a wake's line starts with, drawn in its tone as its edge is in the other apps.
+pub const WOKE_MARK: char = '▎';
+/// The mark a settled overlap's line starts with.
+pub const SETTLED_MARK: char = '⇄';
+/// The mark a one-time note starts with.
+pub const ONCE_MARK: char = '┆';
+
+/// A wake of an agent's watch, an overlap two agents settled, or a one-time note under one,
+/// every word zirc-chat's ([`Line::callout`]): a mark in the theme role its tone names, what
+/// it says, muted, and its time at the end of its first row. A note says how to put it
+/// away, `(/press got it)`, where the other apps have its button.
+fn callout_rows(look: &Look<'_>, line: &Line, rows: &mut Vec<Row>) {
+    let Some(callout) = &line.callout else {
+        return;
+    };
+    let mark = match line.shape {
+        RowShape::Settled => SETTLED_MARK,
+        RowShape::Once => ONCE_MARK,
+        _ => WOKE_MARK,
+    };
+    let said = match &callout.button {
+        Some(button) => format!("{mark} {} (/press {})", line.text, button.to_lowercase()),
+        None => format!("{mark} {}", line.text),
+    };
+    let tone = Tone::Lead {
+        marker: callout.tone.clone(),
+        details: None,
+    };
+    let runs = wrapped((said, Vec::new()), look.text_width, &tone);
+    let timed = line.shape != RowShape::Once;
+    rows.extend(runs.into_iter().enumerate().map(|(at, run)| Row::Text {
+        nick: String::new(),
+        text: run.text,
+        // What wraps reads on as the first row does, muted, with no mark of its own.
+        tone: if at == 0 { run.tone } else { Tone::Status },
+        mention: false,
+        hint: if at == 0 && timed {
+            line.clock.clone()
+        } else {
+            String::new()
+        },
+        id: None,
+        links: run.links,
+    }));
 }
 
 /// An agent's routine work as one quiet line, zirc-chat's [`SystemLine::brief`], its mark
@@ -1280,6 +1327,47 @@ mod tests {
             "{shown:#?}"
         );
         assert!(matches!(&rows[1], Row::Header { agent: Some(_), .. }));
+    }
+
+    #[test]
+    fn a_wake_is_one_row_marked_in_its_tone_with_its_time_and_a_note_says_how_to_put_it_away() {
+        use zirc_proto::woke::{By, What, Woke};
+        let mut chat = chat();
+        let woke = Woke {
+            build: Some("612".into()),
+            state: Some(zirc_proto::card::State::Failed),
+            ..Woke::new(What::Build, By::Ci)
+        };
+        let ours = ("me-mbp", "me");
+        hear(
+            &mut chat,
+            &[zirc(("2026-10-30T09:00", "w1"), ours, "#api", woke.event())],
+        );
+        chat.set_notes_seen([]);
+        let lines = chat.agent_lines("me-mbp/cc-12", utc());
+        let rows = layout(&look(&chat, 200, Links::Plain), &lines);
+        let said = shown(&rows);
+        assert_eq!(
+            said[1].trim(),
+            "▎ Woke: build 612 failed  09:00",
+            "{said:#?}"
+        );
+        let Row::Text { tone, id, .. } = &rows[1] else {
+            panic!("a wake is a text row: {rows:#?}");
+        };
+        let marker = "error".to_owned();
+        assert_eq!(
+            (tone, id),
+            (
+                &Tone::Lead {
+                    marker,
+                    details: None
+                },
+                &None
+            )
+        );
+        assert!(said[2].trim().starts_with("┆ This is a wake."), "{said:#?}");
+        assert!(said[2].ends_with("(/press got it)"), "{said:#?}");
     }
 
     #[test]

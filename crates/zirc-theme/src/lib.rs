@@ -811,6 +811,10 @@ pub struct Design {
     pub presence_dot: f32,
     /// The ring round a presence dot, in the surface's colour, in points.
     pub presence_ring: u16,
+    /// A wake's line, a settled overlap's box and a one-time note (zirc-chat's `Callout`),
+    /// their corners the card's radius: how strongly its tone tints a box and edges it, and
+    /// how wide a wake's edge is.
+    pub callout: CalloutLook,
     /// Shadows: e1 for hover bars and menus, e2 for popovers and sheets.
     pub elevation: Elevations,
     /// How long things take, and how they ease. Apps skip motion when the system asks for
@@ -1018,6 +1022,18 @@ impl Elevations {
     pub fn all(&self) -> [(&'static str, Shadow); 2] {
         [("e1", self.e1), ("e2", self.e2)]
     }
+}
+
+/// How a callout is drawn in its tone ([`Design::callout`]).
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct CalloutLook {
+    /// The tone's share of a settled overlap's ground.
+    pub tint: f32,
+    /// The tone's share of its border.
+    pub border: f32,
+    /// A wake's edge, in points.
+    pub edge: u16,
 }
 
 /// How long things take, in milliseconds, and how they ease.
@@ -1382,6 +1398,10 @@ fn scales(design: &Design) -> String {
     }
     let _ = writeln!(out, "  --zirc-presence-dot: {};", design.presence_dot);
     let _ = writeln!(out, "  --zirc-presence-ring: {}px;", design.presence_ring);
+    let callout = design.callout;
+    let _ = writeln!(out, "  --zirc-callout-tint: {};", callout.tint);
+    let _ = writeln!(out, "  --zirc-callout-border: {};", callout.border);
+    let _ = writeln!(out, "  --zirc-callout-edge: {}px;", callout.edge);
     let motion = design.motion;
     let _ = writeln!(out, "  --zirc-motion-fast: {}ms;", motion.fast_ms);
     let _ = writeln!(out, "  --zirc-motion-medium: {}ms;", motion.medium_ms);

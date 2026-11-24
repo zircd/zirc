@@ -106,6 +106,8 @@ pub enum Action {
     /// Press a card's button through zirc.dev, and hand [`App::press_answered`] what came
     /// of it.
     Press(zirc_proto::card::Press),
+    /// Tell zirc.dev this one-time note was seen, so it's gone in the person's other apps.
+    SeeNote(zirc_proto::onboarding::Note),
 }
 
 /// A card's button about to be pressed, once the person says so.
@@ -719,6 +721,22 @@ impl App {
     /// latest card in the conversation shown: asking first only when the card asks, as in
     /// every app (the user's choice, 20 Nov 2026).
     fn press(&mut self, name: &str) -> Action {
+        // A one-time note's button, `Got it`: it's gone here, and zirc.dev is told.
+        let noted = {
+            let laid = self.laid(usize::from(self.view.0));
+            let callouts = laid.lines().iter().filter_map(|line| line.callout.as_ref());
+            callouts
+                .filter(|callout| {
+                    let button = callout.button.as_deref();
+                    button.is_some_and(|button| button.eq_ignore_ascii_case(name))
+                })
+                .find_map(|callout| callout.action.clone())
+        };
+        if let Some(action) = noted {
+            let seen = self.chat.see_note(&action);
+            self.changed();
+            return seen.map_or_else(|| Action::Send(Vec::new()), Action::SeeNote);
+        }
         let picked = self.picked().map(str::to_owned);
         let channel = self.current().name.clone();
         // The cards here with buttons, those zirc-chat shows us ([`Chat::shows_action`]).
@@ -2520,6 +2538,7 @@ mod tests {
             Action::Sessions => panic!("asked for the sessions"),
             Action::Open(url) => panic!("opened {url}"),
             Action::Press(press) => panic!("pressed {press:?}"),
+            Action::SeeNote(note) => panic!("saw {note:?}"),
         }
     }
 

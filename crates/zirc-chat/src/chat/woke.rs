@@ -47,6 +47,15 @@ pub struct Callout {
 }
 
 impl Callout {
+    /// It as one run of words to draw: its label in bold, a space, then what follows it.
+    #[must_use]
+    pub fn drawn(&self) -> Vec<RichSpan> {
+        [bold(self.label.clone()), text(" ")]
+            .into_iter()
+            .chain(self.spans.iter().cloned())
+            .collect()
+    }
+
     /// What it says, whole, as one line: `Woke: build 612 failed on main`.
     #[must_use]
     pub fn said(&self) -> String {

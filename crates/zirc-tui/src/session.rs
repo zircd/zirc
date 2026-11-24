@@ -57,6 +57,8 @@ enum Web {
     /// Our account is this handle now: changed elsewhere, as zirc.dev said once the server
     /// refused the old one.
     Renamed(String),
+    /// The one-time notes our person has seen, in any of their apps.
+    Notes(Vec<zirc_proto::onboarding::Note>),
 }
 
 /// What zircd said every session is doing, or why it couldn't say, and when.
@@ -119,6 +121,7 @@ impl Session {
             .is_some_and(|client| client.has_cap(zirc_core::chat::SETNAME_CAP));
         session.setname(setname);
         session.learn_role();
+        session.learn_notes();
         Ok(session)
     }
 
@@ -178,6 +181,10 @@ impl Session {
                 self.press(press);
                 Step::Carry
             }
+            Action::SeeNote(note) => {
+                self.see_note(note);
+                Step::Carry
+            }
         }
     }
 
@@ -189,6 +196,7 @@ impl Session {
             Action::Sessions => self.ask_sessions(),
             Action::Open(url) => self.open(&url),
             Action::Press(press) => self.press(press),
+            Action::SeeNote(note) => self.see_note(note),
             Action::Org(_) => {}
         }
     }
@@ -211,6 +219,11 @@ impl Session {
                 match answer {
                     Web::Role(role) => self.app.chat.set_role(role.as_str()),
                     Web::Pressed(press, answer) => self.app.press_answered(&press, answer),
+                    Web::Notes(seen) => {
+                        if self.app.chat.set_notes_seen(seen) {
+                            self.app.changed();
+                        }
+                    }
                     Web::Renamed(handle) => {
                         self.follow(&handle);
                         self.app.renamed_elsewhere(&handle);
@@ -343,6 +356,31 @@ impl Session {
                 return;
             };
             let _ = answers.send(Web::Role(role));
+        });
+    }
+
+    /// Asks zirc.dev which one-time notes our person has seen, without waiting: until it
+    /// answers, the app shows none ([`zirc_core::chat::Chat::set_notes_seen`]).
+    fn learn_notes(&self) {
+        let Some((client, account)) = self.web.clone() else {
+            return;
+        };
+        let answers = self.web_answers.0.clone();
+        tokio::spawn(async move {
+            if let Ok(seen) = client.notes_seen(&account).await {
+                let _ = answers.send(Web::Notes(seen));
+            }
+        });
+    }
+
+    /// Tells zirc.dev, without waiting, that `note` was seen: it's gone here already.
+    fn see_note(&self, note: zirc_proto::onboarding::Note) {
+        let Some((client, account)) = self.web.clone() else {
+            return;
+        };
+        tokio::spawn(async move {
+            // Not told, it shows again where zirc.dev is next asked, and is put away again.
+            let _ = client.see_note(&account, note).await;
         });
     }
 

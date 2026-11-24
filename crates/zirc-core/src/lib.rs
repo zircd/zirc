@@ -28,6 +28,7 @@ pub mod login;
 pub mod machine;
 pub mod media;
 pub mod notes;
+pub mod once_notes;
 pub mod one_line;
 pub mod owners;
 pub mod paths;

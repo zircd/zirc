@@ -613,6 +613,13 @@ pub struct NotesSeen {
     pub seen: Vec<Note>,
 }
 
+/// What an app sends to [`NOTES_PATH`] (`POST`) to mark one note seen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct NoteSeen {
+    /// The note.
+    pub note: Note,
+}
+
 /// A record the recorder's activity store saw first: the first time a signal it sees was
 /// seen from an account. Kept as long as the store, whatever the organisation keeps of its
 /// messages, so zirc.dev can read it later.
@@ -692,6 +699,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const PROMPTS_PATH = {PROMPTS_PATH:?};"),
         format!("const NOTES_PATH = {NOTES_PATH:?};"),
         NotesSeen::decl(config),
+        NoteSeen::decl(config),
         First::decl(config),
         format!("const FIRSTS_PATH = {FIRSTS_PATH:?};"),
         Firsts::decl(config),

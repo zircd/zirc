@@ -228,6 +228,9 @@
   --zirc-avatar-profile: 80px;
   --zirc-presence-dot: 0.3;
   --zirc-presence-ring: 2px;
+  --zirc-callout-tint: 0.1;
+  --zirc-callout-border: 0.35;
+  --zirc-callout-edge: 3px;
   --zirc-motion-fast: 120ms;
   --zirc-motion-medium: 200ms;
   --zirc-motion-slow: 300ms;
