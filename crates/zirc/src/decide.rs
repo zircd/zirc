@@ -328,14 +328,18 @@ pub(crate) struct DecisionsArgs {
 #[derive(Debug, Args)]
 pub(crate) struct RequestArgs {
     /// The question, one line.
-    #[arg(required = true, num_args = 1..)]
+    #[arg(required_unless_present = "withdraw", num_args = 1..)]
     pub(crate) question: Vec<String>,
     /// What a yes does.
-    #[arg(long)]
-    pub(crate) yes: String,
+    #[arg(long, required_unless_present = "withdraw")]
+    pub(crate) yes: Option<String>,
     /// What a no does.
-    #[arg(long)]
-    pub(crate) no: String,
+    #[arg(long, required_unless_present = "withdraw")]
+    pub(crate) no: Option<String>,
+    /// Take back a request of yours that's still waiting, by its id (`mbp/12`), as you no
+    /// longer need the answer: it leaves your user's list. Finishing your task does it too.
+    #[arg(long, value_name = "ID", conflicts_with_all = ["question", "yes", "no", "recommend", "irreversible", "wait"])]
+    pub(crate) withdraw: Option<String>,
     /// The answer you recommend, shown first.
     #[arg(long, value_parser = ["yes", "no"])]
     pub(crate) recommend: Option<String>,
@@ -449,17 +453,33 @@ pub(crate) async fn request(socket: &Path, args: RequestArgs, out: &mut impl Wri
         no,
         recommend,
         irreversible,
+        withdraw,
         wait,
         json,
         session,
         org,
     } = args;
     let org = org_here(socket, org).await?;
+    if let Some(id) = withdraw {
+        let request = Request::Withdraw {
+            session,
+            id: id.clone(),
+        };
+        let Response::Done = ask_in(socket, org.as_deref(), request).await? else {
+            return Err(crate::client::unexpected());
+        };
+        if json {
+            writeln!(out, "{}", serde_json::json!({ "withdrawn": id }))?;
+        } else {
+            writeln!(out, "withdrew {id}: it no longer waits for an answer")?;
+        }
+        return Ok(());
+    }
     let request = Request::AskOwner {
         session: session.clone(),
         question: words(&question)?,
-        yes,
-        no,
+        yes: yes.unwrap_or_default(),
+        no: no.unwrap_or_default(),
         recommend: recommend.map(|it| if it == "no" { Answer::No } else { Answer::Yes }),
         irreversible,
     };

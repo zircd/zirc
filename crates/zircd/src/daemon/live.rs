@@ -98,6 +98,12 @@ impl Live {
         !self.seen.keys().eq(before.iter())
     }
 
+    /// Whether `session` had a watch open in the last [`AWAY_FOLD_SECS`]: online, or away
+    /// and still listed.
+    pub(super) fn knows(&self, session: &str) -> bool {
+        self.seen.contains_key(session)
+    }
+
     /// The sessions live here, as [`session::Live::sessions`] says them: watching, or
     /// last watched less than [`LIVE_GRACE_SECS`] before `now`, sorted.
     pub(super) fn sessions(&self, now: u64) -> Vec<String> {

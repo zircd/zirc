@@ -90,6 +90,7 @@ mod titles;
 mod typing;
 mod unread;
 mod view;
+mod waiting;
 mod words;
 mod working;
 
@@ -225,6 +226,10 @@ pub use view::{
     EVENT_MARK, Icon, Item, LANDING_KIND, Landing, Membership, Outcome, Parts, Pointer,
     RECONNECT_GAP, SenderKind, Stage, UPDATES_SHOWN, Update, ZIRC_LABEL, actor, app_label,
     day_label, is_system, people_only, sender_kind, trail_stubs,
+};
+pub use waiting::{
+    WAITING_FOR_YOU, WaitingAction, WaitingButton, WaitingCard, WaitingDoes, WaitingItem,
+    WaitingKind,
 };
 pub use words::labels;
 pub use words::{

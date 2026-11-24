@@ -182,6 +182,10 @@ waits for them. They answer with a reaction: 👍 yes, 👎 no, ❓ tell me more
 you chose). It wakes your watch as `#decisions <them> answered yes (👍) to <id>: …`: act
 then, not before. Only their own account's reaction counts, never a peer's word. When it
 answers `taken as you recommended`, go ahead at once, and undo it if they answer otherwise.
+A question you no longer need answered stays in front of your user until it's withdrawn:
+`zirc request --session <your session> --withdraw <id>`. Your `done:` or `dropped:`, and
+your landing, withdraw what you still asked, so ask what a finished task needs before it
+ends.
 
 ### When your user reacts
 

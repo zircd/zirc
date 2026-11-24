@@ -13,6 +13,7 @@ mod navigate;
 mod perf;
 mod scene;
 mod sidebar;
+mod waiting;
 mod working;
 use scene::Scene;
 

@@ -13,6 +13,12 @@
 //! asking session in replies under the request (`+draft/reply` to its message): the person's
 //! own replies there reach that session, and their reaction on any of them answers as one
 //! on the request does.
+//!
+//! A request its session no longer needs an answer to is [`State::Withdrawn`]: the session
+//! took it back, ended, or finished the task it asked for.
+//!
+//! What waits for a person's answer is decided once, here ([`waiting`]): every app's
+//! "Waiting for you" and the dashboard's read it, and none works it out again.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -111,6 +117,41 @@ pub enum State {
         #[ts(as = "Option<bool>", optional)]
         recommended: bool,
     },
+    /// Taken back unanswered, `at` (RFC 3339): no answer is needed any more, and none counts.
+    Withdrawn {
+        /// When, in RFC 3339.
+        at: String,
+        /// Why, in a few words, as the card says: [`Withdrawal::said`].
+        why: Withdrawal,
+    },
+}
+
+/// Why a request was withdrawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[ts(rename = "DecisionWithdrawal")]
+#[schemars(rename = "DecisionWithdrawal")]
+pub enum Withdrawal {
+    /// Its session took it back (`zirc request --withdraw`).
+    Asked,
+    /// Its session finished, or dropped, the task it asked for.
+    Done,
+    /// Its session ended, or has been away as long as its row stays listed
+    /// ([`crate::session::AWAY_FOLD_SECS`]).
+    Gone,
+}
+
+impl Withdrawal {
+    /// How a card says it, after the session's name: `withdrew it`, `finished its task`,
+    /// `is gone`.
+    #[must_use]
+    pub fn said(self) -> &'static str {
+        match self {
+            Self::Asked => "withdrew it",
+            Self::Done => "finished its task",
+            Self::Gone => "is gone",
+        }
+    }
 }
 
 /// The answer an emoji gives, if it gives one: 👍 ✅ 🙌 yes, 👎 ❌ no, ❓ 🤔 👀 tell me more,
@@ -257,26 +298,48 @@ impl Request {
             State::Answered { answer, .. } => {
                 format!("{} answered {}: {}", self.by, answer.said(), self.question)
             }
+            State::Withdrawn { why, .. } => format!(
+                "{} {}, so needs no answer: {}",
+                self.session,
+                why.said(),
+                self.question
+            ),
         }
     }
 
-    /// The card apps draw for it: the question, yes and no (the recommended one first), and
-    /// how to answer, or the answer.
+    /// Whether it still waits on its person: open, a held yes they can still stop, or one
+    /// they asked to know more of, which a yes or no still answers. Never one answered,
+    /// taken as recommended or withdrawn.
     #[must_use]
-    pub fn card(&self) -> Card {
-        let yes = Field {
-            label: "👍 yes".into(),
-            value: clip(&self.yes, 120),
-        };
-        let no = Field {
-            label: "👎 no".into(),
-            value: clip(&self.no, 120),
-        };
-        let fields = match self.recommend {
-            Some(Answer::No) => vec![no, yes],
-            _ => vec![yes, no],
-        };
-        let (state, note) = match &self.state {
+    pub fn waits(&self) -> bool {
+        match &self.state {
+            State::Open | State::Held { .. } => true,
+            State::Answered { answer, .. } => *answer == Answer::More,
+            State::Withdrawn { .. } => false,
+        }
+    }
+
+    /// What it asks, as two requests are compared ([`waiting`]): its question in lower case,
+    /// its runs of spaces as one, without the punctuation or spaces at its end. Requests of
+    /// one person that agree in this ask the same thing, and show once (the user's choice,
+    /// 24 Nov 2026): never a guess that differently worded questions are one.
+    #[must_use]
+    pub fn subject(&self) -> String {
+        let words: Vec<String> = self
+            .question
+            .split_whitespace()
+            .map(str::to_lowercase)
+            .collect();
+        words
+            .join(" ")
+            .trim_end_matches(|c: char| c.is_ascii_punctuation() || c == '？')
+            .trim_end()
+            .to_owned()
+    }
+
+    /// How it stands, as its card says: the card's state, and its note.
+    fn standing(&self) -> (CardState, String) {
+        match &self.state {
             State::Open => (
                 CardState::Pending,
                 format!(
@@ -324,6 +387,15 @@ impl Request {
                     clock(at, false)
                 ),
             ),
+            State::Withdrawn { at, why } => (
+                CardState::Cancelled,
+                format!(
+                    "{} {} at {}: no answer needed",
+                    self.session,
+                    why.said(),
+                    clock(at, false)
+                ),
+            ),
             State::Answered {
                 answer,
                 at,
@@ -351,7 +423,26 @@ impl Request {
                     )
                 },
             ),
+        }
+    }
+
+    /// The card apps draw for it: the question, yes and no (the recommended one first), and
+    /// how to answer, or the answer.
+    #[must_use]
+    pub fn card(&self) -> Card {
+        let yes = Field {
+            label: "👍 yes".into(),
+            value: clip(&self.yes, 120),
         };
+        let no = Field {
+            label: "👎 no".into(),
+            value: clip(&self.no, 120),
+        };
+        let fields = match self.recommend {
+            Some(Answer::No) => vec![no, yes],
+            _ => vec![yes, no],
+        };
+        let (state, note) = self.standing();
         Card {
             state,
             about: Some(clip(&self.session, 64)),
@@ -360,6 +451,85 @@ impl Request {
             ..Card::new(self.id.clone(), clip(&self.question, 80))
         }
     }
+}
+
+/// A request heard in [`CHANNEL`], as [`waiting`] takes them: only ones the server says its
+/// person's own machine sent, which the caller checks, as nothing here can.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Posted {
+    /// The server's id of the message that carried it.
+    pub msgid: String,
+    /// The request as that message said it.
+    pub request: Request,
+}
+
+/// Something waiting for a person's answer: a request, with any others that ask the same
+/// thing ([`Request::subject`]), which one answer answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Waiting {
+    /// The request, the first of them asked, as it stands now.
+    pub request: Request,
+    /// Its message, which a reaction on answers it.
+    pub msgid: String,
+    /// The others asking the same, in the order asked, each with its message: the answer
+    /// goes on each.
+    pub also: Vec<(Request, String)>,
+}
+
+impl Waiting {
+    /// Every message an answer goes on: its own, then the others'.
+    pub fn msgids(&self) -> impl Iterator<Item = &str> {
+        std::iter::once(self.msgid.as_str()).chain(self.also.iter().map(|(_, id)| id.as_str()))
+    }
+
+    /// Whether the person may leave it to the sessions: only if every one asking offers it.
+    #[must_use]
+    pub fn offers_yours(&self) -> bool {
+        self.request.offers_yours() && self.also.iter().all(|(other, _)| other.offers_yours())
+    }
+}
+
+/// What waits for `by`'s answer among `posted`, the requests heard in [`CHANNEL`] oldest
+/// first: each request that still [`Request::waits`], in the order first asked, those asking
+/// the same thing as one.
+///
+/// A request is posted again whenever its state changes, under the same id: its first
+/// posting is the message a reaction answers, and its last says where it stands. So one
+/// answered, taken as recommended or withdrawn is gone from here as soon as its card says so,
+/// in every app at once, and never before: an answer given shows only once the requesting
+/// machine has taken it.
+#[must_use]
+pub fn waiting(posted: impl IntoIterator<Item = Posted>, by: &str) -> Vec<Waiting> {
+    // By id, in the order first asked: the first posting's message, the last one's state.
+    let mut asked: Vec<(String, Request)> = Vec::new();
+    for Posted { msgid, request } in posted {
+        if !request.by.eq_ignore_ascii_case(by) {
+            continue;
+        }
+        match asked.iter_mut().find(|(_, held)| held.id == request.id) {
+            Some((_, held)) => *held = request,
+            None => asked.push((msgid, request)),
+        }
+    }
+    let mut waiting: Vec<Waiting> = Vec::new();
+    for (msgid, request) in asked {
+        if !request.waits() {
+            continue;
+        }
+        let subject = request.subject();
+        match waiting
+            .iter_mut()
+            .find(|one| one.request.subject() == subject)
+        {
+            Some(one) => one.also.push((request, msgid)),
+            None => waiting.push(Waiting {
+                request,
+                msgid,
+                also: Vec::new(),
+            }),
+        }
+    }
+    waiting
 }
 
 /// `text` on one line, within `max` characters, cut with `…`.
@@ -469,6 +639,133 @@ mod tests {
             ..request()
         };
         assert!(open.card().note.unwrap().contains("which a 👎 stops"));
+    }
+
+    fn posted(msgid: &str, request: &Request) -> Posted {
+        Posted {
+            msgid: msgid.into(),
+            request: request.clone(),
+        }
+    }
+
+    fn answered(request: &Request, answer: Answer) -> Request {
+        Request {
+            state: State::Answered {
+                answer,
+                emoji: answer.reaction().into(),
+                at: "2026-11-24T10:00:00Z".into(),
+                recommended: false,
+            },
+            ..request.clone()
+        }
+    }
+
+    #[test]
+    fn what_waits_is_each_open_request_until_its_card_says_otherwise() {
+        let node = request();
+        let cert = Request::open("mattias-mbp/2", "cc-2", "mattias", "Revoke it?", "y", "n");
+        let bobs = Request::open("bob-mbp/1", "cc-9", "bob", "Ship?", "y", "n");
+        let heard = vec![
+            posted("m1", &node),
+            posted("m2", &cert),
+            posted("m3", &bobs),
+        ];
+        let waits = waiting(heard.clone(), "Mattias");
+        assert_eq!(
+            waits.iter().map(|w| w.msgid.as_str()).collect::<Vec<_>>(),
+            ["m1", "m2"],
+            "his own, oldest first, never bob's"
+        );
+        // Answered: gone, as its card posted again says.
+        let mut heard = heard;
+        heard.push(posted("m4", &answered(&node, Answer::No)));
+        let waits = waiting(heard.clone(), "mattias");
+        assert_eq!(waits.len(), 1);
+        assert_eq!(waits[0].request.id, "mattias-mbp/2");
+        // Asked to know more: still waiting for a yes or no, on its first message.
+        heard.push(posted("m5", &answered(&cert, Answer::More)));
+        let waits = waiting(heard.clone(), "mattias");
+        assert_eq!(waits[0].msgid, "m2");
+        assert!(matches!(waits[0].request.state, State::Answered { .. }));
+        // Withdrawn: gone.
+        heard.push(posted(
+            "m6",
+            &Request {
+                state: State::Withdrawn {
+                    at: "2026-11-24T10:05:00Z".into(),
+                    why: Withdrawal::Done,
+                },
+                ..cert.clone()
+            },
+        ));
+        assert_eq!(waiting(heard, "mattias"), []);
+    }
+
+    #[test]
+    fn requests_asking_the_same_thing_wait_as_one_which_one_answer_answers() {
+        let agent = Request::open(
+            "mattias-mbp/1",
+            "cc-1",
+            "mattias",
+            "Merge the release branch now?",
+            "y",
+            "n",
+        );
+        let dispatcher = Request {
+            irreversible: true,
+            ..Request::open(
+                "mattias-mbp/2",
+                "dispatcher",
+                "mattias",
+                "  merge the  release branch NOW ?! ",
+                "y",
+                "n",
+            )
+        };
+        let other = Request::open("mattias-mbp/3", "cc-1", "mattias", "Tag it too?", "y", "n");
+        let heard = vec![
+            posted("m1", &agent),
+            posted("m2", &dispatcher),
+            posted("m3", &other),
+        ];
+        let waits = waiting(heard.clone(), "mattias");
+        assert_eq!(
+            waits.len(),
+            2,
+            "the same session's other question is its own"
+        );
+        assert_eq!(waits[0].msgids().collect::<Vec<_>>(), ["m1", "m2"]);
+        assert_eq!(waits[0].also[0].0.session, "dispatcher");
+        assert!(!waits[0].offers_yours(), "one of them can't be undone");
+        assert!(waits[1].offers_yours());
+        // The first answered: the other still waits, alone.
+        let mut heard = heard;
+        heard.push(posted("m4", &answered(&agent, Answer::Yes)));
+        let waits = waiting(heard, "mattias");
+        assert_eq!(waits[0].msgid, "m2");
+        assert!(waits[0].also.is_empty());
+    }
+
+    #[test]
+    fn a_withdrawn_request_says_why_and_that_no_answer_is_needed() {
+        let withdrawn = Request {
+            state: State::Withdrawn {
+                at: "2026-11-24T10:05:00Z".into(),
+                why: Withdrawal::Gone,
+            },
+            ..request()
+        };
+        assert!(!withdrawn.waits());
+        assert_eq!(withdrawn.card().state, CardState::Cancelled);
+        assert_eq!(
+            withdrawn.card().note.as_deref(),
+            Some("cc-1 is gone at 10:05 UTC: no answer needed")
+        );
+        assert_eq!(
+            withdrawn.text(),
+            "cc-1 is gone, so needs no answer: Add a second CI node?"
+        );
+        assert_eq!(Request::of(&withdrawn.event()), Some(withdrawn));
     }
 
     #[test]

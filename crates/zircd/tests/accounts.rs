@@ -2223,7 +2223,7 @@ async fn a_request_is_answered_only_by_its_owners_own_reaction() {
 struct Asking {
     home: TempDir,
     _daemon: tokio::task::JoinHandle<anyhow::Result<zircd::Ended>>,
-    _repo: TempDir,
+    repo: TempDir,
     socket: std::path::PathBuf,
     hears: ipc::Watching,
     owner: zirc_irc::Client,
@@ -2253,7 +2253,7 @@ impl Asking {
         Self {
             home,
             _daemon: daemon,
-            _repo: repo,
+            repo,
             socket,
             hears,
             owner,
@@ -2292,6 +2292,76 @@ fn request_of(line: &Line) -> Option<zirc_proto::request::Request> {
         .ok()
         .flatten()
         .and_then(|message| zirc_proto::request::Request::of(&message.event))
+}
+
+/// Whether a line is the card of request `id`, withdrawn for `why`.
+fn withdrawn(id: &'static str, why: zirc_proto::request::Withdrawal) -> impl Fn(&Line) -> bool {
+    use zirc_proto::request::State;
+    move |line| {
+        line.command == "PRIVMSG"
+            && request_of(line).is_some_and(|it| {
+                it.id == id && matches!(it.state, State::Withdrawn { why: said, .. } if said == why)
+            })
+    }
+}
+
+/// `session` taking back request `id` (`zirc request --withdraw`).
+fn take_back(session: &str, id: &str) -> Request {
+    Request::Withdraw {
+        session: session.into(),
+        id: id.into(),
+    }
+}
+
+/// A request its session no longer needs answered leaves its owner's list: the session takes
+/// it back, only its own, and the card says so.
+#[tokio::test]
+async fn a_request_is_withdrawn_by_the_session_that_asked_it() {
+    let ergo = require_ergo!();
+    let mut asking = Asking::start(&ergo, 60).await;
+    asking.ask("Drop the old table?", false).await;
+    let refused = ipc::request(&asking.socket, &take_back("cc-2", "mattias-mbp/1")).await;
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|err| err.to_string().contains("cc-1's request")),
+        "{refused:?}"
+    );
+    let taken = ipc::request(&asking.socket, &take_back("cc-1", "mattias-mbp/1")).await;
+    assert_eq!(taken.unwrap(), Response::Done);
+    let card = withdrawn("mattias-mbp/1", zirc_proto::request::Withdrawal::Asked);
+    next_whole_matching(&mut asking.owner_in, &mut asking.whole, card).await;
+    // Nothing waits under that id any more.
+    let again = ipc::request(&asking.socket, &take_back("cc-1", "mattias-mbp/1")).await;
+    assert!(again.is_err(), "{again:?}");
+}
+
+/// A session that finishes its task takes what it still asked with it, and an answer to it
+/// then is nobody's.
+#[tokio::test]
+async fn a_request_is_withdrawn_when_its_sessions_task_is_done() {
+    let ergo = require_ergo!();
+    let mut asking = Asking::start(&ergo, 60).await;
+    let first = asking.ask("Tag the release?", false).await;
+    let done = Request::Post {
+        repo: asking.repo.path().to_owned(),
+        session: "cc-1".into(),
+        text: "done: the release".into(),
+        to: ipc::Target::Agents,
+        app: None,
+        everyone: false,
+        reply: None,
+    };
+    ipc::request(&asking.socket, &done).await.unwrap();
+    let card = withdrawn("mattias-mbp/1", zirc_proto::request::Withdrawal::Done);
+    next_whole_matching(&mut asking.owner_in, &mut asking.whole, card).await;
+
+    // A yes to the withdrawn one is nobody's answer: the next heard is a new request's.
+    react(&asking.owner, &first, "👍", false);
+    let second = asking.ask("Archive it?", false).await;
+    react(&asking.owner, &second, "👎", false);
+    let no = next_answered(&mut asking.hears).await;
+    assert_eq!(no.request.id, "mattias-mbp/2");
 }
 
 /// A request is said as asked only once the server echoes it, as a decision is as decided.
@@ -2387,7 +2457,7 @@ async fn the_owners_answer_counts_on_a_request_whose_echo_was_missed() {
     let Asking {
         home,
         _daemon: daemon,
-        _repo,
+        repo: _repo,
         owner,
         owner_in: _owner_in,
         ..
@@ -2435,7 +2505,7 @@ async fn the_owners_answer_given_while_zircd_was_long_away_is_heard() {
     let Asking {
         home,
         _daemon: daemon,
-        _repo,
+        repo: _repo,
         owner,
         owner_in: _owner_in,
         ..

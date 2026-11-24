@@ -15,6 +15,12 @@
 //! the session in replies under the request ([`Daemon::explain`]); the owner's own replies
 //! there reach that session, and their reaction on one of them answers as one on the
 //! request does.
+//!
+//! A request nobody needs answered any more is withdrawn ([`State::Withdrawn`]), which its
+//! card says and every app's "Waiting for you" drops it for: when its session takes it back
+//! (`zirc request --withdraw`), when its session finishes or drops its task, a landing's
+//! `done:` included, and when its session is gone, away as long as its row stays listed (the
+//! user's choices, 24 Nov 2026).
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -24,7 +30,8 @@ use serde::{Deserialize, Serialize};
 use zirc_core::ipc::{Answered, Delivery, Reaction, Response};
 use zirc_core::paths;
 use zirc_irc::Line;
-use zirc_proto::request::{self, Answer, CHANNEL, Request, State};
+use zirc_proto::request::{self, Answer, CHANNEL, Request, State, Withdrawal};
+use zirc_proto::session::AWAY_FOLD_SECS;
 
 use super::{Ask, Daemon, read_saved};
 
@@ -62,9 +69,19 @@ struct Open {
     /// since the Unix epoch, the owner's reaction on it still says otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     taken_until: Option<u64>,
+    /// When it was asked, in seconds since the Unix epoch: none for one asked before zircd
+    /// kept it, which counts as long ago.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    asked_at: Option<u64>,
 }
 
 impl Open {
+    /// Whether it still waits on its owner: not one taken as recommended, which is kept only
+    /// for the owner to say otherwise.
+    fn waits(&self) -> bool {
+        self.taken_until.is_none() && self.request.waits()
+    }
+
     /// Whether the message `id` is the request's own, or one of the session's replies
     /// under it.
     fn says(&self, id: &str) -> bool {
@@ -156,6 +173,7 @@ impl Daemon {
             held_until: None,
             replies: Vec::new(),
             taken_until: None,
+            asked_at: Some(super::now()),
         };
         if let Some(answer) = taken {
             self.take_recommended(&mut open, answer);
@@ -183,6 +201,77 @@ impl Daemon {
         open.taken_until = Some(now + OVERTURNS_FOR);
         let session = open.request.session.clone();
         self.publish(CHANNEL, &session, open.request.event());
+    }
+
+    /// Withdraws the requests `ids`, still waiting, saying `why` on each one's card: no
+    /// answer to them counts from here on.
+    fn withdraw(&mut self, ids: &[String], why: Withdrawal) {
+        let at = zirc_core::time::tag(super::now());
+        for id in ids {
+            let Some(open) = self.requests.open.remove(id) else {
+                continue;
+            };
+            let request = Request {
+                state: State::Withdrawn {
+                    at: at.clone(),
+                    why,
+                },
+                ..open.request
+            };
+            self.publish(CHANNEL, &request.session, request.event());
+        }
+        if !ids.is_empty() {
+            self.save_requests();
+        }
+    }
+
+    /// `session` takes back its request `id` (`zirc request --withdraw`): only its own, and
+    /// only while it waits.
+    pub(super) fn withdraw_request(&mut self, session: &str, id: &str) -> Result<Response> {
+        let open = self
+            .requests
+            .open
+            .get(id)
+            .filter(|open| open.waits())
+            .with_context(|| format!("no request {id} is waiting for an answer"))?;
+        ensure!(
+            open.request.session == session,
+            "{id} is {}'s request, not {session}'s",
+            open.request.session
+        );
+        self.withdraw(&[id.to_owned()], Withdrawal::Asked);
+        Ok(Response::Done)
+    }
+
+    /// Withdraws what `session` asked and still waits for, as its task is finished or
+    /// dropped: nobody acts on the answer.
+    pub(super) fn withdraw_requests_of(&mut self, session: &str) {
+        let ids: Vec<String> = self
+            .requests
+            .open
+            .iter()
+            .filter(|(_, open)| open.waits() && open.request.session == session)
+            .map(|(id, _)| id.clone())
+            .collect();
+        self.withdraw(&ids, Withdrawal::Done);
+    }
+
+    /// Withdraws the waiting requests whose sessions are gone at `now`: asked
+    /// [`AWAY_FOLD_SECS`] ago or more by a session that hasn't had a watch open for as long,
+    /// so its row is folded away and nobody is there to act on an answer.
+    fn withdraw_gone(&mut self, now: u64) {
+        let ids: Vec<String> = self
+            .requests
+            .open
+            .iter()
+            .filter(|(_, open)| {
+                open.waits()
+                    && now.saturating_sub(open.asked_at.unwrap_or(0)) >= AWAY_FOLD_SECS
+                    && !self.live.knows(&open.request.session)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        self.withdraw(&ids, Withdrawal::Gone);
     }
 
     /// Notes the id the server gave a request this machine asked, as its echo says: the
@@ -331,7 +420,7 @@ impl Daemon {
             let was = match &request.state {
                 State::Answered { answer, .. } => *answer,
                 State::Held { .. } => Answer::Yes,
-                State::Open => return None,
+                State::Open | State::Withdrawn { .. } => return None,
             };
             if was != answer {
                 return None;
@@ -390,6 +479,7 @@ impl Daemon {
         if self.requests.open.len() < before {
             self.save_requests();
         }
+        self.withdraw_gone(now);
         let due: Vec<String> = self
             .requests
             .open

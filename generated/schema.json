@@ -1867,9 +1867,53 @@
           ],
           "description": "Answered, `at` (RFC 3339), with `emoji`.",
           "title": "AnsweredDecisionRequestState"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "withdrawn"
+            },
+            "at": {
+              "type": "string",
+              "description": "When, in RFC 3339."
+            },
+            "why": {
+              "$ref": "#/$defs/DecisionWithdrawal",
+              "description": "Why, in a few words, as the card says: [`Withdrawal::said`]."
+            }
+          },
+          "required": [
+            "state",
+            "at",
+            "why"
+          ],
+          "description": "Taken back unanswered, `at` (RFC 3339): no answer is needed any more, and none counts.",
+          "title": "WithdrawnDecisionRequestState"
         }
       ],
       "description": "Where a request stands."
+    },
+    "DecisionWithdrawal": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "asked",
+          "description": "Its session took it back (`zirc request --withdraw`)."
+        },
+        {
+          "type": "string",
+          "const": "done",
+          "description": "Its session finished, or dropped, the task it asked for."
+        },
+        {
+          "type": "string",
+          "const": "gone",
+          "description": "Its session ended, or has been away as long as its row stays listed\n([`crate::session::AWAY_FOLD_SECS`])."
+        }
+      ],
+      "description": "Why a request was withdrawn."
     },
     "Answered": {
       "type": "object",
@@ -3174,6 +3218,30 @@
           ],
           "description": "Ask this machine's owner `question` in `#decisions` ([`zirc_proto::request`]), to\nanswer with a reaction: answered with [`Response::Requested`], and their answer, once\nthey give it, comes to `session`'s watch as [`Response::Answered`].",
           "title": "AskOwnerRequest"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "withdraw"
+            },
+            "session": {
+              "type": "string",
+              "description": "The session that asked."
+            },
+            "id": {
+              "type": "string",
+              "description": "The request's id, as [`Response::Requested`] said it."
+            }
+          },
+          "required": [
+            "op",
+            "session",
+            "id"
+          ],
+          "description": "Take back `session`'s request `id`, asked with [`Request::AskOwner`] and still\nwaiting: its card says withdrawn, and no answer to it counts. Answered with\n[`Response::Done`].",
+          "title": "WithdrawRequest"
         },
         {
           "type": "object",

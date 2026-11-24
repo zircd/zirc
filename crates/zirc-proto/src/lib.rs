@@ -1411,6 +1411,7 @@ pub fn frame_typescript(config: &ts_rs::Config) -> Vec<String> {
         request::Request::decl(config),
         request::Answer::decl(config),
         request::State::decl(config),
+        request::Withdrawal::decl(config),
         card::Card::decl(config),
         card::Field::decl(config),
         card::Link::decl(config),

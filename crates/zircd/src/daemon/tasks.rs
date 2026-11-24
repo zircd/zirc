@@ -181,6 +181,8 @@ impl Daemon {
         }
         if zirc_proto::says_finished(text) {
             self.same_work_finished(session);
+            // What it asked its owner and still waits for: nobody acts on the answer now.
+            self.withdraw_requests_of(session);
         }
         if zirc_proto::says_finished(text) && self.tasks.finish(session, super::now()) {
             self.tasks.landing.taken_in.remove(session);

@@ -234,6 +234,15 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         irreversible: bool,
     },
+    /// Take back `session`'s request `id`, asked with [`Request::AskOwner`] and still
+    /// waiting: its card says withdrawn, and no answer to it counts. Answered with
+    /// [`Response::Done`].
+    Withdraw {
+        /// The session that asked.
+        session: String,
+        /// The request's id, as [`Response::Requested`] said it.
+        id: String,
+    },
     /// Answer the query `query`, heard while watching, as `session`.
     Reply {
         /// Who's answering: an agent session.

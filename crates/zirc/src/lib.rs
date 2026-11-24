@@ -137,6 +137,7 @@ const EXAMPLES: &[(&str, &[&str])] = &[
         &[
             "zirc request --session cc-1 \"Deploy web to production?\" --yes \"deploys it now\" \
              --no \"leaves it on staging\"",
+            "zirc request --session cc-1 --withdraw mbp/12",
         ],
     ),
     (
@@ -529,6 +530,8 @@ enum Command {
     /// comes to your watch as `#decisions <them> answered yes (👍) to <id>: …`; with --wait,
     /// this waits for it and prints it. With --irreversible a yes is held a minute before it
     /// reaches you, which a 👎 stops. On a ❓, tell them more with `zirc dm`.
+    /// --withdraw <id> takes back one you no longer need answered; finishing your task
+    /// (`done:`, `dropped:`, or its landing) withdraws what you still asked.
     #[command(after_long_help = examples("request", ""))]
     Request(decide::RequestArgs),
     /// Wait on a landing, a build, a branch or a state, to be woken when it moves.

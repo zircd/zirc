@@ -121,6 +121,7 @@ impl Daemon {
                 recommend,
                 irreversible,
             } => self.ask_owner(&session, question, yes, no, recommend, irreversible)?,
+            Request::Withdraw { session, id } => self.withdraw_request(&session, &id)?,
             Request::Ask { session, to, text } => {
                 let (id, to) = self.ask(&session, &to, &text)?;
                 Response::Asked { id, to }
