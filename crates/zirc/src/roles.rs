@@ -49,17 +49,6 @@ pub(crate) enum RoleCommand {
         #[arg(required = true)]
         text: Vec<String>,
     },
-    /// Join a workflow's role, such as fixers, to be given its steps.
-    ///
-    /// It goes with workflows, as their steps do.
-    #[command(hide = true)]
-    Join {
-        /// The workflows' role, such as fixers.
-        role: String,
-        /// Your session. Defaults to $ZIRC_SESSION, then $USER.
-        #[arg(long, env = "ZIRC_SESSION")]
-        session: Option<String>,
-    },
     /// Say who held a role last, to ask them how things stood: `zirc ask --to` them.
     Last {
         /// The role, such as fixer.
@@ -114,17 +103,6 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
             };
             let to = to.as_deref().unwrap_or(zirc_proto::AGENTS_CHANNEL);
             Ok(writeln!(out, "said to {to}")?)
-        }
-        RoleCommand::Join { role, session } => {
-            let request = Request::Role {
-                session: session_or_user(session),
-                role,
-                join: true,
-            };
-            let Response::Roles { roles } = ask(socket, request).await? else {
-                return Err(unexpected());
-            };
-            Ok(writeln!(out, "in {}", roles.join(", "))?)
         }
         RoleCommand::Last { role } => {
             let standing = standing(socket).await?;

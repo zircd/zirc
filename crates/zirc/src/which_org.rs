@@ -44,7 +44,6 @@ const ACTS: &[(&str, Acts)] = &[
     ("gotchas", Acts::Repo),
     ("playbook", Acts::Repo),
     ("role take", Acts::Repo),
-    ("role join", Acts::Machine),
     ("role leave", Acts::Repo),
     ("role say", Acts::Repo),
     ("role last", Acts::Repo),

@@ -186,7 +186,7 @@ impl Orgs {
             Request::RepoList => self.repo_list().await,
             // A machine-wide setting, which every organisation's daemon keeps: who may query
             // its agents, or what a session is called.
-            Request::Queries { .. } | Request::Name { .. } | Request::Role { .. } => {
+            Request::Queries { .. } | Request::Name { .. } => {
                 let mut answers = Vec::new();
                 for at in 0..self.0.len() {
                     answers.push(self.ask(at, request.clone()).await);

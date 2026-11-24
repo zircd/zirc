@@ -282,11 +282,6 @@ impl Daemon {
             } => self.lease(&name, &session, seconds, pid, wait).await?,
             Request::LeaseRelease { name, session } => self.lease_release(&name, &session)?,
             Request::Leases => self.leases(),
-            Request::Role {
-                session,
-                role,
-                join,
-            } => self.role(&session, &role, join)?,
             Request::RoleTake {
                 role,
                 session,
