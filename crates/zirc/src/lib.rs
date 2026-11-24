@@ -1045,13 +1045,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
     let home = cli.home.unwrap_or_else(paths::home);
     let socket = paths::socket(&home);
     let tool = cli.tool.clone().or_else(tool_here);
-    // ZIRC_SESSION_AVATAR, from before roles, still counts.
-    let avatar = cli
-        .avatar
-        .clone()
-        .or_else(|| std::env::var("ZIRC_SESSION_AVATAR").ok())
-        .as_deref()
-        .map(role_named);
+    let avatar = session_avatar(cli.avatar.clone());
     let name = (cli.name.as_deref(), tool.as_deref(), avatar);
     before(&cli.command, &home, own_home);
     match cli.command {
@@ -1137,8 +1131,8 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Ci(command) => ci::ci(&home, &socket, command, out).await,
         Command::AgentGuide => Ok(write!(out, "{AGENT_GUIDE}")?),
         Command::Reference => Ok(write!(out, "{REFERENCE}")?),
-        Command::Roles => roles::roles(&socket, out).await,
-        Command::Avatars => Ok(write!(out, "{}", avatars_text())?),
+        Command::Roles => roles::list(&socket, false, out).await,
+        Command::Avatars => roles::list(&socket, true, out).await,
         Command::Skill(command) => skill::install_or_remove(command, out),
         Command::Help { all, command } => help(all, &command, out),
     }
@@ -1162,6 +1156,14 @@ fn before(command: &Command, home: &Path, own_home: bool) {
             env!("CARGO_PKG_VERSION")
         );
     }
+}
+
+/// The picture `--role` names, or `ZIRC_SESSION_AVATAR`, from before roles, which still counts.
+fn session_avatar(given: Option<String>) -> Option<&'static str> {
+    given
+        .or_else(|| std::env::var("ZIRC_SESSION_AVATAR").ok())
+        .as_deref()
+        .map(role_named)
 }
 
 /// The role `--role` names, saying on stderr which one it took for a word that isn't one.

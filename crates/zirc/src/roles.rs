@@ -116,8 +116,16 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
     }
 }
 
+/// `zirc roles`, or with `avatars`, `zirc avatars`: the pictures `--role` takes.
+pub(crate) async fn list(socket: &Path, avatars: bool, out: &mut impl Write) -> Result<()> {
+    if avatars {
+        return Ok(write!(out, "{}", crate::avatars_text())?);
+    }
+    roles(socket, out).await
+}
+
 /// `zirc roles`: each role, who holds it, and what wakes it.
-pub(crate) async fn roles(socket: &Path, out: &mut impl Write) -> Result<()> {
+async fn roles(socket: &Path, out: &mut impl Write) -> Result<()> {
     let standing = standing(socket).await?;
     if standing.listing.roles.is_empty() {
         writeln!(
