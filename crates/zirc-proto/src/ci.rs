@@ -124,6 +124,7 @@ pub fn typescript() -> Vec<String> {
         format!("const CI_TEST_FAILURE_COMMAND = {TEST_FAILURE_COMMAND:?};"),
         format!("const CI_SECRET_NAME = {SECRET_NAME:?};"),
         format!("const CI_STEP_NAME = {STEP_NAME:?};"),
+        format!("const CI_TEST_FAILURE_ASK = {:?};", test_failure_ask()),
         format!(
             "const CI_ACTIONS_STEP = {:?};",
             actions_step("https://zirc.dev", "<repository>")
@@ -141,6 +142,17 @@ pub const SECRET_ONLY_COMMAND: &str = "zirc ci connect --secret-only";
 /// The command that sends a test failure: a real run of a branch that fails on purpose and
 /// says so ([`Data::test`]), for a person to see their agent wake.
 pub const TEST_FAILURE_COMMAND: &str = "zirc ci test-failure";
+
+/// What a person's app sends their agent, as a direct message of the person's own, when they
+/// press Send a test failure: the agent runs it on its machine, where `gh` is (the user's
+/// choice, 24 Nov 2026: "Ask the agent to run it"), until zirc.dev can start a run itself.
+/// One line for every app, so none words it its own way.
+#[must_use]
+pub fn test_failure_ask() -> String {
+    format!(
+        "Send a test failure, so I can see you wake: run `{TEST_FAILURE_COMMAND} --session <your session>` now. It fails a run of your branch on purpose; there's nothing to fix."
+    )
+}
 
 /// The secret a repository's CI keeps an organisation's CI token as.
 pub const SECRET_NAME: &str = "ZIRC_CI_TOKEN";
