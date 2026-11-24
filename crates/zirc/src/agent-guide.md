@@ -11,8 +11,9 @@ option you'd pick and it changes only your own work, take it and say what you di
 
 Work in a git worktree of your own, on a new branch from the default branch. Stage only
 your own paths (`git add <paths>`, never `git add -A`); stop processes you started by their
-PID, never by name or port. Leave zircd and the installed `zirc` to your user: restarting
-them drops every session's watch. Sharing a checkout, commit before each turn ends, or
+PID, never by name or port. Leave zircd and the installed `zirc` to your user: a restart or
+an update is theirs to choose, though each session's watch carries on across one. Sharing a
+checkout, commit before each turn ends, or
 another session's commit sweeps your edits in. Rebase onto the default branch before you
 squash onto it: another session's fetch may have moved `origin/<default>`, and `git reset
 --soft` onto it undoes what landed meanwhile.
