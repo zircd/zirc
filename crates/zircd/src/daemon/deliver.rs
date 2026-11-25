@@ -15,7 +15,7 @@ use zirc_proto::decision::Decision;
 use zirc_proto::{Event, Message};
 
 use super::{
-    Daemon, MISSED, MISSED_FOR, Said, WATCHER_SESSION, Watched, answered_concerns, channel_of,
+    Daemon, MISSED, MISSED_FOR, WATCHER_SESSION, Watched, answered_concerns, channel_of,
     direct_concerns, lands_under, later, mentions, now, read_saved, routine, wakes,
 };
 
@@ -524,29 +524,25 @@ impl Daemon {
                 paths,
                 ..
             } => (lands_under(&self.watched_in(channel, session), branch, head, paths)
-                || self.partner(delivery, branch, session)
                 || session.is_some_and(|session| self.awaits.moves_stack(session, branch, head)))
             .then_some(Why::Landing),
-            // Another's commit is news when it's the other side of an overlap, or
-            // touches what the session's changing, before it's anywhere near landing.
-            Event::Commit { branch, paths, .. } => {
-                if self.partner(delivery, branch, session) {
-                    Some(Why::Overlap)
-                } else {
-                    // Only where the lines may meet: a commit elsewhere in the session's
-                    // files merges with them, and is no news to it.
-                    let shared: Vec<&str> = paths
-                        .iter()
-                        .map(String::as_str)
-                        .filter(|path| mine.contains(path))
-                        .collect();
-                    (!shared.is_empty()
-                        && !session.is_some_and(|session| {
-                            self.apart_here(delivery, session, &shared)
-                                || self.settled_sender(delivery, session)
-                        }))
-                    .then_some(Why::Paths)
-                }
+            // A commit on another machine that touches what the session's changing is the
+            // first it hears of that work, before it's anywhere near landing. One made here
+            // is no news: this machine compares its worktrees' lines as they change, and
+            // says so when they meet ([`Response::LocalOverlap`]); a commit between that and
+            // the landing gives a session nothing to act on. Until 25 Nov 2026 each commit
+            // and push by the other side of an overlap woke it, 61 of a week's 216 wakes
+            // (the user's choice: "Remove it").
+            Event::Commit { paths, .. } => {
+                let here = self
+                    .client
+                    .as_ref()
+                    .is_some_and(|client| client.nick() == delivery.from);
+                let shared = paths.iter().any(|path| mine.contains(path.as_str()));
+                (shared
+                    && !here
+                    && !session.is_some_and(|session| self.settled_sender(delivery, session)))
+                .then_some(Why::Paths)
             }
             _ => None,
         }
@@ -729,39 +725,16 @@ impl Daemon {
     }
 
     /// Whether `overlap` is news to `session` on `me`: between its work and another's, one
-    /// side its own and the other not, and neither a split it's agreed on nor one the two
-    /// settled ([`Daemon::settled`]).
+    /// side its own and the other not, and not one the two settled ([`Daemon::settled`]),
+    /// which is the one way to say an overlap is sorted (the user's choice, 25 Nov 2026:
+    /// an intent that named the other session and covered the files once quieted it too).
     pub(super) fn news_to(&self, overlap: &LocalOverlap, me: &str, session: &str) -> bool {
         let (its, others): (Vec<&Worktree>, Vec<&Worktree>) = overlap
             .worktrees
             .iter()
             .partition(|worktree| self.works_in(worktree, session));
         let others = others.len();
-        !its.is_empty()
-            && others > 0
-            && !self.agreed(overlap, me, session)
-            && !self.settled(overlap, me, session)
-    }
-
-    /// Whether `session` has agreed on `overlap` with the session on its other side: it said
-    /// it's about to change all the overlapping paths, naming that session, as a split two
-    /// sessions settled on. The agreement lasts as long as the intent does.
-    pub(super) fn agreed(&self, overlap: &LocalOverlap, me: &str, session: &str) -> bool {
-        let others: Vec<&str> = overlap
-            .worktrees
-            .iter()
-            .filter(|worktree| !self.works_in(worktree, session))
-            .filter_map(|worktree| self.session_of(worktree))
-            .collect();
-        self.presence
-            .intents(&overlap.channel, now())
-            .into_iter()
-            .filter(|intent| intent.nick == me && intent.session == session)
-            .filter(|intent| mentions(&intent.summary, &others))
-            .any(|intent| {
-                let intended: Vec<&str> = intent.paths.iter().map(String::as_str).collect();
-                presence::touching(&overlap.paths, &intended).len() == overlap.paths.len()
-            })
+        !its.is_empty() && others > 0 && !self.settled(overlap, me, session)
     }
 
     /// The session whose work `worktree`, one of this machine's working sets, is, if known.
@@ -776,7 +749,7 @@ impl Daemon {
 
     /// Whether `session` and the session `delivery` is from settled who lands first
     /// ([`Daemon::settled_with`]): the second hears that landing, and neither needs the
-    /// other's commits and pushes meanwhile.
+    /// other's commits meanwhile.
     pub(super) fn settled_sender(&self, delivery: &Delivery, session: &str) -> bool {
         self.client.as_ref().map(Client::nick).is_some_and(|me| {
             self.settled_with(
@@ -785,46 +758,6 @@ impl Daemon {
                 (&delivery.from, &delivery.message.session),
             )
         })
-    }
-
-    /// Whether `delivery`, a commit or push to `branch`, is by the other side of an overlap
-    /// `session` was told of: then its changes are moving, and the session may want to update
-    /// from them once they land. Not once the two settled
-    /// ([`Daemon::settled_sender`]).
-    pub(super) fn partner(&self, delivery: &Delivery, branch: &str, session: Option<&str>) -> bool {
-        let Some(session) = session else {
-            return false;
-        };
-        if self.settled_sender(delivery, session) {
-            return false;
-        }
-        let me = self.client.as_ref().map(Client::nick);
-        if Some(delivery.from.as_str()) == me {
-            if delivery.message.session == session {
-                return false;
-            }
-            let home = delivery.scope();
-            return self.told.local.iter().any(|((channel, pair), paths)| {
-                // A pair whose overlap was told only as different parts never woke
-                // anyone, and its commits needn't either.
-                paths.values().any(|(said, _)| *said != Said::Apart)
-                    && *channel == home
-                    && pair.iter().any(|it| it.branch.as_deref() == Some(branch))
-                    && pair.iter().any(|it| {
-                        it.branch.as_deref() != Some(branch) && self.works_in(it, session)
-                    })
-            });
-        }
-        let mine: Vec<String> = self
-            .repos
-            .values()
-            .filter(|watched| watched.scope == delivery.scope())
-            .flat_map(|watched| watched.paths_of(session))
-            .collect();
-        self.told
-            .remote
-            .get(&(delivery.scope(), delivery.from.clone()))
-            .is_some_and(|told| mine.iter().any(|path| told.contains_key(path)))
     }
 
     /// Whether `worktree`, one of this machine's working sets, is `session`'s.

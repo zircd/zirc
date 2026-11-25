@@ -292,44 +292,7 @@ async fn warns_a_worktree_of_a_push_that_changes_the_same_lines() {
 }
 
 #[tokio::test]
-async fn an_overlap_a_session_agreed_on_by_naming_the_other_stays_quiet_for_it() {
-    let ergo = require_ergo!();
-    let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
-    let mut main_hears = machine.watch(Some("cc-main")).await;
-    let mut login_hears = machine.watch(Some("cc-login")).await;
-    // cc-main settled a split of README.md with cc-login, and says so naming it.
-    machine
-        .request(Request::Intend {
-            repo: main_root.clone(),
-            session: "cc-main".into(),
-            summary: "README.md split with cc-login: I take the top".into(),
-            paths: vec!["README.md".into()],
-            seconds: 600,
-        })
-        .await;
-    until_who(
-        &machine,
-        |channels| channels.iter().any(|c| !c.intents.is_empty()),
-        "the intent",
-    )
-    .await;
-
-    std::fs::write(main_root.join("README.md"), "main's take\n").unwrap();
-    std::fs::write(login_root.join("README.md"), "login's take\n").unwrap();
-    assert_eq!(
-        next_local_overlap(&mut main_hears).await.why,
-        None,
-        "cc-main agreed on it"
-    );
-    assert_eq!(
-        next_local_overlap(&mut login_hears).await.why,
-        Some(Why::Overlap),
-        "cc-login didn't say so"
-    );
-}
-
-#[tokio::test]
-async fn a_session_hears_when_the_other_side_of_its_overlap_commits() {
+async fn a_commit_by_the_other_side_of_an_overlap_is_heard_and_wakes_nobody() {
     let ergo = require_ergo!();
     let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
     let mut main_hears = machine.watch(Some("cc-main")).await;
@@ -351,7 +314,9 @@ async fn a_session_hears_when_the_other_side_of_its_overlap_commits() {
         }
     };
     assert_eq!(commit.message.session, "cc-login");
-    assert_eq!(commit.why, Some(Why::Overlap));
+    // It was told when their lines met, and hears when cc-login lands: a commit between the
+    // two gives it nothing to do.
+    assert_eq!(commit.why, None);
 }
 
 #[tokio::test]

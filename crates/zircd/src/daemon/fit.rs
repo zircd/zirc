@@ -156,31 +156,6 @@ impl Daemon {
             })
     }
 
-    /// Whether `delivery`, from another session on this machine, changes each of `paths`
-    /// in other parts than `session` does, as last compared: then its commit needs nothing
-    /// of the session, whose own changes merge with it.
-    pub(super) fn apart_here(&self, delivery: &Delivery, session: &str, paths: &[&str]) -> bool {
-        let local = self
-            .client
-            .as_ref()
-            .is_some_and(|client| client.nick() == delivery.from);
-        let worktrees = |of: &str| -> Vec<&PathBuf> {
-            self.repos
-                .iter()
-                .filter(|(_, watched)| watched.is_of(of))
-                .map(|(root, _)| root)
-                .collect()
-        };
-        let (ours, others) = (worktrees(session), worktrees(&delivery.message.session));
-        local
-            && !paths.is_empty()
-            && paths.iter().all(|path| {
-                ours.iter()
-                    .flat_map(|a| others.iter().map(move |b| (a, b)))
-                    .any(|(a, b)| self.predictions.shared(a, b, path) == Shared::Apart)
-            })
-    }
-
     /// Keeps for later, rather than waking them, the watching sessions whose reason in
     /// `reasons` is an intent that needs nothing of them ([`Daemon::quiet_intent`]).
     pub(super) fn hold_quiet_intents(&mut self, response: &Response, reasons: &mut [Option<Why>]) {
@@ -206,8 +181,7 @@ impl Daemon {
     /// Whether `response`, a push that changes files `session` changes, needs nothing of it
     /// now: this machine made the push, so it has its commits and compares their lines with
     /// each worktree's own, waking the session if they meet (`scans.rs`, a conflict ahead);
-    /// and it's neither the other side of an overlap the session was told of, nor a branch
-    /// its own is built on. Such a push waits for the session's next wake, where its hint
+    /// and it isn't a branch its own is built on. Such a push waits for the session's next wake, where its hint
     /// says to update before changing those files again. Every landing in a file a session
     /// changed woke it, 91 of a week's 216 wakes for others' work (20 to 25 Nov 2026), most
     /// for lines it never touched. The user's choice, 25 Nov 2026: "Note it, wake only for
@@ -223,7 +197,6 @@ impl Daemon {
         self.client
             .as_ref()
             .is_some_and(|client| client.nick() == delivery.from)
-            && !self.partner(delivery, branch, Some(session))
             && !self.awaits.moves_stack(session, branch, head)
     }
 
