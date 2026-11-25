@@ -429,6 +429,26 @@ async fn a_session_no_repository_was_added_with_hears_only_what_names_it() {
     );
 }
 
+/// The next record `session` sent the recorder, as `recorded` hears it, to the recorder
+/// alone. zircd's own come between, such as its count of live sessions (`x-zirc/sessions`),
+/// which a watch starting or ending sends: under load it came before a session's next record
+/// (build 10419).
+async fn next_record_of(recorded: &mut zirc_irc::Incoming, session: &str) -> zirc_proto::Message {
+    loop {
+        let line = zirc_test_irc::next_matching(recorded, |line| line.command == "TAGMSG").await;
+        assert_eq!(
+            line.params[0],
+            zirc_proto::activity::RECORDER,
+            "to the recorder alone"
+        );
+        let record: zirc_proto::Message =
+            zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG).unwrap()).unwrap();
+        if record.session == session {
+            return record;
+        }
+    }
+}
+
 #[tokio::test]
 async fn the_recorder_is_told_which_sessions_are_live_for_readers_in_no_channel() {
     let ergo = require_ergo!();
@@ -462,20 +482,11 @@ async fn a_wake_and_what_the_session_did_go_to_the_recorder_alone() {
         zirc_test_irc::person(&ergo, zirc_proto::activity::RECORDER).await;
     let (ada, mut ada_hears) = zirc_test_irc::person(&ergo, "ada").await;
     zirc_test_irc::joins(&ada, &mut ada_hears, "#agents").await;
-    let next_record = async |recorded: &mut zirc_irc::Incoming| {
-        let line = zirc_test_irc::next_matching(recorded, |line| line.command == "TAGMSG").await;
-        assert_eq!(
-            line.params[0],
-            zirc_proto::activity::RECORDER,
-            "to the recorder alone"
-        );
-        zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG).unwrap()).unwrap()
-    };
 
     ada.privmsg("#agents", "cc-login: can you look at the login page?")
         .unwrap();
     assert_eq!(next_post(&mut agent).await.why, Some(Why::Mention));
-    let sent = next_record(&mut recorded).await;
+    let sent = next_record_of(&mut recorded, "cc-login").await;
     assert_eq!(sent.session, "cc-login");
     assert!(sent.is_live(), "never in history");
     let wake = Wake::of(&sent.event).expect("a wake");
@@ -483,7 +494,8 @@ async fn a_wake_and_what_the_session_did_go_to_the_recorder_alone() {
     assert!(wake.line.is_some(), "the line's id, not its words");
 
     post(&machine, &login_root, "cc-login", "on it").await;
-    let outcome = WakeOutcome::of(&next_record(&mut recorded).await.event).expect("an outcome");
+    let outcome = WakeOutcome::of(&next_record_of(&mut recorded, "cc-login").await.event)
+        .expect("an outcome");
     assert_eq!(outcome.wake, wake.id);
     assert_eq!(outcome.acted, Acted::Posted);
     // Nobody else in the channel is sent either: by the machine's next post, which follows
@@ -1008,13 +1020,9 @@ async fn a_sessions_first_watch_goes_to_the_recorder_once() {
     let (machine, _main, _main_root, _login_root) = machine_with_a_session_worktree(&ergo).await;
     let (_recorder, mut recorded) =
         zirc_test_irc::person(&ergo, zirc_proto::activity::RECORDER).await;
-    let next_record = async |recorded: &mut zirc_irc::Incoming| {
-        let line = zirc_test_irc::next_matching(recorded, |line| line.command == "TAGMSG").await;
-        zirc_proto::from_payload(line.tag(zirc_proto::EVENT_TAG).unwrap()).unwrap()
-    };
 
     let first = machine.watch(Some("cc-login")).await;
-    let sent = next_record(&mut recorded).await;
+    let sent = next_record_of(&mut recorded, "cc-login").await;
     assert_eq!(sent.session, "cc-login");
     assert!(sent.is_live(), "never in history");
     assert_eq!(Watching::of(&sent.event), Some(Watching {}));
@@ -1036,6 +1044,6 @@ async fn a_sessions_first_watch_goes_to_the_recorder_once() {
         })
         .await;
     assert!(matches!(done, Response::Done), "{done:?}");
-    let sent = next_record(&mut recorded).await;
+    let sent = next_record_of(&mut recorded, "cc-login").await;
     assert_eq!(HintShown::of(&sent.event), Some(shown), "{sent:?}");
 }
