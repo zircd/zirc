@@ -794,6 +794,7 @@ async fn a_note_reaches_the_one_session_it_names_on_its_machine() {
         tool: None,
         avatar: None,
         title: None,
+        tool_title: None,
         link: None,
     };
     ask(&mbp, name).await.unwrap();

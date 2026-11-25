@@ -354,9 +354,10 @@ pub(crate) async fn name_session(
     socket: &Path,
     session: Option<&str>,
     (name, tool, avatar): (Option<&str>, Option<&str>, Option<&str>),
+    tool_title: Option<String>,
 ) -> Result<()> {
-    let Some(session) = session.filter(|_| name.is_some() || tool.is_some() || avatar.is_some())
-    else {
+    let said = name.is_some() || tool.is_some() || avatar.is_some() || tool_title.is_some();
+    let Some(session) = session.filter(|_| said) else {
         return Ok(());
     };
     let request = Request::Name {
@@ -365,6 +366,7 @@ pub(crate) async fn name_session(
         tool: tool.map(str::to_owned),
         avatar: avatar.map(str::to_owned),
         title: None,
+        tool_title,
         link: None,
     };
     if let Err(err) = ask(socket, request).await {
@@ -408,20 +410,9 @@ pub(crate) fn avatars_text() -> String {
 }
 
 /// The agent tool zirc runs in, from what it sets in the environment of the commands it
-/// runs: Claude Code's `CLAUDECODE`, or Codex's `CODEX_THREAD_ID`.
+/// runs ([`zirc_proto::TOOL_MARKERS`]).
 pub(crate) fn tool_here() -> Option<String> {
-    tool_in(|key| std::env::var(key).ok())
-}
-
-pub(crate) fn tool_in(var: impl Fn(&str) -> Option<String>) -> Option<String> {
-    let set = |key: &str| var(key).is_some_and(|value| !value.is_empty());
-    if var("CLAUDECODE").as_deref() == Some("1") {
-        Some(zirc_proto::CLAUDE_CODE.to_owned())
-    } else if set("CODEX_THREAD_ID") {
-        Some(zirc_proto::CODEX.to_owned())
-    } else {
-        None
-    }
+    zirc_proto::tool_from_env(|key| std::env::var(key).ok()).map(str::to_owned)
 }
 
 // `zirc wait-for`'s arguments: their doc comments are its --help.
@@ -673,6 +664,7 @@ pub(crate) async fn name(
         tool: tool.map(str::to_owned),
         avatar: avatar.map(str::to_owned),
         title,
+        tool_title: None,
         link,
     };
     let Response::Done = ask(socket, request).await? else {
@@ -893,28 +885,6 @@ mod tests {
                 .contains("\"developer\" isn't a role, so it's builder")
         );
         assert_eq!(avatar_named("unicorn").0, "agent");
-    }
-
-    #[test]
-    fn tells_the_agent_tool_from_the_environment() {
-        let env = |pairs: &'static [(&'static str, &'static str)]| {
-            move |key: &str| {
-                pairs
-                    .iter()
-                    .find(|(k, _)| *k == key)
-                    .map(|(_, v)| (*v).to_owned())
-            }
-        };
-        assert_eq!(
-            tool_in(env(&[("CLAUDECODE", "1")])).as_deref(),
-            Some("claude-code")
-        );
-        assert_eq!(
-            tool_in(env(&[("CODEX_THREAD_ID", "019a")])).as_deref(),
-            Some("codex")
-        );
-        assert_eq!(tool_in(env(&[("CODEX_THREAD_ID", "")])), None);
-        assert_eq!(tool_in(env(&[])), None);
     }
 
     #[test]

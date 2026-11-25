@@ -1,8 +1,10 @@
 //! What an agent session is called, beyond its short handle: `x-zirc/session`, a
 //! [`crate::Event::Custom`] whose data is a [`SessionCard`], sent by the session's machine
-//! when the session is given a title (`zirc name --title`), and again when it changes. Apps
-//! keep the latest card for each machine and session, and show its title when someone
-//! points at the session's name, which stays a short IRC-safe handle (`desktop`, `ios`).
+//! once it knows the session's tool, name or title, and again when one changes. Its title is
+//! the one it was given (`zirc name --title`), else the one its agent tool shows (Claude
+//! Code's sidebar title), else the first task it took on. Apps keep the latest card for
+//! each machine and session, and show its title first, above its short IRC-safe handle
+//! (`desktop`, `ios`): [`agent_title`], [`agent_handle`].
 //!
 //! A card never carries where the session can be opened: that link is the owner's alone,
 //! kept on their machine and served only over its zircd's socket.
@@ -32,8 +34,10 @@ pub struct SessionCard {
     /// Its short handle ([`crate::Message::name`]), when it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// Its full title, as the agent tool shows it, at most [`MAX_TITLE`] characters.
-    pub title: String,
+    /// Its full title, at most [`MAX_TITLE`] characters, when it has one: as it was given,
+    /// else as its agent tool shows it, else the first task it took on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// The agent tool it runs in ([`crate::Message::tool`]), when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
@@ -71,10 +75,18 @@ impl SessionCard {
         self.name.as_deref().unwrap_or(&self.session)
     }
 
-    /// What it says, for plain IRC clients: `desktop is "Desktop: 3f review fixes"`.
+    /// What it says, for plain IRC clients: `desktop is "Desktop: 3f review fixes"`, or,
+    /// untitled, `desktop · Claude Code`.
     #[must_use]
     pub fn text(&self) -> String {
-        format!("{} is \"{}\"", self.who(), self.title)
+        match &self.title {
+            Some(title) => format!("{} is \"{title}\"", self.who()),
+            None => format!(
+                "{} · {}",
+                self.who(),
+                crate::tool_said(self.tool.as_deref())
+            ),
+        }
     }
 }
 
@@ -217,18 +229,38 @@ fn away_for(secs: u64, minutes: &str, hours: &str) -> Option<String> {
     }
 }
 
-/// What an agent session is called on its row, its header and what its machine says for it:
-/// the name it was given or goes by, else the task it's on (the user's choice, 23 Nov 2026:
-/// "your agents named by task"), else its id.
+/// What an agent session is called on its row, its header, Working now and what its
+/// machine says for it (the user's choice, 25 Nov 2026): its card's `title` (as given, else
+/// as its tool shows it, else its first task), else the task it's on, else its short
+/// `name`, else its id. Its handle goes under it ([`agent_handle`]). A reader that knows
+/// more of the session than its machine said may stand in for the id alone: zirc.dev's
+/// Working now takes the name its activity store heard, where the standing has only the id.
 #[must_use]
-pub fn agent_title(name: Option<&str>, task: Option<&str>, session: &str) -> String {
-    [name, task]
+pub fn agent_title(
+    title: Option<&str>,
+    task: Option<&str>,
+    name: Option<&str>,
+    session: &str,
+) -> String {
+    [title, task, name]
         .into_iter()
         .flatten()
         .map(str::trim)
         .find(|said| !said.is_empty())
         .unwrap_or(session)
         .to_owned()
+}
+
+/// The small second line under an agent session's title ([`agent_title`]): its short
+/// handle, its `name` else its id, so the handle is never alone as the title nor lost under
+/// one. `None` when the title is the handle already.
+#[must_use]
+pub fn agent_handle(title: &str, name: Option<&str>, session: &str) -> Option<String> {
+    let handle = name
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or(session);
+    (handle != title).then(|| handle.to_owned())
 }
 
 /// `title` as a card carries it: one line, trimmed, at most [`MAX_TITLE`] characters, cut
@@ -251,15 +283,21 @@ mod tests {
         let card = SessionCard {
             session: "cc-ab600723".into(),
             name: Some("desktop".into()),
-            title: "Desktop: 3f review fixes".into(),
+            title: Some("Desktop: 3f review fixes".into()),
             tool: Some("claude-code".into()),
         };
         let event = card.event();
-        assert_eq!(SessionCard::of(&event), Some(card));
+        assert_eq!(SessionCard::of(&event), Some(card.clone()));
         assert_eq!(
             event.human_text(),
             "desktop is \"Desktop: 3f review fixes\""
         );
+        let untitled = SessionCard {
+            title: None,
+            ..card
+        };
+        assert_eq!(untitled.text(), "desktop · Claude Code");
+        assert_eq!(SessionCard::of(&untitled.event()), Some(untitled));
         assert_eq!(SessionCard::of(&Event::Text { body: "hi".into() }), None);
     }
 
@@ -337,15 +375,33 @@ mod tests {
             not_listening_notice("replay-metrics", 15 * 60, 1),
             "replay-metrics isn't listening: 1 message waiting for 15 min"
         );
-        assert_eq!(
-            agent_title(Some("presence"), Some("the login page"), "cc-1"),
-            "presence"
+    }
+
+    #[test]
+    fn the_title_leads_and_the_handle_is_the_second_line() {
+        let title = agent_title(
+            Some("Session names: tool and title"),
+            Some("the login page"),
+            Some("presence"),
+            "cc-1",
         );
+        assert_eq!(title, "Session names: tool and title");
         assert_eq!(
-            agent_title(None, Some("the login page"), "cc-1"),
-            "the login page"
+            agent_handle(&title, Some("presence"), "cc-1").as_deref(),
+            Some("presence")
         );
-        assert_eq!(agent_title(Some(" "), None, "cc-1"), "cc-1");
+        let by_task = agent_title(None, Some("the login page"), Some("presence"), "cc-1");
+        assert_eq!(by_task, "the login page");
+        assert_eq!(
+            agent_handle(&by_task, None, "cc-1").as_deref(),
+            Some("cc-1")
+        );
+        // Only a name: it's the title, with nothing under it.
+        let named = agent_title(Some(" "), None, Some("presence"), "cc-1");
+        assert_eq!(named, "presence");
+        assert_eq!(agent_handle(&named, Some("presence"), "cc-1"), None);
+        assert_eq!(agent_title(None, None, None, "cc-1"), "cc-1");
+        assert_eq!(agent_handle("cc-1", None, "cc-1"), None);
     }
 
     #[test]

@@ -3240,8 +3240,11 @@
           "description": "Its short handle ([`crate::Message::name`]), when it has one."
         },
         "title": {
-          "type": "string",
-          "description": "Its full title, as the agent tool shows it, at most [`MAX_TITLE`] characters."
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its full title, at most [`MAX_TITLE`] characters, when it has one: as it was given,\nelse as its agent tool shows it, else the first task it took on."
         },
         "tool": {
           "type": [
@@ -3254,8 +3257,7 @@
       "required": [
         "machine",
         "since",
-        "session",
-        "title"
+        "session"
       ],
       "description": "A session holding a role, or that held it: its machine, and the session as its card says\nit ([`crate::session::SessionCard`]), so its name and tool are read one way."
     },
@@ -4463,7 +4465,14 @@
                 "string",
                 "null"
               ],
-              "description": "Its full title, as the agent tool shows it: sent to the session's channels as a\n[`zirc_proto::session::SessionCard`]."
+              "description": "Its full title as given (`zirc name --title`): sent to the session's channels as a\n[`zirc_proto::session::SessionCard`], ahead of `tool_title`."
+            },
+            "tool_title": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its title as its agent tool shows it, read by `zirc watch` from the tool's own\nrecords (Claude Code's sidebar title): its card's where it was given none."
             },
             "link": {
               "type": [

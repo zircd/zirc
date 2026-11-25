@@ -601,7 +601,9 @@ pub(crate) async fn watch(
         channels,
         level,
     } = args;
-    name_session(socket, session.as_deref(), name).await?;
+    // The title its tool shows, read each time a watch starts: so it keeps in step.
+    let tool_title = crate::tool_title::here(name.1);
+    name_session(socket, session.as_deref(), name, tool_title).await?;
     let filter = filter
         .as_deref()
         .map(|jq| filter_of(jq, "--filter"))

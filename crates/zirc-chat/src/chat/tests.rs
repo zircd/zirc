@@ -3030,11 +3030,12 @@ fn names_agents_first_on_every_kind_of_row() {
         ("analytics", Some("Alice's agent"))
     );
 
-    // The card of an agent row describes the session: its name and its owner's, its
-    // machine and id, what it's doing, whose agent it is and its tool.
+    // The card of an agent row describes the session: what it's called (its task, with no
+    // title card) and its owner's, its handle, machine and id, what it's doing, whose agent
+    // it is and its tool.
     let card = chat.session_card("alice-mbp", "cc-1", noon(), |at| at.naive_utc());
-    assert_eq!(card.title, "analytics · Alice");
-    assert_eq!(card.ids.as_deref(), Some("alice-mbp · cc-1"));
+    assert_eq!(card.title, "the login bug · Alice");
+    assert_eq!(card.ids.as_deref(), Some("analytics · alice-mbp · cc-1"));
     assert!(
         card.doing
             .as_deref()
@@ -3054,7 +3055,7 @@ fn names_agents_first_on_every_kind_of_row() {
     let rows = chat.people_rows("#api");
     let alice = rows.iter().find(|row| row.person.nick == "alice").unwrap();
     let session = &alice.machines[0].sessions[0];
-    assert_eq!(session.label, "analytics");
+    assert_eq!(session.label, "the login bug");
     assert!(matches!(
         &session.avatar,
         Avatar::Agent { owner, tool, .. } if owner == "alice" && tool.as_deref() == Some("claude-code")
@@ -3139,7 +3140,7 @@ fn a_people_row_is_the_wire_record_every_app_draws() {
             session.label.as_str(),
             session.machine.as_str()
         ),
-        ("alice-mbp/cc-1", "cc-1", "analytics", "alice-mbp")
+        ("alice-mbp/cc-1", "cc-1", "the login bug", "alice-mbp")
     );
     assert!(matches!(
         &session.face,
@@ -3195,30 +3196,30 @@ fn alice_and_her_named_session() -> Chat {
 }
 
 #[test]
-fn an_unregistered_agent_card_has_its_handle_whose_agent_and_id() {
+fn an_agent_card_with_no_title_card_leads_with_its_task_its_handle_under_it() {
     let chat = alice_and_her_named_session();
-    // Before it registers a title: its handle as the title, whose agent and its id, and
-    // nothing of where it runs, what it's doing or when it was heard.
+    // Before its card says a title: the task it's on leads, its handle under it (the user's
+    // choice, 25 Nov 2026), with where it runs, what it's doing and when it was heard.
     let card = chat.agent_card("alice-mbp", "cc-1", noon());
     assert_eq!(
         card,
         AgentCard {
             session: "cc-1".into(),
-            title: "analytics".into(),
-            titled: false,
+            title: "the login bug".into(),
+            titled: true,
             handle: "analytics".into(),
             whose: Some("Alice's agent".into()),
-            after_handle: None,
-            tool: None,
-            place: None,
+            after_handle: Some(" · Alice's agent".into()),
+            tool: Some("claude-code".into()),
+            place: Some("Claude Code · alice-mbp".into()),
             standing: None,
-            now: None,
-            now_lead: None,
-            now_paths: None,
-            now_ago: None,
-            task: None,
-            heard: None,
-            active: false,
+            now: Some("✎ about to change src/auth · 8m".into()),
+            now_lead: Some("✎ about to change".into()),
+            now_paths: Some(" src/auth".into()),
+            now_ago: Some(" · 8m".into()),
+            task: Some("refactor login".into()),
+            heard: Some("Active now".into()),
+            active: true,
             mine: false,
             message_label: "Message".into(),
         }
@@ -3232,7 +3233,7 @@ fn an_agent_card_has_the_full_title_where_it_runs_and_what_its_doing() {
     let title = |title: &str| zirc_proto::session::SessionCard {
         session: "cc-1".into(),
         name: Some("analytics".into()),
-        title: title.into(),
+        title: Some(title.into()),
         tool: Some(zirc_proto::CLAUDE_CODE.into()),
     };
     // Sent as zircd sends it: the card alone, which names the session and its tool.
@@ -8168,21 +8169,21 @@ fn the_card_the_note_and_the_header_are_the_wire_records() {
         serde_json::to_value(chat.agent_card("alice-mbp", "cc-1", noon())).unwrap(),
         json!({
             "session": "cc-1",
-            "title": "analytics",
-            "titled": false,
+            "title": "the login bug",
+            "titled": true,
             "handle": "analytics",
             "whose": "Alice's agent",
-            "afterHandle": null,
-            "tool": null,
-            "place": null,
+            "afterHandle": " · Alice's agent",
+            "tool": "claude-code",
+            "place": "Claude Code · alice-mbp",
             "standing": null,
-            "now": null,
-            "nowLead": null,
-            "nowPaths": null,
-            "nowAgo": null,
-            "task": null,
-            "heard": null,
-            "active": false,
+            "now": "✎ about to change src/auth · 8m",
+            "nowLead": "✎ about to change",
+            "nowPaths": " src/auth",
+            "nowAgo": " · 8m",
+            "task": "refactor login",
+            "heard": "Active now",
+            "active": true,
             "mine": false,
             "messageLabel": "Message",
         })

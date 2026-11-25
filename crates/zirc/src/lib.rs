@@ -35,6 +35,7 @@ mod stack;
 mod state;
 mod status;
 pub mod telemetry;
+mod tool_title;
 pub use status::BUSY;
 mod updates;
 mod wait;
@@ -698,10 +699,11 @@ enum Command {
     Clashes(post::ClashesArgs),
     /// Say what your session is called: its short name, and its full title.
     ///
-    /// Run once as a session starts, as `zirc name --session <s> --name <short> --title "<full
-    /// title>"`. The short name (--name, an IRC-safe handle) is what apps show; the title is
-    /// on the card they show for it, sent to the channels the session works in and again
-    /// whenever it changes. --link, where its owner opens the session (such as a claude://
+    /// Not needed: `zirc watch` says the session's tool, and its title as its tool shows it
+    /// (Claude Code's), else its first task is its title. The short name (--name, an IRC-safe
+    /// handle) goes under the title wherever apps show it; --title, when said, wins over the
+    /// tool's, on the card sent to the channels the session works in and again whenever it
+    /// changes. --link, where its owner opens the session (such as a claude://
     /// link), stays on this machine: only the owner's own apps get it, over zircd's socket.
     /// With nothing to set, it prints what the session goes by: its name, or its branch's
     /// when it gave none.
@@ -1047,7 +1049,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Emit(args) => post::emit(&socket, args, out).await,
         Command::Card(args) => post::card(&socket, args, out).await,
         Command::Join(args) => {
-            name_session(&socket, args.session.as_deref(), name).await?;
+            name_session(&socket, args.session.as_deref(), name, None).await?;
             topic(&socket, args, true, out).await
         }
         Command::Leave(args) => topic(&socket, args, false, out).await,

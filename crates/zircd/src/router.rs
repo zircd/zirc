@@ -545,6 +545,7 @@ mod tests {
                 avatar: None,
                 link: None,
                 title: None,
+                tool_title: None,
             },
         );
         let status =

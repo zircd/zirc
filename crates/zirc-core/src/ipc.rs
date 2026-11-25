@@ -416,10 +416,14 @@ pub enum Request {
         /// The picture it goes by: one of [`zirc_proto::AGENT_AVATARS`], or refused.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         avatar: Option<String>,
-        /// Its full title, as the agent tool shows it: sent to the session's channels as a
-        /// [`zirc_proto::session::SessionCard`].
+        /// Its full title as given (`zirc name --title`): sent to the session's channels as a
+        /// [`zirc_proto::session::SessionCard`], ahead of `tool_title`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         title: Option<String>,
+        /// Its title as its agent tool shows it, read by `zirc watch` from the tool's own
+        /// records (Claude Code's sidebar title): its card's where it was given none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tool_title: Option<String>,
         /// Where its owner opens it, such as a `claude://` link: kept on this machine, and
         /// only ever given over this socket ([`Request::LocalSessions`]).
         #[serde(default, skip_serializing_if = "Option::is_none")]

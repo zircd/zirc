@@ -255,7 +255,7 @@ impl Brain {
             .unwrap_or_else(|| SessionCard {
                 session: held.session.clone(),
                 name: None,
-                title: String::new(),
+                title: None,
                 tool: None,
             });
         Some(Holder {

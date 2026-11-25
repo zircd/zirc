@@ -610,7 +610,7 @@ pub(crate) async fn post(
     } = args;
     let (repo, to) = to.target();
     let session = session_or_user(session);
-    name_session(socket, Some(&session), name).await?;
+    name_session(socket, Some(&session), name, None).await?;
     let from_stdin = matches!(text.as_slice(), [dash] if dash == "-");
     let text = crate::sealed::with_stdin_part(words(&text)?, from_stdin, || {
         let mut read = String::new();

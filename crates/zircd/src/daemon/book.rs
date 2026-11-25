@@ -35,18 +35,24 @@ pub(super) enum Field {
     Tool,
     /// The picture it goes by.
     Avatar,
-    /// Its full title, on its card.
+    /// Its full title as given (`zirc name --title`), which its card shows first.
     Title,
+    /// Its title as its agent tool shows it, as `zirc watch` last read it.
+    ToolTitle,
+    /// The first task it took on (`zirc intend`).
+    FirstTask,
     /// Where its owner opens it: never sent to the server.
     Link,
 }
 
 impl Field {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 7] = [
         Self::Name,
         Self::Tool,
         Self::Avatar,
         Self::Title,
+        Self::ToolTitle,
+        Self::FirstTask,
         Self::Link,
     ];
 
@@ -57,6 +63,8 @@ impl Field {
             Self::Tool => paths::session_tools(home),
             Self::Avatar => paths::session_avatars(home),
             Self::Title => paths::session_titles(home),
+            Self::ToolTitle => paths::session_tool_titles(home),
+            Self::FirstTask => paths::session_first_tasks(home),
             Self::Link => paths::session_links(home),
         }
     }
@@ -179,15 +187,30 @@ impl Shared {
             .collect()
     }
 
-    /// Every session the book names, titles or links.
+    /// The title `session`'s card shows: the one it was given, else the one its agent tool
+    /// shows, else its first task (the user's choice, 25 Nov 2026).
+    pub(super) fn title(&self, session: &str) -> Option<String> {
+        [Field::Title, Field::ToolTitle, Field::FirstTask]
+            .into_iter()
+            .find_map(|field| self.get(field, session))
+    }
+
+    /// Every session the book names, titles, links or knows the tool of.
     pub(super) fn sessions(&self) -> BTreeSet<String> {
         let book = self.book();
-        [Field::Name, Field::Title, Field::Link]
-            .iter()
-            .filter_map(|field| book.said.get(field))
-            .flat_map(BTreeMap::keys)
-            .cloned()
-            .collect()
+        [
+            Field::Name,
+            Field::Tool,
+            Field::Title,
+            Field::ToolTitle,
+            Field::FirstTask,
+            Field::Link,
+        ]
+        .iter()
+        .filter_map(|field| book.said.get(field))
+        .flat_map(BTreeMap::keys)
+        .cloned()
+        .collect()
     }
 
     /// Whether `session` was seen in the last [`KEPT_FOR`].

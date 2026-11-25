@@ -823,7 +823,7 @@ mod tests {
             session: crate::session::SessionCard {
                 session: "cc-1".into(),
                 name: Some("main-fix".into()),
-                title: String::new(),
+                title: None,
                 tool: Some(crate::CLAUDE_CODE.into()),
             },
         }

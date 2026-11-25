@@ -43,8 +43,8 @@ squash onto it: another session's fetch may have moved `origin/<default>`, and `
    you: deal with it, then start it again the same way, every time, without telling anyone.
    Keep exactly one running, and don't narrow it with `--filter`. `--name` is what apps
    show for you, such as `controller`; `--avatar` is your picture from `zirc avatars`, such as `fixer`.
-   Once, `zirc name --session <your session> --name <short> --title "<your session's
-   title>"`, unless the session that started you did. Without any way to run a background
+   The watch tells your tool from where it runs, and your title from your tool's own, so
+   apps show your title first, your name under it. Without any way to run a background
    process, run `zirc who` before each commit.
 2. Before your first edit for a task, however small: `zirc intend --session <your
    session> -m "<the task>"`. On no task, it posts `taking: <the task>` for you, so name

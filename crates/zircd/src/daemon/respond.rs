@@ -180,10 +180,12 @@ impl Daemon {
                 tool,
                 avatar,
                 title,
+                tool_title,
                 link,
             } => {
-                let (tool, title, link) = (tool.as_deref(), title.as_deref(), link.as_deref());
-                self.name_session(&session, name, tool, avatar, title, link)?
+                let titles = (title.as_deref(), tool_title.as_deref());
+                let (tool, link) = (tool.as_deref(), link.as_deref());
+                self.name_session(&session, name, tool, avatar, titles, link)?
             }
             Request::Queries { set } => self.queries(set)?,
             Request::Dm { session, text, to } => {
@@ -461,14 +463,14 @@ impl Daemon {
         Ok(Response::channel(said.target))
     }
 
-    /// Names `session`, and keeps its tool, avatar, title and link ([`Request::Name`]).
+    /// Names `session`, and keeps its tool, avatar, titles and link ([`Request::Name`]).
     fn name_session(
         &mut self,
         session: &str,
         name: Option<String>,
         tool: Option<&str>,
         avatar: Option<String>,
-        title: Option<&str>,
+        titles: (Option<&str>, Option<&str>),
         link: Option<&str>,
     ) -> Result<Response> {
         self.book.seen(session, super::now());
@@ -497,7 +499,7 @@ impl Daemon {
                 .set(Field::Tool, session, tool)
                 .context("couldn't save the session's tool")?;
         }
-        self.title_session(session, title, link)?;
+        self.title_session(session, titles, link)?;
         Ok(Response::Done)
     }
 

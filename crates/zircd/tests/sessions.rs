@@ -207,6 +207,7 @@ async fn a_sessions_title_goes_on_its_card_and_its_link_stays_here() {
             tool: None,
             avatar: None,
             title: Some("Desktop:  3f review\nfixes".into()),
+            tool_title: None,
             link: Some(link.into()),
         })
         .await;
@@ -222,10 +223,10 @@ async fn a_sessions_title_goes_on_its_card_and_its_link_stays_here() {
     assert_eq!(
         (
             card.name.as_deref(),
-            card.title.as_str(),
+            card.title.as_deref(),
             delivery.channel.as_str()
         ),
-        (Some("desktop"), "Desktop: 3f review fixes", "#agents")
+        (Some("desktop"), Some("Desktop: 3f review fixes"), "#agents")
     );
     assert_eq!(delivery.message.name.as_deref(), Some("desktop"));
     assert!(
@@ -250,6 +251,66 @@ async fn a_sessions_title_goes_on_its_card_and_its_link_stays_here() {
         panic!("not the local sessions")
     };
     assert!(sessions.is_empty());
+}
+
+#[tokio::test]
+async fn a_sessions_card_says_its_tool_then_titles_it_by_task_its_tools_title_or_its_own() {
+    let ergo = require_ergo!();
+    let [(alpha, alpha_clone), (beta, _beta_clone)] = two_machines(&ergo).await;
+    alpha
+        .request(Request::RepoAdd {
+            path: alpha_clone.path().to_owned(),
+            session: Some("cc-1".into()),
+        })
+        .await;
+    let mut beta_hears = beta.watch(None).await;
+    let mut card = async || loop {
+        let delivery = next(&mut beta_hears).await;
+        if let Some(card) = zirc_proto::session::SessionCard::of(&delivery.message.event) {
+            break (card.title, card.tool);
+        }
+    };
+    let name = |tool: Option<&str>, title: Option<&str>, tool_title: Option<&str>| Request::Name {
+        session: "cc-1".into(),
+        name: None,
+        tool: tool.map(str::to_owned),
+        avatar: None,
+        title: title.map(str::to_owned),
+        tool_title: tool_title.map(str::to_owned),
+        link: None,
+    };
+    // Its watch says only its tool: the card says so, untitled, so its owner reads
+    // "<person> · Claude Code".
+    alpha.request(name(Some("claude-code"), None, None)).await;
+    let tool = Some("claude-code".to_owned());
+    assert_eq!(card().await, (None, tool.clone()));
+    // Its first task titles it; a later one doesn't.
+    for summary in ["the login page", "the signup page"] {
+        alpha
+            .request(Request::Intend {
+                repo: alpha_clone.path().to_owned(),
+                session: "cc-1".into(),
+                summary: summary.into(),
+                paths: vec![],
+                seconds: 3600,
+            })
+            .await;
+    }
+    assert_eq!(card().await, (Some("the login page".into()), tool.clone()));
+    // The title its tool shows wins over the task, read again as each watch starts.
+    alpha
+        .request(name(None, None, Some("Login page:  phones")))
+        .await;
+    assert_eq!(
+        card().await,
+        (Some("Login page: phones".into()), tool.clone())
+    );
+    // `zirc name --title` wins over both; the tool's title read again changes nothing.
+    alpha.request(name(None, Some("Given"), None)).await;
+    assert_eq!(card().await, (Some("Given".into()), tool.clone()));
+    alpha.request(name(None, None, Some("Renamed again"))).await;
+    alpha.request(name(Some("codex"), None, None)).await;
+    assert_eq!(card().await, (Some("Given".into()), Some("codex".into())));
 }
 
 #[tokio::test]
@@ -296,6 +357,7 @@ async fn a_session_with_no_name_goes_by_its_branch_until_it_names_itself() {
             tool: None,
             avatar: None,
             title: None,
+            tool_title: None,
             link: None,
         })
         .await;
@@ -324,6 +386,7 @@ async fn a_session_goes_by_its_name_and_says_its_tool_and_avatar() {
             tool: Some("Claude Code".into()),
             avatar: Some("Rocket".into()),
             title: None,
+            tool_title: None,
             link: None,
         })
         .await;
@@ -334,6 +397,7 @@ async fn a_session_goes_by_its_name_and_says_its_tool_and_avatar() {
         tool: None,
         avatar: Some("unicorn".into()),
         title: None,
+        tool_title: None,
         link: None,
     };
     let refused = ipc::request(&alpha.socket(), &unknown).await.unwrap_err();

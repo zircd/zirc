@@ -42,10 +42,17 @@ pub struct Session {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub title: Option<String>,
-    /// The agent tool it runs in, as people read it ([`crate::tool_name`]): `Claude Code`.
+    /// The agent tool it runs in, as people read it ([`crate::tool_said`]): `Claude Code`,
+    /// or `agent` where its machine can't tell.
+    pub tool: String,
+    /// What it's called, leading wherever it's shown ([`crate::session::agent_title`]): its
+    /// title, else its short name, else its id.
+    pub called: String,
+    /// Its handle, the small second line under [`Session::called`]
+    /// ([`crate::session::agent_handle`]): `tls-rotation`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub tool: Option<String>,
+    pub handle: Option<String>,
     /// Whether a `zirc watch` of its is open: a message reaches it at once.
     pub online: bool,
     /// How many messages from people wait for it, when it's away.
@@ -56,7 +63,7 @@ pub struct Session {
     /// every app says ([`crate::session::not_listening`]): `Not listening for 17 min · 1
     /// message waiting`.
     pub says: String,
-    /// It in one line, where a line names it ([`line`]): `tls-rotation · Claude Code ·
+    /// It in one line, where a line names it ([`line`]): `Rotate the TLS certificates · Claude Code ·
     /// listening`.
     pub line: String,
 }
@@ -75,9 +82,9 @@ pub const AWAY: &str = "Away";
 /// it rather than a column: `tls-rotation · Claude Code · listening`.
 pub const LISTENING: &str = "listening";
 
-/// A session in a line, where a line names it: what it's called ([`crate::session::agent_title`]),
-/// its tool and, online, [`LISTENING`],
-/// or how it stands away: `tls-rotation · Claude Code · listening`.
+/// A session in a line, where a line names it: what it's called ([`Session::called`]), its
+/// tool and, online, [`LISTENING`], or how it stands away: `Rotate the TLS certificates ·
+/// Claude Code · listening`.
 #[must_use]
 pub fn line(session: &Session) -> String {
     let standing = if session.online {
@@ -85,21 +92,7 @@ pub fn line(session: &Session) -> String {
     } else {
         session.says.as_str()
     };
-    // Called as every app calls an agent (session::agent_title): its name, else its task.
-    let called = crate::session::agent_title(
-        session.name.as_deref(),
-        session.title.as_deref(),
-        &session.session,
-    );
-    [
-        Some(called.as_str()),
-        session.tool.as_deref(),
-        Some(standing),
-    ]
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>()
-    .join(" · ")
+    [session.called.as_str(), session.tool.as_str(), standing].join(" · ")
 }
 
 /// What [`PATH`] answers: every session the machines connected now said online or away.
@@ -126,8 +119,8 @@ pub fn standing(
     let named = |machine: &str, session: &str| {
         let card = cards.get(&(machine.to_owned(), session.to_owned()));
         (
-            card.map(|card| card.title.clone()),
-            card.and_then(|card| card.tool.as_deref().map(crate::tool_name)),
+            card.and_then(|card| card.title.clone()),
+            crate::tool_said(card.and_then(|card| card.tool.as_deref())),
             card.and_then(|card| card.name.clone()),
         )
     };
@@ -144,6 +137,8 @@ pub fn standing(
                         name: named(machine, session).2,
                         title: named(machine, session).0,
                         tool: named(machine, session).1,
+                        called: String::new(),
+                        handle: None,
                         online: true,
                         waiting: 0,
                         asking: asks(machine, session),
@@ -172,6 +167,8 @@ pub fn standing(
                     name: named(machine, session).2,
                     title: named(machine, session).0,
                     tool: named(machine, session).1,
+                    called: String::new(),
+                    handle: None,
                     online: false,
                     waiting: away.waiting,
                     asking: asks(machine, session),
@@ -181,6 +178,11 @@ pub fn standing(
             );
         }
         sessions.extend(of_machine.into_values().map(|mut session| {
+            // Called as every app calls an agent (session::agent_title), no task heard here.
+            let name = session.name.as_deref();
+            session.called =
+                crate::session::agent_title(session.title.as_deref(), None, name, &session.session);
+            session.handle = crate::session::agent_handle(&session.called, name, &session.session);
             session.line = line(&session);
             session
         }));
@@ -218,7 +220,7 @@ mod tests {
         let card = SessionCard {
             session: "cc-a".into(),
             name: Some("tls-rotation".into()),
-            title: "Rotate the server's TLS certificates".into(),
+            title: Some("Rotate the server's TLS certificates".into()),
             tool: Some(crate::CLAUDE_CODE.into()),
         };
         let machines = [("ada-mbp".to_owned(), live)].into();
@@ -258,14 +260,22 @@ mod tests {
             online.title.as_deref(),
             Some("Rotate the server's TLS certificates")
         );
-        assert_eq!(online.tool.as_deref(), Some("Claude Code"));
+        assert_eq!(online.tool, "Claude Code");
         assert_eq!(online.name.as_deref(), Some("tls-rotation"));
-        assert_eq!(online.line, "tls-rotation · Claude Code · listening");
-        // No card heard: called by its id.
+        // The title leads, the short name under it (the user's choice, 25 Nov 2026).
+        assert_eq!(online.called, "Rotate the server's TLS certificates");
+        assert_eq!(online.handle.as_deref(), Some("tls-rotation"));
+        assert_eq!(
+            online.line,
+            "Rotate the server's TLS certificates · Claude Code · listening"
+        );
+        // No card heard: called by its id, its tool unknown.
         assert_eq!(said.sessions[1].title, None);
+        assert_eq!(said.sessions[1].called, "cc-b");
+        assert_eq!(said.sessions[1].handle, None);
         assert_eq!(
             said.sessions[1].line,
-            "cc-b · Not listening for 17 min · 1 message waiting"
+            "cc-b · agent · Not listening for 17 min · 1 message waiting"
         );
     }
 }

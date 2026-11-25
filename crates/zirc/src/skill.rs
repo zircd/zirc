@@ -87,14 +87,18 @@ pub(crate) fn skills_dir(asked: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(dir) = asked {
         return Ok(dir);
     }
-    let config = std::env::var_os("CLAUDE_CONFIG_DIR").map_or_else(
+    Ok(claude_config_dir()?.join("skills"))
+}
+
+/// Claude Code's config directory: `$CLAUDE_CONFIG_DIR`, or `~/.claude`.
+pub(crate) fn claude_config_dir() -> Result<PathBuf> {
+    std::env::var_os("CLAUDE_CONFIG_DIR").map_or_else(
         || -> Result<PathBuf> {
             let home = std::env::var_os("HOME").context("HOME isn't set")?;
             Ok(PathBuf::from(home).join(".claude"))
         },
         |dir| Ok(PathBuf::from(dir)),
-    )?;
-    Ok(config.join("skills"))
+    )
 }
 
 /// Writes the zirc skill to Claude Code's skills directory, replacing an older one, and

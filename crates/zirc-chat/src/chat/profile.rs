@@ -717,8 +717,9 @@ impl Chat {
 
 impl Chat {
     /// The card of `nick`'s agent session `session`, as opened from its row or its header:
-    /// titled by its name and its owner's, `checkout · Maya Chen`, its machine and id under
-    /// that, `mbp · cc-4e21`, what it's doing, `fix the coupon field · 4m`, a line for whose
+    /// titled by what it's called ([`Chat::agent_label`]) and its owner's, `Fix the coupon
+    /// field · Maya Chen`, its handle, machine and id under that, `checkout · mbp · cc-4e21`,
+    /// what it's doing, `fix the coupon field · 4m`, a line for whose
     /// agent it is and its tool, `Maya Chen's agent · Claude Code`, then what it's changing
     /// and has taken on ([`Profile::session_card`]). Its standing is its owner's.
     #[must_use]
@@ -731,11 +732,20 @@ impl Chat {
     ) -> Card {
         let profile = self.profile(nick);
         let mut card = profile.session_card(session, now, wall);
-        let label = self.session_label(session);
+        let label = self.agent_label(nick, session);
         if let Some((owner, machine)) = &profile.machine {
             let owner = self.shown_name(owner);
             card.title = format!("{label} · {owner}");
-            card.ids = Some(format!("{machine} · {session}"));
+            // Its handle under its title, unless the title is it or it's only its id.
+            let handle = self
+                .agent_handle(session, &label)
+                .filter(|handle| handle != session);
+            let ids: Vec<&str> = handle
+                .iter()
+                .map(String::as_str)
+                .chain([machine.as_str(), session])
+                .collect();
+            card.ids = Some(ids.join(" · "));
             // Whose agent, as every row says it: the one place that's composed.
             let (whose, _) = super::agent_name(None, &owner);
             let mut line = vec![whose];

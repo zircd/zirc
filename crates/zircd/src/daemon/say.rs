@@ -43,6 +43,7 @@ impl Daemon {
         self.connected()?;
         self.auto_intents
             .declared(session, &channel, &paths, now() + seconds);
+        self.first_task(session, &summary);
         let event = Event::Intent {
             summary,
             paths,

@@ -677,7 +677,7 @@ fn the_messages_tab_counts_only_what_a_row_of_it_shows() {
     let card = zirc_proto::session::SessionCard {
         session: "cc-1".into(),
         name: Some("analytics".into()),
-        title: "Fix the login bug on phones".into(),
+        title: Some("Fix the login bug on phones".into()),
         tool: Some(zirc_proto::CLAUDE_CODE.into()),
     };
     let card = format!(

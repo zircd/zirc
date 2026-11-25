@@ -1106,6 +1106,14 @@ impl Chat {
                 .whose(nick)
                 .unwrap_or_else(|| (nick.to_owned(), nick.to_owned()));
             let session = self.session_row(nick, session_id, machine_name);
+            // Its title leads, and its second line starts with its handle, then what was
+            // last said (the user's choice, 25 Nov 2026): `main-fix · on it`.
+            if let Some(handle) = self.agent_handle(session_id, &session.label) {
+                row.preview = Some(match row.preview.take() {
+                    Some(said) => format!("{handle}{}{said}", super::agent_card::SEPARATOR),
+                    None => handle,
+                });
+            }
             row.title = session.label;
             row.avatars = vec![session.avatar];
             // Its row sorts by its own conversation's time, which it shows; when the session

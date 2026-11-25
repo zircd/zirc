@@ -1,6 +1,8 @@
-//! A session's full title and where its owner opens it ([`Request::Name`]): the title goes
-//! to the channels the session works in as a [`SessionCard`], when it's given and whenever
-//! it or the session's name changes, so apps can show it beside the short handle. The link
+//! A session's full title and where its owner opens it ([`Request::Name`]): its card
+//! ([`SessionCard`]) goes to the channels the session works in once its name, title or tool
+//! is known and whenever one changes, so apps show its title first, its short handle under
+//! it, and its tool beside its owner. Its title is the one it was given, else the one its
+//! tool shows, as `zirc watch` reads it each time it starts, else its first task. The link
 //! never leaves this machine: it's saved here and given only over zircd's socket
 //! ([`Request::LocalSessions`]), to the owner's own apps.
 //!
@@ -20,8 +22,8 @@ use super::book::{Field, SEEN_EVERY, Shared};
 /// The longest link kept, in bytes.
 const MAX_LINK: usize = 2048;
 
-/// What a session's card said of it: its name, if it was given one, and its title.
-pub(super) type Carded = (Option<String>, Option<String>);
+/// What a session's card said of it: its name, if it was given one, its title and its tool.
+pub(super) type Carded = (Option<String>, Option<String>, Option<String>);
 
 /// What `book` says each session's card says, as a daemon starts: the cards it sent before
 /// said so, and aren't sent again.
@@ -29,23 +31,30 @@ pub(super) fn carded(book: &Shared) -> BTreeMap<String, Carded> {
     book.sessions()
         .into_iter()
         .map(|session| {
-            let said = (
-                book.get(Field::Name, &session),
-                book.get(Field::Title, &session),
-            );
+            let said = carded_of(book, &session);
             (session, said)
         })
         .collect()
 }
 
+/// What `book` would have `session`'s card say, as [`Carded`].
+fn carded_of(book: &Shared, session: &str) -> Carded {
+    (
+        book.get(Field::Name, session),
+        book.title(session),
+        book.get(Field::Tool, session),
+    )
+}
+
 impl Daemon {
-    /// Gives `session` its `title` and `link`, as said, and sends its card when its name or
-    /// its title is no longer what its card last said here: the book is every
-    /// organisation's daemon's, and each sends the card to its own channels.
+    /// Gives `session` its `title`, the title its tool shows (`tool_title`) and `link`, as
+    /// said, and sends its card when its name, title or tool is no longer what its card last
+    /// said here: the book is every organisation's daemon's, and each sends the card to its
+    /// own channels.
     pub(super) fn title_session(
         &mut self,
         session: &str,
-        title: Option<&str>,
+        (title, tool_title): (Option<&str>, Option<&str>),
         link: Option<&str>,
     ) -> Result<()> {
         if let Some(link) = link {
@@ -64,15 +73,38 @@ impl Daemon {
                 .set(Field::Title, session, title)
                 .context("couldn't save the session's title")?;
         }
-        let says = (
-            self.book.get(Field::Name, session),
-            self.book.get(Field::Title, session),
-        );
-        if self.carded.get(session) != Some(&says) && says != (None, None) {
+        // As its tool shows it: read again each time a watch starts, so it keeps in step.
+        if let Some(title) = tool_title.and_then(session::title) {
+            self.book
+                .set(Field::ToolTitle, session, title)
+                .context("couldn't save the session's title")?;
+        }
+        self.send_card_if_changed(session);
+        Ok(())
+    }
+
+    /// Keeps `task` as `session`'s first, its card's title where it has no other, when it
+    /// has none yet.
+    pub(super) fn first_task(&mut self, session: &str, task: &str) {
+        if self.book.get(Field::FirstTask, session).is_some() {
+            return;
+        }
+        let Some(task) = session::title(task) else {
+            return;
+        };
+        if let Err(err) = self.book.set(Field::FirstTask, session, task) {
+            tracing::warn!("couldn't save {session}'s first task: {err}");
+        }
+        self.send_card_if_changed(session);
+    }
+
+    /// Sends `session`'s card when what it says isn't what its card last said here.
+    fn send_card_if_changed(&mut self, session: &str) {
+        let says = carded_of(&self.book, session);
+        if self.carded.get(session) != Some(&says) && says != (None, None, None) {
             self.carded.insert(session.to_owned(), says);
             self.send_card(session);
         }
-        Ok(())
     }
 
     /// Forgets what's kept of the sessions the book has forgotten, not seen for a week:
@@ -95,7 +127,7 @@ impl Daemon {
         }
     }
 
-    /// Sends `session`'s card, if it has a title, to the channels of the repositories it
+    /// Sends `session`'s card to the channels of the repositories it
     /// works in, or the organisation's channel when it works in none.
     fn send_card(&mut self, session: &str) {
         let Some(card) = self.card_of(session) else {
@@ -117,14 +149,15 @@ impl Daemon {
         }
     }
 
-    /// `session`'s card, if it has a title.
+    /// `session`'s card, once its name, title or tool is known.
     pub(super) fn card_of(&self, session: &str) -> Option<SessionCard> {
-        Some(SessionCard {
+        let card = SessionCard {
             session: session.to_owned(),
             name: self.name_of(session),
-            title: self.book.get(Field::Title, session)?,
+            title: self.book.title(session),
             tool: self.book.get(Field::Tool, session),
-        })
+        };
+        (card.name.is_some() || card.title.is_some() || card.tool.is_some()).then_some(card)
     }
 
     /// [`zirc_core::ipc::Request::LocalSessions`]: each session named, titled or linked here.
@@ -141,7 +174,7 @@ impl Daemon {
                 .map(|id| LocalSession {
                     session: id.to_owned(),
                     name: self.name_of(id),
-                    title: self.book.get(Field::Title, id),
+                    title: self.book.title(id),
                     link: self.book.get(Field::Link, id),
                 })
                 .collect(),

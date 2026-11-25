@@ -497,7 +497,7 @@ fn a_dot_is_filled_here_and_a_ring_away_or_gone_each_in_its_own_role() {
 }
 
 #[test]
-fn our_agent_is_named_by_its_task_until_it_says_a_name() {
+fn our_agent_is_named_by_its_title_else_its_task_its_name_under_it() {
     let mut chat = with_mbp();
     feed(
         &mut chat,
@@ -527,7 +527,8 @@ fn our_agent_is_named_by_its_task_until_it_says_a_name() {
         chat.agent_intro("me-mbp/cc-1").map(|intro| intro.title),
         Some("the login page".to_owned())
     );
-    // A name it says comes first.
+    // A name it says doesn't take the task's place: it goes under it (the user's choice, 25
+    // Nov 2026).
     let named = Message {
         name: Some("checkout".into()),
         ..Message::new(
@@ -538,7 +539,44 @@ fn our_agent_is_named_by_its_task_until_it_says_a_name() {
         )
     };
     feed(&mut chat, &[&zirc("me-mbp", &named)]);
-    assert_eq!(title(&chat), "checkout");
+    assert_eq!(title(&chat), "the login page");
+    assert_eq!(
+        chat.agent_handle("cc-1", "the login page").as_deref(),
+        Some("checkout")
+    );
+}
+
+#[test]
+fn our_agents_card_title_leads_and_its_row_starts_with_its_handle() {
+    let mut chat = with_mbp();
+    // Its card, with the title its tool shows, and something it said.
+    let card = zirc_proto::session::SessionCard {
+        session: "cc-1".into(),
+        name: Some("checkout".into()),
+        title: Some("Coupon field on phones".into()),
+        tool: Some(zirc_proto::CLAUDE_CODE.into()),
+    };
+    feed(
+        &mut chat,
+        &[
+            &zirc("me-mbp", &live(&["cc-1"])),
+            &dm("me-mbp", "cc-1", "on it", 0),
+            // Signed with its name, as zircd signs it.
+            &zirc(
+                "me-mbp",
+                &Message {
+                    name: Some("checkout".into()),
+                    ..Message::new("cc-1", card.event())
+                },
+            ),
+        ],
+    );
+    let row = chat.direct_row("me-mbp/cc-1".into());
+    assert_eq!(row.title, "Coupon field on phones");
+    assert_eq!(chat.short_title("me-mbp/cc-1"), "Coupon field on phones");
+    // Its second line starts with its handle, then what was last said with it (the user's
+    // choice, 25 Nov 2026).
+    assert_eq!(row.preview.as_deref(), Some("checkout · on it"));
 }
 
 #[test]

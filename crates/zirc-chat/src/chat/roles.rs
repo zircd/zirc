@@ -278,7 +278,7 @@ mod tests {
             session: SessionCard {
                 session: "cc-1".into(),
                 name: Some("main-fix".into()),
-                title: String::new(),
+                title: None,
                 tool: Some(zirc_proto::CLAUDE_CODE.into()),
             },
         }

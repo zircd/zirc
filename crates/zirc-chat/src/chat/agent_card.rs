@@ -29,12 +29,14 @@ pub const OPEN_SESSION: &str = "Open session";
 pub struct AgentCard {
     /// The session's id, `cc-4e21`, in mono and muted, for copying.
     pub session: String,
-    /// Its full title as its tool names it, `Fix the coupon field's layout shift on
-    /// phones`, at most two lines; or its handle when it hasn't said one ([`Self::titled`]).
+    /// What it's called, leading, as its row and header say ([`super::Chat::agent_label`]):
+    /// its title as given or as its tool names it, `Fix the coupon field's layout shift on
+    /// phones`, at most two lines, else its task; or its handle when it has neither
+    /// ([`Self::titled`]).
     pub title: String,
-    /// Whether [`Self::title`] is the title it registered with `zirc name --title`. When
-    /// it isn't, the title is the handle, set in mono, and the card leaves out where it
-    /// runs, what it's doing and when it was heard.
+    /// Whether [`Self::title`] is other than its handle. When it isn't, the title is the
+    /// handle, set in mono, and the card leaves out where it runs, what it's doing and when
+    /// it was heard.
     pub titled: bool,
     /// Its short handle, `checkout`, in mono, or its id when it has none.
     pub handle: String,
@@ -83,8 +85,11 @@ impl super::Chat {
     /// [`AgentCard`].
     #[must_use]
     pub fn agent_card(&self, nick: &str, session: &str, now: DateTime<Utc>) -> AgentCard {
-        // By its name, else its task, as its row and header (the user's choice, 23 Nov 2026).
-        let handle = self.agent_label(nick, session);
+        // Its title first, its handle under it, as its row and header (the user's choice, 25
+        // Nov 2026).
+        let title = self.agent_label(nick, session);
+        let handle = self.session_label(session);
+        let titled = self.agent_handle(session, &title).is_some();
         let whose_parts = self.whose(nick);
         let mine = whose_parts
             .as_ref()
@@ -106,11 +111,11 @@ impl super::Chat {
             }
             None => None,
         };
-        let titled = self.session_titles.get(session).map(|(_, card)| card);
-        let Some(registered) = titled else {
+        let registered = self.session_titles.get(session).map(|(_, card)| card);
+        if registered.is_none() && !titled {
             return AgentCard {
                 session: session.to_owned(),
-                title: handle.clone(),
+                title,
                 titled: false,
                 handle,
                 whose,
@@ -128,10 +133,9 @@ impl super::Chat {
                 mine,
                 message_label: MESSAGE.to_owned(),
             };
-        };
+        }
         let tool = registered
-            .tool
-            .clone()
+            .and_then(|card| card.tool.clone())
             .or_else(|| self.session_tools.get(session).cloned());
         let place: Vec<String> = tool
             .as_deref()
@@ -143,10 +147,13 @@ impl super::Chat {
         let (heard, active) = self.heard_line(nick, session, doing.active, now);
         AgentCard {
             session: session.to_owned(),
-            title: registered.title.clone(),
-            titled: true,
+            title,
+            titled,
             handle,
-            after_handle: whose.as_ref().map(|whose| format!("{SEPARATOR}{whose}")),
+            after_handle: whose
+                .as_ref()
+                .filter(|_| titled)
+                .map(|whose| format!("{SEPARATOR}{whose}")),
             whose,
             tool,
             place: (!place.is_empty()).then(|| place.join(SEPARATOR)),
@@ -280,7 +287,7 @@ impl super::Chat {
 pub(super) type Heard = std::collections::HashMap<(String, String), DateTime<Utc>>;
 
 /// Between the parts of a card's line: `Claude Code · mbp`, `checkout · Maya Chen's agent`.
-const SEPARATOR: &str = " · ";
+pub(super) const SEPARATOR: &str = " · ";
 
 /// What a session is doing, in the parts its card's Now line draws.
 pub(super) struct Doing {

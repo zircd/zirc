@@ -263,7 +263,9 @@ impl Daemon {
     fn tell_not_listening(&mut self, session: &str, away_secs: u64, waiting: u32) {
         let name = self.name_of(session);
         let task = self.tasks.on(session).cloned();
-        let title = session::agent_title(name.as_deref(), task.as_deref(), session);
+        let card = self.book.title(session);
+        let title =
+            session::agent_title(card.as_deref(), task.as_deref(), name.as_deref(), session);
         let words = session::not_listening_notice(&title, away_secs, waiting);
         tracing::info!("{session}: {words}");
         if let Err(err) = self.dm(session, &words, None) {

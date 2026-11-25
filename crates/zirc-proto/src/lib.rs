@@ -1029,6 +1029,15 @@ pub const CLAUDE_CODE: &str = "claude-code";
 /// Codex, as [`Message::tool`] says it.
 pub const CODEX: &str = "codex";
 
+/// Cursor's agent, as [`Message::tool`] says it.
+pub const CURSOR: &str = "cursor";
+
+/// Gemini CLI, as [`Message::tool`] says it.
+pub const GEMINI: &str = "gemini";
+
+/// `OpenCode`, as [`Message::tool`] says it.
+pub const OPENCODE: &str = "opencode";
+
 /// A tool's name as people read it, wherever it's shown: `Claude Code` for [`CLAUDE_CODE`],
 /// `Codex` for [`CODEX`], and another tool's own name as it says it.
 #[must_use]
@@ -1039,8 +1048,46 @@ pub fn tool_name(tool: &str) -> String {
         .map_or_else(|| tool.to_owned(), |(_, name)| (*name).to_owned())
 }
 
+/// What a session's tool is said to be where nothing told which it is: `mattias · agent`.
+pub const UNKNOWN_TOOL: &str = "agent";
+
+/// A session's tool as people read it beside its owner, `Claude Code`, or [`UNKNOWN_TOOL`]
+/// when it's unknown: every session's owner reads `<person> · <this>` (the user's choice, 25
+/// Nov 2026).
+#[must_use]
+pub fn tool_said(tool: Option<&str>) -> String {
+    tool.map_or_else(|| UNKNOWN_TOOL.to_owned(), tool_name)
+}
+
 /// The tools zirc knows by name, as [`tool_name`] says them: what the web app reads too.
-pub const TOOL_NAMES: [(&str, &str); 2] = [(CLAUDE_CODE, "Claude Code"), (CODEX, "Codex")];
+pub const TOOL_NAMES: [(&str, &str); 5] = [
+    (CLAUDE_CODE, "Claude Code"),
+    (CODEX, "Codex"),
+    (CURSOR, "Cursor"),
+    (GEMINI, "Gemini CLI"),
+    (OPENCODE, "OpenCode"),
+];
+
+/// How zirc tells which tool it runs in, by what each sets in the environment of the
+/// commands its agent runs: a variable, the value it must have (`None`: any but empty), and
+/// the tool, the first that matches winning. Claude Code's and Codex's are their own
+/// (`CLAUDECODE=1`, `CODEX_THREAD_ID`); Cursor's, Gemini CLI's and `OpenCode`'s are what
+/// agent detectors read (`is-ai-agent`, `detect-coding-agent`), not said by the tools' docs.
+pub const TOOL_MARKERS: [(&str, Option<&str>, &str); 5] = [
+    ("CLAUDECODE", Some("1"), CLAUDE_CODE),
+    ("CODEX_THREAD_ID", None, CODEX),
+    ("CURSOR_AGENT", None, CURSOR),
+    ("GEMINI_CLI", Some("1"), GEMINI),
+    ("OPENCODE", None, OPENCODE),
+];
+
+/// The tool `var` says the environment is, by [`TOOL_MARKERS`]: `None` when none matches.
+pub fn tool_from_env(var: impl Fn(&str) -> Option<String>) -> Option<&'static str> {
+    TOOL_MARKERS.iter().find_map(|&(key, wanted, tool)| {
+        let value = var(key).filter(|value| !value.is_empty())?;
+        wanted.is_none_or(|wanted| value == wanted).then_some(tool)
+    })
+}
 
 /// `tool` as the agent tool a session runs in, plain as [`session_name`] makes a name:
 /// [`CLAUDE_CODE`], [`CODEX`], or another tool's own short name. `None` when nothing is
@@ -1540,6 +1587,7 @@ pub fn frame_typescript(config: &ts_rs::Config) -> Vec<String> {
                 .map(|(id, name)| format!("{id:?}: {name:?}"))
                 .join(", ")
         ),
+        format!("const UNKNOWN_TOOL = {UNKNOWN_TOOL:?};"),
         format!(
             "const SESSION_AWAY_FOLD_SECS = {};",
             session::AWAY_FOLD_SECS
@@ -2126,6 +2174,36 @@ mod tests {
     }
 
     #[test]
+    fn tells_the_agent_tool_from_the_environment() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |key: &str| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| (*v).to_owned())
+            }
+        };
+        assert_eq!(
+            tool_from_env(env(&[("CLAUDECODE", "1")])),
+            Some(CLAUDE_CODE)
+        );
+        assert_eq!(tool_from_env(env(&[("CLAUDECODE", "0")])), None);
+        assert_eq!(
+            tool_from_env(env(&[("CODEX_THREAD_ID", "019a")])),
+            Some(CODEX)
+        );
+        assert_eq!(tool_from_env(env(&[("CODEX_THREAD_ID", "")])), None);
+        assert_eq!(tool_from_env(env(&[("CURSOR_AGENT", "1")])), Some(CURSOR));
+        assert_eq!(tool_from_env(env(&[("GEMINI_CLI", "1")])), Some(GEMINI));
+        assert_eq!(tool_from_env(env(&[("OPENCODE", "1")])), Some(OPENCODE));
+        assert_eq!(tool_from_env(env(&[])), None);
+        // Every tool told by a marker has a name people read.
+        for (_, _, tool) in TOOL_MARKERS {
+            assert_ne!(tool_name(tool), tool);
+        }
+    }
+
+    #[test]
     fn a_session_name_is_short_and_plain() {
         assert_eq!(session_name("zirc-chat").as_deref(), Some("zirc-chat"));
         assert_eq!(session_name("  Docs Site ").as_deref(), Some("docs-site"));
@@ -2138,6 +2216,8 @@ mod tests {
         assert_eq!(session_tool("Claude Code").as_deref(), Some(CLAUDE_CODE));
         assert_eq!(tool_name(CLAUDE_CODE), "Claude Code");
         assert_eq!(tool_name("aider"), "aider");
+        assert_eq!(tool_said(Some(CODEX)), "Codex");
+        assert_eq!(tool_said(None), "agent");
         assert_eq!(session_tool(" ").as_deref(), None);
         assert_eq!(agent_avatar(" Rocket"), Some("rocket"));
         assert_eq!(agent_avatar("Reviewer"), Some("reviewer"));

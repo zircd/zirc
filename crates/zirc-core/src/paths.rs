@@ -169,6 +169,20 @@ pub fn session_titles(home: &Path) -> PathBuf {
     home.join("session-titles.json")
 }
 
+/// The title each session's agent tool shows for it, as `zirc watch` last read it
+/// ([`crate::ipc::Request::Name`]), by session.
+#[must_use]
+pub fn session_tool_titles(home: &Path) -> PathBuf {
+    home.join("session-tool-titles.json")
+}
+
+/// The first task each session took on (`zirc intend`), by session: its title where it was
+/// given none and its tool shows none.
+#[must_use]
+pub fn session_first_tasks(home: &Path) -> PathBuf {
+    home.join("session-first-tasks.json")
+}
+
 /// Where its owner opens each session ([`crate::ipc::Request::Name`]), by session: kept on
 /// this machine, never sent to the chat server.
 #[must_use]

@@ -96,8 +96,10 @@ impl Chat {
     }
 
     /// What the agent session `session` on the machine `nick` is called on its row, header
-    /// and composer: the name it goes by, else the task it's on, else its id
-    /// ([`zirc_proto::session::agent_title`]).
+    /// and composer: its card's title (as given, else as its tool shows it, else its first
+    /// task), else the task it's on, else the name it goes by, else its id
+    /// ([`zirc_proto::session::agent_title`]); its handle goes under it
+    /// ([`Chat::agent_handle`]).
     #[must_use]
     pub fn agent_label(&self, nick: &str, session: &str) -> String {
         let task = self.claim(nick, session).map(|(task, _)| task);
@@ -106,9 +108,23 @@ impl Chat {
 
     /// [`Chat::agent_label`], the task it's on known as `task`.
     pub(super) fn agent_label_on(&self, session: &str, task: Option<&str>) -> String {
+        let card = self.session_titles.get(session);
         zirc_proto::session::agent_title(
-            self.session_names.get(session).map(String::as_str),
+            card.and_then(|(_, card)| card.title.as_deref()),
             task,
+            self.session_names.get(session).map(String::as_str),
+            session,
+        )
+    }
+
+    /// The small second line under the agent session's title (`title`, as
+    /// [`Chat::agent_label`] says it): its short name, else its id; `None` when the title
+    /// is that already ([`zirc_proto::session::agent_handle`]).
+    #[must_use]
+    pub fn agent_handle(&self, session: &str, title: &str) -> Option<String> {
+        zirc_proto::session::agent_handle(
+            title,
+            self.session_names.get(session).map(String::as_str),
             session,
         )
     }
