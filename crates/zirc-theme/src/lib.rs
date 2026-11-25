@@ -565,6 +565,10 @@ pub struct Theme {
     pub rule: Rgb,
     /// Lines that need to show: a focused input, a selection.
     pub rule_strong: Rgb,
+    /// A control's edge, which says where it is: a button's, a field's, a chip one can pick.
+    /// 3:1 on what it sits on, as WCAG asks of a control's boundary; [`Theme::rule_strong`]
+    /// is a divider's, and needn't be.
+    pub edge: Rgb,
     /// zirc's one accent, used sparingly: the wordmark's `#` and `_`, primary buttons,
     /// links, mentions and the selected item.
     pub signal: Rgb,
@@ -677,7 +681,7 @@ impl Theme {
 
     /// Every role, by its name in `tokens.json`, and its colour.
     #[must_use]
-    pub fn roles(&self) -> [(&'static str, Rgb); 46] {
+    pub fn roles(&self) -> [(&'static str, Rgb); 47] {
         [
             ("ground", self.ground),
             ("panel", self.panel),
@@ -687,6 +691,7 @@ impl Theme {
             ("faint", self.faint),
             ("rule", self.rule),
             ("rule-strong", self.rule_strong),
+            ("edge", self.edge),
             ("signal", self.signal),
             ("on-signal", self.on_signal),
             ("channel", self.channel),
@@ -1180,6 +1185,7 @@ struct Colors {
     faint: Pair,
     rule: Pair,
     rule_strong: Pair,
+    edge: Pair,
     signal: Pair,
     on_signal: Pair,
     channel: Pair,
@@ -1248,6 +1254,7 @@ static THEMES: LazyLock<(Theme, Theme)> = LazyLock::new(|| {
             faint: pick(c.faint),
             rule: pick(c.rule),
             rule_strong: pick(c.rule_strong),
+            edge: pick(c.edge),
             signal: pick(c.signal),
             on_signal: pick(c.on_signal),
             channel: pick(c.channel),
@@ -1679,6 +1686,21 @@ mod tests {
                     if ratio < 3.0 {
                         failures.push(format!("{:?} {dot} on {bg}: {ratio:.2}", theme.mode));
                     }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "below 3:1: {failures:?}");
+    }
+
+    #[test]
+    fn controls_edges_show() {
+        // A control's boundary is a graphic too: 3:1 on whatever a control sits on.
+        let mut failures = Vec::new();
+        for theme in [Theme::dark(), Theme::light()] {
+            for bg in ["ground", "panel", "code-ground", "surface-raised"] {
+                let ratio = role(theme, "edge").contrast(role(theme, bg));
+                if ratio < 3.0 {
+                    failures.push(format!("{:?} edge on {bg}: {ratio:.2}", theme.mode));
                 }
             }
         }
