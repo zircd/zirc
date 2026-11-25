@@ -349,7 +349,7 @@ fn ci_kind(
     if why == Some(Why::Awaited) && !own {
         let unlanded = ci.state() == Some(zirc_proto::card::State::Failed)
             || text.contains("conflicts with")
-            || (ci.state.as_deref() != Some("passed") && text.contains("failed"));
+            || (ci.state() != Some(zirc_proto::card::State::Passed) && text.contains("failed"));
         return if unlanded {
             kind::AWAITED_UNLANDED
         } else {
@@ -371,12 +371,12 @@ fn ci_kind(
     }
     // A try of the session's own landed nothing: passed, it says what comes next; failed, as a
     // landing's failure does.
-    if ci.tried && ci.state.as_deref() != Some("failed") {
+    if ci.tried && ci.state() != Some(zirc_proto::card::State::Failed) {
         return kind::TRIED;
     }
-    match ci.state.as_deref() {
-        Some("passed") if text.contains(" landed ") => kind::LANDED,
-        Some("failed") => kind::FAILED,
+    match ci.state() {
+        Some(zirc_proto::card::State::Passed) if text.contains(" landed ") => kind::LANDED,
+        Some(zirc_proto::card::State::Failed) => kind::FAILED,
         _ if text.contains("conflicts with") => kind::CONFLICTS,
         _ if text.contains(" landed ") => kind::LANDED,
         _ if text.contains("failed") => kind::FAILED,
