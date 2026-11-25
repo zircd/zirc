@@ -51,6 +51,10 @@ pub const SUMMARY_MAX: usize = 300;
 /// The most characters a build's name keeps.
 pub const BUILD_MAX: usize = 32;
 
+/// What a role's card says of an open item whose holder was already reminded of it
+/// ([`OpenItem::reminded`]): `build 609 · 2 h · nudged`.
+pub const NUDGED: &str = "nudged";
+
 /// What a report is about. Kinds are added here; a sidecar older than a kind doesn't read its
 /// reports, as it couldn't say what they are.
 #[derive(
@@ -538,6 +542,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         OpenItem::decl(config),
         OpenItems::decl(config),
         format!("const ROLE_ITEMS_PATH = {ITEMS_PATH:?};"),
+        format!("const ROLE_ITEM_NUDGED = {NUDGED:?};"),
         format!(
             "const ROLE_REPORT_SUBJECTS: readonly {{ id: RoleReportSubject; phrase: string; label: string }}[] = [{}];",
             Subject::ALL
