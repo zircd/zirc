@@ -38,6 +38,12 @@ pub const MAX_BRIEF: usize = 8000;
 /// zirc.dev reaches.
 pub const ACCOUNTS_PATH: &str = "/v1/roles";
 
+/// Where a tool posts to a role, at its organisation's server's own host
+/// (`https://<slug>.irc.zirc.dev/in/fixer/<secret>`), so what it posts never passes zirc.dev:
+/// the role's name, then the secret only its admins see. zirc.dev makes the secret, and gives
+/// the server only its digest ([`Address`]).
+pub const INBOUND_PATH: &str = "/in/{role}/{secret}";
+
 /// The command that takes a role, before the role's name: `zirc role take`.
 pub const TAKE_COMMAND: &str = "zirc role take";
 
@@ -101,8 +107,47 @@ fn one_seat() -> u8 {
 pub struct Listing {
     /// Every role, in the order zirc.dev lists them.
     pub roles: Vec<Definition>,
-    /// What they're at: anything that changes when they do.
+    /// Each role's webhook address, as the server knows it: by its secret's digest alone.
+    /// The server never says them back ([`Listing::without_addresses`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub addresses: Vec<Address>,
+    /// What they're at: anything that changes when they do, a new secret too.
     pub version: String,
+}
+
+/// A role's webhook address ([`INBOUND_PATH`]) as its server is given it: the SHA-256 of its
+/// secret, in lowercase hex, never the secret, which zirc.dev keeps for the role's admins. A
+/// new secret (Rotate, on zirc.dev) is a new listing, which the server takes at once, and the
+/// old one opens nothing from then on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "RoleAddress")]
+pub struct Address {
+    /// The role's name.
+    pub role: String,
+    /// The SHA-256 of its secret, in hex ([`Address::digest_of`]).
+    pub digest: String,
+}
+
+impl Address {
+    /// The digest a secret is given as.
+    #[must_use]
+    pub fn digest_of(secret: &str) -> String {
+        use sha2::{Digest as _, Sha256};
+        crate::hex(&Sha256::digest(secret.as_bytes()))
+    }
+
+    /// Whether `secret` is this address's, compared in time that doesn't say how much of it
+    /// matched.
+    #[must_use]
+    pub fn opens(&self, secret: &str) -> bool {
+        let given = Self::digest_of(secret);
+        given.len() == self.digest.len()
+            && given
+                .bytes()
+                .zip(self.digest.bytes())
+                .fold(0u8, |differ, (a, b)| differ | (a ^ b))
+                == 0
+    }
 }
 
 impl Listing {
@@ -110,6 +155,21 @@ impl Listing {
     #[must_use]
     pub fn role(&self, name: &str) -> Option<&Definition> {
         self.roles.iter().find(|role| role.name == name)
+    }
+
+    /// Whether `secret` opens the address of the role named `role`.
+    #[must_use]
+    pub fn opens(&self, role: &str, secret: &str) -> bool {
+        self.addresses
+            .iter()
+            .any(|address| address.role == role && address.opens(secret))
+    }
+
+    /// The listing without its addresses, as the server says it back to anyone.
+    #[must_use]
+    pub fn without_addresses(mut self) -> Self {
+        self.addresses.clear();
+        self
     }
 
     /// The rules the listing keeps: each role's, at most [`MAX_ROLES`], no name twice.
@@ -638,6 +698,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         .chain([
             Definition::decl(config),
             Listing::decl(config),
+            Address::decl(config),
             Holder::decl(config),
             Seat::decl(config),
             Vacant::decl(config),
@@ -649,6 +710,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
             format!("const ROLE_MAX_BRIEF = {MAX_BRIEF};"),
             format!("const TAKE_COMMAND = {TAKE_COMMAND:?};"),
             format!("const ROLES_ACCOUNTS_PATH = {ACCOUNTS_PATH:?};"),
+            format!("const INBOUND_PATH = {INBOUND_PATH:?};"),
         ])
         .collect()
 }
@@ -710,9 +772,39 @@ mod tests {
         assert_eq!(role.wakes_on(), ["master is broken", "a direct message"]);
         let listing = Listing {
             roles: vec![role.clone(), role],
+            addresses: vec![],
             version: "1".into(),
         };
         assert!(listing.check().unwrap_err().contains("named twice"));
+    }
+
+    #[test]
+    fn an_address_opens_with_its_secret_alone() {
+        let secret = "k7Qp2vXe9LmR0aBcDeFgHiJk";
+        let listing = Listing {
+            roles: vec![fixer()],
+            addresses: vec![Address {
+                role: "fixer".into(),
+                digest: Address::digest_of(secret),
+            }],
+            version: "1".into(),
+        };
+        assert_eq!(
+            Address::digest_of("abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert!(listing.opens("fixer", secret));
+        assert!(!listing.opens("fixer", "k7Qp2vXe9LmR0aBcDeFgHiJ"));
+        assert!(!listing.opens("triage", secret));
+        assert!(!listing.clone().without_addresses().opens("fixer", secret));
+        let said = serde_json::to_value(listing.without_addresses()).unwrap();
+        assert!(said.get("addresses").is_none());
+        assert_eq!(
+            INBOUND_PATH
+                .replace("{role}", "fixer")
+                .replace("{secret}", secret),
+            format!("/in/fixer/{secret}")
+        );
     }
 
     #[test]

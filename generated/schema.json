@@ -3256,9 +3256,16 @@
           },
           "description": "Every role, in the order zirc.dev lists them."
         },
+        "addresses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Address"
+          },
+          "description": "Each role's webhook address, as the server knows it: by its secret's digest alone.\nThe server never says them back ([`Listing::without_addresses`])."
+        },
         "version": {
           "type": "string",
-          "description": "What they're at: anything that changes when they do."
+          "description": "What they're at: anything that changes when they do, a new secret too."
         }
       },
       "required": [
@@ -3266,6 +3273,24 @@
         "version"
       ],
       "description": "An organisation's roles, as zirc.dev syncs them to its server: whole each time, with a\nversion that changes whenever they do."
+    },
+    "Address": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "The role's name."
+        },
+        "digest": {
+          "type": "string",
+          "description": "The SHA-256 of its secret, in hex ([`Address::digest_of`])."
+        }
+      },
+      "required": [
+        "role",
+        "digest"
+      ],
+      "description": "A role's webhook address ([`INBOUND_PATH`]) as its server is given it: the SHA-256 of its\nsecret, in lowercase hex, never the secret, which zirc.dev keeps for the role's admins. A\nnew secret (Rotate, on zirc.dev) is a new listing, which the server takes at once, and the\nold one opens nothing from then on."
     },
     "Standing": {
       "type": "object",

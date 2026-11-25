@@ -1,5 +1,5 @@
 use zirc_proto::leases::Want;
-use zirc_proto::roles::{Definition, Listing, SeatChange, Vacant, Wake};
+use zirc_proto::roles::{Address, Definition, Listing, SeatChange, Vacant, Wake};
 use zirc_proto::state::Level;
 
 use super::*;
@@ -25,6 +25,10 @@ fn brain() -> Brain {
     brain
         .set_listing(Listing {
             roles: vec![fixer()],
+            addresses: vec![Address {
+                role: "fixer".into(),
+                digest: Address::digest_of("k7Qp2vXe9LmR0aBcDeFgHiJk"),
+            }],
             version: "1".into(),
         })
         .unwrap();
@@ -252,4 +256,16 @@ fn another_machine_cant_give_back_a_seat() {
     );
     assert!(outs.is_empty());
     assert!(brain.standing(LATER + 9000).seats[0].holder.is_some());
+}
+
+#[test]
+fn how_roles_stand_never_says_their_addresses() {
+    let brain = brain();
+    assert!(
+        brain
+            .kept
+            .listing
+            .opens("fixer", "k7Qp2vXe9LmR0aBcDeFgHiJk")
+    );
+    assert!(brain.standing(LATER).listing.addresses.is_empty());
 }

@@ -263,7 +263,8 @@ impl Brain {
     #[must_use]
     pub fn standing(&self, now: u64) -> Standing {
         Standing {
-            listing: self.kept.listing.clone(),
+            // Never its addresses' digests: what it answers reaches members and machines.
+            listing: self.kept.listing.clone().without_addresses(),
             seats: self
                 .kept
                 .listing
