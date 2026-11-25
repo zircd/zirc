@@ -17,9 +17,9 @@ use zirc_proto::woke::{Settled, Side};
 
 use super::{Daemon, git, now};
 
-/// How long a settled overlap is remembered, in seconds: as long as work on a change
-/// usually takes, so the same two aren't told of the same files again meanwhile.
-const REMEMBERED: u64 = 4 * 60 * 60;
+/// How long a settled overlap is remembered, in seconds
+/// ([`zirc_core::clashes::SETTLED_FOR`]).
+const REMEMBERED: u64 = zirc_core::clashes::SETTLED_FOR;
 
 /// How many are remembered at most.
 const KEPT: usize = 64;

@@ -1122,9 +1122,8 @@ fn query_id(count: u64) -> String {
     format!("q{:07x}", hasher.finish() & 0xfff_ffff)
 }
 
-/// How long an overlap told stays told: one that comes again unchanged within this, as
-/// when a path stops overlapping for a while and starts again, isn't news.
-const TOLD_FOR: Duration = Duration::from_hours(12);
+/// How long an overlap told stays told ([`zirc_core::clashes::TOLD_FOR`]).
+const TOLD_FOR: Duration = Duration::from_secs(zirc_core::clashes::TOLD_FOR);
 
 /// How an overlapping path was told: what it said about it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -9,6 +9,16 @@ use crate::ipc::ChannelPresence;
 use crate::one_line::one_line;
 use crate::presence::touching;
 
+/// How long an overlap told stays told, in seconds: one that comes again unchanged within
+/// this, as when a path stops overlapping for a while and starts again, isn't news. zircd's
+/// rule, said here for whatever else models it.
+pub const TOLD_FOR: u64 = 12 * 60 * 60;
+
+/// How long a settled overlap is remembered, in seconds: as long as work on a change
+/// usually takes, so the same two aren't told of the same files again meanwhile. zircd's
+/// rule, said here for whatever else models it.
+pub const SETTLED_FOR: u64 = 4 * 60 * 60;
+
 /// Another session on some of the paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Clash {
