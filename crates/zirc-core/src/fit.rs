@@ -154,13 +154,9 @@ impl Fit {
     }
 }
 
-/// A few of `paths`, and how many more.
+/// A few of `paths`, and how many more ([`zirc_proto::some_of`]).
 fn some_of(paths: &[String]) -> String {
-    const SHOWN: usize = 4;
-    match paths.len() {
-        n if n <= SHOWN => paths.join(", "),
-        n => format!("{} and {} more", paths[..SHOWN].join(", "), n - SHOWN),
-    }
+    zirc_proto::some_of(paths, 4, ", ")
 }
 
 #[cfg(test)]

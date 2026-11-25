@@ -83,11 +83,11 @@ pub fn brief(channels: &[ChannelPresence], machine: &str, session: &str) -> Stri
             let _ = write!(text, "; on {branch}");
         }
         if !sibling.paths.is_empty() {
-            let shown = sibling.paths.len().min(PATHS);
-            let _ = write!(text, "; changing {}", sibling.paths[..shown].join(", "));
-            if sibling.paths.len() > shown {
-                let _ = write!(text, " and {} more", sibling.paths.len() - shown);
-            }
+            let _ = write!(
+                text,
+                "; changing {}",
+                zirc_proto::some_of(&sibling.paths, PATHS, ", ")
+            );
         }
         text.push('\n');
     }

@@ -177,8 +177,7 @@ fn auto_intent(
         .collect();
     let what = match files.len() {
         0 => "files here".to_owned(),
-        n if n <= SHOWN => files.join(", "),
-        n => format!("{} and {} more", files[..SHOWN].join(", "), n - SHOWN),
+        _ => zirc_proto::some_of(&files, SHOWN, ", "),
     };
     let summary = match branch {
         Some(branch) => format!("changing {what} on {branch} (said by zircd)"),

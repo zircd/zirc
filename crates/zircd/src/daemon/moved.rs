@@ -144,16 +144,10 @@ fn moved_under_line(session: &str, branch: &str, brought: &Brought, theirs: &[&s
             )
         },
     );
-    let more = theirs.len().saturating_sub(SHOWN);
-    let files = theirs[..theirs.len().min(SHOWN)].join(", ");
-    let and_more = if more > 0 {
-        format!(" and {more} more")
-    } else {
-        String::new()
-    };
+    let files = zirc_proto::some_of(theirs, SHOWN, ", ");
     format!(
         "{session}: {branch} moved on origin to {}{commits}{newest}, changing files you're \
-         changing: {files}{and_more}. Rebase onto it before you build on or test those (`git \
+         changing: {files}. Rebase onto it before you build on or test those (`git \
          rebase origin/{branch}`), and keep both its changes and yours where they meet",
         short(&brought.head)
     )

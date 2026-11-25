@@ -195,19 +195,9 @@ fn to_ask(clashes: &[Clash]) -> Vec<(&str, Vec<String>)> {
     asked
 }
 
-/// The first few of `paths`, and how many more.
+/// The first few of `paths`, and how many more ([`zirc_proto::some_of`]).
 fn some_of(paths: &[String]) -> String {
-    const SHOWN: usize = 3;
-    let shown = paths
-        .iter()
-        .take(SHOWN)
-        .cloned()
-        .collect::<Vec<_>>()
-        .join(", ");
-    match paths.len().saturating_sub(SHOWN) {
-        0 => shown,
-        more => format!("{shown} and {more} more"),
-    }
+    zirc_proto::some_of(paths, 3, ", ")
 }
 
 #[cfg(test)]

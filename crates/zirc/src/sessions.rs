@@ -326,18 +326,10 @@ pub(crate) fn named(name: Option<&str>) -> String {
     name.map(|name| format!(" ({name})")).unwrap_or_default()
 }
 
-/// "a, b, c, d, e, f and 4 more": the first few `paths`, and how many aren't shown.
+/// "a, b, c, d, e, f and 4 more": the first few `paths`, and how many aren't shown
+/// ([`zirc_proto::some_of`]).
 pub(crate) fn some_of(paths: &[String]) -> String {
-    const SHOWN: usize = 6;
-    if paths.len() <= SHOWN {
-        paths.join(", ")
-    } else {
-        format!(
-            "{} and {} more",
-            paths[..SHOWN].join(", "),
-            paths.len() - SHOWN
-        )
-    }
+    zirc_proto::some_of(paths, 6, ", ")
 }
 
 /// "4m", "2h" or "1d": how long from `now` until `then`.

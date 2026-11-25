@@ -433,10 +433,22 @@ pub fn push_line(branch: &str, head: &str, forced: bool, subjects: &[String]) ->
     if subjects.is_empty() {
         return lead;
     }
-    let named = subjects[..subjects.len().min(PUSH_LINE_SUBJECTS)].join("; ");
-    match subjects.len().saturating_sub(PUSH_LINE_SUBJECTS) {
-        0 => format!("{lead}: {named}"),
-        more => format!("{lead}: {named} and {more} more"),
+    format!("{lead}: {}", some_of(subjects, PUSH_LINE_SUBJECTS, "; "))
+}
+
+/// The first `shown` of `items`, between them `sep`, then how many more there are: `a, b, c
+/// and 4 more`. Every list zirc cuts short says it this way.
+#[must_use]
+pub fn some_of<S: AsRef<str>>(items: &[S], shown: usize, sep: &str) -> String {
+    let named = items
+        .iter()
+        .take(shown)
+        .map(AsRef::as_ref)
+        .collect::<Vec<_>>()
+        .join(sep);
+    match items.len().saturating_sub(shown) {
+        0 => named,
+        more => format!("{named} and {more} more"),
     }
 }
 
@@ -481,7 +493,10 @@ impl Event {
         match self {
             Event::Intent { summary, paths, .. } => match paths.as_slice() {
                 [] => format!("intends: {summary}"),
-                paths => format!("about to change {}: {summary}", working_list(paths)),
+                paths => format!(
+                    "about to change {}: {summary}",
+                    some_of(paths, PATHS_SHOWN, ", ")
+                ),
             },
             Event::Working { paths, .. } => working_text(paths),
             Event::Commit {
@@ -503,20 +518,14 @@ impl Event {
     }
 }
 
+/// How many paths an intent's or a working tree's text names before saying how many more.
+const PATHS_SHOWN: usize = 3;
+
 /// "working on a, b, c and 4 more", short enough to leave the payload most of the line.
 fn working_text(paths: &[String]) -> String {
     match paths.len() {
         0 => "has no uncommitted changes".to_owned(),
-        _ => format!("working on {}", working_list(paths)),
-    }
-}
-
-/// "a, b, c and 4 more".
-fn working_list(paths: &[String]) -> String {
-    const SHOWN: usize = 3;
-    match paths.len() {
-        n if n <= SHOWN => paths.join(", "),
-        n => format!("{} and {} more", paths[..SHOWN].join(", "), n - SHOWN),
+        _ => format!("working on {}", some_of(paths, PATHS_SHOWN, ", ")),
     }
 }
 
@@ -1633,6 +1642,15 @@ mod tests {
             super::push_lead("login", "0123456789", true, 2),
             "force-pushed login to 0123456 (2 commits)"
         );
+    }
+
+    #[test]
+    fn a_list_cut_short_says_how_many_more() {
+        let some = |n: usize| -> Vec<String> { (1..=n).map(|i| format!("p{i}")).collect() };
+        assert_eq!(super::some_of(&some(0), 3, ", "), "");
+        assert_eq!(super::some_of(&some(3), 3, ", "), "p1, p2, p3");
+        assert_eq!(super::some_of(&some(5), 3, ", "), "p1, p2, p3 and 2 more");
+        assert_eq!(super::some_of(&["a", "b"], 1, "; "), "a and 1 more");
     }
 
     #[test]
