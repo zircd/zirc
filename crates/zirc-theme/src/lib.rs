@@ -773,7 +773,8 @@ impl Type {
 
 /// An agent session's avatar's ground: its hue is the session's own
 /// (`zirc_core::chat::nick_degrees`), and these the same for every session, in both modes,
-/// so white reads on it.
+/// so white reads on it: at 3:1 or better for every hue, as WCAG asks of a picture (0.45
+/// gave yellows 2.3:1; the user chose 0.38 on 25 Nov 2026).
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Avatar {
@@ -1690,6 +1691,52 @@ mod tests {
             }
         }
         assert!(failures.is_empty(), "below 3:1: {failures:?}");
+    }
+
+    #[test]
+    fn white_reads_on_every_avatar() {
+        // An avatar's picture or initials are white on its ground: 3:1, a graphic's, for every hue.
+        let Avatar {
+            saturation,
+            lightness,
+        } = *Avatar::get();
+        let white = Rgb {
+            r: 255,
+            g: 255,
+            b: 255,
+        };
+        let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
+        let worst = (0..360u16)
+            .map(|hue| {
+                let sector = f32::from(hue) / 60.0;
+                let second = chroma * (1.0 - (sector % 2.0 - 1.0).abs());
+                let (red, green, blue) = match hue / 60 {
+                    0 => (chroma, second, 0.0),
+                    1 => (second, chroma, 0.0),
+                    2 => (0.0, chroma, second),
+                    3 => (0.0, second, chroma),
+                    4 => (second, 0.0, chroma),
+                    _ => (chroma, 0.0, second),
+                };
+                let lift = lightness - chroma / 2.0;
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "a channel from 0 to 1, as a byte"
+                )]
+                let byte = |channel: f32| ((channel + lift) * 255.0).round() as u8;
+                (
+                    white.contrast(Rgb {
+                        r: byte(red),
+                        g: byte(green),
+                        b: byte(blue),
+                    }),
+                    hue,
+                )
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .unwrap_or((0.0, 0));
+        assert!(worst.0 >= 3.0, "white on hue {}: {:.2}", worst.1, worst.0);
     }
 
     #[test]
