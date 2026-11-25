@@ -208,6 +208,26 @@ pub struct HeardTool {
     #[serde(default, skip_serializing_if = "crate::is_zero")]
     #[ts(type = "number")]
     pub day: u64,
+    /// What zirc.dev's Connect a tool says of it, as the server answers ([`HeardTool::as_of`]):
+    /// its words around the time it was last heard, which the page says as its reader reads
+    /// times.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub said: Option<HeardSaid>,
+}
+
+/// What Connect a tool says of a tool heard: `lead`, then when (`at`, as the page says a time),
+/// then `tail`: "✓ Heard from Sentry" · 1 min ago · " · 3 today"; "✓ Heard a test from Sentry"
+/// · 1 min ago · ". oncall wasn't woken by it.".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "InboundHeardSaid")]
+pub struct HeardSaid {
+    /// Before the time.
+    pub lead: String,
+    /// The time, in unix seconds.
+    #[ts(type = "number")]
+    pub at: u64,
+    /// After the time.
+    pub tail: String,
 }
 
 impl HeardTool {
@@ -220,6 +240,42 @@ impl HeardTool {
             last_test: None,
             today: 0,
             day: 0,
+            said: None,
+        }
+    }
+
+    /// It as the server answers at `now` (unix seconds) for role `role`: today's count only
+    /// while it's today's, and what Connect a tool says of it. What it heard last says it: a
+    /// test, which woke no one, or a post, with today's count.
+    #[must_use]
+    pub fn as_of(&self, role: &str, now: u64) -> Self {
+        let today = if self.day == now / 86_400 {
+            self.today
+        } else {
+            0
+        };
+        let name = self.tool.name();
+        let said = match (self.last, self.last_test) {
+            (last, Some(test)) if last.is_none_or(|last| test >= last) => Some(HeardSaid {
+                lead: format!("✓ Heard a test from {name}"),
+                at: test,
+                tail: format!(". {role} wasn't woken by it."),
+            }),
+            (Some(last), _) => Some(HeardSaid {
+                lead: format!("✓ Heard from {name}"),
+                at: last,
+                tail: if today > 0 {
+                    format!(" · {today} today")
+                } else {
+                    String::new()
+                },
+            }),
+            _ => None,
+        };
+        Self {
+            today,
+            said,
+            ..self.clone()
         }
     }
 
@@ -358,6 +414,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Tool::decl(config),
         Signs::decl(config),
         HeardTool::decl(config),
+        HeardSaid::decl(config),
         Heard::decl(config),
         format!("const INBOUND_HEARD_PATH = {HEARD_PATH:?};"),
         format!(
@@ -488,6 +545,30 @@ mod tests {
         );
         heard.heard(2 * 86_400, false);
         assert_eq!(heard.today, 1);
+    }
+
+    #[test]
+    fn connect_a_tool_says_what_it_heard_last_and_todays_count_only_today() {
+        let mut heard = HeardTool::new(Tool::Sentry);
+        heard.heard(86_400 + 5, false);
+        heard.heard(86_400 + 6, false);
+        let said = heard.as_of("oncall", 86_400 + 60).said.unwrap();
+        assert_eq!(
+            (said.lead.as_str(), said.at, said.tail.as_str()),
+            ("✓ Heard from Sentry", 86_406, " · 2 today")
+        );
+        let tomorrow = heard.as_of("oncall", 2 * 86_400);
+        assert_eq!(
+            (tomorrow.today, tomorrow.said.unwrap().tail),
+            (0, String::new())
+        );
+        heard.heard(86_400 + 70, true);
+        let said = heard.as_of("oncall", 86_400 + 80).said.unwrap();
+        assert_eq!(
+            (said.lead.as_str(), said.tail.as_str()),
+            ("✓ Heard a test from Sentry", ". oncall wasn't woken by it.")
+        );
+        assert_eq!(HeardTool::new(Tool::Linear).as_of("oncall", 0).said, None);
     }
 
     #[test]

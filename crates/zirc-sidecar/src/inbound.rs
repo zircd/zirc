@@ -101,9 +101,10 @@ impl Store {
         }
     }
 
-    /// What `role` heard, as zirc.dev reads it.
+    /// What `role` heard, as zirc.dev reads it now ([`HeardTool::as_of`]).
     #[must_use]
     pub fn of(&self, role: &str) -> Heard {
+        let now = crate::now();
         let kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner);
         let tools = kept
             .roles
@@ -111,7 +112,7 @@ impl Store {
             .map(|tools| {
                 Tool::ALL
                     .iter()
-                    .filter_map(|tool| tools.get(tool).cloned())
+                    .filter_map(|tool| tools.get(tool).map(|heard| heard.as_of(role, now)))
                     .collect()
             })
             .unwrap_or_default();
