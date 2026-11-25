@@ -284,11 +284,6 @@
         },
         {
           "type": "string",
-          "const": "staging",
-          "description": "Staging's, for trying changes."
-        },
-        {
-          "type": "string",
           "const": "none",
           "description": "One that doesn't say."
         }

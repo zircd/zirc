@@ -20,7 +20,7 @@ pub struct Conversation {
 }
 
 /// The link to `channel` in `org`, at message `message` if given, on `web`, zirc.dev's
-/// address (`https://zirc.dev`, or staging's). None for a target that isn't a channel,
+/// address (`https://zirc.dev`, or another's). None for a target that isn't a channel,
 /// such as a nick.
 #[must_use]
 pub fn conversation_link(
@@ -158,8 +158,8 @@ mod tests {
     #[test]
     fn a_channel_alone_and_odd_characters() {
         assert_eq!(
-            conversation_link("https://staging.zirc.dev", "acme", "#web", None).as_deref(),
-            Some("https://staging.zirc.dev/app/c/acme/web")
+            conversation_link("https://zirc.example.com", "acme", "#web", None).as_deref(),
+            Some("https://zirc.example.com/app/c/acme/web")
         );
         let odd = conversation_link("https://zirc.dev", "acme", "#q&a?ü", Some("a+b")).unwrap();
         assert_eq!(odd, "https://zirc.dev/app/c/acme/q%26a%3F%C3%BC?m=a%2Bb");

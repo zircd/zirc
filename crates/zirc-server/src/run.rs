@@ -83,7 +83,7 @@ pub struct Options {
     /// server joins it on its first start.
     #[arg(long, env = "ZIRC_JOIN_TOKEN", hide_env_values = true)]
     pub join_token: Option<String>,
-    /// zirc.dev, or another of its environments, such as staging's.
+    /// zirc.dev, or another, such as a local one.
     #[arg(long, env = "ZIRC_WEB", default_value = ZIRC_DEV)]
     pub web: String,
     /// IRC's port as people reach it, 6697 unless set: behind a proxy, the proxy's.

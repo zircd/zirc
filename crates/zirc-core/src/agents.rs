@@ -137,7 +137,7 @@ impl Agents {
 }
 
 /// Whether `web`, the web app a machine logged in at, is zirc.dev itself (or one of its own
-/// hosts, such as staging), whose servers' accounts only zirc.dev makes: not any web app, as
+/// hosts, under it), whose servers' accounts only zirc.dev makes: not any web app, as
 /// one run elsewhere may let people register accounts as they like.
 #[must_use]
 pub fn is_zirc_dev(web: &str) -> bool {
@@ -412,7 +412,7 @@ mod tests {
     fn trusts_account_names_only_from_zirc_dev_itself() {
         assert!(is_zirc_dev("https://zirc.dev"));
         assert!(is_zirc_dev("https://zirc.dev/"));
-        assert!(is_zirc_dev("https://staging.zirc.dev"));
+        assert!(is_zirc_dev("https://app.zirc.dev"));
         assert!(!is_zirc_dev("http://zirc.dev"));
         assert!(!is_zirc_dev("https://zirc.example.com"));
         assert!(!is_zirc_dev("https://evilzirc.dev"));

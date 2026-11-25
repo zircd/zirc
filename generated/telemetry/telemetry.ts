@@ -143,7 +143,7 @@ messages_day_people: number,
  */
 messages_day_agents: number, };
 
-export type Environment = "production" | "staging" | "none";
+export type Environment = "production" | "none";
 
 export type SignedUp = Record<symbol, never>;
 

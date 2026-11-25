@@ -631,7 +631,7 @@ mod tests {
     fn long_file_names_are_shortened_keeping_their_extension() {
         let file = |name: &str, mime: &str| {
             Event::File(zirc_proto::File {
-                url: "https://staging.zirc.dev/m/a-longer-organisation/7Hq2xV9kLmN3pR8".into(),
+                url: "https://zirc.example.com/m/a-longer-organisation/7Hq2xV9kLmN3pR8".into(),
                 name: name.into(),
                 mime: mime.into(),
                 size: 2_345_678,

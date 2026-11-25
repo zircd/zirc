@@ -95,7 +95,7 @@ Its settings, all from the environment:
 | `ZIRC_PROXY_PROTOCOL`, `ZIRC_PROXY_FROM` | With `off`: the proxy sends a PROXY header, from these addresses |
 | `ZIRC_PUBLIC_IRC_PORT` | IRC's port as people reach it, 6697 unless set |
 | `ZIRC_WEB_LISTEN` | Where the HTTPS side listens: `0.0.0.0:443` with TLS, `0.0.0.0:8080` without |
-| `ZIRC_WEB` | zirc.dev, unless another of its environments, such as staging's |
+| `ZIRC_WEB` | zirc.dev, unless set to another, such as a local one |
 | `ZIRC_DATA` | The data directory, `/data` unless set |
 | `ZIRC_MEDIA_WORKER` | The media worker's address, `http://media:8080` in `compose.yaml`; video is a file unless set |
 | `ZIRC_IMGPROXY` | imgproxy's address, `http://media:8081` in `compose.yaml`; images aren't resized unless set |

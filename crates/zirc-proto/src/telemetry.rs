@@ -238,8 +238,6 @@ pub struct UpdateInstalled {
 pub enum Environment {
     /// zirc.dev's own.
     Production,
-    /// Staging's, for trying changes.
-    Staging,
     /// One that doesn't say.
     None,
 }
