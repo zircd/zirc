@@ -504,4 +504,28 @@ mod tests {
         // The fixer's own line before it counts once; the wake adds nothing.
         assert_eq!(unread, 1);
     }
+
+    #[test]
+    fn a_report_said_in_ops_at_info_is_neither_shown_nor_previewed_there() {
+        use zirc_proto::role_report::{RoleReport, Subject};
+        let mut chat = with_fixer();
+        feed(
+            &mut chat,
+            &[
+                ":me!u@h JOIN #ops",
+                &format!(
+                    ":fixer!u@{} JOIN #ops",
+                    zirc_proto::names::role_host("fixer")
+                ),
+            ],
+        );
+        let report = RoleReport::new("fixer", Subject::Flaky, "//a:b");
+        from_fixer(&mut chat, "#ops", "10:00:00", &report.event());
+        // #ops shows what needs someone (warn) until its reader picks otherwise: the report
+        // is the role's to act on, and its card is in the agents' room.
+        assert!(chat.lines("#ops", utc(), false).is_empty());
+        assert_eq!(chat.preview("#ops"), None);
+        chat.set_threshold("#ops", zirc_proto::Level::Info);
+        assert!(chat.preview("#ops").is_some());
+    }
 }

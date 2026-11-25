@@ -28,8 +28,11 @@ impl Chat {
     /// its headline. `None` before anything's said.
     #[must_use]
     pub fn preview(&self, name: &str) -> Option<Preview> {
-        let entries = &self.conversation(name)?.entries;
-        let at = entries.iter().rposition(Entry::is_shown_in_list)?;
+        let conversation = self.conversation(name)?;
+        let entries = &conversation.entries;
+        let at = entries
+            .iter()
+            .rposition(|entry| conversation.lists(entry))?;
         let entry = &entries[at];
         let who = if fold(&entry.from) == fold(&self.me) {
             "You".to_owned()

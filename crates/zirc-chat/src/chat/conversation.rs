@@ -561,14 +561,23 @@ impl Conversation {
         members
     }
 
-    /// When the newest thing a list row shows of it was said ([`Entry::is_shown_in_list`]):
-    /// what the lists sort by, and the time its row shows.
+    /// Whether its list row shows `entry`: one a row shows of any conversation
+    /// ([`Entry::is_shown_in_list`]) that this one shows its reader ([`Conversation::shows`]),
+    /// so a row never previews a line its conversation hides, as `#ops` hides a role's
+    /// report at info.
+    #[must_use]
+    pub fn lists(&self, entry: &Entry) -> bool {
+        entry.is_shown_in_list() && self.shows(entry)
+    }
+
+    /// When the newest thing its list row shows was said ([`Conversation::lists`]): what the
+    /// lists sort by, and the time its row shows.
     #[must_use]
     pub fn last_said(&self) -> Option<DateTime<Utc>> {
         self.entries
             .iter()
             .rev()
-            .find(|entry| entry.is_shown_in_list())
+            .find(|entry| self.lists(entry))
             .map(|entry| entry.time)
     }
 

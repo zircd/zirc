@@ -364,7 +364,7 @@ impl Chat {
                     .entries
                     .iter()
                     .rev()
-                    .find(|entry| entry.is_shown_in_list())?;
+                    .find(|entry| conversation.lists(entry))?;
                 if entry.from.eq_ignore_ascii_case(&self.me) {
                     return None;
                 }

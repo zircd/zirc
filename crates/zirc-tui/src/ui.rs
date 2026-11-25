@@ -3342,7 +3342,8 @@ mod tests {
         let (rows, _) = draw(&app, 100, 16);
         // Unread, with a pip; a pill for what mentions us, none for the rest.
         // What was said last and when, where it fits.
-        assert_eq!(row_with(&rows, "#api"), "▎#api cc-12: Fix… 58m 1  │");
+        // cc-12's commit is shown in #api only under Everything, so its row previews alice's.
+        assert_eq!(row_with(&rows, "#api"), "▎#api alice: me:… 59m 1  │");
         assert!(row_with(&rows, "#web").starts_with("▎#web bob: "));
         // Long names are cut to fit, the same way everywhere.
         assert_eq!(row_with(&rows, " #a-"), " #a-channel-with-a-very… │");
@@ -3465,7 +3466,7 @@ mod tests {
             rows.join("\n")
         );
         // Away, by zirc-chat's presence mark, a ring in the away grey, the name quieter.
-        assert!(row_with(&rows, "alice").ends_with("│ ○ alice"));
+        assert!(rows.iter().any(|row| row.ends_with("│ ○ alice")));
         let (x, y) = place_of(&rows, "○ alice");
         let buffer = draw(&app, 120, 16).1;
         assert_eq!(
@@ -4080,7 +4081,7 @@ mod tests {
             [
                 // Unread in bold with a pip at the edge; a pill counts what mentions us.
                 channels.as_str(),
-                "▎#api cc-12: F… 58m 1",
+                "▎#api alice: m… 59m 1",
                 "▎#web bob: deploy… 57m",
             ]
         );
@@ -4611,7 +4612,7 @@ mod tests {
             side(&app),
             [
                 channels.as_str(),
-                "▎#api cc-12:… 58m 1",
+                "▎#api alice:… 59m 1",
                 "   └ login",
                 "▎#web bob: depl… 57m"
             ]
@@ -4627,7 +4628,7 @@ mod tests {
                 // Not marked: it's under Starred.
                 " #web bob: depl… 57m",
                 channels.as_str(),
-                "▎#api cc-12:… 58m 1"
+                "▎#api alice:… 59m 1"
             ]
         );
         let (rows, _) = draw(&app, 100, 16);
