@@ -1,5 +1,4 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary")
-load("@zirc_version//:version.bzl", "VERSION")
 load("//bazel:rust.bzl", "zirc_rust_library")
 
 zirc_rust_library(
@@ -23,7 +22,6 @@ rust_binary(
     srcs = ["bin/generated_types.rs"],
     lint_config = "//bazel:lints",
     tags = ["regen"],
-    version = VERSION,
     deps = [":zirc-core"],
 )
 
@@ -33,7 +31,6 @@ rust_binary(
     name = "posthog_dashboards",
     srcs = ["bin/posthog_dashboards.rs"],
     lint_config = "//bazel:lints",
-    version = VERSION,
     deps = [
         ":zirc-core",
         "@crates//:tokio",
@@ -46,7 +43,6 @@ rust_binary(
     name = "release_sign",
     srcs = ["bin/release_sign.rs"],
     lint_config = "//bazel:lints",
-    version = VERSION,
     visibility = [
         "//release:__pkg__",
         "//release:__pkg__",

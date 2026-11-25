@@ -189,7 +189,7 @@ impl Client {
         // Installing it fails harmlessly when one is installed already.
         let _ = rustls::crypto::ring::default_provider().install_default();
         let http = reqwest::Client::builder()
-            .user_agent(concat!("zirc/", env!("CARGO_PKG_VERSION")))
+            .user_agent(zirc_proto::version::user_agent())
             .timeout(Duration::from_secs(30))
             .build()?;
         Ok(Self {

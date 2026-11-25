@@ -112,6 +112,25 @@ sh_test(
     ],
 )
 
+# zirc and zircd say the version they're built as, to people and to their libraries.
+sh_test(
+    name = "versions_test",
+    srcs = ["versions_test.sh"],
+    args = [
+        "$(rootpath //crates/zirc)",
+        "$(rootpath //crates/zircd)",
+        VERSION,
+    ],
+    data = [
+        "//crates/zirc",
+        "//crates/zircd",
+    ],
+    tags = [
+        "kind:integration",
+        "surface:install",
+    ],
+)
+
 SCRIPTS = [
     "install.sh",
     "install_test.sh",
@@ -119,6 +138,7 @@ SCRIPTS = [
     "package_test.sh",
     "shellcheck_test.sh",
     "update_test.sh",
+    "versions_test.sh",
 ]
 
 sh_test(

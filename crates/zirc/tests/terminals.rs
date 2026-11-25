@@ -412,10 +412,8 @@ fn as_the_teams(line: Value, ergo: &Ergo, machines: &[&Machine]) -> Value {
                     .replace(dir.as_ref(), as_shown);
             }
         }
-        *s = same_times(&same_ids(&out)).replace(
-            concat!("zircd ", env!("CARGO_PKG_VERSION")),
-            "zircd <version>",
-        );
+        let version = format!("zircd {}", zirc_proto::version::get());
+        *s = same_times(&same_ids(&out)).replace(&version, "zircd <version>");
     }
     Value::Object(fields)
 }

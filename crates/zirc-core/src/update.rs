@@ -110,7 +110,7 @@ impl Version {
     /// Never: the workspace's version is `major.minor.patch`.
     #[must_use]
     pub fn current() -> Self {
-        env!("CARGO_PKG_VERSION")
+        zirc_proto::version::get()
             .parse()
             .expect("zirc's version is major.minor.patch")
     }
@@ -525,7 +525,7 @@ async fn fetch(url: &str, trust: &Trust) -> Result<Vec<u8>, Error> {
     // reqwest's rustls comes without a crypto provider: use ring, as the rest of zirc does.
     let _ = rustls::crypto::ring::default_provider().install_default();
     let client = reqwest::Client::builder()
-        .user_agent(concat!("zirc/", env!("CARGO_PKG_VERSION")))
+        .user_agent(zirc_proto::version::user_agent())
         .timeout(Duration::from_secs(300))
         .https_only(true)
         .build()

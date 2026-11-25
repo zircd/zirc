@@ -229,7 +229,7 @@ async fn confirmed_in_browser(
 ) -> Result<Credentials> {
     let client = Client::new(&args.web)?;
     let request = LoginRequest {
-        client: format!("{PROGRAM} {}", env!("CARGO_PKG_VERSION")),
+        client: format!("{PROGRAM} {}", zirc_proto::version::get()),
         host: zirc_core::machine::host_name(),
         // A machine's login, the default, which zirc.dev also assumes from older CLIs.
         kind: None,

@@ -351,7 +351,7 @@ impl Daemon {
             problem: self.problem.clone(),
             watching: self.watching(),
             protocol: zirc_core::ipc::PROTOCOL,
-            version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            version: Some(zirc_proto::version::get().to_owned()),
             orgs: Vec::new(),
             breaker: Some(self.breaker.state(self.clock.now())),
             busy_ms: Some(self.busy.longest_ms(Instant::now())),

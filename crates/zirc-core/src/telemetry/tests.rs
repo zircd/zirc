@@ -163,7 +163,7 @@ async fn sends_the_queue_as_one_batch_with_the_apps_context() {
     assert_eq!(recorded[1]["properties"]["client"], "tui");
     assert_eq!(
         recorded[1]["properties"]["version"],
-        env!("CARGO_PKG_VERSION")
+        zirc_proto::version::get()
     );
 
     telemetry.send(&http().unwrap()).await;

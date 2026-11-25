@@ -177,7 +177,7 @@ impl Telemetry {
         Self::build(
             home,
             client,
-            env!("CARGO_PKG_VERSION"),
+            zirc_proto::version::get(),
             settings,
             setting,
             env,
@@ -505,7 +505,7 @@ pub fn http() -> Option<reqwest::Client> {
     // reqwest's rustls comes without a crypto provider: use ring, as the rest of zirc does.
     let _ = rustls::crypto::ring::default_provider().install_default();
     reqwest::Client::builder()
-        .user_agent(concat!("zirc/", env!("CARGO_PKG_VERSION")))
+        .user_agent(zirc_proto::version::user_agent())
         .build()
         .ok()
 }

@@ -2,7 +2,6 @@ load("@rules_python//python:defs.bzl", "py_binary")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 load("@rules_rust//rust:defs.bzl", "rust_binary")
 load("@theme_pip//:requirements.bzl", "requirement")
-load("@zirc_version//:version.bzl", "VERSION")
 load("//bazel:rust.bzl", "zirc_rust_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -30,7 +29,6 @@ rust_binary(
     name = "css",
     srcs = ["bin/css.rs"],
     lint_config = "//bazel:lints",
-    version = VERSION,
     deps = [":zirc-theme"],
 )
 

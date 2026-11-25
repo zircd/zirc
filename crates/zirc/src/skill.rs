@@ -46,7 +46,7 @@ pub(crate) fn skill() -> String {
          something the hard way about some paths that the next session changing them should \
          know (`zirc gotcha`).\"\n\
          ---\n\n{AGENT_GUIDE}",
-        version = env!("CARGO_PKG_VERSION"),
+        version = zirc_proto::version::get(),
     )
 }
 
@@ -75,7 +75,7 @@ pub(crate) fn refresh_skill(skills: &Path) -> bool {
     let older = match skill_version(&text) {
         None => true,
         Some(installed) => version_numbers(installed)
-            .zip(version_numbers(env!("CARGO_PKG_VERSION")))
+            .zip(version_numbers(zirc_proto::version::get()))
             .is_some_and(|(installed, mine)| installed < mine),
     };
     older && std::fs::write(&path, skill()).is_ok()
@@ -268,6 +268,8 @@ mod tests {
 
     #[test]
     fn a_newer_zirc_brings_an_installed_skill_up_to_it_and_installs_none() {
+        // A test's zirc says no version of its own, and none is older than that.
+        zirc_proto::version::set("1.2.3");
         let skills = tempfile::tempdir().unwrap();
         let path = skills.path().join("zirc/SKILL.md");
         // None installed stays none.
@@ -286,9 +288,9 @@ mod tests {
         installed("0.0.1");
         assert!(refresh_skill(skills.path()));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), skill());
-        assert_eq!(skill_version(&skill()), Some(env!("CARGO_PKG_VERSION")));
+        assert_eq!(skill_version(&skill()), Some(zirc_proto::version::get()));
         // The same, a newer one, and one whose version can't be read are left as they are.
-        for version in [env!("CARGO_PKG_VERSION"), "999.0.0", "dev"] {
+        for version in [zirc_proto::version::get(), "999.0.0", "dev"] {
             installed(version);
             assert!(!refresh_skill(skills.path()), "{version}");
             assert!(

@@ -57,6 +57,7 @@ impl Local {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    zirc_proto::version::set(env!("CARGO_PKG_VERSION"));
     let cli = Cli::parse();
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))

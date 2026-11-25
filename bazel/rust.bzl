@@ -1,6 +1,12 @@
 """zirc's Rust rules: every crate's BUILD file is one call, with its dependencies, crates.io
 and zirc's own alike, read from its Cargo.toml, so they're declared in one place for Cargo
-and Bazel."""
+and Bazel.
+
+Only a binary is compiled with zirc's version (`version = VERSION`, its `CARGO_PKG_VERSION`),
+the part of it in src/main.rs when it has a library: libraries and tests aren't, so a release
+compiles a handful of files again and not every crate. A binary says its version as it starts
+and libraries read it there (`zirc_proto::version`); ops/check.sh fails a library that reads
+`CARGO_PKG_VERSION`."""
 
 load("@crates//:defs.bzl", "aliases", "all_crate_deps")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_shared_library", "rust_test")
@@ -39,7 +45,6 @@ def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, tes
         link_deps = ERGO_DEPS if ergo else [],
         proc_macro_deps = all_crate_deps(proc_macro_dev = True),
         lint_config = "//bazel:lints",
-        version = VERSION,
         data = ERGO_DATA if ergo else [],
         env = ERGO_ENV if ergo else {},
         size = "medium" if ergo else test_size,
@@ -55,7 +60,6 @@ def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, tes
             link_deps = ERGO_DEPS if ergo else [],
             proc_macro_deps = all_crate_deps(proc_macro = True, proc_macro_dev = True),
             lint_config = "//bazel:lints",
-            version = VERSION,
             data = (ERGO_DATA if ergo else []) + test_data,
             env = (ERGO_ENV if ergo else {}) | test_env,
             size = "medium" if ergo else test_size,
@@ -96,7 +100,6 @@ def zirc_rust_library(name, surface, ergo = False, wasm = False, wasm_bindgen = 
         deps = all_crate_deps(normal = True) + deps,
         proc_macro_deps = all_crate_deps(proc_macro = True),
         lint_config = "//bazel:lints",
-        version = VERSION,
         visibility = ["//visibility:public"],
         **kwargs
     )
@@ -113,7 +116,8 @@ def zirc_rust_library(name, surface, ergo = False, wasm = False, wasm_bindgen = 
             deps = all_crate_deps(normal = True) + deps,
             proc_macro_deps = all_crate_deps(proc_macro = True),
             lint_config = "//bazel:lints",
-            version = VERSION,
+            # What a page runs: it says zirc's version as it starts (zirc_proto::version).
+            rustc_env = {"ZIRC_VERSION": VERSION},
         )
         rust_wasm_bindgen(
             name = name + "_bindgen",
@@ -153,7 +157,6 @@ def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {},
         compile_data = native.glob(["src/**/*.md"], allow_empty = True) + compile_data,
         proc_macro_deps = all_crate_deps(proc_macro = True),
         lint_config = "//bazel:lints",
-        version = VERSION,
     )
     if native.glob(["src/lib.rs"], allow_empty = True):
         rust_library(
@@ -168,6 +171,7 @@ def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {},
             name = name,
             srcs = ["src/main.rs"],
             deps = [":" + name + "_lib"] + all_crate_deps(normal = True) + deps,
+            version = VERSION,
             visibility = ["//visibility:public"],
             **(common | kwargs)
         )
@@ -177,6 +181,7 @@ def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {},
             name = name,
             srcs = native.glob(["src/**/*.rs"]),
             deps = all_crate_deps(normal = True) + deps,
+            version = VERSION,
             visibility = ["//visibility:public"],
             **(common | kwargs)
         )

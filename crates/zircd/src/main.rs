@@ -5,7 +5,7 @@
 use std::io::IsTerminal as _;
 use std::process::ExitCode;
 
-use clap::Parser as _;
+use clap::{CommandFactory as _, FromArgMatches as _};
 use tokio::signal::unix::{SignalKind, signal};
 use tracing_subscriber::EnvFilter;
 
@@ -14,7 +14,11 @@ async fn main() -> ExitCode {
     // Found now: once an update renames a new binary over this one, Linux names this
     // process's "(deleted)".
     let exe = std::env::current_exe();
-    let cli = zircd::Cli::parse();
+    // This file alone is compiled with zirc's version (bazel/rust.bzl).
+    let version = env!("CARGO_PKG_VERSION");
+    zirc_proto::version::set(version);
+    let matches = zircd::Cli::command().version(version).get_matches();
+    let cli = zircd::Cli::from_arg_matches(&matches).unwrap_or_else(|err| err.exit());
     let filter = match EnvFilter::try_new(&cli.log) {
         Ok(filter) => filter,
         Err(err) => {

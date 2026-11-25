@@ -73,7 +73,7 @@ pub async fn sign_in(
     let mut said = Ok(());
     let credentials = zirc_core::signin::sign_in(
         &client,
-        &format!("zirc-tui {}", env!("CARGO_PKG_VERSION")),
+        &format!("zirc-tui {}", zirc_proto::version::get()),
         &zirc_core::machine::host_name(),
         // The TUI keeps one sign-in per `zirc-tui login`; several come from `zirc login`.
         false,

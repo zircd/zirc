@@ -224,7 +224,7 @@ impl Options {
             token,
             host: self.host.clone(),
             port: self.public_irc_port,
-            version: format!("zirc-server {}", env!("CARGO_PKG_VERSION")),
+            version: format!("zirc-server {}", zirc_proto::version::get()),
         }
     }
 

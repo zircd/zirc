@@ -50,6 +50,7 @@ pub mod telemetry;
 pub mod thread;
 pub mod trigger;
 pub mod uploads;
+pub mod version;
 pub mod woke;
 pub mod working;
 

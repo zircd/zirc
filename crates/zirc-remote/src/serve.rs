@@ -377,7 +377,7 @@ async fn respond(
     };
     match name.as_str() {
         "ping" => return "pong".to_owned(),
-        "version" => return env!("CARGO_PKG_VERSION").to_owned(),
+        "version" => return zirc_proto::version::get().to_owned(),
         "help" => return help(host, standing),
         _ => {}
     }

@@ -1122,7 +1122,7 @@ fn before(command: &Command, home: &Path, own_home: bool) {
     {
         eprintln!(
             "{PROGRAM}: updated the {PROGRAM} skill to {}",
-            env!("CARGO_PKG_VERSION")
+            zirc_proto::version::get()
         );
     }
 }

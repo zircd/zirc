@@ -123,7 +123,7 @@ impl Server {
         // reqwest's rustls comes without a crypto provider: use ring, as zirc-irc does.
         let _ = rustls::crypto::ring::default_provider().install_default();
         let http = reqwest::Client::builder()
-            .user_agent(concat!("zirc/", env!("CARGO_PKG_VERSION")))
+            .user_agent(zirc_proto::version::user_agent())
             .timeout(Duration::from_secs(20))
             .build()
             .ok()?;
