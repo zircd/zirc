@@ -4515,6 +4515,42 @@ mod tests {
         );
     }
 
+    /// The user's case (25 Nov 2026): written to, an agent's machine says no session of that
+    /// name works there. It's said under the message, and the input says why nothing more
+    /// can be sent, with no conversation of the machine's own.
+    #[test]
+    fn a_message_to_an_ended_agent_says_not_delivered_and_its_input_says_why() {
+        let mut app = app();
+        let asked = zirc_proto::Message::new(
+            "cc-2",
+            zirc_proto::Event::Text {
+                body: "Which branch should I use?".into(),
+            },
+        );
+        for line in [
+            ":me-mbp!u@machine/me JOIN #api".to_owned(),
+            format!(
+                ":me-mbp!u@machine/me PRIVMSG me :{}",
+                zirc_proto::encode(&asked).unwrap()
+            ),
+            "@msgid=mine :me!u@h PRIVMSG me-mbp :cc-2 main".to_owned(),
+            "@+zirc/receipt=undelivered,cc-2;+draft/reply=mine :me-mbp!u@machine/me NOTICE me \
+             :No session cc-2 here: this didn't reach anyone."
+                .to_owned(),
+        ] {
+            app.handle(line.parse().unwrap());
+        }
+        assert!(app.chat.position("me-mbp").is_none());
+        let _ = app.select(app.chat.position("me-mbp/cc-2").unwrap());
+        let (rows, _) = draw(&app, 120, 16);
+        row_with(&rows, "Not delivered: cc-2 has ended");
+        row_with(&rows, "Messages can't reach it");
+        assert!(
+            !rows.iter().any(|row| row.contains("No session cc-2 here")),
+            "{rows:?}"
+        );
+    }
+
     #[test]
     fn says_a_failed_send_in_one_line_and_gives_back_what_was_typed() {
         let mut app = app();
