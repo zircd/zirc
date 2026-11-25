@@ -19,8 +19,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, Result};
 use zirc_core::ipc::Response;
 use zirc_core::presence::{self, LocalOverlap};
+use zirc_proto::Message;
 use zirc_proto::woke::{Settled, Side};
-use zirc_proto::{Event, Message};
 
 use super::{Daemon, git, now};
 
@@ -189,19 +189,10 @@ impl Daemon {
         };
         if let Some(settled) = Settled::of(&delivery.message.event) {
             self.settled_lately.keep(&delivery.scope(), settled, now());
-        } else if let Event::Custom { kind, data, .. } = &delivery.message.event
-            && kind == zirc_proto::ci::LANDING_KIND
+        } else if let Some((scope, landed)) = super::moved::Landed::of(response)
+            && let (Some(machine), Some(session)) = (landed.machine, landed.session)
         {
-            let data = zirc_proto::ci::Data::of(data);
-            if let (Some("passed"), Some(_), Some(machine), Some(session)) = (
-                data.state.as_deref(),
-                data.commit.as_deref(),
-                data.machine.as_deref(),
-                data.session.as_deref(),
-            ) {
-                self.settled_lately
-                    .landed(&delivery.scope(), machine, session);
-            }
+            self.settled_lately.landed(&scope, &machine, &session);
         }
     }
 

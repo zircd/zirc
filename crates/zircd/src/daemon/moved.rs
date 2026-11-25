@@ -57,16 +57,19 @@ pub struct Brought {
     paths: Vec<String>,
 }
 
-/// A landing CI says landed: its commit, the session that queued it and what it's about.
-struct Landed {
+/// A landing CI says landed: its commit, the session that queued it, on which machine, and
+/// what it's about. Whether CI's line says a landing landed is decided here alone: a try that
+/// passed is the same kind of event with a commit, and landed nothing.
+pub(super) struct Landed {
     commit: String,
-    session: Option<String>,
+    pub(super) session: Option<String>,
+    pub(super) machine: Option<String>,
     subject: Option<String>,
 }
 
 impl Landed {
     /// The landing `response` says landed, if it's CI saying one did.
-    fn of(response: &Response) -> Option<(String, Self)> {
+    pub(super) fn of(response: &Response) -> Option<(String, Self)> {
         let Response::Delivery(delivery) = response else {
             return None;
         };
@@ -83,6 +86,7 @@ impl Landed {
         let landed = Self {
             commit: ci.commit?,
             session: ci.session,
+            machine: ci.machine,
             subject: ci.subject,
         };
         Some((delivery.scope(), landed))
@@ -303,6 +307,7 @@ impl Daemon {
         let landed = Landed {
             commit: brought.head.clone(),
             session: None,
+            machine: None,
             subject: brought.subjects.last().cloned(),
         };
         self.note_landed(&brought.channel, &landed, &woken);
@@ -454,6 +459,12 @@ mod tests {
             (
                 "passed",
                 "cc-2 (apple/login): build 7's Apple apps compile on ccccccc",
+            ),
+            // A try that passed landed nothing, and ends nothing that waits for a landing,
+            // such as a settle (settled.rs).
+            (
+                "passed",
+                "cc-2: tried login: passes on main as ccccccc (build 7), not landing it",
             ),
         ] {
             assert!(Landed::of(&landing(state, text)).is_none(), "{text}");
