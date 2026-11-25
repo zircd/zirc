@@ -572,6 +572,18 @@ impl SeatChange {
             Some(whose) => format!("{} ({whose})", self.holder.session.who()),
             None => self.holder.session.who().to_owned(),
         };
+        self.words_of(&who)
+    }
+
+    /// Its line in a room, read by the session's owner: `your main-fix took the fixer role
+    /// in monorepo · zirc role take fixer`, `your main-fix left the fixer role`.
+    #[must_use]
+    pub fn words_ours(&self) -> String {
+        self.words_of(&format!("your {}", self.holder.session.who()))
+    }
+
+    /// Its line, the session named as `who`.
+    fn words_of(&self, who: &str) -> String {
         if self.took {
             format!(
                 "{who} took the {} role in {} · {}",
@@ -580,7 +592,7 @@ impl SeatChange {
                 take_command(&self.role)
             )
         } else {
-            left_words(&who, &self.role)
+            left_words(who, &self.role)
         }
     }
 

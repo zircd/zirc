@@ -159,9 +159,10 @@ impl Chat {
         Some(format!("{} · {}", roles::PRIVATE, seat.status(&machine)))
     }
 
-    /// A seat taken or left as the conversation called `name` says it: in our own
-    /// conversation with the role, of one of our sessions, `your main-fix took the role`;
-    /// elsewhere, whose the session is, `main-fix (Henrik's) took the fixer role in monorepo ·
+    /// A seat taken or left as the conversation called `name` says it: of one of our
+    /// sessions, in our own conversation with the role, `your main-fix took the role`, and in
+    /// a room, `your main-fix took the fixer role in monorepo · zirc role take fixer`; of
+    /// anyone else's, whose the session is, `main-fix (Henrik's) took the fixer role in monorepo ·
     /// zirc role take fixer`.
     #[must_use]
     pub fn seat_words(&self, change: &SeatChange, name: &str) -> String {
@@ -169,8 +170,12 @@ impl Chat {
         let ours = owner
             .as_deref()
             .is_some_and(|owner| owner.eq_ignore_ascii_case(self.me()));
-        if ours && self.is_role(name) {
-            return change.words_yours();
+        if ours {
+            return if self.is_role(name) {
+                change.words_yours()
+            } else {
+                change.words_ours()
+            };
         }
         let whose = owner.map(|owner| super::possessive(&self.owner_name(&owner)));
         change.words_with(whose.as_deref())
@@ -305,6 +310,37 @@ mod tests {
         let time = entry.time;
         // Put in by hand, as the event is longer than a fed line: taken in as heard.
         chat.learn_seat("fixer", time, event);
+    }
+
+    #[test]
+    fn a_seat_taken_by_our_own_session_is_said_as_ours() {
+        let mut chat = with_fixer();
+        // Our machine, by its host.
+        let host = zirc_proto::names::machine_host(chat.me());
+        feed(&mut chat, &[&format!(":me-mbp!u@{host} JOIN #api")]);
+        let change = SeatChange {
+            role: "fixer".into(),
+            repository: "monorepo".into(),
+            holder: Holder {
+                machine: "me-mbp".into(),
+                ..holder()
+            },
+            took: true,
+        };
+        assert_eq!(
+            chat.seat_words(&change, "#api"),
+            "your main-fix took the fixer role in monorepo · zirc role take fixer"
+        );
+        assert_eq!(
+            chat.seat_words(&change, "fixer"),
+            "your main-fix took the role"
+        );
+        // Anyone else's, by whose it is.
+        let theirs = SeatChange {
+            holder: holder(),
+            ..change
+        };
+        assert!(chat.seat_words(&theirs, "#api").starts_with("main-fix"));
     }
 
     #[test]
