@@ -91,7 +91,8 @@ impl Daemon {
         // Each wake's line where people see it, said once every watcher has heard what woke it.
         let mut wakes = Vec::new();
         for (session, why) in woken {
-            if let Some(wake) = self.woke(&session, why, automatic, line.clone()) {
+            let wake = self.woke(&session, why, automatic, line.clone());
+            if wake.is_some() || says_its_own_line(response) {
                 wakes.push((session.clone(), wake, why));
             }
             self.heard_now(&session, response);
@@ -799,9 +800,28 @@ pub(super) fn names_branch(text: &str, branch: &str) -> bool {
         })
 }
 
+/// Whether `response` says its wake's line though it came with another wake, and counts as
+/// part of it: what woke a role, which people read in their conversation with the role, so a
+/// tool's report and a webhook a second apart each say what they were.
+fn says_its_own_line(response: &Response) -> bool {
+    matches!(response, Response::Direct(direct) if direct.woke.is_some())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_woke_a_role_says_its_own_line_and_a_plain_message_doesnt() {
+        let direct = |woke: Option<zirc_proto::woke::Woke>| {
+            let said =
+                serde_json::json!({"from": "oncall", "text": "the backup finished", "woke": woke});
+            Response::Direct(serde_json::from_value(said).unwrap())
+        };
+        let webhook = zirc_proto::woke::Woke::webhook("the backup finished");
+        assert!(says_its_own_line(&direct(Some(webhook))));
+        assert!(!says_its_own_line(&direct(None)));
+    }
 
     /// CI's landing for `session` on `machine`, or naming no machine, as an older CI's does.
     fn landing(machine: Option<&str>) -> Delivery {

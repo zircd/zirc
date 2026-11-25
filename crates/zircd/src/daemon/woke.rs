@@ -11,10 +11,16 @@ use super::{Daemon, WATCHER_SESSION};
 
 impl Daemon {
     /// Says, as `session`, that its watch woke on `response` for `why`: the wake `id`
-    /// ([`Daemon::woke`]). In the scope of the repository the line was said in when the
+    /// ([`Daemon::woke`]), or none for a role's wake that came with another. In the scope of the repository the line was said in when the
     /// session works there, else of one it works in; nowhere for a session in none, which
     /// has no room to say it in.
-    pub(super) fn say_woke(&mut self, session: &str, id: String, why: Why, response: &Response) {
+    pub(super) fn say_woke(
+        &mut self,
+        session: &str,
+        id: Option<String>,
+        why: Why,
+        response: &Response,
+    ) {
         let said_in = match response {
             Response::Delivery(delivery) => Some(delivery.scope()),
             Response::Overlap(overlap) => Some(overlap.channel.clone()),
@@ -37,7 +43,7 @@ impl Daemon {
             return;
         };
         let woke = Woke {
-            wake: Some(id),
+            wake: id,
             ..self.woke_by(session, why, response)
         };
         let message = Message {
