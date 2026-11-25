@@ -1158,14 +1158,11 @@ impl<'a> Layout<'a> {
         let mut line = self.blank(key, Some(entry), entry.time, LineKind::Event);
         let (shape, callout) = match (woke_of(entry), settled_of(entry)) {
             (Some(woke), _) => {
-                // In our conversation with the role, its wakes needn't say whose they are.
-                let woke = zirc_proto::woke::Woke {
-                    role: woke
-                        .role
-                        .filter(|role| fold(role) != fold(&self.conversation.name)),
-                    ..woke
+                let session = match &entry.kind {
+                    super::EntryKind::Zirc(message) => message.session.as_str(),
+                    _ => "",
                 };
-                let callout = self.chat.woke_callout(&woke);
+                let callout = self.chat.woke_callout(&woke, &entry.from, session);
                 self.woken = Some((line.key.clone(), woke));
                 (RowShape::Woke, callout)
             }

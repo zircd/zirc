@@ -136,6 +136,17 @@ impl Subject {
         }
     }
 
+    /// Who finds one, as a wake says it: `CI` for a warning or a flaky test, `the alerts` for
+    /// a container, zirc for a kind reported by hand.
+    #[must_use]
+    pub const fn found_by(self) -> &'static str {
+        match self {
+            Self::Warning | Self::Flaky => "CI",
+            Self::Container => "the alerts",
+            Self::Error | Self::Issue | Self::Incident => crate::NAME,
+        }
+    }
+
     /// How long an item of this kind stays open before its holder is reminded, in seconds:
     /// a warning's two hours, as nothing is broken yet; a flaky test's, a container's or an
     /// error's half an hour (the nudges of the workflows they replace); an incident's a quarter
@@ -275,6 +286,25 @@ impl RoleReport {
             .map(|build| format!(" in build {build}"))
             .unwrap_or_default();
         format!("{}{build}: {}", self.kind.phrase(), self.summary)
+    }
+
+    /// What a wake says it was, after who woke and why, without its id, which only the
+    /// holder's own watch shows: `CI found a flaky test, //a:b · build 612`; `still open: …`
+    /// for a reminder (the user's choice, 25 Nov 2026).
+    #[must_use]
+    pub fn found(&self, reminder: bool) -> String {
+        let still = if reminder { "still open: " } else { "" };
+        let build = self
+            .build
+            .as_ref()
+            .map(|build| format!(" · build {build}"))
+            .unwrap_or_default();
+        format!(
+            "{still}{} found {}, {}{build}",
+            self.kind.found_by(),
+            self.kind.label(),
+            self.summary
+        )
     }
 
     /// Its event, whose text plain IRC clients show: its words, and how to close it. It

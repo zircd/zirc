@@ -1375,7 +1375,7 @@ mod tests {
         let said = shown(&rows);
         assert_eq!(
             said[1].trim(),
-            "▎ Woke: build 612 failed  09:00",
+            "▎ cc-12 woke: build 612 failed  09:00",
             "{said:#?}"
         );
         let Row::Text { tone, id, .. } = &rows[1] else {

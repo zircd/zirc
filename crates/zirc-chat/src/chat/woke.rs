@@ -1,5 +1,5 @@
 //! What agents do, as every app draws it ([`zirc_proto::woke`]; the user's decisions, 23
-//! and 24 Nov 2026): a wake as one line in the agent's own conversation, `Woke: build 612
+//! and 24 Nov 2026): a wake as one line in the agent's own conversation, `main-fix woke: build 612
 //! failed on main`, with an edge in its tone's colour; an overlap two agents settled as one
 //! line in the agents' room; and, once for each person, a note under their first of each
 //! that says what it is, put away with Got it in any of their apps
@@ -32,7 +32,7 @@ pub const EXCERPT: usize = 80;
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub struct Callout {
-    /// What it starts with, in bold: `Woke:`, `Overlap settled`, `This is a wake.`
+    /// What it starts with, in bold: `main-fix woke:`, `Overlap settled`, `This is a wake.`
     pub label: String,
     /// What follows the label: words, with agents' names in bold and files in monospace.
     pub spans: Vec<RichSpan>,
@@ -65,7 +65,7 @@ impl Callout {
             .collect()
     }
 
-    /// What it says, whole, as one line: `Woke: build 612 failed on main`.
+    /// What it says, whole, as one line: `main-fix woke: build 612 failed on main`.
     #[must_use]
     pub fn said(&self) -> String {
         let words: String = self.spans.iter().map(|span| span.text.as_str()).collect();
@@ -208,7 +208,7 @@ impl Chat {
         }
     }
 
-    /// A wake's words after `Woke:`, as we read them: `Rajesh Iyer replied in #agents: the
+    /// A wake's words after its heading, as we read them: `Rajesh Iyer replied in #agents: the
     /// old listener lingers 200 ms`.
     #[must_use]
     pub fn woke_words(&self, woke: &Woke) -> String {
@@ -219,11 +219,12 @@ impl Chat {
         }
     }
 
-    /// What a wake's line draws.
+    /// What a wake's line draws, said by the agent `session` on the machine `nick`: who
+    /// woke, and why, in bold ([`Woke::heading`]), then what.
     #[must_use]
-    pub fn woke_callout(&self, woke: &Woke) -> Callout {
+    pub fn woke_callout(&self, woke: &Woke, nick: &str, session: &str) -> Callout {
         Callout {
-            label: woke::LABEL.to_owned(),
+            label: woke.heading(&self.side_name(nick, Some(session))),
             spans: vec![text(self.woke_words(woke))],
             tone: woke.tone().role().to_owned(),
             button: None,
@@ -446,10 +447,11 @@ mod tests {
             .filter_map(|line| woke_of(&line.entry))
             .collect();
         assert_eq!(woke, [reply()]);
-        let callout = chat.woke_callout(&woke[0]);
+        let callout = chat.woke_callout(&woke[0], "me-mbp", "cc-1");
+        // Who woke first, then what (the user's choice, 25 Nov 2026).
         assert_eq!(
             callout.said(),
-            "Woke: alice replied in #agents: the old listener lingers 200 ms"
+            "checkout woke: alice replied in #agents: the old listener lingers 200 ms"
         );
         assert_eq!(callout.tone, "warning");
         // A line said where we aren't is named, never quoted.
@@ -490,15 +492,24 @@ mod tests {
             state: Some(zirc_proto::card::State::Failed),
             ..Woke::new(What::Build, By::Ci)
         };
-        assert_eq!(chat.woke_callout(&failed).tone, "error");
-        assert_eq!(chat.woke_callout(&failed).said(), "Woke: build 612 failed");
+        let ours = |woke: &Woke| chat.woke_callout(woke, "me-mbp", "cc-1");
+        assert_eq!(ours(&failed).tone, "error");
+        assert_eq!(ours(&failed).said(), "checkout woke: build 612 failed");
+        let as_fixer = Woke {
+            role: Some("fixer".into()),
+            ..failed
+        };
+        assert_eq!(
+            ours(&as_fixer).said(),
+            "checkout woke as the fixer: build 612 failed"
+        );
         let asked = Woke {
             from: Some("me-mbp".into()),
             session: Some("cc-1".into()),
             ..Woke::new(What::Asked, By::Agent)
         };
         assert_eq!(chat.woke_words(&asked), "checkout asked it");
-        assert_eq!(chat.woke_callout(&asked).tone, "agent");
+        assert_eq!(ours(&asked).tone, "agent");
         let wrote = Woke {
             from: Some("me".into()),
             ..Woke::new(What::Wrote, By::Person)
@@ -609,7 +620,7 @@ mod tests {
         };
         assert_eq!(
             woke.text,
-            "Woke: alice replied in #agents: the old listener lingers 200 ms"
+            "checkout woke: alice replied in #agents: the old listener lingers 200 ms"
         );
         assert_eq!(
             woke.callout.as_ref().map(|callout| callout.tone.as_str()),

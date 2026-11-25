@@ -1,6 +1,6 @@
 //! What agents do, said where people see it (the user's decisions, 23 and 24 Nov 2026):
 //! each wake of a session's watch as one line in the session's own conversation
-//! ([`Woke`], [`KIND`]: `Woke: build 612 failed on main`), and each overlap two sessions
+//! ([`Woke`], [`KIND`]: `main-fix woke: build 612 failed on main`), and each overlap two sessions
 //! settled as one line in the agents' room ([`Settled`], [`SETTLED_KIND`]), which the
 //! session that agreed says with `zirc settle`. zircd says a wake for the session it woke,
 //! in the room its posts go to, at info, so history keeps it; apps show it only in the
@@ -24,8 +24,10 @@ pub const KIND: &str = "x-zirc/woke";
 /// The kind of a settled overlap's event.
 pub const SETTLED_KIND: &str = "x-zirc/overlap-settled";
 
-/// What a wake's line starts with, set in bold before its words: `Woke: build 612 failed`.
-pub const LABEL: &str = "Woke:";
+/// What a wake's line says the agent did, after its name and before why and what
+/// ([`Woke::heading`]): `main-fix woke: …` (the user's choice, 25 Nov 2026: who, why, then
+/// what).
+pub const WOKE: &str = "woke";
 
 /// What a settled overlap's line is headed by.
 pub const SETTLED_LABEL: &str = "Overlap settled";
@@ -207,7 +209,7 @@ pub struct Woke {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wake: Option<String>,
     /// The role ([`crate::roles`]) the session was woken as, when it was: its line ends
-    /// with it, `Woke: master is broken (fixer)`.
+    /// with it, `main-fix woke as the fixer: master is broken`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     /// For a report: the item it opened ([`crate::role_report::OpenItem::id`]) and what was
@@ -333,14 +335,19 @@ impl Woke {
         Event::Custom {
             kind: KIND.to_owned(),
             data: serde_json::to_value(self).expect("a wake serialises"),
-            text: format!(
-                "woke: {}",
-                Self {
+            text: {
+                let why = self
+                    .role
+                    .as_ref()
+                    .map(|role| format!(" as the {role}"))
+                    .unwrap_or_default();
+                let what = Self {
                     branch: None,
                     ..self.clone()
                 }
-                .words(None)
-            ),
+                .words(None);
+                format!("{WOKE}{why}: {what}")
+            },
         }
     }
 
@@ -369,21 +376,24 @@ impl Woke {
         }
     }
 
-    /// What its line says after [`LABEL`], `who` being whoever did it as people read them
-    /// (`Rajesh Iyer`, `replay-index`), which the reader's app knows: `build 612 failed on
-    /// main`, `Rajesh Iyer replied in #agents`. With no `who`, whose doing it was in a
-    /// word: `a person`, `another agent`.
+    /// What its line starts with, set in bold: the agent that woke, `agent` as the reader
+    /// knows it, and why when a role was why: `main-fix woke:`, `ops-watch woke as the
+    /// oncall:` (the user's choice, 25 Nov 2026: who, why, then what).
     #[must_use]
-    pub fn words(&self, who: Option<&str>) -> String {
-        let words = self.what_words(who);
+    pub fn heading(&self, agent: &str) -> String {
         match &self.role {
-            Some(role) => format!("{words} ({role})"),
-            None => words,
+            Some(role) => format!("{agent} {WOKE} as the {role}:"),
+            None => format!("{agent} {WOKE}:"),
         }
     }
 
-    /// [`Woke::words`] but its role.
-    fn what_words(&self, who: Option<&str>) -> String {
+    /// What its line says after its [`Woke::heading`]: what happened, and who did it,
+    /// `who` being whoever did it as people read them (`Rajesh Iyer`, `replay-index`),
+    /// which the reader's app knows: `CI landed its branch main-fix · build 613`, `Rajesh
+    /// Iyer replied in #agents`. With no `who`, whose doing it was in a word: `a person`,
+    /// `another agent`. Never a report's id, which only the holder's own watch shows.
+    #[must_use]
+    pub fn words(&self, who: Option<&str>) -> String {
         let who = who.unwrap_or(match self.by {
             By::Ci => "CI",
             By::Agent => "another agent",
@@ -440,13 +450,13 @@ impl Woke {
             What::Posted => format!("{who} posted{place}"),
             What::Reported => match self.report.as_deref() {
                 Some(Reported {
-                    id,
                     report,
                     reminder,
                     events,
+                    ..
                 }) => match report.tool {
                     Some(_) => crate::inbound::woke_words(report, *events, *reminder),
-                    None => crate::role_report::head(&report.words(), id, *reminder),
+                    None => report.found(*reminder),
                 },
                 None => "something was reported".to_owned(),
             },
@@ -469,7 +479,7 @@ impl Woke {
             .unwrap_or_default();
         match (self.state, self.branch.as_deref()) {
             (Some(State::Passed), Some(branch)) if self.landing => {
-                format!("CI landed {branch} · {build}")
+                format!("CI landed its branch {branch} · {build}")
             }
             (Some(State::Passed), None) if self.landing => format!("CI landed {build}"),
             (Some(State::Passed), _) => format!("{build} passed{on}"),
@@ -731,7 +741,10 @@ mod tests {
         assert_eq!(failed.words(None), "build 612 failed on main-fix");
         assert_eq!(failed.tone(), Tone::Failed);
         let landed = build(State::Passed, true);
-        assert_eq!(landed.words(None), "CI landed main-fix · build 612");
+        assert_eq!(
+            landed.words(None),
+            "CI landed its branch main-fix · build 612"
+        );
         assert_eq!(landed.tone(), Tone::Passed);
         let passed = build(State::Passed, false);
         assert_eq!(passed.words(None), "build 612 passed on main-fix");
@@ -873,12 +886,19 @@ mod tests {
         };
         let item = crate::role_report::OpenItem::opened(report, 0);
         let woke = Woke::reported(&item, false);
+        // Who found what, then the build; never its id, which only the holder's own watch
+        // shows (the user's choice, 25 Nov 2026).
         assert_eq!(
             woke.words(None),
-            format!(
-                "new warning in build 612: unused import [{}] (fixer)",
-                item.id
-            )
+            "CI found a new warning, unused import · build 612"
+        );
+        assert_eq!(woke.heading("main-fix"), "main-fix woke as the fixer:");
+        let Event::Custom { text, .. } = woke.event() else {
+            panic!("a wake's event");
+        };
+        assert_eq!(
+            text,
+            "woke as the fixer: CI found a new warning, unused import · build 612"
         );
         assert!(
             Woke::reported(&item, true)

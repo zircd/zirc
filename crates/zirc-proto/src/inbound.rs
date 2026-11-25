@@ -407,7 +407,7 @@ mod tests {
         assert_eq!(woke.tone(), crate::woke::Tone::Failed);
         assert_eq!(
             woke.words(None),
-            "Sentry: TypeError in web, reading 'slug' of undefined · 37 events, one open item (oncall)"
+            "Sentry: TypeError in web, reading 'slug' of undefined · 37 events, one open item"
         );
     }
 
@@ -421,7 +421,7 @@ mod tests {
         );
         assert_eq!(
             woke.words(None),
-            "CI landed ops-watch · build 1502 · the item is closed (oncall)"
+            "CI landed its branch ops-watch · build 1502 · the item is closed"
         );
         assert_eq!(woke.tone(), crate::woke::Tone::Passed);
         let two = crate::woke::Woke { closed: 2, ..woke };

@@ -453,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn a_roles_wakes_show_in_our_conversation_with_it_saying_no_role() {
+    fn a_roles_wakes_show_in_our_conversation_with_it_saying_who_woke_as_it() {
         use zirc_proto::woke::Woke;
         let mut chat = with_fixer();
         // Our conversation with the fixer, as when we wrote it.
@@ -492,7 +492,7 @@ mod tests {
         assert_eq!(wakes.len(), 1);
         assert_eq!(
             wakes[0].text,
-            "Woke: A webhook from an unknown tool, as it was sent: “backup job nightly-db finished with warnings”"
+            "henrik's cc-1 woke as the fixer: A webhook from an unknown tool, as it was sent: “backup job nightly-db finished with warnings”"
         );
         // Below what was said before it, and nothing unread for it.
         assert!(

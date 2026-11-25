@@ -51,8 +51,8 @@ pub struct Wake {
 }
 
 impl Wake {
-    /// The wake its role's holder is woken with: `Woke: flaky test in build 612: //a:b
-    /// [3f2a1b9c] (fixer)`.
+    /// The wake its role's holder is woken with: `main-fix woke as the fixer: CI found a
+    /// flaky test, //a:b · build 612`.
     #[must_use]
     pub fn woke(&self) -> zirc_proto::woke::Woke {
         zirc_proto::woke::Woke::reported(&self.item, self.reminder)
@@ -428,11 +428,10 @@ mod tests {
         let wakes = items.due(10);
         assert_eq!(wakes.len(), 1);
         assert!(!wakes[0].reminder);
-        let words = wakes[0].woke().words(None);
-        assert!(
-            words.starts_with("flaky test in build 612: //a:b [") && words.ends_with("] (fixer)"),
-            "{words}"
-        );
+        // Who found what for people; the id only in what the holder's watch is told.
+        let woke = wakes[0].woke();
+        assert_eq!(woke.words(None), "CI found a flaky test, //a:b · build 612");
+        assert!(wakes[0].text().contains(&format!("[{}]", wakes[0].item.id)));
         assert!(items.heard(OPS, Some("ci"), &flaky("//a:b"), 20));
         assert!(items.due(20).is_empty());
         let listing = items.listing("fixer", 20);
@@ -494,7 +493,7 @@ mod tests {
             closed[0]
                 .woke()
                 .words(None)
-                .ends_with("· the item is closed (fixer)")
+                .ends_with("· the item is closed")
         );
     }
 
