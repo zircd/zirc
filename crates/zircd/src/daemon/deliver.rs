@@ -571,7 +571,7 @@ impl Daemon {
         if let Response::Delivery(delivery) = response
             && let Event::Custom { kind, text, data } = &delivery.message.event
             && kind == LANDING_KIND
-            && zirc_proto::ci::Data::of(data).state.as_deref() != Some("running")
+            && !zirc_proto::ci::Data::of(data).under_way()
             && self
                 .awaits
                 .heard(text, zirc_proto::ci::Data::of(data).branch.as_deref())
@@ -641,7 +641,7 @@ impl Daemon {
                 session,
                 text,
                 ci.branch.as_deref(),
-                ci.state.as_deref() == Some("failed"),
+                ci.state() == Some(zirc_proto::card::State::Failed),
             )
         {
             return ControlFlow::Break(Some(why));
@@ -821,7 +821,8 @@ fn ci_for_another_machine(delivery: &Delivery, me: &str) -> bool {
 /// wait on the landing is for how it ends.
 fn under_way(message: &Message, data: &serde_json::Value) -> bool {
     let data = zirc_proto::ci::Data::of(data);
-    message.is_live() || (data.state.as_deref() == Some("running") && !data.steps.is_empty())
+    message.is_live()
+        || (data.state() == Some(zirc_proto::card::State::Running) && !data.steps.is_empty())
 }
 
 /// Whether `text` names `branch` as a word of its own, in backticks or not: `checkout`, not

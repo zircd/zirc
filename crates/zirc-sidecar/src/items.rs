@@ -186,7 +186,7 @@ impl Items {
             && let Event::Custom { kind, data, .. } = &message.event
             && kind == LANDING_KIND
             && let Ok(data) = serde_json::from_value::<ci::Data>(data.clone())
-            && data.state.as_deref() == Some("passed")
+            && data.state() == Some(zirc_proto::card::State::Passed)
             && !data.tried
         {
             let ids = role_report::fixed_by(&data.fixes);

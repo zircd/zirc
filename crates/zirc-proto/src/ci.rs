@@ -322,7 +322,34 @@ pub struct Failed {
     pub results: String,
 }
 
+/// A state as CI says it (`ops/say.sh`'s `$ZIRC_STATE`), the one place its words are read:
+/// `None` for one it doesn't know.
+#[must_use]
+pub fn state_of(state: &str) -> Option<State> {
+    Some(match state {
+        "pending" => State::Pending,
+        "running" => State::Running,
+        "passed" => State::Passed,
+        "failed" => State::Failed,
+        "cancelled" => State::Cancelled,
+        "warning" => State::Warning,
+        _ => return None,
+    })
+}
+
 impl Data {
+    /// Its state ([`state_of`]): `None` without one, or for one CI's words don't name.
+    #[must_use]
+    pub fn state(&self) -> Option<State> {
+        self.state.as_deref().and_then(state_of)
+    }
+
+    /// Whether what it says is of a build still to start or under way, not how one ended.
+    #[must_use]
+    pub fn under_way(&self) -> bool {
+        matches!(self.state(), Some(State::Pending | State::Running))
+    }
+
     /// What `data`, a landing's or deploy's event's data, says; fields it doesn't have, or
     /// has in another shape, are left out. Empty strings count as unknown, as CI leaves them.
     #[must_use]
@@ -360,15 +387,8 @@ impl Data {
 pub fn landing_card(data: &serde_json::Value, text: &str) -> Option<Card> {
     let data = Data::of(data);
     let id = data.landing.as_deref()?;
-    let state = match data.state.as_deref()? {
-        "pending" => State::Pending,
-        "running" => State::Running,
-        "passed" => State::Passed,
-        "failed" => State::Failed,
-        "cancelled" => State::Cancelled,
-        "warning" => State::Warning,
-        _ => State::Info,
-    };
+    data.state.as_ref()?;
+    let state = data.state().unwrap_or_default();
     let build = data.build.as_deref().unwrap_or_default();
     // Its headline is what it's about, the commit's subject, with its branch and build beside
     // it; without one, its branch and build.

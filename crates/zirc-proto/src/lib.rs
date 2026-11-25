@@ -659,11 +659,12 @@ impl Level {
     /// an error. `None` for a state it doesn't know.
     #[must_use]
     pub fn of_state(state: &str) -> Option<Self> {
-        match state {
-            "passed" | "running" => Some(Self::Info),
-            "pending" | "warning" | "cancelled" => Some(Self::Warn),
-            "failed" => Some(Self::Error),
-            _ => None,
+        use card::State;
+        match ci::state_of(state)? {
+            State::Passed | State::Running => Some(Self::Info),
+            State::Pending | State::Warning | State::Cancelled => Some(Self::Warn),
+            State::Failed => Some(Self::Error),
+            State::Info => None,
         }
     }
 

@@ -323,7 +323,7 @@ fn message_kind(
                 commit.truncate(7);
             }
             // A test failure is one whoever it reaches: nothing to fix.
-            if ci.test && ci.state.as_deref() == Some("failed") {
+            if ci.test && ci.state() == Some(zirc_proto::card::State::Failed) {
                 return Some(kind::BUILD_TEST);
             }
             if why == Some(Why::Awaited) && delivery.own_branch {
@@ -347,7 +347,7 @@ fn ci_kind(
     // Another's landing the session waits on; its own says how it went, below.
     let own = session.is_some() && ci.session.as_deref() == session;
     if why == Some(Why::Awaited) && !own {
-        let unlanded = ci.state.as_deref() == Some("failed")
+        let unlanded = ci.state() == Some(zirc_proto::card::State::Failed)
             || text.contains("conflicts with")
             || (ci.state.as_deref() != Some("passed") && text.contains("failed"));
         return if unlanded {

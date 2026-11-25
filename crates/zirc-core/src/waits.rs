@@ -208,7 +208,7 @@ impl Condition {
                 if !ours {
                     return None;
                 }
-                if said.state.as_deref() == Some("failed") {
+                if said.state() == Some(zirc_proto::card::State::Failed) {
                     return Some(Outcome::Failed);
                 }
                 // All of it: a line names several apps on lines of their own.
@@ -278,8 +278,7 @@ impl Condition {
                 kind, data, text, ..
             } if kind == LANDING_KIND => {
                 let said = Data::of(data);
-                let under_way = said.branch.as_deref() == Some(on.as_str())
-                    && matches!(said.state.as_deref(), Some("pending" | "running"));
+                let under_way = said.branch.as_deref() == Some(on.as_str()) && said.under_way();
                 let queued = matches!(
                     landing_event(text, data).1,
                     Some(Landing::Queued { branch, .. }) if &branch == on
