@@ -1,0 +1,25 @@
+{
+  "action": "triggered",
+  "installation": {"uuid": "0b3c2a7e-6d1f-4a5e-9c8b-1f2e3d4c5b6a"},
+  "data": {
+    "event": {
+      "event_id": "5e0a7c1d2b3f4a5e9d8c7b6a5f4e3d2c",
+      "issue_id": "4821099",
+      "project": 11,
+      "platform": "other",
+      "type": "generic",
+      "title": "<untitled>",
+      "message": "This is an example Next.js exception",
+      "culprit": "../../sentry/scripts/views.js in poll",
+      "metadata": {},
+      "exception": {
+        "values": [
+          {"type": "TypeError", "value": "Object [object Object] has no method 'updateFrom'"}
+        ]
+      },
+      "web_url": "https://acme.sentry.io/organizations/acme/issues/4821099/events/5e0a7c1d2b3f4a5e9d8c7b6a5f4e3d2c/"
+    },
+    "triggered_rule": "Notify via Zirc"
+  },
+  "actor": {"type": "application", "id": "sentry", "name": "Sentry"}
+}

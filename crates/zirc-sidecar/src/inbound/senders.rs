@@ -193,13 +193,25 @@ fn report(role: &str, tool: Tool, kind: Subject, key: &str, known: Known) -> Rea
 fn sentry_summary(thing: &Value, project: Option<&str>) -> Option<String> {
     let metadata = &thing["metadata"];
     let place = project.map(|p| format!(" in {p}")).unwrap_or_default();
+    // Sentry titles an event it can't name `<untitled>`, as its own test sends: that's no
+    // title, and its message or exception says more.
+    let titled = text(&thing["title"]).filter(|title| title != SENTRY_UNTITLED);
+    let exception = &thing["exception"]["values"][0];
+    let thrown = match (text(&exception["type"]), text(&exception["value"])) {
+        (Some(kind), Some(value)) => Some(format!("{kind}: {value}")),
+        (kind, value) => kind.or(value),
+    };
     match (text(&metadata["type"]), text(&metadata["value"])) {
         (Some(kind), Some(value)) => Some(format!("{kind}{place}: {value}")),
-        _ => text(&thing["title"])
+        _ => titled
             .or_else(|| text(&thing["message"]))
+            .or(thrown)
             .map(|title| format!("{title}{place}")),
     }
 }
+
+/// What Sentry titles an event it can't name.
+const SENTRY_UNTITLED: &str = "<untitled>";
 
 /// Sentry's post: an issue's (created, or resolved), an error's, an event alert's, its
 /// integration's installation (a test), or its `WebHooks` plugin's alert.
@@ -509,6 +521,30 @@ mod tests {
                 &none
             ),
             Ok((Tool::Sentry, Read::Ignored))
+        );
+    }
+
+    #[test]
+    fn sentrys_untitled_test_event_is_said_by_its_message() {
+        let none = BTreeMap::new();
+        let report = reported(post(
+            &[("sentry-hook-resource", "event_alert")],
+            include_bytes!("testdata/sentry_event_alert_untitled.json"),
+            &none,
+        ));
+        assert_eq!(report.summary, "This is an example Next.js exception");
+        let mut bare: Value =
+            serde_json::from_slice(include_bytes!("testdata/sentry_event_alert_untitled.json"))
+                .unwrap();
+        bare["data"]["event"]["message"] = Value::Null;
+        let report = reported(post(
+            &[("sentry-hook-resource", "event_alert")],
+            &serde_json::to_vec(&bare).unwrap(),
+            &none,
+        ));
+        assert_eq!(
+            report.summary,
+            "TypeError: Object [object Object] has no method 'updateFrom'"
         );
     }
 
