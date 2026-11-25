@@ -22,8 +22,8 @@ pub(super) struct ReportArgs {
     /// The role it's for, such as fixer.
     #[arg(value_name = "ROLE")]
     role: String,
-    /// What it's about: warning, flaky or container.
-    #[arg(long, value_parser = subject)]
+    /// What it's about.
+    #[arg(long, value_parser = subjects())]
     kind: Subject,
     /// What makes it the same as an earlier one: a warning's line, a test, a workload.
     /// Reported again while it's open, it adds nothing.
@@ -54,9 +54,12 @@ pub(super) struct ReportArgs {
     org: OrgArg,
 }
 
-/// The kind `word` names, for clap.
-fn subject(word: &str) -> Result<Subject, String> {
-    Subject::named(word).ok_or_else(|| format!("{word}: say {}", role_report::kinds_said()))
+/// The kinds, for clap: its --help lists them as zirc-proto has them, so a kind added there
+/// is said here too.
+fn subjects() -> impl clap::builder::TypedValueParser<Value = Subject> {
+    use clap::builder::TypedValueParser as _;
+    clap::builder::PossibleValuesParser::new(Subject::ALL.map(Subject::as_str))
+        .try_map(|word: String| Subject::named(&word).ok_or_else(role_report::kinds_said))
 }
 
 /// `zirc report`.
