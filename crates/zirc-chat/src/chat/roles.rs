@@ -506,8 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn a_report_said_in_ops_at_info_is_neither_shown_nor_previewed_there() {
-        use zirc_proto::role_report::{RoleReport, Subject};
+    fn a_line_ops_hides_is_not_what_its_row_previews() {
         let mut chat = with_fixer();
         feed(
             &mut chat,
@@ -519,10 +518,12 @@ mod tests {
                 ),
             ],
         );
-        let report = RoleReport::new("fixer", Subject::Flaky, "//a:b");
-        from_fixer(&mut chat, "#ops", "10:00:00", &report.event());
-        // #ops shows what needs someone (warn) until its reader picks otherwise: the report
-        // is the role's to act on, and its card is in the agents' room.
+        // What the role says at info: #ops shows what needs someone (warn) until its reader
+        // picks otherwise, as a report does now (a4e303b), so its row previews nothing of it.
+        let said = zirc_proto::Event::Text {
+            body: "on it".into(),
+        };
+        from_fixer(&mut chat, "#ops", "10:00:00", &said);
         assert!(chat.lines("#ops", utc(), false).is_empty());
         assert_eq!(chat.preview("#ops"), None);
         chat.set_threshold("#ops", zirc_proto::Level::Info);
