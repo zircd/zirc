@@ -3284,6 +3284,13 @@
         "digest": {
           "type": "string",
           "description": "The SHA-256 of its secret, in hex ([`Address::digest_of`])."
+        },
+        "signing": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The secret each tool of [`SIGNED_BY_OWN`] signs its posts with, as the tool gave it to\nthe role's admins: the server checks those posts' signatures with it, and takes no\nunsigned or wrongly signed post from that tool. Never said back\n([`Listing::without_addresses`])."
         }
       },
       "required": [

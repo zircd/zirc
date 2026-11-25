@@ -28,6 +28,7 @@ fn brain() -> Brain {
             addresses: vec![Address {
                 role: "fixer".into(),
                 digest: Address::digest_of("k7Qp2vXe9LmR0aBcDeFgHiJk"),
+                signing: std::collections::BTreeMap::new(),
             }],
             version: "1".into(),
         })

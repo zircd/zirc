@@ -23,6 +23,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use std::collections::BTreeMap;
+
+use crate::inbound::Tool;
 use crate::is_zero;
 use crate::trigger::Trigger;
 
@@ -115,6 +118,14 @@ pub struct Listing {
     pub version: String,
 }
 
+/// The tools that sign what they post with a secret of their own, which a role's admins paste
+/// on zirc.dev ([`Address::signing`]). GitHub signs with the address's own secret, and any
+/// other tool with nothing.
+pub const SIGNED_BY_OWN: [Tool; 3] = [Tool::Sentry, Tool::Linear, Tool::Pagerduty];
+
+/// The most characters a tool's signing secret has.
+pub const SIGNING_MAX: usize = 128;
+
 /// A role's webhook address ([`INBOUND_PATH`]) as its server is given it: the SHA-256 of its
 /// secret, in lowercase hex, never the secret, which zirc.dev keeps for the role's admins. A
 /// new secret (Rotate, on zirc.dev) is a new listing, which the server takes at once, and the
@@ -126,9 +137,49 @@ pub struct Address {
     pub role: String,
     /// The SHA-256 of its secret, in hex ([`Address::digest_of`]).
     pub digest: String,
+    /// The secret each tool of [`SIGNED_BY_OWN`] signs its posts with, as the tool gave it to
+    /// the role's admins: the server checks those posts' signatures with it, and takes no
+    /// unsigned or wrongly signed post from that tool. Never said back
+    /// ([`Listing::without_addresses`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(type = "Partial<Record<InboundTool, string>>")]
+    pub signing: BTreeMap<Tool, String>,
 }
 
 impl Address {
+    /// The rules it keeps: signing secrets only for the tools that sign with their own, each
+    /// some characters on a line, [`SIGNING_MAX`] at most.
+    ///
+    /// # Errors
+    ///
+    /// What's wrong, in words for the admin.
+    pub fn check(&self) -> Result<(), String> {
+        for (tool, secret) in &self.signing {
+            if !SIGNED_BY_OWN.contains(tool) {
+                return Err(format!(
+                    "{} doesn't sign with a secret of its own",
+                    tool.name()
+                ));
+            }
+            if secret.is_empty()
+                || secret.chars().count() > SIGNING_MAX
+                || secret.chars().any(char::is_control)
+            {
+                return Err(format!(
+                    "{}'s signing secret is 1 to {SIGNING_MAX} characters on a line",
+                    tool.name()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// The secret `tool` signs its posts to this address with, where its admins gave one.
+    #[must_use]
+    pub fn signing_secret(&self, tool: Tool) -> Option<&str> {
+        self.signing.get(&tool).map(String::as_str)
+    }
+
     /// The digest a secret is given as.
     #[must_use]
     pub fn digest_of(secret: &str) -> String {
@@ -191,6 +242,11 @@ impl Listing {
                     role.name
                 ));
             }
+        }
+        for address in &self.addresses {
+            address
+                .check()
+                .map_err(|why| format!("{}: {why}", address.role))?;
         }
         Ok(())
     }
@@ -711,6 +767,15 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
             format!("const TAKE_COMMAND = {TAKE_COMMAND:?};"),
             format!("const ROLES_ACCOUNTS_PATH = {ACCOUNTS_PATH:?};"),
             format!("const INBOUND_PATH = {INBOUND_PATH:?};"),
+            format!(
+                "const SIGNED_BY_OWN: readonly InboundTool[] = [{}];",
+                SIGNED_BY_OWN
+                    .iter()
+                    .map(|tool| format!("{:?}", tool.as_str()))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            format!("const SIGNING_MAX = {SIGNING_MAX};"),
         ])
         .collect()
 }
@@ -786,6 +851,7 @@ mod tests {
             addresses: vec![Address {
                 role: "fixer".into(),
                 digest: Address::digest_of(secret),
+                signing: BTreeMap::new(),
             }],
             version: "1".into(),
         };
@@ -805,6 +871,41 @@ mod tests {
                 .replace("{secret}", secret),
             format!("/in/fixer/{secret}")
         );
+    }
+
+    #[test]
+    fn a_tool_signs_with_a_secret_of_its_own_only_where_it_has_one() {
+        let address = |tool, secret: &str| Listing {
+            roles: vec![fixer()],
+            addresses: vec![Address {
+                role: "fixer".into(),
+                digest: Address::digest_of("k7Qp2vXe9LmR0aBcDeFgHiJk"),
+                signing: BTreeMap::from([(tool, secret.to_owned())]),
+            }],
+            version: "1".into(),
+        };
+        let linear = address(Tool::Linear, "lin_wh_abc");
+        assert_eq!(linear.check(), Ok(()));
+        assert_eq!(
+            linear.addresses[0].signing_secret(Tool::Linear),
+            Some("lin_wh_abc")
+        );
+        assert_eq!(linear.addresses[0].signing_secret(Tool::Sentry), None);
+        assert!(
+            address(Tool::Github, "x")
+                .check()
+                .unwrap_err()
+                .contains("GitHub doesn't sign with a secret of its own")
+        );
+        assert!(address(Tool::Sentry, "").check().is_err());
+        assert!(address(Tool::Sentry, "a\nb").check().is_err());
+        assert!(
+            address(Tool::Pagerduty, &"x".repeat(SIGNING_MAX + 1))
+                .check()
+                .is_err()
+        );
+        let said = serde_json::to_value(linear.without_addresses()).unwrap();
+        assert!(said.get("addresses").is_none());
     }
 
     #[test]
