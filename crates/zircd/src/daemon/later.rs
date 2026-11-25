@@ -9,9 +9,10 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use zirc_core::chat::{SenderKind, sender_kind};
 use zirc_core::ipc::{Delivery, Response, Why};
+use zirc_core::paths;
 use zirc_proto::{Event, Message};
 
-use super::{Daemon, WATCHER_SESSION};
+use super::{Daemon, WATCHER_SESSION, read_saved};
 
 /// How many reports wait for each session at most: the oldest go first.
 const KEPT: usize = 20;
@@ -250,12 +251,33 @@ impl Daemon {
         while kept.len() > KEPT {
             kept.pop_front();
         }
+        self.save_later();
+    }
+
+    /// Saves what waits for each session's next wake, for after a restart, which replays
+    /// only what was said after what zircd last heard: in a file only this machine's user
+    /// reads, as it holds what was said to them.
+    pub(super) fn save_later(&self) {
+        let json = serde_json::to_string(&self.later).expect("what waits serializes");
+        if let Err(err) = paths::write_private(&paths::later(&self.org.state), &json) {
+            tracing::warn!("couldn't save what waits for sessions' next wakes: {err}");
+        }
+    }
+
+    /// Takes in what waited for each session's next wake when zircd last stopped.
+    pub(super) fn restore_later(&mut self) {
+        if let Some(saved) = read_saved::<Later>(&paths::later(&self.org.state)) {
+            self.later = saved;
+        }
     }
 
     /// The reports kept for `session`, said as a watch line introduces them, to send just
     /// before a line that wakes it; nothing when none are kept. They're no longer kept.
     pub(super) fn take_later(&mut self, session: &str) -> Vec<Response> {
         let kept: Vec<Response> = self.later.remove(session).unwrap_or_default().into();
+        if !kept.is_empty() {
+            self.save_later();
+        }
         for response in &kept {
             self.heard_now(session, response);
         }

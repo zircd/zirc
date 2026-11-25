@@ -502,6 +502,129 @@ async fn a_landings_steps_never_wake_a_session_waiting_on_it() {
     );
 }
 
+/// CI's word of a test failed while the build still runs, "more may have failed by its end",
+/// ends no wait on it: the landing that follows wakes the session waiting on it. Ended by its
+/// words, the wait on build 10517 dropped at that line, and its landing 17 minutes later woke
+/// nobody (25 Nov 2026).
+#[tokio::test]
+async fn a_failure_said_while_a_build_runs_leaves_the_wait_for_how_it_ends() {
+    let ergo = require_ergo!();
+    let [(alpha, alpha_clone), _] = two_machines(&ergo).await;
+    alpha
+        .request(Request::RepoAdd {
+            path: alpha_clone.path().to_owned(),
+            session: Some("cc-1".into()),
+        })
+        .await;
+    alpha
+        .request(Request::Join {
+            repo: alpha_clone.path().to_owned(),
+            topic: "landings".into(),
+            session: Some("cc-1".into()),
+        })
+        .await;
+    alpha
+        .eventually(
+            |status| status.channels.iter().any(|c| c == "#agents"),
+            "joining #agents",
+        )
+        .await;
+    let mut cc1 = alpha.watch(Some("cc-1")).await;
+    let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
+    let next_landing = async |watching: &mut Watching| loop {
+        let delivery = next(watching).await;
+        if let Event::Custom { text, .. } = delivery.message.event {
+            return (text, delivery.why);
+        }
+    };
+    alpha.request(wait_for("cc-1", &["1517"])).await;
+    let says = |text: &str, state: &str| {
+        let message = ci_message(Event::Custom {
+            kind: "x-zirc/landing".into(),
+            data: serde_json::json!({ "build": "1517", "state": state }),
+            text: text.into(),
+        });
+        ci.privmsg(
+            "#agents",
+            &zirc_proto::encode_up_to(&message, 4096).unwrap(),
+        )
+        .unwrap();
+    };
+    // As CI says it, cut to fit one IRC line.
+    let first = "cc-1: //w:t failed first; build 1517 still runs: more may have failed";
+    says(first, "running");
+    assert_eq!(
+        next_landing(&mut cc1).await,
+        (first.into(), Some(Why::Awaited))
+    );
+    let landed = "cc-1: landed avatar as 6a274ad (build 1517)";
+    says(landed, "passed");
+    assert_eq!(
+        next_landing(&mut cc1).await,
+        (landed.into(), Some(Why::Awaited))
+    );
+}
+
+/// What waits for a session's next wake, such as CI saying its landing landed, outlives a
+/// restart of zircd, kept on disk: a restart replays only what was said after what it last
+/// heard, so it came again only by luck (the user's question, 25 Nov 2026: is a result lost
+/// when zircd restarts?).
+#[tokio::test]
+async fn what_waits_for_a_sessions_next_wake_outlives_a_restart() {
+    let ergo = require_ergo!();
+    let [(alpha, alpha_clone), _] = two_machines(&ergo).await;
+    alpha
+        .request(Request::RepoAdd {
+            path: alpha_clone.path().to_owned(),
+            session: Some("cc-1".into()),
+        })
+        .await;
+    alpha
+        .request(Request::Join {
+            repo: alpha_clone.path().to_owned(),
+            topic: "landings".into(),
+            session: Some("cc-1".into()),
+        })
+        .await;
+    alpha
+        .eventually(
+            |status| status.channels.iter().any(|c| c == "#agents"),
+            "joining #agents",
+        )
+        .await;
+    let mut cc1 = alpha.watch(Some("cc-1")).await;
+    let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
+    let landed = "cc-1: landed login as 1a2b3c4 (build 7)";
+    ci.privmsg("#agents", landed).unwrap();
+    assert_eq!(next_post_why(&mut cc1).await, (landed.into(), None));
+    drop(cc1);
+
+    // Back after longer than zircd replays, as the restart 43 minutes after the landing it
+    // lost was: nothing said before is told again.
+    let at = alpha.home.path().to_owned();
+    let alpha = alpha.restart_after(async { long_away(&at) }).await;
+    let mut cc1 = alpha.watch(Some("cc-1")).await;
+    let failed = "cc-1: build 8 of login failed in test: //api:unit";
+    ci.privmsg("#agents", failed).unwrap();
+    let mut heard = Vec::new();
+    while heard.last().is_none_or(|(said, _)| said != failed) {
+        heard.push(next_post_why(&mut cc1).await);
+    }
+    assert_eq!(
+        heard,
+        [
+            (
+                "cc-1: meanwhile, for you and needing nothing yet:".into(),
+                Some(Why::Mention)
+            ),
+            (landed.into(), Some(Why::Mention)),
+            (failed.into(), Some(Why::Mention)),
+        ]
+    );
+}
+
 #[tokio::test]
 async fn a_landings_line_is_news_only_to_the_session_it_names() {
     let ergo = require_ergo!();

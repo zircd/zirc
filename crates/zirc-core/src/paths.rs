@@ -252,6 +252,13 @@ pub fn missed(home: &Path) -> PathBuf {
     home.join("missed.json")
 }
 
+/// What waits for each session's next wake, such as CI saying its landing landed, kept
+/// across restarts: a restart lost a landing a session waited for (25 Nov 2026).
+#[must_use]
+pub fn later(home: &Path) -> PathBuf {
+    home.join("later.json")
+}
+
 /// What sessions wait on (`zirc wait-for`, and the branches zircd follows for them), kept
 /// across restarts.
 #[must_use]

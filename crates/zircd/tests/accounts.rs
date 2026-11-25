@@ -22,7 +22,7 @@ use zirc_test_irc::{
 };
 
 mod common;
-use common::Machine;
+use common::{Machine, long_away};
 
 const WAIT: Duration = Duration::from_secs(15);
 
@@ -2488,22 +2488,6 @@ async fn the_owners_answer_counts_on_a_request_whose_echo_was_missed() {
         (yes.request.id.as_str(), yes.answer),
         ("mattias-mbp/1", zirc_proto::request::Answer::Yes)
     );
-}
-
-/// Sets back when the zircd under `home` was last connected by an hour: longer ago than it
-/// replays what was said.
-fn long_away(home: &Path) {
-    let saved = walk(home)
-        .into_iter()
-        .find(|path| path.file_name().is_some_and(|name| name == "replay.json"))
-        .expect("where to replay from");
-    let mut replay: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&saved).unwrap()).unwrap();
-    let alive = replay["alive"]
-        .as_u64()
-        .expect("when it was last connected");
-    replay["alive"] = (alive - 3600).into();
-    std::fs::write(&saved, replay.to_string()).unwrap();
 }
 
 /// The owner's 👍 given while zircd was away for longer than it replays, a laptop asleep

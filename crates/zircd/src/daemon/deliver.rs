@@ -564,10 +564,14 @@ impl Daemon {
             self.intent_landed(&session);
             self.task_landing_landed(&session);
         }
-        // Told how it ended, the sessions waiting on it wait no more.
+        // Told how it ended, the sessions waiting on it wait no more. Not by a line said while
+        // it still runs, whatever its words: CI's "the first test to fail, while build 10517
+        // still runs: more may have failed by its end" ended the wait on 10517, so its
+        // landing, 17 minutes later, woke nobody (25 Nov 2026).
         if let Response::Delivery(delivery) = response
             && let Event::Custom { kind, text, data } = &delivery.message.event
             && kind == LANDING_KIND
+            && zirc_proto::ci::Data::of(data).state.as_deref() != Some("running")
             && self
                 .awaits
                 .heard(text, zirc_proto::ci::Data::of(data).branch.as_deref())

@@ -375,6 +375,9 @@ impl Daemon {
                     if kept.is_empty() {
                         self.later.remove(&session);
                     }
+                    if unheard {
+                        self.save_later();
+                    }
                     if !unheard && !woken.contains(&session) {
                         self.keep_for_later(&session, response, Why::StateChanged);
                     }
@@ -395,6 +398,7 @@ impl Daemon {
                 if kept.is_empty() {
                     self.later.remove(session);
                 }
+                self.save_later();
             }
         }
     }
