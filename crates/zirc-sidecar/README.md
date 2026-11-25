@@ -28,6 +28,11 @@ What it does:
 - **Reports** (`items`): one open item per role, kind and key from the reports said in `#ops`
   (`zirc report`, CI, the alert bridge), each waking the role's holder once, with a reminder,
   until a landing names it in a `Fixes: report <id>` trailer or the holder closes it.
+- **Roles' addresses** (`inbound`): `POST /in/<role>/<secret>` on the server's own host, where
+  tools post to a role without passing zirc.dev. Sentry's errors, GitHub's and Linear's new
+  issues and PagerDuty's incidents become reports (one open item per upstream issue), a tool's
+  resolving closes the item, and anything else wakes the role as it was sent. Signed posts are
+  checked where the server has the secret; only counts and outcomes are logged.
 - **Teams and channels** (`teams`, `janitor`, `say`, `profiles`, `config`): making a
   server's channels, ops, posts by integrations, names and pictures, and its config file match
   what the controller asks for.

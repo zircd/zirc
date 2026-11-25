@@ -1,0 +1,27 @@
+{
+  "action": "created",
+  "installation": {"uuid": "0b3c2a7e-6d1f-4a5e-9c8b-1f2e3d4c5b6a"},
+  "data": {
+    "issue": {
+      "id": "4821007",
+      "shortId": "WEB-7",
+      "title": "TypeError: Cannot read properties of undefined (reading 'slug')",
+      "culprit": "web/src/app/orgs/[slug]/page.tsx in OrgPage",
+      "level": "error",
+      "status": "unresolved",
+      "count": "1",
+      "userCount": 1,
+      "permalink": "https://acme.sentry.io/issues/4821007/",
+      "web_url": "https://acme.sentry.io/organizations/acme/issues/4821007/",
+      "project": {"id": "11", "name": "web", "slug": "web", "platform": "javascript-nextjs"},
+      "metadata": {
+        "type": "TypeError",
+        "value": "Cannot read properties of undefined (reading 'slug')",
+        "filename": "web/src/app/orgs/[slug]/page.tsx"
+      },
+      "firstSeen": "2026-11-25T13:39:02.000000Z",
+      "lastSeen": "2026-11-25T13:39:02.000000Z"
+    }
+  },
+  "actor": {"type": "application", "id": "sentry", "name": "Sentry"}
+}

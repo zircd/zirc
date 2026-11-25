@@ -413,4 +413,40 @@ mod tests {
         }));
         assert!(callout.said().contains("zirc role take fixer"));
     }
+
+    #[test]
+    fn a_tools_report_is_the_roles_card_in_the_room_naming_the_tool() {
+        use zirc_proto::inbound::{Tool, card_event};
+        use zirc_proto::role_report::{OpenItem, RoleReport, Subject};
+        let mut chat = with_fixer();
+        let report = RoleReport {
+            tool: Some(Tool::Sentry),
+            summary: "TypeError in web: Cannot read properties of undefined".into(),
+            link: Some("https://acme.sentry.io/issues/7/".into()),
+            ..RoleReport::new("fixer", Subject::Error, "sentry:7")
+        };
+        let item = OpenItem::opened(report, 0);
+        from_fixer(&mut chat, "#api", "10:00:00", &card_event(&item, true));
+        let lines = chat.lines("#api", utc(), false);
+        let line = lines.last().unwrap();
+        assert_eq!(line.shape, RowShape::System);
+        assert_eq!(line.from, "fixer");
+        let said: Vec<&str> = line
+            .rich
+            .iter()
+            .filter_map(|block| match block {
+                crate::chat::RichBlock::Paragraph { spans } => Some(spans),
+                _ => None,
+            })
+            .flat_map(|spans| spans.iter().map(|span| span.text.as_str()))
+            .collect();
+        assert_eq!(
+            said,
+            [
+                "TypeError in web: Cannot read properties of undefined",
+                "Open in Sentry",
+                "Sentry · woke fixer · one open item",
+            ]
+        );
+    }
 }

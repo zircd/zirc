@@ -1,0 +1,18 @@
+{
+  "event": {
+    "id": "01DEN6Y2Z0000000000000001",
+    "event_type": "incident.resolved",
+    "resource_type": "incident",
+    "occurred_at": "2026-11-25T14:40:00.000Z",
+    "data": {
+      "id": "Q0EXAMPLE0001",
+      "type": "incident",
+      "html_url": "https://acme.pagerduty.com/incidents/Q0EXAMPLE0001",
+      "number": 3,
+      "status": "resolved",
+      "title": "API latency p99 over 2 s",
+      "service": {"id": "PSVC001", "summary": "zirc.dev web", "type": "service_reference"},
+      "urgency": "high"
+    }
+  }
+}

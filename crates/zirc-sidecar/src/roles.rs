@@ -441,6 +441,32 @@ impl Brain {
         Vec::new()
     }
 
+    /// Wakes `wake`'s role for one of its items at `now`, or keeps it for the next holder;
+    /// for a tool's new report, the role's card in the agents' room too, saying whether it
+    /// woke the holder or waits ([`zirc_proto::inbound::card`]).
+    pub fn reported(&mut self, wake: &crate::items::Wake, now: u64) -> Vec<Out> {
+        let mut outs = self.wake(&wake.role, wake.woke(), &wake.text(), now);
+        if wake.reminder || wake.item.report.tool.is_none() {
+            return outs;
+        }
+        let Some(role) = self.kept.listing.role(&wake.role).cloned() else {
+            return outs;
+        };
+        let held = self.holder(&role.name, now).is_some();
+        outs.push(Out {
+            role: role.name.clone(),
+            to: zirc_proto::AGENTS_CHANNEL.to_owned(),
+            message: Message {
+                repo: Some(role.repository.clone()),
+                ..Message::new(
+                    &role.name,
+                    zirc_proto::inbound::card_event(&wake.item, held),
+                )
+            },
+        });
+        outs
+    }
+
     /// Each seat taken or left since last said, said: in the agents' room, and to whoever's
     /// messages waited; and what waited, to the new holder.
     fn seats_moved(&mut self, now: u64) -> Vec<Out> {
@@ -807,6 +833,39 @@ impl Roles {
     /// report does, say.
     pub fn wake(&self, role: &str, woke: Woke, text: &str) {
         self.with(|brain| ((), brain.wake(role, woke, text, crate::now_ms())));
+    }
+
+    /// Whether `secret` opens role `role`'s address ([`Listing::opens`]).
+    #[must_use]
+    pub fn opens(&self, role: &str, secret: &str) -> bool {
+        self.with(|brain| (brain.listing().opens(role, secret), Vec::new()))
+    }
+
+    /// Has role `role`'s nick say `report` in `#ops`, where its items take it
+    /// ([`crate::items`]).
+    pub fn report(&self, report: &zirc_proto::role_report::RoleReport) {
+        let out = Out {
+            role: report.role.clone(),
+            to: zirc_proto::state::CHANNEL.to_owned(),
+            message: Message::new(&report.role, report.event()),
+        };
+        let _ = self.outs.send(vec![out]);
+    }
+
+    /// Has the role's nick say `closing` in `#ops`, where its items take it.
+    pub fn close(&self, closing: &zirc_proto::role_report::Closing) {
+        let out = Out {
+            role: closing.role.clone(),
+            to: zirc_proto::state::CHANNEL.to_owned(),
+            message: Message::new(&closing.role, closing.event()),
+        };
+        let _ = self.outs.send(vec![out]);
+    }
+
+    /// Wakes a role's holder for one of its items, or keeps it for the next: and for a tool's
+    /// new report, has the role's nick say its card in the agents' room.
+    pub fn reported(&self, wake: &crate::items::Wake) {
+        self.with(|brain| ((), brain.reported(wake, crate::now_ms())));
     }
 
     /// What `input` has the nicks say.

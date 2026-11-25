@@ -5,4 +5,6 @@ zirc_rust_binary(
     surface = "server",
     # A role's nick's connection is tested against a real Ergo (src/nicks/connection.rs).
     ergo = True,
+    # What tools post to a role's address, recorded with made-up data (src/inbound/senders.rs).
+    compile_data = glob(["src/inbound/testdata/*.json"]),
 )

@@ -1,0 +1,19 @@
+{
+  "action": "created",
+  "installation": {"uuid": "0b3c2a7e-6d1f-4a5e-9c8b-1f2e3d4c5b6a"},
+  "data": {
+    "error": {
+      "event_id": "2a3b4c5d6e7f40818293a4b5c6d7e8f9",
+      "issue_id": "4821011",
+      "project": 12,
+      "level": "fatal",
+      "title": "zircd panicked in history::replay",
+      "culprit": "zircd::history::replay",
+      "location": "oss/crates/zircd/src/history.rs",
+      "metadata": {"title": "zircd panicked in history::replay"},
+      "web_url": "https://acme.sentry.io/organizations/acme/issues/4821011/events/2a3b4c5d6e7f40818293a4b5c6d7e8f9/",
+      "issue_url": "https://sentry.io/api/0/issues/4821011/"
+    }
+  },
+  "actor": {"type": "application", "id": "sentry", "name": "Sentry"}
+}

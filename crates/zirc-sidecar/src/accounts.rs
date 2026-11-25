@@ -193,6 +193,8 @@ struct Ergo {
     push_subscriber: Option<String>,
     /// The organisation's roles (`crate::roles`).
     roles: crate::roles::Roles,
+    /// When each role last heard each tool at its address (`crate::inbound`).
+    inbound: crate::inbound::Store,
     /// What the roles' nicks are to say, until [`run`] starts their host.
     roles_said:
         std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<Vec<crate::roles::Out>>>>,
@@ -268,7 +270,7 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
     tokio::spawn(crate::items::keep_items(
         ergo.history.clone(),
         move |wake| {
-            roles.wake(&wake.role, wake.woke(), &wake.text());
+            roles.reported(&wake);
         },
     ));
     // Ergo's logins: when the socket can't be had, passphrases still work, as Ergo checks
@@ -283,9 +285,14 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
             warn!(%error, "can't answer Ergo's logins");
         }
     });
-    // The listener the edge sends the server's host name to: the content API.
+    // The listener the edge sends the server's host name to: the content API, and roles'
+    // addresses (crate::inbound).
     let public = tokio::net::TcpListener::bind(options.content_listen).await?;
-    tokio::spawn(axum::serve(public, content::router(ergo.clone())).into_future());
+    let inbound = crate::inbound::router(crate::inbound::Inbound {
+        roles: ergo.roles.clone(),
+        store: ergo.inbound.clone(),
+    });
+    tokio::spawn(axum::serve(public, content::router(ergo.clone()).merge(inbound)).into_future());
     axum::serve(tokio::net::TcpListener::bind(listen).await?, routes(ergo)).await
 }
 
@@ -382,6 +389,7 @@ fn ergo(options: &Options, api: Api, history: PathBuf) -> Arc<Ergo> {
     let (roles, roles_said) = crate::roles::Roles::beside(&history);
     Arc::new(Ergo {
         roles,
+        inbound: crate::inbound::Store::beside(&history),
         roles_said: std::sync::Mutex::new(Some(roles_said)),
         api,
         operator: Operator {
@@ -454,6 +462,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         )
         .route("/v1/server", get(describe))
         .route(zirc_proto::role_report::ITEMS_PATH, get(role_items))
+        .route(zirc_proto::inbound::HEARD_PATH, get(role_heard))
         .route("/v1/channels", get(list_channels))
         .route("/v1/channels/purge", get(old_channels).post(purge_channels))
         .route("/v1/history", get(read_history))
@@ -572,6 +581,12 @@ fn spawn_roles(ergo: &Arc<Ergo>) {
             said,
         ));
     }
+}
+
+/// `GET /v1/roles/<role>/heard`: when the role last heard each tool at its address
+/// ([`zirc_proto::inbound::Heard`]).
+async fn role_heard(State(ergo): State<Arc<Ergo>>, Path(role): Path<String>) -> Response {
+    Json(ergo.inbound.of(&role)).into_response()
 }
 
 /// `PUT /v1/roles`: the organisation's roles, whole ([`zirc_proto::roles::Listing`]), as

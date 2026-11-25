@@ -86,6 +86,16 @@ pub fn times(n: u32) -> String {
     }
 }
 
+/// `n` events, as a tool's report counts them: `1 event`, `37 events`.
+#[must_use]
+pub fn events(n: u32) -> String {
+    if n == 1 {
+        "1 event".to_owned()
+    } else {
+        format!("{n} events")
+    }
+}
+
 /// The word after `ACTION` that marks a body as zirc's.
 pub const TAG: &str = "ZIRC";
 
@@ -880,6 +890,18 @@ pub fn hex(bytes: &[u8]) -> String {
         let _ = write!(hex, "{byte:02x}");
         hex
     })
+}
+
+/// `hex`'s bytes, if it's hex ([`hex`] the other way).
+#[must_use]
+pub fn unhex(hex: &str) -> Option<Vec<u8>> {
+    if !hex.len().is_multiple_of(2) || !hex.is_ascii() {
+        return None;
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect()
 }
 
 /// `text` in at most `max` characters, cut with `…` when it's longer. Line breaks are left as

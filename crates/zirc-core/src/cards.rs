@@ -59,11 +59,7 @@ pub fn verify_hex(secret: &str, header: Option<&str>, body: &[u8]) -> Result<(),
     if header.len() != 64 || !header.is_ascii() {
         return Err("the signature isn't SHA-256 in hex");
     }
-    let mut mac = [0u8; 32];
-    for (byte, pair) in mac.iter_mut().zip(header.as_bytes().chunks(2)) {
-        let pair = std::str::from_utf8(pair).map_err(|_| "the signature isn't hex")?;
-        *byte = u8::from_str_radix(pair, 16).map_err(|_| "the signature isn't hex")?;
-    }
+    let mac = zirc_proto::unhex(header).ok_or("the signature isn't hex")?;
     let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes());
     ring::hmac::verify(&key, body, &mac).map_err(|_| "the signature doesn't match")
 }

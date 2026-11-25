@@ -1,0 +1,24 @@
+{
+  "action": "triggered",
+  "installation": {"uuid": "0b3c2a7e-6d1f-4a5e-9c8b-1f2e3d4c5b6a"},
+  "data": {
+    "event": {
+      "event_id": "9f1c0d7a4b2e4c3d8a6b5c4d3e2f1a0b",
+      "issue_id": "4821007",
+      "project": 11,
+      "level": "error",
+      "title": "TypeError: Cannot read properties of undefined (reading 'slug')",
+      "culprit": "web/src/app/orgs/[slug]/page.tsx in OrgPage",
+      "location": "web/src/app/orgs/[slug]/page.tsx",
+      "metadata": {
+        "type": "TypeError",
+        "value": "Cannot read properties of undefined (reading 'slug')"
+      },
+      "url": "https://sentry.io/api/0/projects/acme/web/events/9f1c0d7a4b2e4c3d8a6b5c4d3e2f1a0b/",
+      "web_url": "https://acme.sentry.io/organizations/acme/issues/4821007/events/9f1c0d7a4b2e4c3d8a6b5c4d3e2f1a0b/",
+      "issue_url": "https://sentry.io/api/0/issues/4821007/"
+    },
+    "triggered_rule": "Send a notification for new issues"
+  },
+  "actor": {"type": "application", "id": "sentry", "name": "Sentry"}
+}

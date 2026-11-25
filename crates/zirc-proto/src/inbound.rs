@@ -214,16 +214,19 @@ pub struct Heard {
     pub tools: Vec<HeardTool>,
 }
 
+/// What a wake and a card say of a tool's report: it's one item however often it's sent.
+pub const ONE_OPEN_ITEM: &str = "one open item";
+
 /// What a wake says of a tool's report: `Sentry: TypeError in web · 37 events, one open
 /// item`, `still open: …` for a reminder.
 #[must_use]
 pub fn woke_words(report: &RoleReport, events: u32, reminder: bool) -> String {
     let still = if reminder { "still open: " } else { "" };
-    let events = match events {
-        0 | 1 => "1 event".to_owned(),
-        n => format!("{n} events"),
-    };
-    format!("{still}{} · {events}, one open item", report.words())
+    format!(
+        "{still}{} · {}, {ONE_OPEN_ITEM}",
+        report.words(),
+        crate::events(events.max(1))
+    )
 }
 
 /// What a wake says of a post from a tool zirc doesn't know, which began `excerpt`.
@@ -258,14 +261,12 @@ pub fn card(item: &OpenItem, held: bool) -> Card {
     let tool = report.tool.unwrap_or(Tool::Other);
     let mut note = vec![card_head(report, held)];
     note.extend(report.details.clone());
-    let events = match item.reports {
-        0 | 1 => None,
-        n => Some(format!("{n} events")),
-    };
-    note.extend(events);
+    if item.reports > 1 {
+        note.push(crate::events(item.reports));
+    }
     let mut fields = Vec::new();
     if held {
-        note.push("one open item".to_owned());
+        note.push(ONE_OPEN_ITEM.to_owned());
     } else {
         note.push(format!("waiting for whoever takes {}", report.role));
         fields.push(card::Field {
@@ -285,10 +286,8 @@ pub fn card(item: &OpenItem, held: bool) -> Card {
     Card {
         id: format!("report/{}", item.id),
         title: crate::clip_line(&report.summary, 80),
-        state: match report.kind {
-            Subject::Error | Subject::Incident => card::State::Failed,
-            _ => card::State::Info,
-        },
+        // Its title as the tool said it: a state's word after it ("failed") would misread.
+        state: card::State::Info,
         about: None,
         fields,
         links,
@@ -366,6 +365,7 @@ mod tests {
         let mut item = OpenItem::opened(sentry(), 0);
         item.reports = 37;
         let woke = crate::woke::Woke::reported(&item, false);
+        assert_eq!(woke.tone(), crate::woke::Tone::Failed);
         assert_eq!(
             woke.words(None),
             "Sentry: TypeError in web, reading 'slug' of undefined · 37 events, one open item (on-call)"
@@ -375,6 +375,7 @@ mod tests {
     #[test]
     fn an_unknown_tools_post_is_said_as_it_was_sent() {
         let woke = crate::woke::Woke::webhook("backup job nightly-db\nfinished with warnings");
+        assert_eq!(woke.tone(), crate::woke::Tone::Person);
         assert_eq!(
             woke.words(None),
             "A webhook from an unknown tool, as it was sent: “backup job nightly-db finished with warnings”"
