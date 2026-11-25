@@ -211,6 +211,65 @@ fn a_seat_is_learnt_not_said_while_the_sidecar_first_listens() {
     assert!(brain.tick(LATER + 1000).is_empty());
 }
 
+/// A sidecar holding cc-1 as the fixer, restarted at `restarted` with what it kept, its nick
+/// joining and asking the machines what they hold at `asked`.
+fn restarted(restarted: u64, asked: u64) -> Brain {
+    let mut before = brain();
+    take(&mut before, "henrik-mbp", "cc-1", LATER);
+    assert_eq!(before.tick(LATER + zirc_proto::leases::SETTLE).len(), 2);
+    let mut brain = Brain::new(before.kept.clone(), restarted);
+    assert!(brain.heard(Input::Asked, asked).is_empty());
+    brain
+}
+
+#[test]
+fn a_restarted_sidecar_keeps_a_held_seat_the_machine_says_again_once_asked() {
+    // Its nick joined late, as after a restart: the machine is asked 80 s on, and answers
+    // 30 s after that, past the listening counted from the start.
+    let restart = LATER + 3_600_000;
+    let asked = restart + 80_000;
+    let mut brain = restarted(restart, asked);
+    assert!(brain.tick(restart + LISTEN_FIRST + 1).is_empty());
+    let said_again = brain.heard(
+        Input::Lease {
+            from: "henrik-mbp".into(),
+            owner: Some("henrik".into()),
+            event: LeaseEvent::Want(Want {
+                id: format!("henrik-mbp-{LATER}-1"),
+                name: roles::lease("fixer"),
+                nick: "henrik-mbp".into(),
+                session: "cc-1".into(),
+                at: LATER,
+                seconds: zirc_proto::leases::MAX_SECONDS,
+            }),
+        },
+        asked + 30_000,
+    );
+    // No line, then or once it's listened long enough: the seat never moved.
+    assert!(said_again.is_empty());
+    assert!(brain.tick(asked + LISTEN_FIRST + 1).is_empty());
+    let seat = &brain.standing(asked + LISTEN_FIRST + 1).seats[0];
+    assert_eq!(seat.holder.as_ref().unwrap().session.session, "cc-1");
+}
+
+#[test]
+fn a_restarted_sidecar_says_a_seat_left_once_asked_machines_say_nothing_of_it() {
+    let restart = LATER + 3_600_000;
+    let asked = restart + 80_000;
+    let mut brain = restarted(restart, asked);
+    assert!(brain.tick(asked + LISTEN_FIRST - 1).is_empty());
+    // One line, in the agents' room: whose the machine is was heard with its lease events,
+    // which this sidecar hasn't heard.
+    let outs = brain.tick(asked + LISTEN_FIRST + 1);
+    let to: Vec<&str> = outs.iter().map(|out| out.to.as_str()).collect();
+    assert_eq!(to, [zirc_proto::AGENTS_CHANNEL]);
+    assert_eq!(
+        SeatChange::of(&outs[0].message.event).unwrap().words(),
+        "cc-1 left the fixer role"
+    );
+    assert!(brain.tick(asked + LISTEN_FIRST + 2000).is_empty());
+}
+
 #[test]
 fn leaving_says_so_and_keeps_the_last_holder() {
     let mut brain = brain();

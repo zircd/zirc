@@ -42,9 +42,12 @@ use zirc_proto::{Event, Message};
 /// The file beside Ergo's history what's kept of roles is in.
 pub const KEPT: &str = "zirc-roles.json";
 
-/// How long after the sidecar starts it only listens, in milliseconds: the machines say
-/// their lease events again for whoever joins at most a minute apart, so until then a seat
-/// that seems vacant may not be, and no seat is said taken or left.
+/// How long after the sidecar starts, and after a role's nick last asked the machines what
+/// they hold ([`Input::Asked`]), it only listens, in milliseconds: the machines say their
+/// lease events again when asked, at most a minute apart, so until then a seat that seems
+/// vacant may not be, and no seat is said taken or left. Counted from the start alone, a
+/// nick that joined late heard the machines too late: a restart said its held seat left, and
+/// it came back ten minutes on (25 Nov 2026).
 pub const LISTEN_FIRST: u64 = 90_000;
 
 /// A day, in milliseconds.
@@ -113,6 +116,9 @@ pub enum Input {
         /// What it said.
         event: LeaseEvent,
     },
+    /// A role's nick joined the organisation's channel and asked its machines what they hold,
+    /// which they answer by saying their lease events again.
+    Asked,
     /// A machine said what one of its sessions is called.
     Card {
         /// The machine.
@@ -185,9 +191,9 @@ pub struct Brain {
     owners: BTreeMap<String, String>,
     /// What each machine said its sessions are called, by machine and session.
     cards: BTreeMap<(String, String), SessionCard>,
-    /// When it started, in unix milliseconds: until [`LISTEN_FIRST`] after, seats are learnt,
-    /// never said.
-    started: u64,
+    /// When it started, or a nick last asked the machines what they hold, in unix
+    /// milliseconds: until [`LISTEN_FIRST`] after, seats are learnt, never said.
+    listens_from: u64,
     /// Whether what's kept changed since it was last written.
     changed: bool,
 }
@@ -198,7 +204,7 @@ impl Brain {
     pub fn new(kept: Kept, now: u64) -> Self {
         Self {
             kept,
-            started: now,
+            listens_from: now,
             ..Self::default()
         }
     }
@@ -310,6 +316,10 @@ impl Brain {
                     self.leases.apply(event);
                 }
                 self.seats_moved(now)
+            }
+            Input::Asked => {
+                self.listens_from = self.listens_from.max(now);
+                Vec::new()
             }
             Input::Card { machine, card } => {
                 self.cards.insert((machine, card.session.clone()), card);
@@ -434,7 +444,7 @@ impl Brain {
     /// Each seat taken or left since last said, said: in the agents' room, and to whoever's
     /// messages waited; and what waited, to the new holder.
     fn seats_moved(&mut self, now: u64) -> Vec<Out> {
-        if now < self.started + LISTEN_FIRST {
+        if now < self.listens_from + LISTEN_FIRST {
             return Vec::new();
         }
         let mut outs = Vec::new();
@@ -967,7 +977,10 @@ impl Host {
     /// What `heard`, by one of the nicks, says to the roles: what came to a nick directly,
     /// and, as the first nick heard it in a channel, what was said there.
     fn input(&self, heard: connection::Heard, links: &Links) -> Option<Input> {
-        let connection::Heard::Live { nick, line } = heard;
+        let (nick, line) = match heard {
+            connection::Heard::Live { nick, line } => (nick, line),
+            connection::Heard::Asked => return Some(Input::Asked),
+        };
         if !matches!(line.command.as_str(), "PRIVMSG" | "TAGMSG") {
             return None;
         }

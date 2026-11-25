@@ -1,7 +1,8 @@
 //! One of the server's own nicks connected, a role's (`crate::roles`): it joins its channels,
 //! says what it's told and passes on what it hears as it happens, so nothing reads Ergo's
 //! history on a timer. What came while it was away it doesn't catch up on: the role acted on
-//! it, or kept it, when it was said.
+//! it, or kept it, when it was said. What it needs to know of now, the seats the machines
+//! hold, it asks for on joining the organisation's channel ([`Heard::Asked`]).
 
 use tokio::sync::mpsc;
 use tracing::warn;
@@ -22,6 +23,11 @@ pub enum Do {
 pub enum Heard {
     /// `nick` heard `line`, live and whole.
     Live { nick: String, line: Line },
+    /// The nick joined the organisation's channel and asked its machines what they hold
+    /// ([`zirc_chat::presence::ask`]), which they answer by saying their lease events again.
+    /// Its joining alone may not tell them: a nick back on the server after a restart, its
+    /// old connection not yet gone, joins nothing anew (25 Nov 2026).
+    Asked,
 }
 
 /// Keeps `config`'s nick connected in `channels`, doing what comes on `todo`, until nothing
@@ -75,6 +81,12 @@ pub async fn run(
                         },
                         line = incoming.recv() => {
                             let Some(line) = line else { break };
+                            if joined_org(&line, &nick) {
+                                let ask = zirc_chat::presence::ask(zirc_proto::ORG_CHANNEL);
+                                if client.send(ask).is_ok() {
+                                    let _ = heard.send(Heard::Asked);
+                                }
+                            }
                             // Nothing yet while it's part of a multiline message still open.
                             if let Some(line) = batches.feed(line) {
                                 let _ = heard.send(Heard::Live { nick: nick.clone(), line });
@@ -93,6 +105,20 @@ pub async fn run(
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(RETRY_MOST);
     }
+}
+
+/// Whether `line` says the nick `nick` (lower case) joined the organisation's channel.
+fn joined_org(line: &Line, nick: &str) -> bool {
+    line.command == "JOIN"
+        && line
+            .params
+            .first()
+            .is_some_and(|channel| channel.eq_ignore_ascii_case(zirc_proto::ORG_CHANNEL))
+        && line
+            .source
+            .as_deref()
+            .and_then(|source| source.split('!').next())
+            .is_some_and(|from| from.eq_ignore_ascii_case(nick))
 }
 
 #[cfg(test)]
@@ -124,7 +150,10 @@ mod tests {
         ada.privmsg("#ops", "live").unwrap();
         let line = tokio::time::timeout(std::time::Duration::from_secs(10), async {
             loop {
-                let Heard::Live { line, .. } = heard.recv().await.expect("the connection went on");
+                let Heard::Live { line, .. } = heard.recv().await.expect("the connection went on")
+                else {
+                    continue;
+                };
                 if line.command == "PRIVMSG" {
                     return line;
                 }
@@ -139,6 +168,35 @@ mod tests {
         todo.send(Do::Say("#ops".into(), Box::new(said))).unwrap();
         let hello = |l: &Line| l.command == "PRIVMSG" && l.params[1].contains("hello");
         zirc_test_irc::next_matching(&mut ada_hears, hello).await;
+        drop(todo);
+        running.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn joining_the_organisations_channel_asks_its_machines_what_they_hold() {
+        let ergo = zirc_test_ergo::require_ergo!();
+        let config = bot_on(&ergo).await;
+        let channel = zirc_proto::ORG_CHANNEL;
+        let (machine, mut machine_hears) = zirc_test_irc::person(&ergo, "m3-mac").await;
+        zirc_test_irc::joins(&machine, &mut machine_hears, channel).await;
+        let (todo, doing) = mpsc::unbounded_channel();
+        let (hear, mut heard) = mpsc::unbounded_channel();
+        let running = tokio::spawn(run(config, vec![channel.to_owned()], doing, hear));
+        // The machines hear the ask, as zircd takes it ("TAGMSG" with the presence ask)…
+        let asked = |l: &Line| {
+            zirc_chat::presence::asks(l)
+                && l.source.as_deref().is_some_and(|s| s.starts_with("bot!"))
+        };
+        zirc_test_irc::next_matching(&mut machine_hears, asked).await;
+        // …and the roles hear that it asked.
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            while !matches!(
+                heard.recv().await.expect("the connection went on"),
+                Heard::Asked
+            ) {}
+        })
+        .await
+        .expect("heard in time");
         drop(todo);
         running.await.unwrap();
     }
