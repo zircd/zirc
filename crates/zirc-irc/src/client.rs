@@ -36,6 +36,10 @@ pub const MAX_BACKLOG_BYTES: usize = 16 * 1024 * 1024;
 const KEEPALIVE: Duration = Duration::from_secs(60);
 /// [`Config::answer_within`] unless set.
 const ANSWER_WITHIN: Duration = Duration::from_secs(30);
+/// The longest a connection gone silently can go unnoticed with the defaults: a keepalive
+/// with nothing heard, then a PING unanswered. What a server sent meanwhile went nowhere.
+pub const NOTICED_WITHIN: Duration =
+    Duration::from_secs(KEEPALIVE.as_secs() + ANSWER_WITHIN.as_secs());
 
 /// Where to connect and who to be.
 #[derive(Clone)]

@@ -38,11 +38,11 @@ use super::{Daemon, WATCHER_SESSION, heard, now, reaction, read_saved, vouch};
 /// The longest gap whose messages are told again.
 pub(super) const REPLAYED: Duration = Duration::from_mins(10);
 
-/// How long a connection can have been gone before zircd notices: zirc-irc's keepalive and
-/// the PING it waits on an answer to (60 and 30 s). What was said meanwhile went to a
-/// connection no longer there, so where nothing newer was heard, what's missed is asked
-/// from this long before zircd knew it was away; what was heard already is told once.
-const UNNOTICED: Duration = Duration::from_mins(2);
+/// How long a connection can have been gone before zircd notices ([`zirc_irc::NOTICED_WITHIN`]),
+/// with half a minute to spare. What was said meanwhile went to a connection no longer
+/// there, so where nothing newer was heard, what's missed is asked from this long before
+/// zircd knew it was away; what was heard already is told once.
+const UNNOTICED: Duration = Duration::from_secs(zirc_irc::NOTICED_WITHIN.as_secs() + 30);
 
 /// Where to ask what was missed from when nothing in a conversation was heard: from
 /// [`UNNOTICED`] before zircd knew it was away `since`, as a time tag.

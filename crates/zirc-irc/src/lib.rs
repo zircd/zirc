@@ -4,5 +4,5 @@
 
 mod client;
 
-pub use client::{Bearer, Client, Config, Credentials, Error, Incoming, connect};
+pub use client::{Bearer, Client, Config, Credentials, Error, Incoming, NOTICED_WITHIN, connect};
 pub use zirc_line::{Line, ParseError, multiline};
