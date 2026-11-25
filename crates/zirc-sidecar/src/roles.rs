@@ -882,7 +882,11 @@ impl Roles {
         let out = Out {
             role: report.role.clone(),
             to: zirc_proto::state::CHANNEL.to_owned(),
-            message: Message::new(&report.role, report.event()),
+            // Its kind's level, said by the sender (the user's choice, 25 Nov 2026).
+            message: Message {
+                level: Some(report.kind.level()),
+                ..Message::new(&report.role, report.event())
+            },
         };
         let _ = self.outs.send(vec![out]);
     }

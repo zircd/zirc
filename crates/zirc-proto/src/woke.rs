@@ -354,18 +354,17 @@ impl Woke {
     /// The colour of its edge.
     #[must_use]
     pub fn tone(&self) -> Tone {
-        // A tool's: red for an error or an incident, as for a failed build; amber for an
-        // unknown tool's post, as for a person's words (mock `PhoneOnCall`).
+        // An unknown tool's post is amber, as a person's words are (mock `PhoneOnCall`); a
+        // report's, its level's: red for an error, as for a failed build, amber for a warning.
         if self.what == What::Webhook {
             return Tone::Person;
         }
-        if let Some(reported) = &self.report
-            && reported.report.tool.is_some()
-        {
-            use crate::role_report::Subject;
-            if matches!(reported.report.kind, Subject::Error | Subject::Incident) {
-                return Tone::Failed;
-            }
+        if let Some(reported) = &self.report {
+            return match reported.report.kind.level() {
+                crate::Level::Error => Tone::Failed,
+                crate::Level::Warn => Tone::Person,
+                crate::Level::Info | crate::Level::Debug => Tone::Quiet,
+            };
         }
         match (self.by, self.state, self.level) {
             (By::Ci, Some(State::Failed), _) | (By::Ci, _, Some(Level::Broken)) => Tone::Failed,

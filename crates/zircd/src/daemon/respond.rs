@@ -119,6 +119,10 @@ impl Daemon {
                 report,
             } => {
                 let report = report.checked()?;
+                anyhow::ensure!(
+                    report.kind.in_ops(),
+                    "a new issue reaches its role from its tracker's webhook, never #ops"
+                );
                 Response::channel(self.say_in_ops(&repo, &session, report.event()).await?)
             }
             Request::CloseReport {

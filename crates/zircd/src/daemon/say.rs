@@ -119,7 +119,9 @@ impl Daemon {
 
     /// Says `event` as `session` in the organisation's `#ops` of the repository containing
     /// `repo`, joining it first: how something stands, or a report to a role
-    /// ([`zirc_proto::role_report`]).
+    /// ([`zirc_proto::role_report`]). The message says its kind's level itself where it has
+    /// one (a report's, [`zirc_proto::role_report::Subject::level`]), as the sidecar says a
+    /// tool's: the user's choice, 25 Nov 2026, that the sender says the level.
     pub(super) async fn say_in_ops(
         &mut self,
         repo: &Path,
@@ -132,7 +134,9 @@ impl Daemon {
         if !self.joined.contains(&ops) {
             client.send(Line::new("JOIN", [ops.as_str()]))?;
         }
-        self.publish(&ops, session, event);
+        let level = event.level();
+        let message = self.signed(session, event);
+        self.publish_message(&ops, Message { level, ..message });
         Ok(ops)
     }
 

@@ -130,6 +130,9 @@ pub struct Inbound {
     pub roles: Roles,
     /// When each tool was heard.
     pub store: Store,
+    /// Where a report that's never said in `#ops` goes straight to its role's items (a new
+    /// issue, [`zirc_proto::role_report::Subject::in_ops`]).
+    pub items: tokio::sync::mpsc::UnboundedSender<zirc_proto::role_report::RoleReport>,
 }
 
 /// The endpoint's route, `POST /in/{role}/{secret}`, its bodies held to [`MAX_BODY`].
@@ -239,7 +242,11 @@ pub fn take(
         })?;
     let outcome = match read {
         Read::Report(report) => {
-            inbound.roles.report(&report);
+            if report.kind.in_ops() {
+                inbound.roles.report(&report);
+            } else {
+                let _ = inbound.items.send(report);
+            }
             Outcome::Reported
         }
         Read::Resolved { kind, key } => {
@@ -300,6 +307,7 @@ mod tests {
             Inbound {
                 roles,
                 store: Store::beside(&history),
+                items: tokio::sync::mpsc::unbounded_channel().0,
             },
             said,
         )
@@ -437,6 +445,8 @@ mod tests {
         take(&inbound, "oncall", SECRET, &sentry, body, 0).unwrap();
         let outs = said.try_recv().unwrap();
         assert_eq!(outs[0].to, "#ops");
+        // An error, said so by the sender (the user's table).
+        assert_eq!(outs[0].message.level, Some(zirc_proto::Level::Error));
         let report = zirc_proto::role_report::RoleReport::of(&outs[0].message.event).unwrap();
         assert_eq!(report.tool, Some(Tool::Sentry));
         // Its items open one and wake the role, which nobody holds: its card says it waits.
@@ -461,6 +471,23 @@ mod tests {
             ..wake
         });
         assert!(said.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_new_issue_goes_straight_to_its_roles_items_never_to_ops() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut inbound, mut said) = inbound(dir.path());
+        let (items, mut direct) = tokio::sync::mpsc::unbounded_channel();
+        inbound.items = items;
+        let github = headers(&[("x-github-event", "issues")]);
+        let body = include_bytes!("inbound/testdata/github_issues_opened.json");
+        assert_eq!(
+            take(&inbound, "oncall", SECRET, &github, body, 0),
+            Ok((Tool::Github, Outcome::Reported))
+        );
+        assert!(said.try_recv().is_err(), "nothing said in #ops");
+        let report = direct.try_recv().unwrap();
+        assert_eq!(report.kind, zirc_proto::role_report::Subject::Issue);
     }
 
     #[test]

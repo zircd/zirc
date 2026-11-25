@@ -158,6 +158,28 @@ impl Subject {
         }
     }
 
+    /// What a report of this kind asks of whoever reads it (the user's table, 25 Nov 2026,
+    /// settled through the coordinator): an error for a tool's error or incident, a warning
+    /// for a flaky test, a new warning in CI or a container, info for a new issue. A
+    /// report's event says it whoever sends it ([`crate::Event::level`]), and its wake's
+    /// tone follows it ([`crate::woke::Woke::tone`]).
+    #[must_use]
+    pub const fn level(self) -> crate::Level {
+        match self {
+            Self::Error | Self::Incident => crate::Level::Error,
+            Self::Warning | Self::Flaky | Self::Container => crate::Level::Warn,
+            Self::Issue => crate::Level::Info,
+        }
+    }
+
+    /// Whether a report of this kind is said in `#ops`, where its role's items take it: all
+    /// but a new issue, which goes to its role alone and its card in the agents' room (the
+    /// user: "info for issues as long as they are not posted in #ops").
+    #[must_use]
+    pub const fn in_ops(self) -> bool {
+        !matches!(self, Self::Issue)
+    }
+
     /// How long an item of this kind stays open before its holder is reminded, in seconds:
     /// a warning's two hours, as nothing is broken yet; a flaky test's, a container's or an
     /// error's half an hour (the nudges of the workflows they replace); an incident's a quarter
@@ -659,6 +681,36 @@ mod tests {
             link: Some("https://ci/612".into()),
             ..RoleReport::new("fixer", Subject::Warning, "warning: unused import `N`")
         }
+    }
+
+    #[test]
+    fn each_kind_asks_what_the_user_said_and_an_issue_stays_out_of_ops() {
+        use crate::Level;
+        let levels: Vec<(Subject, Level)> = Subject::ALL
+            .iter()
+            .map(|kind| (*kind, kind.level()))
+            .collect();
+        assert_eq!(
+            levels,
+            [
+                (Subject::Warning, Level::Warn),
+                (Subject::Flaky, Level::Warn),
+                (Subject::Container, Level::Warn),
+                (Subject::Error, Level::Error),
+                (Subject::Issue, Level::Info),
+                (Subject::Incident, Level::Error),
+            ]
+        );
+        assert!(!Subject::Issue.in_ops() && Subject::Error.in_ops());
+        // Its event says it, whoever sends it.
+        let report = RoleReport::new("fixer", Subject::Flaky, "//a:b");
+        assert_eq!(report.event().level(), Some(Level::Warn));
+        let closing = Closing {
+            role: "fixer".into(),
+            id: report.id(),
+            end: End::Done,
+        };
+        assert_eq!(closing.event().level(), None);
     }
 
     #[test]

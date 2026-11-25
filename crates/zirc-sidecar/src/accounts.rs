@@ -268,9 +268,12 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
     // reminder, wakes the role's holder through its nick, or waits for the next.
     let roles = ergo.roles.clone();
     let closing = ergo.roles.clone();
+    // What a tool reports straight to its role, never said in #ops (crate::inbound).
+    let (direct, directly) = tokio::sync::mpsc::unbounded_channel();
     let ending = ergo.roles.clone();
     tokio::spawn(crate::items::keep_items(
         ergo.history.clone(),
+        directly,
         move |wake| {
             roles.reported(&wake);
         },
@@ -297,6 +300,7 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
     let inbound = crate::inbound::router(crate::inbound::Inbound {
         roles: ergo.roles.clone(),
         store: ergo.inbound.clone(),
+        items: direct,
     });
     tokio::spawn(axum::serve(public, content::router(ergo.clone()).merge(inbound)).into_future());
     axum::serve(tokio::net::TcpListener::bind(listen).await?, routes(ergo)).await

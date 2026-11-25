@@ -165,16 +165,7 @@ impl Items {
     ) -> bool {
         let ops = channel.eq_ignore_ascii_case(zirc_proto::state::CHANNEL);
         if ops && let Some(report) = RoleReport::of(&message.event) {
-            let Ok(report) = report.checked() else {
-                return false;
-            };
-            if let Some(item) = self.open(&report.role, &report.id()) {
-                item.reports = item.reports.saturating_add(1);
-                item.last = now;
-            } else {
-                self.items.push(OpenItem::opened(report, now));
-            }
-            return true;
+            return self.take(report, now);
         }
         if ops && let Some(closing) = Closing::of(&message.event) {
             let closed = self.close(
@@ -228,6 +219,21 @@ impl Items {
             return changed;
         }
         false
+    }
+
+    /// Takes `report` in at `now`: it opens an item, or counts again on the open one. Says
+    /// whether anything changed: nothing, for one that isn't a report.
+    pub fn take(&mut self, report: RoleReport, now: u64) -> bool {
+        let Ok(report) = report.checked() else {
+            return false;
+        };
+        if let Some(item) = self.open(&report.role, &report.id()) {
+            item.reports = item.reports.saturating_add(1);
+            item.last = now;
+        } else {
+            self.items.push(OpenItem::opened(report, now));
+        }
+        true
     }
 
     /// Closes `role`'s open items among `ids` as `end` at `now`.
@@ -333,11 +339,17 @@ pub fn kept(history: &Path) -> Items {
     Items::load(&path_for(history))
 }
 
-/// Keeps the items beside the history at `history` until the process ends: every
+/// Keeps the items beside the history at `history` until the process ends, with what comes
+/// to a role `direct`ly, never said in `#ops` (a new issue, [`zirc_proto::role_report::Subject::in_ops`]): every
 /// [`EVERY`], what's new in the history, then what's due, each wake handed to `wake`, what
 /// landings closed to `closed`, and each item closed, however, to `ended` (role, id).
-pub async fn keep_items<W, C, E>(history: PathBuf, wake: W, closed: C, ended: E)
-where
+pub async fn keep_items<W, C, E>(
+    history: PathBuf,
+    mut direct: tokio::sync::mpsc::UnboundedReceiver<RoleReport>,
+    wake: W,
+    closed: C,
+    ended: E,
+) where
     W: Fn(Wake) + Send + Sync + 'static,
     C: Fn(Closed) + Send + Sync + 'static,
     E: Fn(&str, &str) + Send + Sync + 'static,
@@ -369,6 +381,10 @@ where
                 false
             }
         };
+        // What came straight to its role, never said in `#ops` (a new issue).
+        while let Ok(report) = direct.try_recv() {
+            changed |= items.take(report, crate::now());
+        }
         let wakes = items.due(crate::now());
         changed |= !wakes.is_empty();
         for each in wakes {
@@ -383,7 +399,16 @@ where
         if changed && let Err(error) = items.save(&path) {
             warn!(%error, "couldn't keep roles' items");
         }
-        tokio::time::sleep(EVERY).await;
+        // Until it's time to read again, or a report comes straight to a role.
+        tokio::select! {
+            () = tokio::time::sleep(EVERY) => {}
+            Some(report) = direct.recv() => {
+                items.take(report, crate::now());
+                if let Err(error) = items.save(&path) {
+                    warn!(%error, "couldn't keep roles' items");
+                }
+            }
+        }
     }
 }
 
