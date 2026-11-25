@@ -58,7 +58,7 @@ impl Signing<'_> {
     /// address's.
     fn of(&self, tool: Tool) -> Option<&str> {
         match tool.signs()? {
-            Signs::Address => Some(self.tools.get(&tool).map_or(self.address, String::as_str)),
+            Signs::Address => Some(self.address),
             Signs::Own => self.tools.get(&tool).map(String::as_str),
         }
     }
@@ -132,9 +132,8 @@ fn check_signature(
     let signed = match tool {
         Tool::Github => match header("x-hub-signature-256") {
             // GitHub signs only where its webhook has a secret: one without is the address's
-            // alone, unless zirc.dev was given one for it.
-            None if !signing.tools.contains_key(&Tool::Github) => return Ok(()),
-            None => false,
+            // alone.
+            None => return Ok(()),
             Some(signature) => signature
                 .strip_prefix("sha256=")
                 .is_some_and(|hex| zirc_proto::verify_hex(secret, body, hex)),

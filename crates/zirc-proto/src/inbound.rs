@@ -133,13 +133,16 @@ impl Tool {
         }
     }
 
-    /// How it signs its posts; none for a tool zirc doesn't know.
+    /// How it signs its posts: with its own secret for [`crate::roles::SIGNED_BY_OWN`]'s,
+    /// with the address's for GitHub, and not at all for a tool zirc doesn't know.
     #[must_use]
-    pub const fn signs(self) -> Option<Signs> {
-        match self {
-            Self::Sentry | Self::Linear | Self::Pagerduty => Some(Signs::Own),
-            Self::Github => Some(Signs::Address),
-            Self::Other => None,
+    pub fn signs(self) -> Option<Signs> {
+        if crate::roles::SIGNED_BY_OWN.contains(&self) {
+            Some(Signs::Own)
+        } else if self == Self::Github {
+            Some(Signs::Address)
+        } else {
+            None
         }
     }
 

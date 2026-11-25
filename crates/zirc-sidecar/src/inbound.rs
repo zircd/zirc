@@ -213,9 +213,9 @@ pub fn take(
     body: &[u8],
     now: u64,
 ) -> Result<(Tool, Outcome), StatusCode> {
-    if !inbound.roles.opens(role, secret) {
+    let Some(tools) = inbound.roles.opened(role, secret) else {
         return Err(StatusCode::NOT_FOUND);
-    }
+    };
     if !inbound.store.admits(role, now) {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
@@ -225,8 +225,8 @@ pub fn take(
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned)
     };
-    // The tools' own signing secrets, once zirc.dev gives them; GitHub's is the address's.
-    let tools = BTreeMap::new();
+    // The tools' own signing secrets, as the role's admins gave them; GitHub's is the
+    // address's.
     let signing = Signing {
         address: secret,
         tools: &tools,
@@ -290,6 +290,7 @@ mod tests {
                 addresses: vec![Address {
                     role: "oncall".into(),
                     digest: Address::digest_of(SECRET),
+                    signing: BTreeMap::new(),
                 }],
                 version: "1".into(),
             })
@@ -339,6 +340,7 @@ mod tests {
         listing.addresses = vec![Address {
             role: "oncall".into(),
             digest: Address::digest_of("aNewSecretAfterRotation0"),
+            signing: BTreeMap::new(),
         }];
         inbound.roles.set_listing(listing).unwrap();
         assert_eq!(
@@ -480,6 +482,36 @@ mod tests {
                 zirc_proto::role_report::Subject::Error,
                 "sentry:4821007"
             )
+        );
+    }
+
+    #[test]
+    fn a_tool_whose_signing_secret_was_given_must_sign_with_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let (inbound, _said) = inbound(dir.path());
+        let mut listing = inbound.roles.standing().listing;
+        // What zirc.dev gives, which the standing leaves out.
+        listing.addresses = vec![Address {
+            role: "oncall".into(),
+            digest: Address::digest_of(SECRET),
+            signing: BTreeMap::from([(Tool::Sentry, "sentry-client-secret".to_owned())]),
+        }];
+        inbound.roles.set_listing(listing).unwrap();
+        let body = include_bytes!("inbound/testdata/sentry_issue_created.json");
+        let unsigned = headers(&[("sentry-hook-resource", "issue")]);
+        assert_eq!(
+            take(&inbound, "oncall", SECRET, &unsigned, body, 0),
+            Err(StatusCode::UNAUTHORIZED)
+        );
+        let signature = zirc_proto::sign_hex("sentry-client-secret", body);
+        let mut signed = unsigned.clone();
+        signed.insert(
+            "sentry-hook-signature",
+            HeaderValue::from_str(&signature).unwrap(),
+        );
+        assert_eq!(
+            take(&inbound, "oncall", SECRET, &signed, body, 0),
+            Ok((Tool::Sentry, Outcome::Reported))
         );
     }
 

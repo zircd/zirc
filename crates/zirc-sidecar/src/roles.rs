@@ -835,10 +835,26 @@ impl Roles {
         self.with(|brain| ((), brain.wake(role, woke, text, crate::now_ms())));
     }
 
-    /// Whether `secret` opens role `role`'s address ([`Listing::opens`]).
+    /// The signing secrets of role `role`'s address, by tool, when `secret` opens it
+    /// ([`Listing::opens`]); `None` when it doesn't.
     #[must_use]
-    pub fn opens(&self, role: &str, secret: &str) -> bool {
-        self.with(|brain| (brain.listing().opens(role, secret), Vec::new()))
+    pub fn opened(
+        &self,
+        role: &str,
+        secret: &str,
+    ) -> Option<BTreeMap<zirc_proto::inbound::Tool, String>> {
+        self.with(|brain| {
+            let listing = brain.listing();
+            let signing = listing.opens(role, secret).then(|| {
+                listing
+                    .addresses
+                    .iter()
+                    .find(|address| address.role == role)
+                    .map(|address| address.signing.clone())
+                    .unwrap_or_default()
+            });
+            (signing, Vec::new())
+        })
     }
 
     /// Has role `role`'s nick say `report` in `#ops`, where its items take it
