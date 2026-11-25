@@ -802,12 +802,16 @@ impl Event {
     /// ([`live`]: a machine's working set, leases, an intent's renewal) is debug; records of
     /// what happened, which machines read back from history (commits, pushes, intents),
     /// and posts, questions, answers, notes and files are info. zircd's own intents say
-    /// debug. `None` for a custom event of any other kind, which only its sender can say.
+    /// debug. A report to a role ([`role_report::KIND`]) is a warning, whoever sends it: it's
+    /// something for its holder to do, so `#ops` shows it where only warnings show (its
+    /// closing says nothing more is needed, and stays info). `None` for a custom event of
+    /// any other kind, which only its sender can say.
     #[must_use]
     pub fn level(&self) -> Option<Level> {
         match self {
             Self::Working { .. } => Some(Level::Debug),
             Self::Custom { .. } if live(self) => Some(Level::Debug),
+            Self::Custom { kind, .. } if kind == role_report::KIND => Some(Level::Warn),
             Self::Custom { .. } => None,
             Self::Intent { .. }
             | Self::Commit { .. }
@@ -1916,6 +1920,19 @@ mod tests {
         );
         // Its kind.
         assert_eq!(Message::new("cc-1", text()).level(), Some(Level::Info));
+        // A report to a role asks something of its holder, and its closing nothing.
+        let report =
+            role_report::RoleReport::new("oncall", role_report::Subject::Error, "sentry:7");
+        assert_eq!(
+            Message::new("oncall", report.event()).level(),
+            Some(Level::Warn)
+        );
+        let closing = role_report::Closing {
+            role: "oncall".to_owned(),
+            id: report.id(),
+            end: role_report::End::Done,
+        };
+        assert_eq!(Message::new("oncall", closing.event()).level(), None);
         assert_eq!(Message::new("cc-1", text()).declared_level(), None);
         let commit = Event::Commit {
             branch: "main".into(),
