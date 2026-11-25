@@ -97,21 +97,11 @@ impl Meetings {
 fn keeps_meeting_line(session: &str, other: &str, kept: &Kept) -> String {
     let how = match kept {
         Kept::Files(files) => {
-            let named: Vec<String> = files
-                .iter()
-                .take(4)
-                .map(|file| format!("`{file}`"))
-                .collect();
-            let more = files.len().saturating_sub(named.len());
-            let more = if more == 0 {
-                String::new()
-            } else {
-                format!(" and {more} more")
-            };
+            let named: Vec<String> = files.iter().map(|file| format!("`{file}`")).collect();
             format!(
-                "your lines have met in {} files ({}{more})",
+                "your lines have met in {} files ({})",
                 files.len(),
-                named.join(", ")
+                zirc_proto::some_of(&named, 4, ", ")
             )
         }
         Kept::Settles(times) => format!("you've settled {times} times"),
