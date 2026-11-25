@@ -73,16 +73,6 @@ pub struct LocalOverlap {
     pub why: Option<Why>,
 }
 
-impl LocalOverlap {
-    /// Whether every path is one the two worktrees change in different parts, so the two
-    /// will merge on their own: not worth waking a session for. One that later changes the
-    /// same lines is told again, as news.
-    #[must_use]
-    pub fn quiet(&self) -> bool {
-        !self.paths.is_empty() && self.paths.iter().all(|path| self.apart.contains(path))
-    }
-}
-
 /// A push of someone else's changing the same lines as a worktree on this machine: what
 /// will conflict when one is merged with the other.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

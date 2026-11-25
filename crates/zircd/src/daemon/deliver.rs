@@ -8,7 +8,6 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use zirc_core::clashes::Meets;
 use zirc_core::ipc::{Delivery, Response, Why, Worktree};
-use zirc_core::presence::{LocalOverlap, Overlap};
 use zirc_core::sessions::LANDING_KIND;
 use zirc_core::{decisions, paths, presence};
 use zirc_irc::Client;
@@ -387,16 +386,16 @@ impl Daemon {
             {
                 None
             }
-            // With another machine's work, as with another worktree's here below: a
-            // session hears of its own worktree's, unless the lines are apart or the two
-            // settled. Until 25 Nov 2026 a file both changed woke it whatever the lines.
+            // Another's work in a session's files, on another machine or in another
+            // worktree here: it hears unless the lines are apart, which merge on their own,
+            // or the two settled ([`Daemon::overlap_news`]). The person here hears it all.
             Response::Overlap(overlap) => {
                 let mine = self.paths_in(&overlap.channel, session);
                 (overlap
                     .paths
                     .iter()
                     .any(|path| mine.contains(path.as_str()))
-                    && session.is_none_or(|session| self.remote_news_to(overlap, me, session)))
+                    && session.is_none_or(|session| self.overlap_news(heard, me, session)))
                 .then_some(Why::Overlap)
             }
             // In a shared workspace, only to the session whose branch or claimed changes the
@@ -404,11 +403,8 @@ impl Daemon {
             Response::Conflict(conflict) => (anyone
                 || session.is_some_and(|session| self.works_in(&conflict.worktree, session)))
             .then_some(Why::Conflict),
-            // Different parts of the same files will merge on their own: a session hears
-            // of it only if it turns into the same lines. The person here hears it all.
-            Response::LocalOverlap(overlap) => (anyone
-                || (!overlap.quiet()
-                    && session.is_some_and(|session| self.news_to(overlap, me, session))))
+            Response::LocalOverlap(_) => (anyone
+                || session.is_some_and(|session| self.overlap_news(heard, me, session)))
             .then_some(Why::Overlap),
             _ => None,
         }
@@ -733,32 +729,46 @@ impl Daemon {
         })
     }
 
-    /// Whether `overlap` is news to `session` on `me`: between its work and another's, one
-    /// side its own and the other not, and not one the two settled ([`Daemon::settled`]),
-    /// which is the one way to say an overlap is sorted (the user's choice, 25 Nov 2026:
-    /// an intent that named the other session and covered the files once quieted it too).
-    pub(super) fn news_to(&self, overlap: &LocalOverlap, me: &str, session: &str) -> bool {
-        let (its, others): (Vec<&Worktree>, Vec<&Worktree>) = overlap
-            .worktrees
-            .iter()
-            .partition(|worktree| self.works_in(worktree, session));
-        let others = others.len();
-        !its.is_empty() && others > 0 && !self.settled(overlap, me, session)
-    }
-
-    /// Whether `overlap`, with another machine, is news to `session` on `me`: its own
-    /// worktree's, the lines not all apart, and not with sessions it settled with, every one
-    /// of them ([`Daemon::settled_with`]).
-    fn remote_news_to(&self, overlap: &Overlap, me: &str, session: &str) -> bool {
-        let its = overlap
-            .worktree
-            .as_ref()
-            .is_none_or(|worktree| self.works_in(worktree, session));
-        let settled = !overlap.sessions.is_empty()
-            && overlap.sessions.iter().all(|other| {
-                self.settled_with(&overlap.channel, (me, session), (&overlap.nick, other))
-            });
-        its && !settled && super::announce::meets(overlap) != Meets::Apart
+    /// Whether `heard`, an overlap, is news to `session` on `me`: one side its own work and
+    /// the other not, the lines not all apart ([`Meets`]), and not with sessions it settled
+    /// with, every one of them ([`Daemon::settled_with`]). A settle is the one way to say an
+    /// overlap is sorted (the user's choice, 25 Nov 2026: an intent that named the other
+    /// session and covered the files once quieted it too).
+    fn overlap_news(&self, heard: &Response, me: &str, session: &str) -> bool {
+        let (channel, its, others): (_, _, Vec<(&str, &str)>) = match heard {
+            Response::Overlap(overlap) => (
+                &overlap.channel,
+                overlap
+                    .worktree
+                    .as_ref()
+                    .is_none_or(|worktree| self.works_in(worktree, session)),
+                overlap
+                    .sessions
+                    .iter()
+                    .map(|other| (overlap.nick.as_str(), other.as_str()))
+                    .collect(),
+            ),
+            Response::LocalOverlap(overlap) => {
+                let (its, others): (Vec<&Worktree>, Vec<&Worktree>) = overlap
+                    .worktrees
+                    .iter()
+                    .partition(|worktree| self.works_in(worktree, session));
+                (
+                    &overlap.channel,
+                    !its.is_empty() && !others.is_empty(),
+                    others
+                        .into_iter()
+                        .filter_map(|worktree| Some((me, self.session_of(worktree)?)))
+                        .collect(),
+                )
+            }
+            _ => return false,
+        };
+        let settled = !others.is_empty()
+            && others
+                .iter()
+                .all(|&other| self.settled_with(channel, (me, session), other));
+        its && !settled && super::announce::meets(heard) != Some(Meets::Apart)
     }
 
     /// The session whose work `worktree`, one of this machine's working sets, is, if known.

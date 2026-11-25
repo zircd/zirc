@@ -1,7 +1,7 @@
 //! Who's working on what: the working sets this machine says in each channel, and the
 //! overlaps it finds between them.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 use zirc_core::clashes::Meets;
@@ -337,11 +337,7 @@ impl Daemon {
             tracing::info!("overlap in {channel}: {alert:?}");
             self.tell_watchers(&alert);
             let kind = overlap_kind(&alert);
-            let woke = match &alert {
-                Response::LocalOverlap(overlap) => !overlap.quiet(),
-                Response::Overlap(overlap) => meets(overlap) == Meets::SameLines,
-                _ => true,
-            };
+            let woke = meets(&alert) == Some(Meets::SameLines);
             self.noticed(&alert, Some(kind), woke, escalated);
             self.count(&Usage::OverlapNotified(usage::OverlapNotified {
                 local: matches!(alert, Response::LocalOverlap(_)),
@@ -360,25 +356,13 @@ impl Daemon {
 
 /// What `alert`, an overlap, amounts to, as its telemetry says: the worst of its paths.
 fn overlap_kind(alert: &Response) -> usage::OverlapKind {
-    use usage::OverlapKind::{Apart, Path, SameLines};
-    match alert {
-        Response::LocalOverlap(overlap) if !overlap.same_lines.is_empty() => SameLines,
-        Response::LocalOverlap(overlap) if overlap.quiet() => Apart,
-        Response::LocalOverlap(overlap) => kind_of_unknown(
-            overlap
-                .paths
-                .iter()
-                .filter(|path| !overlap.apart.contains(path)),
-        ),
-        Response::Overlap(overlap) if !overlap.same_lines.is_empty() => SameLines,
-        Response::Overlap(overlap) if meets(overlap) == Meets::Apart => Apart,
-        Response::Overlap(overlap) => kind_of_unknown(
-            overlap
-                .paths
-                .iter()
-                .filter(|path| !overlap.apart.contains(path)),
-        ),
-        _ => Path,
+    let Some((paths, same_lines, apart)) = lines_of(alert) else {
+        return usage::OverlapKind::Path;
+    };
+    match Meets::of(paths, same_lines, apart) {
+        Meets::SameLines => usage::OverlapKind::SameLines,
+        Meets::Apart => usage::OverlapKind::Apart,
+        Meets::Unknown => kind_of_unknown(paths.iter().filter(|path| !apart.contains(path))),
     }
 }
 
@@ -392,7 +376,36 @@ fn kind_of_unknown<'a>(mut paths: impl Iterator<Item = &'a String>) -> usage::Ov
     }
 }
 
-/// How `overlap`'s two sides meet, by their lines.
-pub(super) fn meets(overlap: &Overlap) -> Meets {
-    Meets::of(&overlap.paths, &overlap.same_lines, &overlap.apart)
+/// An overlap's paths, the lines both sides change in them, and the paths they change apart.
+type Lines<'a> = (
+    &'a [String],
+    &'a BTreeMap<String, Vec<[u32; 2]>>,
+    &'a [String],
+);
+
+/// The paths of `alert`, an overlap with another machine or between worktrees here, with
+/// the lines both sides change and the paths they change apart.
+fn lines_of(alert: &Response) -> Option<Lines<'_>> {
+    match alert {
+        Response::Overlap(Overlap {
+            paths,
+            same_lines,
+            apart,
+            ..
+        })
+        | Response::LocalOverlap(LocalOverlap {
+            paths,
+            same_lines,
+            apart,
+            ..
+        }) => Some((paths, same_lines, apart)),
+        _ => None,
+    }
+}
+
+/// How the two sides of `alert`, an overlap, meet by their lines: what decides who hears
+/// of it, with another machine as between worktrees here.
+pub(super) fn meets(alert: &Response) -> Option<Meets> {
+    let (paths, same_lines, apart) = lines_of(alert)?;
+    Some(Meets::of(paths, same_lines, apart))
 }

@@ -217,7 +217,7 @@ impl Daemon {
     /// Keeps for later, rather than waking them, the watching sessions whose reason in
     /// `reasons` is `held` and of whom `quiet` says `response` needs nothing now: an intent
     /// ([`Daemon::quiet_intent`]), a landing ([`Daemon::quiet_landing`]), or an overlap
-    /// with another machine whose lines couldn't be compared ([`noted_overlap`]).
+    /// whose lines couldn't be compared ([`noted_overlap`]).
     pub(super) fn hold(
         &mut self,
         response: &Response,
@@ -528,11 +528,11 @@ async fn predict_against(job: &Job) -> Option<Predicted> {
     ))
 }
 
-/// Whether `response` is an overlap with another machine whose lines couldn't be compared:
-/// a note for the session's next wake, as nothing says they meet (the user's choice, 25 Nov
-/// 2026: "Note it").
+/// Whether `response` is an overlap whose lines couldn't be compared: a note for the
+/// session's next wake, as nothing says they meet (the user's choice, 25 Nov 2026: "Note
+/// it").
 pub(super) fn noted_overlap(response: &Response) -> bool {
-    matches!(response, Response::Overlap(overlap) if super::announce::meets(overlap) == Meets::Unknown)
+    super::announce::meets(response) == Some(Meets::Unknown)
 }
 
 #[cfg(test)]

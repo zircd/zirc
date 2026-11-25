@@ -2280,13 +2280,13 @@ mod tests {
         let start = Instant::now();
         let mut first = overlap(&[], &["a.rs"]);
         assert_eq!(told.local_news(&mut first, start), Some(false));
-        assert!(first.quiet());
+        assert_eq!(first.apart, ["a.rs"]);
         let mut worse = overlap(&["a.rs"], &[]);
         assert_eq!(
             told.local_news(&mut worse, start + Duration::from_secs(60)),
             Some(true)
         );
-        assert!(!worse.quiet());
+        assert!(worse.apart.is_empty());
     }
 
     #[test]

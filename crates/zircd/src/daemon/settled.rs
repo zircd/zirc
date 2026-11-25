@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result};
 use zirc_core::ipc::Response;
-use zirc_core::presence::{self, LocalOverlap};
+use zirc_core::presence;
 use zirc_proto::Message;
 use zirc_proto::woke::{Settled, Side};
 
@@ -210,17 +210,6 @@ impl Daemon {
         self.settled_lately
             .standing(scope, ((me, session), (machine, other)), now())
             .is_some()
-    }
-
-    /// Whether `session` on `me` and the session on the other side of `overlap` settled it
-    /// lately, all its paths.
-    pub(super) fn settled(&self, overlap: &LocalOverlap, me: &str, session: &str) -> bool {
-        overlap
-            .worktrees
-            .iter()
-            .filter(|worktree| !self.works_in(worktree, session))
-            .filter_map(|worktree| self.session_of(worktree))
-            .any(|other| self.settled_with(&overlap.channel, (me, session), (me, other)))
     }
 }
 
