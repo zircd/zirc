@@ -465,10 +465,7 @@ impl Vacant {
     /// The card's heading: `Nobody is the fixer in monorepo`.
     #[must_use]
     pub fn title(&self) -> String {
-        format!(
-            "Nobody is the {} in {}",
-            self.seat.role, self.seat.repository
-        )
+        vacant_title(&self.seat.role, &self.seat.repository)
     }
 
     /// What the card says before the command ([`take_command`]).
@@ -525,6 +522,12 @@ impl Vacant {
             _ => None,
         }
     }
+}
+
+/// A vacant role's card's heading ([`Vacant::title`]): `Nobody is the fixer in monorepo`.
+#[must_use]
+pub fn vacant_title(role: &str, repository: &str) -> String {
+    format!("Nobody is the {role} in {repository}")
 }
 
 /// The vacant card's last words.
