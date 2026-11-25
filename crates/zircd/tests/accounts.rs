@@ -2678,3 +2678,61 @@ async fn a_request_answered_while_zircd_was_stopped_is_heard_once_it_is_back() {
     );
     assert_eq!(yes.why, Some(Why::Decision));
 }
+
+/// `owner`'s machine `mattias-mbp` with a session, `cc-1531f8`, working in a repository on
+/// it, through `port` (Ergo's own, or a relay's), and the session's watch; with `rest` in its
+/// config.
+async fn machine_with_a_session(
+    ergo: &Ergo,
+    port: u16,
+    rest: &str,
+) -> (Machine, TempDir, ipc::Watching) {
+    register(ergo, "mattias-mbp", "right-horse").await;
+    let config = config(ergo, "mattias-mbp", "right-horse", rest).replace(
+        &format!("port = {}", ergo.port()),
+        &format!("port = {port}"),
+    );
+    let machine = Machine::spawn(&config);
+    connected(machine.home.path()).await;
+    let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+    ipc::request(
+        &paths::socket(machine.home.path()),
+        &Request::RepoAdd {
+            path: repo.path().to_owned(),
+            session: Some("cc-1531f8".to_owned()),
+        },
+    )
+    .await
+    .unwrap();
+    let watch = watching(machine.home.path(), "cc-1531f8").await;
+    (machine, repo, watch)
+}
+
+/// What the owner says to a session while its machine's connection has dropped without a
+/// word, before zircd notices, reaches the session once zircd has connected again: the
+/// server took it for a connection that was no longer there.
+#[tokio::test]
+async fn the_owners_message_said_while_the_connection_silently_dropped_reaches_its_session() {
+    // History on disk, direct messages with it, as a tenant's Ergo keeps it (a copy of two of
+    // zirc-sidecar's environment::HISTORY, which zircd can't depend on).
+    let Some(ergo) = Ergo::start_with(&[
+        ("ERGO__DATASTORE__SQLITE__ENABLED", "true"),
+        ("ERGO__HISTORY__PERSISTENT__ENABLED", "true"),
+    ]) else {
+        return;
+    };
+    let relay = Relay::to(&ergo).await;
+    let (machine, _repo, mut watch) =
+        machine_with_a_session(&ergo, relay.port, "keepalive = 1").await;
+    let (owner, _owner_in) = logged_in(&ergo, "mattias").await;
+    relay.freeze(1);
+    owner
+        .privmsg("mattias-mbp", "cc-1531f8: rebase on main please")
+        .unwrap();
+    // zircd notices, connects again, and the session is told.
+    assert_eq!(
+        without_id(next_direct(&mut watch).await),
+        said("mattias", Some("cc-1531f8"), "rebase on main please")
+    );
+    drop(machine);
+}

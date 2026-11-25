@@ -6,7 +6,10 @@
 //! As zircd joins each channel again it asks for what was said there after the newest
 //! message it heard (`CHATHISTORY AFTER`), and tells watchers each message as it would
 //! have, live: what concerns a session wakes it, or waits for its next watch, and a landing
-//! line ends the waits on it. Reactions are told again too, in their place among the
+//! line ends the waits on it. What came directly to the machine in the gap from its owner,
+//! or from a role a session here holds, is asked of each such conversation too and told as
+//! it would have been: a server keeps a direct message it took for a connection that had
+//! silently gone. Reactions are told again too, in their place among the
 //! messages: a 👍 can be a person's answer to a session's `zirc request`. Working sets,
 //! joins and parts are how things stood then, and they're said anew as machines rejoin, so
 //! none of them changes what this machine knows now. A message or reaction heard live as
@@ -35,6 +38,18 @@ use super::{Daemon, WATCHER_SESSION, heard, now, reaction, read_saved, vouch};
 /// The longest gap whose messages are told again.
 pub(super) const REPLAYED: Duration = Duration::from_mins(10);
 
+/// How long a connection can have been gone before zircd notices: zirc-irc's keepalive and
+/// the PING it waits on an answer to (60 and 30 s). What was said meanwhile went to a
+/// connection no longer there, so where nothing newer was heard, what's missed is asked
+/// from this long before zircd knew it was away; what was heard already is told once.
+const UNNOTICED: Duration = Duration::from_mins(2);
+
+/// Where to ask what was missed from when nothing in a conversation was heard: from
+/// [`UNNOTICED`] before zircd knew it was away `since`, as a time tag.
+fn missed_from(since: u64) -> String {
+    zirc_core::time::tag(since.saturating_sub(UNNOTICED.as_secs()))
+}
+
 /// How long after connecting a channel joined still has its gap asked for: past the joins
 /// that follow connecting, a channel joined is a new one, whose past isn't news.
 const JOINING: Duration = Duration::from_mins(1);
@@ -51,8 +66,8 @@ const PAGE: usize = 1000;
 pub(super) struct Saved {
     /// When zircd was last connected, in seconds since the Unix epoch.
     alive: Option<u64>,
-    /// By channel, folded to lower case: the server's time tag of the newest message heard
-    /// there.
+    /// By channel, or by the nick of whom a direct message came from, folded to lower case:
+    /// the server's time tag of the newest message heard there.
     newest: BTreeMap<String, String>,
 }
 
@@ -103,6 +118,8 @@ struct Asked {
     /// Whether only the answers to this machine's open requests are taken from it, after a
     /// gap too long to tell the rest of.
     answers_only: bool,
+    /// Whether it's a direct conversation with this machine, `channel` the nick it's with.
+    direct: bool,
 }
 
 /// What to do on connecting after zircd was away from the server for `away` seconds, or
@@ -282,23 +299,25 @@ impl Daemon {
             self.tell_away(away);
             return;
         }
+        let Some(client) = &self.client else { return };
+        if !client.has_cap("draft/chathistory") || !client.has_cap("batch") {
+            return;
+        }
         if first {
             tracing::info!(
                 "away from the server for {}s: asking what was said",
                 now().saturating_sub(since)
             );
+            self.ask_directs_missed(since);
         }
         let Some(client) = &self.client else { return };
-        if !client.has_cap("draft/chathistory") || !client.has_cap("batch") {
-            return;
-        }
         let after = self
             .replay
             .saved
             .newest
             .get(&folded)
             .cloned()
-            .unwrap_or_else(|| zirc_core::time::tag(since));
+            .unwrap_or_else(|| missed_from(since));
         if client
             .send(after_line(channel, &format!("timestamp={after}")))
             .is_ok()
@@ -308,7 +327,41 @@ impl Daemon {
                 batch: None,
                 lines: Vec::new(),
                 answers_only: false,
+                direct: false,
             });
+        }
+    }
+
+    /// Asks what came to this machine directly while it was away, since `since`, from whom
+    /// it matters: its owner, and each role a session here holds, whose wakes come so.
+    fn ask_directs_missed(&mut self, since: u64) {
+        let mut nicks: BTreeSet<String> = self
+            .roles_held()
+            .into_iter()
+            .map(|(_, role)| role.to_ascii_lowercase())
+            .collect();
+        nicks.extend(self.owner.as_deref().map(str::to_ascii_lowercase));
+        let Some(client) = &self.client else { return };
+        for nick in nicks {
+            let after = self
+                .replay
+                .saved
+                .newest
+                .get(&nick)
+                .cloned()
+                .unwrap_or_else(|| missed_from(since));
+            if client
+                .send(after_line(&nick, &format!("timestamp={after}")))
+                .is_ok()
+            {
+                self.replay.asked.push(Asked {
+                    channel: nick,
+                    batch: None,
+                    lines: Vec::new(),
+                    answers_only: false,
+                    direct: true,
+                });
+            }
         }
     }
 
@@ -334,7 +387,7 @@ impl Daemon {
             .newest
             .get(channel)
             .cloned()
-            .unwrap_or_else(|| zirc_core::time::tag(since));
+            .unwrap_or_else(|| missed_from(since));
         tracing::info!("asking for the answers given to open requests while away");
         if client
             .send(after_line(channel, &format!("timestamp={after}")))
@@ -345,6 +398,7 @@ impl Daemon {
                 batch: None,
                 lines: Vec::new(),
                 answers_only: true,
+                direct: false,
             });
         }
     }
@@ -428,6 +482,7 @@ impl Daemon {
             channel,
             lines,
             answers_only,
+            direct,
             ..
         } = asked;
         let full = lines.len() >= PAGE;
@@ -460,6 +515,18 @@ impl Daemon {
                 .unwrap_or_default();
             // This machine said nothing while it was away, but its own request from just
             // before, whose echo it never heard, is the one its owner's answer is on.
+            // A direct message is told as one heard live, which says whom it's for.
+            if direct {
+                let body = line.params.get(1).filter(|_| line.command == "PRIVMSG");
+                if from != me
+                    && let Some(body) = body
+                    && line.tag("msgid").is_none_or(|id| self.heard.first_time(id))
+                {
+                    told += 1;
+                    self.heard_direct(line, from, body);
+                }
+                continue;
+            }
             if from == me {
                 if let Some(id) = line.tag("msgid")
                     && let Some((delivery, _)) = heard(&channel, line)
@@ -510,6 +577,7 @@ impl Daemon {
                 batch: None,
                 lines: Vec::new(),
                 answers_only,
+                direct,
             });
         }
     }

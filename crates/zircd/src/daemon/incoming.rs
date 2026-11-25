@@ -72,7 +72,9 @@ impl Daemon {
 
     /// A direct message to this machine: the owner's `resume`, a query or its answer, or the
     /// owner's line for the agents, told to the watchers.
-    fn heard_direct(&mut self, line: &Line, from: &str, body: &str) {
+    pub(super) fn heard_direct(&mut self, line: &Line, from: &str, body: &str) {
+        // The newest heard from `from`, which what's missed after it is asked from.
+        self.heard_in(from, line);
         let account = line.tag("account");
         let sender = zirc_core::agents::Sender::of(account, line.source.as_deref());
         if self.resume_on_owners_word(account, from, body) {

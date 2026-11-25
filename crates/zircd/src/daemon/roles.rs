@@ -30,14 +30,27 @@ const RENEW_BEFORE: u64 = leases::MAX_SECONDS * 1000 / 2;
 impl Daemon {
     /// The role `session` holds here, if it holds one.
     pub(super) fn role_of(&self, session: &str) -> Option<String> {
-        let me = self.client.as_ref()?.nick().to_owned();
+        self.roles_held()
+            .into_iter()
+            .find_map(|(holder, role)| (holder == session).then_some(role))
+    }
+
+    /// Each role a session here holds now, with the session.
+    pub(super) fn roles_held(&self) -> Vec<(String, String)> {
+        let Some(client) = &self.client else {
+            return Vec::new();
+        };
         let now = now_ms();
         self.leases
             .leases
-            .mine(&me, now)
+            .mine(client.nick(), now)
             .into_iter()
-            .filter(|turn| turn.start <= now && turn.want.session == session)
-            .find_map(|turn| roles::of_lease(&turn.want.name).map(str::to_owned))
+            .filter(|turn| turn.start <= now)
+            .filter_map(|turn| {
+                let role = roles::of_lease(&turn.want.name)?;
+                Some((turn.want.session.clone(), role.to_owned()))
+            })
+            .collect()
     }
 
     /// [`zirc_core::ipc::Request::RoleTake`].
