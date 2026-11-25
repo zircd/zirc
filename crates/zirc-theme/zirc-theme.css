@@ -211,6 +211,9 @@
   --zirc-space-5: 20px;
   --zirc-space-6: 24px;
   --zirc-space-7: 32px;
+  --zirc-page-width: 70rem;
+  --zirc-page-gutter: 16px;
+  --zirc-sheet-width: calc(var(--zirc-page-width) - 2 * var(--zirc-page-gutter));
   --zirc-radius-code: 0px;
   --zirc-radius-tag: 4px;
   --zirc-radius-control: 6px;

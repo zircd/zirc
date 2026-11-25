@@ -806,6 +806,8 @@ pub struct Design {
     pub tag_case: String,
     /// Spacing, `space-1` to `space-7`, in points.
     pub space: [u16; 7],
+    /// A web page's width.
+    pub page: Page,
     /// Corner radii by use, in points.
     pub radius: Radii,
     /// Avatar sizes by place, in points.
@@ -897,6 +899,19 @@ impl TextScale {
             ("tag", self.tag),
         ]
     }
+}
+
+/// How wide a web page is, said once for every page that keeps to it: a site's header and
+/// the sheets under it, in whichever service draws them (`--zirc-page-width`,
+/// `--zirc-page-gutter`, and `--zirc-sheet-width`, the width less a gutter each side, so a
+/// sheet's edges are under the header's first and last words).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct Page {
+    /// The header's most, in rems.
+    pub width_rem: u16,
+    /// The space a header keeps each side of what's in it, in points.
+    pub gutter: u16,
 }
 
 /// Corner radii by use, in points.
@@ -1395,6 +1410,12 @@ fn scales(design: &Design) -> String {
     for (step, space) in design.space.iter().enumerate() {
         let _ = writeln!(out, "  --zirc-space-{}: {space}px;", step + 1);
     }
+    let _ = writeln!(out, "  --zirc-page-width: {}rem;", design.page.width_rem);
+    let _ = writeln!(out, "  --zirc-page-gutter: {}px;", design.page.gutter);
+    let _ = writeln!(
+        out,
+        "  --zirc-sheet-width: calc(var(--zirc-page-width) - 2 * var(--zirc-page-gutter));"
+    );
     for (name, radius) in design.radius.all() {
         let _ = writeln!(out, "  --zirc-radius-{name}: {radius}px;");
     }
