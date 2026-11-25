@@ -949,6 +949,54 @@ fn says_the_same_lines_only_when_zircd_does() {
     );
 }
 
+/// zircd names a repository by its scope, `#monorepo`, which is no channel since every
+/// repository's work is said in #agents: what it says of one shows there.
+#[test]
+fn what_zircd_says_of_a_repositorys_scope_shows_in_the_agents_room() {
+    let mut chat = Scene::in_api();
+    let part = |session: &str, worktree: &str, part: [u32; 2]| Message {
+        repo: Some("monorepo".into()),
+        ..Message::new(
+            session,
+            Event::Working {
+                paths: vec!["a.rs".into()],
+                continued: part[0] > 1,
+                worktree: Some(worktree.into()),
+                branch: Some(worktree.into()),
+                part: Some(part),
+                base: None,
+                committed: Vec::new(),
+            },
+        )
+    };
+    let say = |message: &Message| line_from("me-mbp", "#agents", message).to_string();
+    feed(
+        &mut chat,
+        &[
+            ":me!u@h JOIN #agents",
+            &say(&part("cc-1", "api-login", [1, 2])),
+            &say(&part("cc-2", "api-hooks", [2, 2])),
+        ],
+    );
+    assert_eq!(chat.zircd_room("#monorepo"), Some("#agents"));
+    assert_eq!(chat.zircd_room("#api"), Some("#api"));
+    assert_eq!(chat.zircd_room("#nowhere"), None);
+    assert!(!chat.both_changing("#agents")[0].same_lines);
+    let worktree = |name: &str| crate::presence::Worktree {
+        path: format!("/src/{name}").into(),
+        branch: Some(name.into()),
+    };
+    chat.learn_overlap(&crate::presence::LocalOverlap {
+        channel: "#monorepo".into(),
+        worktrees: [worktree("api-hooks"), worktree("api-login")],
+        paths: vec!["a.rs".into()],
+        same_lines: [("a.rs".to_owned(), vec![[3, 9]])].into(),
+        apart: Vec::new(),
+        why: None,
+    });
+    assert!(chat.both_changing("#agents")[0].same_lines);
+}
+
 #[test]
 fn a_caption_names_one_file_or_counts_several() {
     let mut chat = Scene::in_api();

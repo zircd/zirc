@@ -336,8 +336,23 @@ impl Chat {
         Some(parts)
     }
 
+    /// The channel here that this machine's zircd means by `key`, as its alerts name where
+    /// they happen ([`LocalOverlap::channel`], [`Conflict::channel`] and an overlap's): a
+    /// repository's scope, `#monorepo`, is no channel, and means the room its work is said
+    /// in, `#agents` ([`crate::presence::Presence::room_of`]); a channel means itself.
+    /// `None` when this organisation has neither.
+    #[must_use]
+    pub fn zircd_room(&self, key: &str) -> Option<&str> {
+        self.conversation(self.presence.room_of(key))
+            .map(|conversation| conversation.name.as_str())
+    }
+
     /// Learns from this machine's zircd that two of its worktrees change the same lines.
     pub fn learn_overlap(&mut self, overlap: &LocalOverlap) {
+        // Kept by the room it shows in, as [`Chat::both_changing`] reads it.
+        let Some(room) = self.zircd_room(&overlap.channel).map(fold) else {
+            return;
+        };
         let members = self.presence.members(&overlap.channel);
         let place = |worktree: &crate::presence::Worktree| {
             let name = worktree
@@ -361,7 +376,7 @@ impl Chat {
         for path in overlap.same_lines.keys() {
             self.both
                 .same_lines
-                .entry((fold(&overlap.channel), path.clone()))
+                .entry((room.clone(), path.clone()))
                 .or_default()
                 .insert(pair(a.clone(), b.clone()));
         }
@@ -370,6 +385,9 @@ impl Chat {
     /// Learns from this machine's zircd that a push changes the same lines as one of its
     /// worktrees.
     pub fn learn_conflict(&mut self, conflict: &Conflict) {
+        let Some(room) = self.zircd_room(&conflict.channel).map(fold) else {
+            return;
+        };
         let members = self.presence.members(&conflict.channel);
         let name = conflict
             .worktree
@@ -392,7 +410,7 @@ impl Chat {
         for path in conflict.same_lines.keys() {
             self.both
                 .same_lines
-                .entry((fold(&conflict.channel), path.clone()))
+                .entry((room.clone(), path.clone()))
                 .or_default()
                 .insert(pair(key(ours), key(theirs)));
         }

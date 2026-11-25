@@ -734,7 +734,8 @@ impl Presence {
 
     /// The channel what's kept under `key` was said in: the room every repository shares
     /// for one of its repositories' scopes ([`Presence::keys`]), else `key` itself.
-    fn room_of<'a>(&'a self, key: &'a str) -> &'a str {
+    #[must_use]
+    pub fn room_of<'a>(&'a self, key: &'a str) -> &'a str {
         self.scopes
             .iter()
             .find(|(_, scopes)| scopes.contains(key))
