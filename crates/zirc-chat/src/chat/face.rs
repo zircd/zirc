@@ -51,8 +51,11 @@ pub enum Face {
         /// The bot it's drawn as, one of [`zirc_proto::AGENT_AVATARS`] such as `reviewer`,
         /// which the apps bundle and draw white on its colour: the role it says, else the one
         /// its name tells, else the plain bot. `None` for the machine itself, drawn with its
-        /// tool's icon on no colour of its own; with one, a session or a role, on `hue`.
+        /// tool's icon.
         picture: Option<String>,
+        /// The hue its circle is drawn on, decided here for every app: `hue` for a session
+        /// or a role; `None` for the machine itself, on the muted ground.
+        ground: Option<u16>,
     },
     /// One of zirc's apps, CI or Alerts, or a machine's thread: a square with a glyph, never
     /// initials.
@@ -173,6 +176,7 @@ impl Chat {
                 owner_initials: self.avatar_initials(owner),
                 owner_hue: nick_degrees(owner),
                 owner_photo: self.photo(owner),
+                ground: session.is_some().then_some(*hue),
                 session: session.clone(),
                 picture: session
                     .as_deref()
@@ -310,6 +314,7 @@ mod tests {
                 owner_photo: Some("https://zirc.dev/m/acme/@ada?v=7".into()),
                 session: Some("cc-598aa1".into()),
                 picture: Some("reviewer".into()),
+                ground: Some(42),
             }
         );
         assert_eq!(
@@ -343,6 +348,7 @@ mod tests {
             owner_photo: None,
             session: None,
             picture: None,
+            ground: None,
         };
         let json = serde_json::to_value(&agent).unwrap();
         assert_eq!(json["kind"], "agent");

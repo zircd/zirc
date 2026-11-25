@@ -227,6 +227,7 @@ impl Chat {
             owner,
             session: None,
             picture: Some(zirc_proto::agent_picture(Some(&fold(nick)), Some(nick)).to_owned()),
+            ground: Some(nick_degrees(nick)),
         }
     }
 
