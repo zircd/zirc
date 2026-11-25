@@ -22,6 +22,7 @@ rust_binary(
     name = "generated_types",
     srcs = ["bin/generated_types.rs"],
     lint_config = "//bazel:lints",
+    tags = ["regen"],
     version = VERSION,
     deps = [":zirc-core"],
 )
