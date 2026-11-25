@@ -222,7 +222,7 @@ impl Trust {
 
     /// Whether `signature`, in hex, is this key's of `message`.
     fn verifies(&self, message: &[u8], signature: &str) -> bool {
-        let Some(signature) = unhex(signature.trim()) else {
+        let Some(signature) = zirc_proto::unhex(signature.trim()) else {
             return false;
         };
         ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, self.key)
@@ -239,7 +239,7 @@ impl Trust {
 /// When `private` isn't an Ed25519 PKCS#8 key in hex.
 pub fn sign(private: &str, message: &[u8]) -> Result<(String, String), Error> {
     use ring::signature::KeyPair as _;
-    let key = unhex(private.trim())
+    let key = zirc_proto::unhex(private.trim())
         .and_then(|der| ring::signature::Ed25519KeyPair::from_pkcs8(&der).ok())
         .ok_or_else(|| Error::Release("that isn't an Ed25519 key in hex".into()))?;
     Ok((
@@ -264,7 +264,7 @@ pub fn generate() -> Result<(String, String), Error> {
 
 /// `hex` as an Ed25519 public key, if it is one.
 fn public_key(hex: &str) -> Option<[u8; 32]> {
-    unhex(hex.trim())?.try_into().ok()
+    zirc_proto::unhex(hex.trim())?.try_into().ok()
 }
 
 impl Install {
@@ -544,17 +544,6 @@ fn sha256(bytes: &[u8]) -> String {
     hex(ring::digest::digest(&ring::digest::SHA256, bytes).as_ref())
 }
 
-/// The bytes `text` gives in hex, if it's hex.
-fn unhex(text: &str) -> Option<Vec<u8>> {
-    if !text.len().is_multiple_of(2) || !text.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return None;
-    }
-    (0..text.len())
-        .step_by(2)
-        .map(|at| u8::from_str_radix(&text[at..at + 2], 16).ok())
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -622,13 +611,6 @@ mod tests {
         let (other, _) = test_trust();
         assert!(!other.verifies(b"checksum", &signature));
         assert!(sign("not a key", b"checksum").is_err());
-    }
-
-    #[test]
-    fn reads_only_hex() {
-        assert_eq!(unhex("0aFf"), Some(vec![10, 255]));
-        assert_eq!(unhex("+a"), None);
-        assert_eq!(unhex("abc"), None);
     }
 
     #[test]

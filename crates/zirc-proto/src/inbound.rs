@@ -35,6 +35,29 @@ pub const MAX_MESSAGE: usize = 2000;
 /// How many posts a role takes a minute, beyond which it's answered 429.
 pub const A_MINUTE: u32 = 120;
 
+/// How a tool signs what it posts to a role's address.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[ts(rename = "InboundSigns")]
+pub enum Signs {
+    /// With a secret of its own, which the admin pastes when connecting it: Sentry's client
+    /// secret, Linear's and `PagerDuty`'s signing secrets.
+    Own,
+    /// With the address's own secret, which its webhook is set up with: GitHub's.
+    Address,
+}
+
+impl Signs {
+    /// How it's written: `own`, `address`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Own => "own",
+            Self::Address => "address",
+        }
+    }
+}
+
 /// A tool that posts to a role's address.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TS, JsonSchema,
@@ -106,6 +129,16 @@ impl Tool {
             Self::Sentry => Some(Subject::Error),
             Self::Github | Self::Linear => Some(Subject::Issue),
             Self::Pagerduty => Some(Subject::Incident),
+            Self::Other => None,
+        }
+    }
+
+    /// How it signs its posts; none for a tool zirc doesn't know.
+    #[must_use]
+    pub const fn signs(self) -> Option<Signs> {
+        match self {
+            Self::Sentry | Self::Linear | Self::Pagerduty => Some(Signs::Own),
+            Self::Github => Some(Signs::Address),
             Self::Other => None,
         }
     }
@@ -320,20 +353,23 @@ pub fn card_event(item: &OpenItem, held: bool) -> Event {
 pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
     vec![
         Tool::decl(config),
+        Signs::decl(config),
         HeardTool::decl(config),
         Heard::decl(config),
         format!("const INBOUND_HEARD_PATH = {HEARD_PATH:?};"),
         format!(
-            "const INBOUND_TOOLS: readonly {{ id: InboundTool; name: string; sends: string; wakesOn: string; openIn: string }}[] = [{}];",
+            "const INBOUND_TOOLS: readonly {{ id: InboundTool; name: string; sends: string; wakesOn: string; openIn: string; subject: RoleReportSubject | null; signs: InboundSigns | null }}[] = [{}];",
             Tool::ALL
                 .iter()
                 .map(|tool| format!(
-                    "{{ id: {:?}, name: {:?}, sends: {:?}, wakesOn: {:?}, openIn: {:?} }}",
+                    "{{ id: {:?}, name: {:?}, sends: {:?}, wakesOn: {:?}, openIn: {:?}, subject: {}, signs: {} }}",
                     tool.as_str(),
                     tool.name(),
                     tool.sends(),
                     tool.wakes_on(),
-                    tool.open_in()
+                    tool.open_in(),
+                    tool.subject().map_or_else(|| "null".to_owned(), |s| format!("{:?}", s.as_str())),
+                    tool.signs().map_or_else(|| "null".to_owned(), |s| format!("{:?}", s.as_str()))
                 ))
                 .collect::<Vec<_>>()
                 .join(", ")
@@ -351,7 +387,7 @@ mod tests {
             summary: "TypeError in web, reading 'slug' of undefined".into(),
             details: Some("web/src/app/orgs/[slug]/page.tsx:41".into()),
             link: Some("https://acme.sentry.io/issues/7/".into()),
-            ..RoleReport::new("on-call", Subject::Error, "sentry:7")
+            ..RoleReport::new("oncall", Subject::Error, "sentry:7")
         }
     }
 
@@ -368,7 +404,7 @@ mod tests {
         assert_eq!(woke.tone(), crate::woke::Tone::Failed);
         assert_eq!(
             woke.words(None),
-            "Sentry: TypeError in web, reading 'slug' of undefined · 37 events, one open item (on-call)"
+            "Sentry: TypeError in web, reading 'slug' of undefined · 37 events, one open item (oncall)"
         );
     }
 
@@ -392,7 +428,7 @@ mod tests {
         assert_eq!(held.title, "TypeError in web, reading 'slug' of undefined");
         assert_eq!(
             held.note.as_deref(),
-            Some("Sentry · woke on-call · web/src/app/orgs/[slug]/page.tsx:41 · one open item")
+            Some("Sentry · woke oncall · web/src/app/orgs/[slug]/page.tsx:41 · one open item")
         );
         assert_eq!(held.links[0].label, "Open in Sentry");
         let issue = OpenItem::opened(

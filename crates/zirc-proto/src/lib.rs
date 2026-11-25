@@ -892,16 +892,51 @@ pub fn hex(bytes: &[u8]) -> String {
     })
 }
 
-/// `hex`'s bytes, if it's hex ([`hex`] the other way).
+/// `hex`'s bytes, if it's hex, either case ([`hex`] the other way): never a sign, as
+/// `u8::from_str_radix` would take.
 #[must_use]
 pub fn unhex(hex: &str) -> Option<Vec<u8>> {
-    if !hex.len().is_multiple_of(2) || !hex.is_ascii() {
+    if !hex.len().is_multiple_of(2) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     (0..hex.len())
         .step_by(2)
         .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
         .collect()
+}
+
+/// The HMAC-SHA256 of `body` under `secret`.
+fn hmac_sha256(secret: &str) -> hmac::Hmac<sha2::Sha256> {
+    use hmac::Mac as _;
+    hmac::Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes())
+        .expect("HMAC takes a key of any length")
+}
+
+/// The lowercase-hex HMAC-SHA256 of `body` under `secret`: how webhooks are signed (GitHub's
+/// `X-Hub-Signature-256`, Forgejo's, Sentry's, Linear's, `PagerDuty`'s), and what zirc's sidecar
+/// derives passphrases by. [`verify_hex`] checks one.
+#[must_use]
+pub fn sign_hex(secret: &str, body: &[u8]) -> String {
+    use hmac::Mac as _;
+    let mut mac = hmac_sha256(secret);
+    mac.update(body);
+    hex(&mac.finalize().into_bytes())
+}
+
+/// Whether `tag` is the HMAC-SHA256 of `body` under `secret`, compared in constant time.
+#[must_use]
+pub fn verifies(secret: &str, body: &[u8], tag: &[u8]) -> bool {
+    use hmac::Mac as _;
+    let mut mac = hmac_sha256(secret);
+    mac.update(body);
+    mac.verify_slice(tag).is_ok()
+}
+
+/// Whether `hex` (either case, spaces around it aside) is the HMAC-SHA256 of `body` under
+/// `secret` ([`sign_hex`]), compared in constant time. Anything not hex never is.
+#[must_use]
+pub fn verify_hex(secret: &str, body: &[u8], hex: &str) -> bool {
+    unhex(hex.trim()).is_some_and(|tag| verifies(secret, body, &tag))
 }
 
 /// `text` in at most `max` characters, cut with `…` when it's longer. Line breaks are left as
@@ -2322,6 +2357,48 @@ mod tests {
             "x-acme/a/b",
         ] {
             assert!(check_kind(kind).is_some(), "{kind}");
+        }
+    }
+
+    #[test]
+    fn hex_reads_back_and_never_takes_a_sign_or_an_odd_length() {
+        assert_eq!(unhex(&hex(&[0, 1, 254, 255])), Some(vec![0, 1, 254, 255]));
+        assert_eq!(unhex("0aFf"), Some(vec![10, 255]));
+        for bad in ["+a", "abc", "zz", "é0", "0x"] {
+            assert_eq!(unhex(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_signature_verifies_only_under_its_secret_and_body() {
+        // RFC 4231's second case.
+        let signed = sign_hex("Jefe", b"what do ya want for nothing?");
+        assert_eq!(
+            signed,
+            "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+        );
+        assert!(verify_hex("Jefe", b"what do ya want for nothing?", &signed));
+        assert!(verify_hex(
+            "Jefe",
+            b"what do ya want for nothing?",
+            &format!(" {} ", signed.to_uppercase())
+        ));
+        assert!(!verify_hex(
+            "jefe",
+            b"what do ya want for nothing?",
+            &signed
+        ));
+        assert!(!verify_hex(
+            "Jefe",
+            b"what do ya want for nothing!",
+            &signed
+        ));
+        // Malformed: cut short, not hex, signed.
+        for bad in [&signed[..62], "zz", "+5bdc", ""] {
+            assert!(
+                !verify_hex("Jefe", b"what do ya want for nothing?", bad),
+                "{bad}"
+            );
         }
     }
 }

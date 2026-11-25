@@ -279,7 +279,7 @@ mod tests {
         let history = dir.join("history.db");
         let (roles, said) = Roles::beside(&history);
         let role: zirc_proto::roles::Definition = serde_json::from_value(serde_json::json!({
-            "name": "on_call",
+            "name": "oncall",
             "repository": "server",
             "brief": "Owns errors and incidents in production.",
         }))
@@ -288,7 +288,7 @@ mod tests {
             .set_listing(Listing {
                 roles: vec![role],
                 addresses: vec![Address {
-                    role: "on_call".into(),
+                    role: "oncall".into(),
                     digest: Address::digest_of(SECRET),
                 }],
                 version: "1".into(),
@@ -317,16 +317,16 @@ mod tests {
         let (inbound, _said) = inbound(dir.path());
         let none = HeaderMap::new();
         for (role, secret) in [
-            ("on_call", "k7Qp2vXe9LmR0aBcDeFgHiJ0"),
+            ("oncall", "k7Qp2vXe9LmR0aBcDeFgHiJ0"),
             ("triage", SECRET),
-            ("on_call", ""),
+            ("oncall", ""),
         ] {
             assert_eq!(
                 take(&inbound, role, secret, &none, b"hello", 0),
                 Err(StatusCode::NOT_FOUND)
             );
         }
-        assert!(inbound.store.of("on_call").tools.is_empty());
+        assert!(inbound.store.of("oncall").tools.is_empty());
     }
 
     #[test]
@@ -334,21 +334,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (inbound, _said) = inbound(dir.path());
         let none = HeaderMap::new();
-        assert!(take(&inbound, "on_call", SECRET, &none, b"hello", 0).is_ok());
+        assert!(take(&inbound, "oncall", SECRET, &none, b"hello", 0).is_ok());
         let mut listing = inbound.roles.standing().listing;
         listing.addresses = vec![Address {
-            role: "on_call".into(),
+            role: "oncall".into(),
             digest: Address::digest_of("aNewSecretAfterRotation0"),
         }];
         inbound.roles.set_listing(listing).unwrap();
         assert_eq!(
-            take(&inbound, "on_call", SECRET, &none, b"hello", 1),
+            take(&inbound, "oncall", SECRET, &none, b"hello", 1),
             Err(StatusCode::NOT_FOUND)
         );
         assert!(
             take(
                 &inbound,
-                "on_call",
+                "oncall",
                 "aNewSecretAfterRotation0",
                 &none,
                 b"hello",
@@ -364,13 +364,13 @@ mod tests {
         let (inbound, _said) = inbound(dir.path());
         let none = HeaderMap::new();
         for _ in 0..A_MINUTE {
-            assert!(take(&inbound, "on_call", SECRET, &none, b"x", 60).is_ok());
+            assert!(take(&inbound, "oncall", SECRET, &none, b"x", 60).is_ok());
         }
         assert_eq!(
-            take(&inbound, "on_call", SECRET, &none, b"x", 61),
+            take(&inbound, "oncall", SECRET, &none, b"x", 61),
             Err(StatusCode::TOO_MANY_REQUESTS)
         );
-        assert!(take(&inbound, "on_call", SECRET, &none, b"x", 120).is_ok());
+        assert!(take(&inbound, "oncall", SECRET, &none, b"x", 120).is_ok());
     }
 
     #[test]
@@ -380,14 +380,14 @@ mod tests {
         let sentry = headers(&[("sentry-hook-resource", "issue")]);
         let body = include_bytes!("inbound/testdata/sentry_issue_created.json");
         assert_eq!(
-            take(&inbound, "on_call", SECRET, &sentry, body, 100),
+            take(&inbound, "oncall", SECRET, &sentry, body, 100),
             Ok((Tool::Sentry, Outcome::Reported))
         );
         let ping = headers(&[("x-github-event", "ping")]);
         assert_eq!(
             take(
                 &inbound,
-                "on_call",
+                "oncall",
                 SECRET,
                 &ping,
                 include_bytes!("inbound/testdata/github_ping.json"),
@@ -398,7 +398,7 @@ mod tests {
         assert_eq!(
             take(
                 &inbound,
-                "on_call",
+                "oncall",
                 SECRET,
                 &HeaderMap::new(),
                 b"backup done",
@@ -406,7 +406,7 @@ mod tests {
             ),
             Ok((Tool::Other, Outcome::Message))
         );
-        let heard = inbound.store.of("on_call");
+        let heard = inbound.store.of("oncall");
         let tools: Vec<(Tool, Option<u64>, Option<u64>)> = heard
             .tools
             .iter()
@@ -422,7 +422,7 @@ mod tests {
         );
         // Kept across a restart.
         let again = Store::beside(&dir.path().join("history.db"));
-        assert_eq!(again.of("on_call"), heard);
+        assert_eq!(again.of("oncall"), heard);
     }
 
     #[test]
@@ -431,14 +431,14 @@ mod tests {
         let (inbound, mut said) = inbound(dir.path());
         let sentry = headers(&[("sentry-hook-resource", "issue")]);
         let body = include_bytes!("inbound/testdata/sentry_issue_created.json");
-        take(&inbound, "on_call", SECRET, &sentry, body, 0).unwrap();
+        take(&inbound, "oncall", SECRET, &sentry, body, 0).unwrap();
         let outs = said.try_recv().unwrap();
         assert_eq!(outs[0].to, "#ops");
         let report = zirc_proto::role_report::RoleReport::of(&outs[0].message.event).unwrap();
         assert_eq!(report.tool, Some(Tool::Sentry));
         // Its items open one and wake the role, which nobody holds: its card says it waits.
         let wake = crate::items::Wake {
-            role: "on_call".into(),
+            role: "oncall".into(),
             item: zirc_proto::role_report::OpenItem::opened(report, 0),
             reminder: false,
         };
@@ -467,7 +467,7 @@ mod tests {
         let sentry = headers(&[("sentry-hook-resource", "issue")]);
         let body = include_bytes!("inbound/testdata/sentry_issue_resolved.json");
         assert_eq!(
-            take(&inbound, "on_call", SECRET, &sentry, body, 0),
+            take(&inbound, "oncall", SECRET, &sentry, body, 0),
             Ok((Tool::Sentry, Outcome::Resolved))
         );
         let outs = said.try_recv().unwrap();
@@ -476,7 +476,7 @@ mod tests {
         assert_eq!(
             closing.id,
             item_id(
-                "on_call",
+                "oncall",
                 zirc_proto::role_report::Subject::Error,
                 "sentry:4821007"
             )
@@ -494,7 +494,7 @@ mod tests {
         assert_eq!(
             take(
                 &inbound,
-                "on_call",
+                "oncall",
                 SECRET,
                 &signed,
                 include_bytes!("inbound/testdata/github_issues_opened.json"),
@@ -502,6 +502,6 @@ mod tests {
             ),
             Err(StatusCode::UNAUTHORIZED)
         );
-        assert!(inbound.store.of("on_call").tools.is_empty());
+        assert!(inbound.store.of("oncall").tools.is_empty());
     }
 }

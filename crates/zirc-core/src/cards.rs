@@ -30,22 +30,18 @@ pub fn verify(
     if now.abs_diff(signature.t) > SIGNATURE_MAX_AGE_SECS {
         return Err("the signature is too old");
     }
-    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes());
-    ring::hmac::verify(
-        &key,
+    zirc_proto::verifies(
+        secret,
         signed_text(signature.t, body).as_bytes(),
         &signature.v1,
     )
-    .map_err(|_| "the signature doesn't match")
+    .then_some(())
+    .ok_or("the signature doesn't match")
 }
 
 /// The lowercase-hex HMAC-SHA256 of `body` under `secret`: what Gitea and Forgejo send as
 /// `X-Forgejo-Signature`, and [`verify_hex`] checks.
-#[must_use]
-pub fn sign_hex(secret: &str, body: &[u8]) -> String {
-    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes());
-    zirc_proto::hex(ring::hmac::sign(&key, body).as_ref())
-}
+pub use zirc_proto::sign_hex;
 
 /// Whether `header` is the lowercase-hex HMAC-SHA256 of `body` under `secret`, as Gitea and
 /// Forgejo sign a webhook (`X-Forgejo-Signature`, no timestamp: the caller keeps the delivery
@@ -59,9 +55,10 @@ pub fn verify_hex(secret: &str, header: Option<&str>, body: &[u8]) -> Result<(),
     if header.len() != 64 || !header.is_ascii() {
         return Err("the signature isn't SHA-256 in hex");
     }
-    let mac = zirc_proto::unhex(header).ok_or("the signature isn't hex")?;
-    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes());
-    ring::hmac::verify(&key, body, &mac).map_err(|_| "the signature doesn't match")
+    zirc_proto::unhex(header).ok_or("the signature isn't hex")?;
+    zirc_proto::verify_hex(secret, body, header)
+        .then_some(())
+        .ok_or("the signature doesn't match")
 }
 
 #[cfg(test)]

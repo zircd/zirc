@@ -192,7 +192,7 @@ impl Say {
 /// stored and is the same each time.
 #[must_use]
 pub fn passphrase(secret: &str, nick: &str) -> String {
-    crate::hmac_hex(secret, format!("say:{nick}").as_bytes())
+    zirc_proto::sign_hex(secret, format!("say:{nick}").as_bytes())
 }
 
 /// Why posting failed, for the log: never what was said.

@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 
 use serde_json::Value;
-use zirc_proto::inbound::{MAX_MESSAGE, Tool};
+use zirc_proto::inbound::{MAX_MESSAGE, Signs, Tool};
 use zirc_proto::role_report::{RoleReport, Subject};
 
 /// What a post comes to.
@@ -57,10 +57,9 @@ impl Signing<'_> {
     /// The secret `tool` signs with, where the server has it: its own, or for GitHub, the
     /// address's.
     fn of(&self, tool: Tool) -> Option<&str> {
-        match self.tools.get(&tool) {
-            Some(secret) => Some(secret),
-            None if tool == Tool::Github => Some(self.address),
-            None => None,
+        match tool.signs()? {
+            Signs::Address => Some(self.tools.get(&tool).map_or(self.address, String::as_str)),
+            Signs::Own => self.tools.get(&tool).map(String::as_str),
         }
     }
 }
@@ -138,18 +137,18 @@ fn check_signature(
             None => false,
             Some(signature) => signature
                 .strip_prefix("sha256=")
-                .is_some_and(|hex| crate::hmac_verifies(secret, body, hex)),
+                .is_some_and(|hex| zirc_proto::verify_hex(secret, body, hex)),
         },
         Tool::Sentry => header("sentry-hook-signature")
-            .is_some_and(|hex| crate::hmac_verifies(secret, body, &hex)),
+            .is_some_and(|hex| zirc_proto::verify_hex(secret, body, &hex)),
         Tool::Linear => {
-            header("linear-signature").is_some_and(|hex| crate::hmac_verifies(secret, body, &hex))
+            header("linear-signature").is_some_and(|hex| zirc_proto::verify_hex(secret, body, &hex))
         }
         // `v1=<hex>`, more than one while PagerDuty rotates its secret.
         Tool::Pagerduty => header("x-pagerduty-signature").is_some_and(|said| {
             said.split(',')
                 .filter_map(|one| one.trim().strip_prefix("v1="))
-                .any(|hex| crate::hmac_verifies(secret, body, hex))
+                .any(|hex| zirc_proto::verify_hex(secret, body, hex))
         }),
         Tool::Other => true,
     };
@@ -402,7 +401,7 @@ mod tests {
                 .map(|(_, v)| v.clone())
         };
         read(
-            "on_call",
+            "oncall",
             &header,
             body,
             Signing {
@@ -413,7 +412,7 @@ mod tests {
     }
 
     fn sign(secret: &str, body: &[u8]) -> String {
-        crate::hmac_hex(secret, body)
+        zirc_proto::sign_hex(secret, body)
     }
 
     fn reported(result: Result<(Tool, Read), Refused>) -> RoleReport {

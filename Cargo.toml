@@ -69,6 +69,7 @@ terminal-colorsaurus = "1"
 # uses, so nothing needs CMake.
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
 # SHA-256 for checking updates, from the ring rustls uses already.
+hmac = "0.12"
 ring = "0.17"
 sha2 = "0.10"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

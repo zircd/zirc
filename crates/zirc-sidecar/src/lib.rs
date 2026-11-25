@@ -112,25 +112,6 @@ pub fn save_json(path: &std::path::Path, value: &impl serde::Serialize) -> std::
     std::fs::rename(&partial, path)
 }
 
-/// The HMAC-SHA256 of `body` under `secret`, in lowercase hex: what the sidecar signs with
-/// and derives passphrases by.
-#[must_use]
-pub fn hmac_hex(secret: &str, body: &[u8]) -> String {
-    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes());
-    zirc_proto::hex(ring::hmac::sign(&key, body).as_ref())
-}
-
-/// Whether `hex` is the HMAC-SHA256 of `body` under `secret` ([`hmac_hex`]), compared in
-/// constant time: how a tool's signed post is checked (`crate::inbound`).
-#[must_use]
-pub fn hmac_verifies(secret: &str, body: &[u8], hex: &str) -> bool {
-    let Some(tag) = zirc_proto::unhex(hex.trim()) else {
-        return false;
-    };
-    let key = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, secret.as_bytes());
-    ring::hmac::verify(&key, body, &tag).is_ok()
-}
-
 /// Installs ring as rustls's crypto provider, once: reqwest is built without one
 /// (`rustls-no-provider`, as zirc's crates have it), and so is Sentry's transport in the
 /// controller, which builds an HTTP client when it starts and panics without a provider.

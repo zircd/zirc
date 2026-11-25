@@ -94,7 +94,7 @@ impl Software {
             return Some(pair.clone());
         }
         let rng = SystemRandom::new();
-        let pkcs8 = if let Some(pkcs8) = self.read().and_then(|hex| unhex(&hex)) {
+        let pkcs8 = if let Some(pkcs8) = self.read().and_then(|hex| zirc_proto::unhex(&hex)) {
             pkcs8
         } else {
             let made = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng)
@@ -103,7 +103,7 @@ impl Software {
                 .to_vec();
             self.write(&hex(&made))?;
             // Another program may have made one meanwhile: that one's is the key.
-            self.read().and_then(|hex| unhex(&hex))?
+            self.read().and_then(|hex| zirc_proto::unhex(&hex))?
         };
         let made = Arc::new(
             EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &pkcs8, &rng).ok()?,
@@ -168,18 +168,6 @@ pub fn bearer(key: Arc<dyn DeviceKey>, account: String, server: String) -> zirc_
     Arc::new(move || token(&*key, &account, &server))
 }
 
-fn unhex(text: &str) -> Option<Vec<u8>> {
-    text.len()
-        .is_multiple_of(2)
-        .then(|| {
-            (0..text.len())
-                .step_by(2)
-                .map(|at| u8::from_str_radix(text.get(at..at + 2)?, 16).ok())
-                .collect()
-        })
-        .flatten()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,12 +218,5 @@ mod tests {
         let (one, two) = (make().unwrap(), make().unwrap());
         assert_ne!(one, two);
         assert!(verifies(&two, "ada", "acme.irc.zirc.dev"));
-    }
-
-    #[test]
-    fn hex_round_trips() {
-        assert_eq!(unhex(&hex(&[0, 1, 254, 255])), Some(vec![0, 1, 254, 255]));
-        assert_eq!(unhex("abc"), None);
-        assert_eq!(unhex("zz"), None);
     }
 }

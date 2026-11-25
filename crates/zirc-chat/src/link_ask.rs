@@ -112,12 +112,7 @@ fn hex(text: &str) -> String {
 }
 
 fn unhex(hex: &str) -> Option<String> {
-    let bytes = hex
-        .as_bytes()
-        .chunks(2)
-        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok())
-        .collect::<Option<Vec<u8>>>()?;
-    String::from_utf8(bytes).ok()
+    String::from_utf8(zirc_proto::unhex(hex)?).ok()
 }
 
 #[cfg(test)]
