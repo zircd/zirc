@@ -139,3 +139,86 @@ fn reset(stream: TcpStream) {
     let _ = stream.set_zero_linger();
     drop(stream);
 }
+
+/// A proxy that holds back everything it carries by `one_way`, each way, as a network far
+/// from the server does: a phone's is 30 to 100 ms. On loopback a round trip costs nothing,
+/// so what a client waits for one after another shows only through this one, as a multiple
+/// of the round trip.
+pub struct Latency {
+    port: u16,
+    task: JoinHandle<()>,
+}
+
+impl Latency {
+    /// Starts carrying connections to the server on loopback port `upstream`, `one_way` late.
+    ///
+    /// # Panics
+    ///
+    /// When it can't listen.
+    pub async fn start(upstream: u16, one_way: std::time::Duration) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("a free port");
+        let port = listener.local_addr().expect("its address").port();
+        let task = tokio::spawn(async move {
+            while let Ok((client, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let Ok(server) = TcpStream::connect(("127.0.0.1", upstream)).await else {
+                        return reset(client);
+                    };
+                    let _ = client.set_nodelay(true);
+                    let _ = server.set_nodelay(true);
+                    let (from_client, to_client) = client.into_split();
+                    let (from_server, to_server) = server.into_split();
+                    tokio::join!(
+                        late(from_client, to_server, one_way),
+                        late(from_server, to_client, one_way),
+                    );
+                });
+            }
+        });
+        Self { port, task }
+    }
+
+    /// The port to connect to on 127.0.0.1.
+    #[must_use]
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+}
+
+impl Drop for Latency {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+/// Carries what `from` reads to `to`, each piece `one_way` after it was read, in order.
+async fn late(
+    mut from: tokio::net::tcp::OwnedReadHalf,
+    mut to: tokio::net::tcp::OwnedWriteHalf,
+    one_way: std::time::Duration,
+) {
+    use tokio::io::AsyncReadExt as _;
+    let (pieces, mut due) =
+        tokio::sync::mpsc::unbounded_channel::<(tokio::time::Instant, Vec<u8>)>();
+    let reading = async move {
+        let mut buffer = vec![0; 64 * 1024];
+        while let Ok(n @ 1..) = from.read(&mut buffer).await {
+            if pieces
+                .send((tokio::time::Instant::now() + one_way, buffer[..n].to_vec()))
+                .is_err()
+            {
+                break;
+            }
+        }
+    };
+    let writing = async move {
+        while let Some((at, piece)) = due.recv().await {
+            tokio::time::sleep_until(at).await;
+            if to.write_all(&piece).await.is_err() {
+                break;
+            }
+        }
+        let _ = to.shutdown().await;
+    };
+    tokio::join!(reading, writing);
+}

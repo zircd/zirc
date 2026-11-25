@@ -228,3 +228,45 @@ pub async fn register(ergo: &Ergo, name: &str, passphrase: &str) {
     // The nick is the account's from now on; let the registering client's go first.
     tokio::time::sleep(Duration::from_millis(300)).await;
 }
+
+/// `count` lines said in `channel`, the last `last`, by people of their own, 45 each: a test
+/// server lets one connection say 50 at once, and a history wants them all now, not 20 a
+/// second. Each stays in the channel, as an empty channel goes, and its history with it.
+///
+/// # Panics
+///
+/// When the server doesn't take them.
+pub async fn pour(ergo: &Ergo, channel: &str, count: usize, last: &str) {
+    const PER: usize = 45;
+    let tag = channel.trim_start_matches('#');
+    let mut said = 0;
+    for n in 0.. {
+        if said >= count {
+            break;
+        }
+        let nick = format!("{tag}p{n}");
+        let (client, mut incoming) = person(ergo, &nick).await;
+        client.join(channel).unwrap();
+        next_matching(&mut incoming, |line| line.command == "366").await;
+        for _ in 0..PER.min(count - said) {
+            said += 1;
+            let text = if said == count {
+                last.to_owned()
+            } else {
+                format!("message {said} in {channel}, with a few words in it as people write")
+            };
+            client.privmsg(channel, &text).unwrap();
+        }
+        // Said to itself after the rest, so heard back once the server has the rest.
+        client.privmsg(&nick, "poured").unwrap();
+        next_matching(&mut incoming, |line| {
+            line.command == "PRIVMSG" && line.params.last().is_some_and(|text| text == "poured")
+        })
+        .await;
+        // Stays in it: an empty channel goes, and its history with it.
+        tokio::spawn(async move {
+            let _client = client;
+            while incoming.recv().await.is_some() {}
+        });
+    }
+}

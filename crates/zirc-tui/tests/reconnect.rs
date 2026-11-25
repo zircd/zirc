@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 use zirc_core::connection::{Connector, Policy, Supervisor};
 use zirc_irc::{Client, Config, Credentials, Incoming, Line, connect};
 use zirc_test_ergo::{Ergo, require_ergo};
-use zirc_test_irc::faults::Proxy;
-use zirc_test_irc::{config, joins, next_matching, person, register};
+use zirc_test_irc::faults::{Latency, Proxy};
+use zirc_test_irc::{config, joins, next_matching, person, pour, register};
 use zirc_tui::{App, Session};
 
 /// Runs the session until `done` holds of its app, saying how long that took.
@@ -406,4 +406,65 @@ async fn a_channel_left_on_another_device_while_away_stays_left() {
     let left = |app: &App| !in_channel(app, "#lunch");
     within(&mut laptop, Duration::from_secs(5), "leaving #lunch", left).await;
     assert!(!in_channel(&laptop.app, "#ops"), "left stays left");
+}
+
+/// How far away the server is for [`a_cold_start_catches_up_within_its_round_trips`], each
+/// way: a phone's network.
+const ONE_WAY: Duration = Duration::from_millis(50);
+
+/// The round trips a cold start may wait on, one after another, before every channel it's in
+/// is caught up: registering, then the channels' joins and histories, sent together. It took
+/// 6.6 when this was set (25 Nov 2026, 13 channels; the apps' core 5.5, zirc-app's reconnect
+/// test, which keeps the same budget); one more for each channel would be 19 and over.
+const COLD_START_ROUND_TRIPS: u32 = 10;
+
+#[tokio::test]
+async fn a_cold_start_catches_up_within_its_round_trips() {
+    let ergo = require_ergo!();
+    let channels: Vec<String> = (0..12)
+        .map(|n| format!("#c{n}"))
+        .chain(["#long".to_owned()])
+        .collect();
+    for channel in &channels {
+        let count = if channel == "#long" { 600 } else { 40 };
+        pour(&ergo, channel, count, &format!("the last of {channel}")).await;
+    }
+    let far = Latency::start(ergo.port(), ONE_WAY).await;
+    let mut config = config(&ergo, "tui");
+    config.port = far.port();
+    config
+        .caps
+        .extend(zirc_tui::cli::EXTRA_CAPS.iter().map(|&cap| cap.to_owned()));
+
+    let started = Instant::now();
+    let app = App::new("tui", "127.0.0.1", channels.clone());
+    let mut session = Session::connect(app, config).await.unwrap();
+    let caught_up = |app: &App| {
+        channels.iter().all(|channel| {
+            app.chat.conversation(channel).is_some_and(|it| {
+                it.joined
+                    && it.entries.iter().any(|entry| {
+                        matches!(&entry.kind, zirc_core::chat::EntryKind::Message(text) if *text == format!("the last of {channel}"))
+                    })
+            })
+        })
+    };
+    within(
+        &mut session,
+        Duration::from_secs(20),
+        "every channel caught up",
+        caught_up,
+    )
+    .await;
+    let took = started.elapsed();
+    let round_trip = ONE_WAY * 2;
+    let trips = took.as_secs_f64() / round_trip.as_secs_f64();
+    println!(
+        "PERF cold start, {} channels, {round_trip:?} round trip: caught up in {took:?} ({trips:.1} round trips)",
+        channels.len()
+    );
+    assert!(
+        took < round_trip * COLD_START_ROUND_TRIPS,
+        "a cold start took {took:?}, {trips:.1} round trips: more than {COLD_START_ROUND_TRIPS}"
+    );
 }
