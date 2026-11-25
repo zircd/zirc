@@ -230,6 +230,10 @@ pub struct HeardSaid {
     pub tail: String,
 }
 
+/// Whether a role's server has heard a tool, in a word after its name, as zirc.dev's Roles tab
+/// and a role's own page say it: heard, by a post or a test, or not yet.
+pub const HEARD_WORDS: (&str, &str) = ("heard", "not heard yet");
+
 impl HeardTool {
     /// `tool`, not heard yet.
     #[must_use]
@@ -417,6 +421,10 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         HeardSaid::decl(config),
         Heard::decl(config),
         format!("const INBOUND_HEARD_PATH = {HEARD_PATH:?};"),
+        format!(
+            "const INBOUND_HEARD_WORDS = {{ heard: {:?}, not: {:?} }} as const;",
+            HEARD_WORDS.0, HEARD_WORDS.1
+        ),
         format!(
             "const INBOUND_TOOLS: readonly {{ id: InboundTool; name: string; sends: string; wakesOn: string; openIn: string; subject: RoleReportSubject | null; signs: InboundSigns | null }}[] = [{}];",
             Tool::ALL
