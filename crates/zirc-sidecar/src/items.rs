@@ -177,7 +177,18 @@ impl Items {
             return true;
         }
         if ops && let Some(closing) = Closing::of(&message.event) {
-            return self.close(&closing.role, &[closing.id], closing.end, now);
+            let closed = self.close(
+                &closing.role,
+                std::slice::from_ref(&closing.id),
+                closing.end,
+                now,
+            );
+            // Said of one closed already, it still drops a wake left waiting about it, as one
+            // closed before a sidecar that dropped them.
+            if !closed {
+                self.ended.push((closing.role, closing.id));
+            }
+            return closed;
         }
         if channel.eq_ignore_ascii_case(zirc_proto::AGENTS_CHANNEL)
             && ci::speaks_for_ci(account)
@@ -499,9 +510,10 @@ mod tests {
         };
         items.heard(OPS, Some("m3-mac"), &said(closing.event()), 1);
         assert_eq!(std::mem::take(&mut items.ended), [("fixer".to_owned(), id)]);
-        // Closed already, it isn't said again.
-        items.heard(OPS, Some("m3-mac"), &said(closing.event()), 2);
-        assert!(items.ended.is_empty());
+        // Said again once it's closed, it changes nothing but is said again, so a wake left
+        // waiting about it goes too.
+        assert!(!items.heard(OPS, Some("m3-mac"), &said(closing.event()), 2));
+        assert_eq!(items.ended.len(), 1);
     }
 
     #[test]
