@@ -188,7 +188,9 @@ impl Daemon {
             return;
         };
         if let Some(settled) = Settled::of(&delivery.message.event) {
-            self.settled_lately.keep(&delivery.scope(), settled, now());
+            let scope = delivery.scope();
+            self.settled_again(&scope, &settled);
+            self.settled_lately.keep(&scope, settled, now());
         } else if let Some((scope, landed)) = super::moved::Landed::of(response)
             && let (Some(machine), Some(session)) = (landed.machine, landed.session)
         {

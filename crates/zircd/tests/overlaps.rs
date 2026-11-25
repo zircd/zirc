@@ -414,6 +414,45 @@ async fn a_settled_pair_wakes_for_neither_the_others_commits_nor_another_file_th
 }
 
 #[tokio::test]
+async fn two_sessions_that_settle_a_second_time_are_told_to_agree_who_continues() {
+    let ergo = require_ergo!();
+    let (machine, _main, main_root, _login_root) = machine_with_a_session_worktree(&ergo).await;
+    let mut main_hears = machine.watch(Some("cc-main")).await;
+    for file in ["README.md", "lines.txt"] {
+        let settled = machine
+            .request(Request::Settle {
+                repo: main_root.clone(),
+                session: "cc-main".into(),
+                with: "cc-login".into(),
+                first: "them".into(),
+                paths: vec![main_root.join(file)],
+                same_lines: true,
+            })
+            .await;
+        assert!(
+            matches!(settled, Response::Settled { said: true, .. }),
+            "not settled: {settled:?}"
+        );
+    }
+    // zircd's own line, naming it, wakes it: the other session gets one too.
+    let told = loop {
+        let delivery = next(&mut main_hears).await;
+        if matches!(&delivery.message.event, Event::Text { body } if body.starts_with("cc-main: you and"))
+        {
+            break delivery;
+        }
+    };
+    let Event::Text { body } = &told.message.event else {
+        unreachable!()
+    };
+    assert!(
+        body.starts_with("cc-main: you and cc-login keep meeting: you've settled 2 times"),
+        "{body}"
+    );
+    assert!(told.why.is_some(), "it wakes the session it names");
+}
+
+#[tokio::test]
 async fn a_commit_in_other_parts_of_your_files_is_no_news() {
     let ergo = require_ergo!();
     let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;

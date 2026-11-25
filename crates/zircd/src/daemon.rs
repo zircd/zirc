@@ -44,6 +44,7 @@ mod intents_told;
 mod later;
 mod lease;
 mod live;
+mod meetings;
 mod moved;
 mod ops_kept;
 mod queries;
@@ -554,6 +555,8 @@ pub struct Daemon {
     /// The tasks sessions here and elsewhere took on and haven't finished, to tell a session
     /// taking on the same work ([`Daemon::same_work_taken`]).
     open_tasks: same_work::OpenTasks,
+    /// The pairs of this machine's sessions that keep meeting ([`meetings`]).
+    meetings: meetings::Meetings,
     /// What the organisation last said its members' agents may do, from `#ops` as kept
     /// before it was last dropped ([`Daemon::colleagues`]).
     colleagues_said: Option<zirc_proto::colleagues::Colleagues>,
@@ -771,6 +774,7 @@ impl Daemon {
             said_lately: VecDeque::new(),
             built_on: BTreeSet::new(),
             open_tasks: same_work::OpenTasks::default(),
+            meetings: meetings::Meetings::default(),
             colleagues_said: None,
             repos: BTreeMap::new(),
             topics: Topics::new(),

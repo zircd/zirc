@@ -290,7 +290,7 @@ impl Daemon {
     /// `channel`, which Git has said the shared lines of ([`Daemon::check_overlaps`]).
     pub(super) fn predicted(&mut self, channel: &str, overlaps: Vec<LocalOverlap>) {
         self.checking = self.checking.saturating_sub(1);
-        let alerts = overlaps
+        let alerts: Vec<(Response, bool)> = overlaps
             .into_iter()
             .filter_map(|mut overlap| {
                 self.predictions.note(&overlap);
@@ -298,7 +298,18 @@ impl Daemon {
                 Some((Response::LocalOverlap(overlap), escalated))
             })
             .collect();
+        // After they're told of this one: a pair that keeps meeting hears so last.
+        let met: Vec<LocalOverlap> = alerts
+            .iter()
+            .filter_map(|(alert, _)| match alert {
+                Response::LocalOverlap(overlap) => Some(overlap.clone()),
+                _ => None,
+            })
+            .collect();
         self.tell_overlaps(channel, alerts);
+        for overlap in &met {
+            self.met_in(channel, overlap);
+        }
     }
 
     /// Tells watching clients each of `alerts`, an overlap in `channel` and whether it turns
