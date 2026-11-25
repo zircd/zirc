@@ -22,14 +22,18 @@ async fn both_machines_hear_when_they_change_the_same_file() {
     std::fs::write(beta_clone.path().join("README.md"), "beta's take\n").unwrap();
     std::fs::write(beta_clone.path().join("notes.md"), "beta only\n").unwrap();
 
-    let expected = |nick: &str| Overlap {
-        channel: "#api".into(),
-        nick: nick.into(),
-        paths: vec!["README.md".into()],
-        why: Some(Why::Overlap),
+    // Each hears of its own worktree's, with the other machine: whether with their lines
+    // is another test's.
+    let told = |overlap: Overlap, clone: &tempfile::TempDir| {
+        let here = overlap.worktree.map(|worktree| worktree.path);
+        assert_eq!(here, clone.path().canonicalize().ok());
+        (overlap.nick, overlap.paths, overlap.why)
     };
-    assert_eq!(next_overlap(&mut beta_hears).await, expected("alpha"));
-    assert_eq!(next_overlap(&mut alpha_hears).await, expected("beta"));
+    let expected = |nick: &str| (nick.to_owned(), readme(), Some(Why::Overlap));
+    let heard = next_overlap(&mut beta_hears).await;
+    assert_eq!(told(heard, &beta_clone), expected("alpha"));
+    let heard = next_overlap(&mut alpha_hears).await;
+    assert_eq!(told(heard, &alpha_clone), expected("beta"));
 
     // `who` shows both working sets.
     let Response::Who { channels } = alpha.request(Request::Who).await else {
@@ -58,6 +62,68 @@ async fn both_machines_hear_when_they_change_the_same_file() {
         &["commit", "--quiet", "--all", "--message", "Beta's take"],
     );
     while next_working(&mut alpha_hears, "beta").await != ["notes.md"] {}
+}
+
+fn readme() -> Vec<String> {
+    vec!["README.md".to_owned()]
+}
+
+#[tokio::test]
+async fn another_machines_change_wakes_a_session_only_once_their_lines_meet() {
+    let ergo = require_ergo!();
+    let [(alpha, alpha_clone), (beta, beta_clone)] = two_machines(&ergo).await;
+    let _remote = share_lines(&alpha_clone, &beta_clone);
+    let (theirs, mine) = (alpha_clone.path(), beta_clone.path());
+    let session = Some("cc-b".to_owned());
+    let path = mine.to_owned();
+    beta.request(Request::RepoAdd { path, session }).await;
+    let mut cc_b = beta.watch(Some("cc-b")).await;
+    let _ = &alpha;
+
+    // Different parts of a file both have: they merge, and it's told as no news to it.
+    std::fs::write(theirs.join("lines.txt"), ten_lines(1, "alpha's first")).unwrap();
+    std::fs::write(mine.join("lines.txt"), ten_lines(10, "beta's last")).unwrap();
+    let apart = next_overlap(&mut cc_b).await;
+    assert_eq!(apart.apart, ["lines.txt"], "{apart:?}");
+    assert_eq!(apart.why, None);
+
+    // The line alpha changes: told again, with the lines and the session to ask.
+    std::fs::write(mine.join("lines.txt"), ten_lines(1, "beta's first")).unwrap();
+    let same = next_overlap(&mut cc_b).await;
+    assert_eq!(same.same_lines.keys().collect::<Vec<_>>(), ["lines.txt"]);
+    assert_eq!(
+        (same.nick.as_str(), &same.sessions[..]),
+        ("alpha", &["watcher".to_owned()][..])
+    );
+    assert_eq!(same.why, Some(Why::Overlap));
+}
+
+#[tokio::test]
+async fn a_file_both_machines_change_whose_lines_cant_be_compared_waits_for_the_next_wake() {
+    let ergo = require_ergo!();
+    let [(alpha, alpha_clone), (beta, beta_clone)] = two_machines(&ergo).await;
+    let (theirs, mine) = (alpha_clone.path(), beta_clone.path());
+    // Beta is built on a commit alpha's lines aren't of, and doesn't have theirs.
+    git(
+        mine,
+        &["commit", "--quiet", "--amend", "--message", "Another start"],
+    );
+    let session = Some("cc-b".to_owned());
+    let path = mine.to_owned();
+    beta.request(Request::RepoAdd { path, session }).await;
+    let mut cc_b = beta.watch(Some("cc-b")).await;
+
+    std::fs::write(theirs.join("README.md"), "alpha's take\n").unwrap();
+    std::fs::write(mine.join("README.md"), "beta's take\n").unwrap();
+    let unknown = next_overlap(&mut cc_b).await;
+    assert_eq!(unknown.paths, readme());
+    assert!(unknown.same_lines.is_empty() && unknown.apart.is_empty());
+    assert_eq!(unknown.why, None, "a note for its next wake");
+    // Whatever wakes it next brings it along.
+    post(&alpha, theirs, "cc-a", "@cc-b a word").await;
+    let woke = until_marker(&mut cc_b, |heard| says(heard, "a word")).await;
+    let noted = |heard: &Heard| matches!(heard, Heard::Overlap(overlap) if overlap.why.is_some());
+    assert!(woke.iter().any(noted), "{woke:?}");
 }
 
 #[tokio::test]

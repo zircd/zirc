@@ -314,6 +314,26 @@ pub async fn two_machines(ergo: &Ergo) -> [(Machine, TempDir); 2] {
     machines.try_into().unwrap_or_else(|_| unreachable!())
 }
 
+/// Gives two clones one remote and `lines.txt`, ten lines, from it: what each is built on is
+/// then a commit the other has, as with two machines' clones of one repository. Two made
+/// apart ([`clone`]) share a first commit only when made in the same second.
+pub fn share_lines(first: &TempDir, second: &TempDir) -> TempDir {
+    let remote = tempfile::tempdir().unwrap();
+    git(remote.path(), &["init", "--quiet", "--bare"]);
+    let url = remote.path().to_str().unwrap();
+    std::fs::write(first.path().join("lines.txt"), ten_lines(0, "")).unwrap();
+    git(first.path(), &["add", "lines.txt"]);
+    git(first.path(), &["commit", "--quiet", "--message", "Lines"]);
+    for clone in [first, second] {
+        git(clone.path(), &["remote", "set-url", "origin", url]);
+    }
+    git(first.path(), &["push", "--quiet", "origin", "main"]);
+    git(second.path(), &["fetch", "--quiet", "origin"]);
+    let onto = ["checkout", "--quiet", "-B", "main", "origin/main"];
+    git(second.path(), &onto);
+    remote
+}
+
 pub async fn machine_with_a_session_worktree(ergo: &Ergo) -> (Machine, TempDir, PathBuf, PathBuf) {
     machine_with_a_session_worktree_and(ergo, "").await
 }

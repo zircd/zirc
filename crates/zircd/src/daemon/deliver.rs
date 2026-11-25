@@ -6,8 +6,9 @@ use std::ops::ControlFlow;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
+use zirc_core::clashes::Meets;
 use zirc_core::ipc::{Delivery, Response, Why, Worktree};
-use zirc_core::presence::LocalOverlap;
+use zirc_core::presence::{LocalOverlap, Overlap};
 use zirc_core::sessions::LANDING_KIND;
 use zirc_core::{decisions, paths, presence};
 use zirc_irc::Client;
@@ -67,8 +68,11 @@ impl Daemon {
         // Told another's branch changes its files, a session waits for it to land.
         self.follow_branches(response, &reasons);
         self.hold_reports(response, &mut reasons);
-        self.hold_quiet_intents(response, &mut reasons);
-        self.hold_quiet_landings(response, &mut reasons);
+        self.hold(response, &mut reasons, Why::Intent, Self::quiet_intent);
+        self.hold(response, &mut reasons, Why::Landing, Self::quiet_landing);
+        self.hold(response, &mut reasons, Why::Overlap, |_, response, _| {
+            super::fit::noted_overlap(response)
+        });
         self.gate_wakes(response, &mut reasons);
         // Before what waited is taken: a state fine again takes back its note that it broke.
         let waking: BTreeSet<String> = self
@@ -383,13 +387,17 @@ impl Daemon {
             {
                 None
             }
+            // With another machine's work, as with another worktree's here below: a
+            // session hears of its own worktree's, unless the lines are apart or the two
+            // settled. Until 25 Nov 2026 a file both changed woke it whatever the lines.
             Response::Overlap(overlap) => {
                 let mine = self.paths_in(&overlap.channel, session);
-                overlap
+                (overlap
                     .paths
                     .iter()
                     .any(|path| mine.contains(path.as_str()))
-                    .then_some(Why::Overlap)
+                    && session.is_none_or(|session| self.remote_news_to(overlap, me, session)))
+                .then_some(Why::Overlap)
             }
             // In a shared workspace, only to the session whose branch or claimed changes the
             // push clashes with.
@@ -736,6 +744,21 @@ impl Daemon {
             .partition(|worktree| self.works_in(worktree, session));
         let others = others.len();
         !its.is_empty() && others > 0 && !self.settled(overlap, me, session)
+    }
+
+    /// Whether `overlap`, with another machine, is news to `session` on `me`: its own
+    /// worktree's, the lines not all apart, and not with sessions it settled with, every one
+    /// of them ([`Daemon::settled_with`]).
+    fn remote_news_to(&self, overlap: &Overlap, me: &str, session: &str) -> bool {
+        let its = overlap
+            .worktree
+            .as_ref()
+            .is_none_or(|worktree| self.works_in(worktree, session));
+        let settled = !overlap.sessions.is_empty()
+            && overlap.sessions.iter().all(|other| {
+                self.settled_with(&overlap.channel, (me, session), (&overlap.nick, other))
+            });
+        its && !settled && super::announce::meets(overlap) != Meets::Apart
     }
 
     /// The session whose work `worktree`, one of this machine's working sets, is, if known.

@@ -1149,12 +1149,12 @@ enum Said {
 /// Each path told of, with what was said of it and when.
 type Paths = BTreeMap<String, (Said, Instant)>;
 
-/// The overlaps told lately: for each pair of working sets, or other machine, in a channel,
-/// the paths told of.
+/// The overlaps told lately: for each pair of working sets in a channel, or worktree here and
+/// other machine, the paths told of.
 #[derive(Default)]
 struct Told {
     local: BTreeMap<(String, [Worktree; 2]), Paths>,
-    remote: BTreeMap<(String, String), Paths>,
+    remote: BTreeMap<(String, String, Option<Worktree>), Paths>,
 }
 
 impl Told {
@@ -1162,53 +1162,62 @@ impl Told {
     /// any are, whether they make a clash of what was told as changes in different parts.
     fn local_news(&mut self, overlap: &mut LocalOverlap, now: Instant) -> Option<bool> {
         let key = (overlap.channel.clone(), overlap.worktrees.clone());
-        let told = self.local.entry(key).or_default();
-        let said = |path: &str| {
-            if zirc_core::hunks::is_lockfile(path) {
-                Said::Lockfile
-            } else if overlap.same_lines.contains_key(path) {
-                Said::SameLines
-            } else if overlap.apart.iter().any(|it| it == path) {
-                Said::Apart
-            } else {
-                Said::Both
-            }
-        };
-        let mut escalated = false;
-        let news: Vec<String> = overlap
-            .paths
-            .iter()
-            .filter(|path| {
-                let said = said(path);
-                let was_apart = told.get(path.as_str()).is_some_and(|(before, at)| {
-                    *before == Said::Apart && now.duration_since(*at) < TOLD_FOR
-                });
-                let is_news = news(told, path, said, now);
-                escalated |= is_news && was_apart && said == Said::SameLines;
-                is_news
-            })
-            .cloned()
-            .collect();
-        overlap.same_lines.retain(|path, _| news.contains(path));
-        overlap.apart.retain(|path| news.contains(path));
-        overlap.paths = news;
-        (!overlap.paths.is_empty()).then_some(escalated)
+        let lines = (&mut overlap.same_lines, &mut overlap.apart);
+        news_of(
+            self.local.entry(key).or_default(),
+            &mut overlap.paths,
+            lines,
+            now,
+        )
     }
 
     /// The same for an overlap with another machine.
-    fn remote(&mut self, overlap: &mut Overlap, now: Instant) -> bool {
-        let key = (overlap.channel.clone(), overlap.nick.clone());
-        let told = self.remote.entry(key).or_default();
-        overlap.paths.retain(|path| {
-            let said = if zirc_core::hunks::is_lockfile(path) {
-                Said::Lockfile
-            } else {
-                Said::Both
-            };
-            news(told, path, said, now)
-        });
-        !overlap.paths.is_empty()
+    fn remote_news(&mut self, overlap: &mut Overlap, now: Instant) -> Option<bool> {
+        let key = (
+            overlap.channel.clone(),
+            overlap.nick.clone(),
+            overlap.worktree.clone(),
+        );
+        let lines = (&mut overlap.same_lines, &mut overlap.apart);
+        news_of(
+            self.remote.entry(key).or_default(),
+            &mut overlap.paths,
+            lines,
+            now,
+        )
     }
+}
+
+/// Leaves an overlap's `paths`, and what's known of their lines, with only the ones that
+/// are news at `now` given what was `told`, remembering them. When any are, whether they
+/// make a clash of what was told as changes in different parts.
+fn news_of(
+    told: &mut Paths,
+    paths: &mut Vec<String>,
+    (same_lines, apart): (&mut BTreeMap<String, Vec<[u32; 2]>>, &mut Vec<String>),
+    now: Instant,
+) -> Option<bool> {
+    let mut escalated = false;
+    paths.retain(|path| {
+        let said = if zirc_core::hunks::is_lockfile(path) {
+            Said::Lockfile
+        } else if same_lines.contains_key(path) {
+            Said::SameLines
+        } else if apart.contains(path) {
+            Said::Apart
+        } else {
+            Said::Both
+        };
+        let was_apart = told.get(path.as_str()).is_some_and(|(before, at)| {
+            *before == Said::Apart && now.duration_since(*at) < TOLD_FOR
+        });
+        let is_news = news(told, path, said, now);
+        escalated |= is_news && was_apart && said == Said::SameLines;
+        is_news
+    });
+    same_lines.retain(|path, _| paths.contains(path));
+    apart.retain(|path| paths.contains(path));
+    (!paths.is_empty()).then_some(escalated)
 }
 
 /// Whether saying `said` of `path` at `now` is news, given what was `told`, remembering it if

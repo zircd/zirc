@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use zirc_line::Line;
 use zirc_proto::{Event, Message};
 
-/// Paths someone else has uncommitted changes in that one also has.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// Paths another machine's work changes that a worktree on this one changes too.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Overlap {
     /// The channel both work in.
     pub channel: String,
@@ -21,6 +21,21 @@ pub struct Overlap {
     pub nick: String,
     /// The paths both have changed, sorted.
     pub paths: Vec<String>,
+    /// Which worktree here changes them, when zircd says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree: Option<Worktree>,
+    /// That machine's sessions whose lines in those paths were compared with the
+    /// worktree's, sorted: none when it said no lines, or what they're counted from isn't
+    /// here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sessions: Vec<String>,
+    /// Of the paths, the ones both change on the same or neighbouring lines, with those
+    /// lines: likely to conflict.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub same_lines: BTreeMap<String, Vec<[u32; 2]>>,
+    /// Of the paths, the ones both change in different parts: likely to merge.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apart: Vec<String>,
     /// Why it concerns the watching session, if it does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<Why>,
@@ -314,8 +329,6 @@ fn fresh(alerted: &mut Alerted, current: &BTreeSet<String>, now: u64) -> Vec<Str
 pub struct Presence {
     /// channel → nick → worktree → paths
     working: BTreeMap<String, BTreeMap<String, Sets>>,
-    /// channel → nick → overlapping paths already alerted about → since when gone, if gone
-    alerted: BTreeMap<String, BTreeMap<String, Alerted>>,
     /// (channel, worktree, worktree) → overlapping paths already alerted about → since when
     /// gone, if gone. Kept across reconnects: it's this machine's own, not the server's.
     alerted_locally: BTreeMap<(String, Worktree, Worktree), Alerted>,
@@ -831,9 +844,6 @@ impl Presence {
         if let Some(members) = self.lines.get_mut(channel) {
             members.remove(nick);
         }
-        if let Some(members) = self.alerted.get_mut(channel) {
-            members.remove(nick);
-        }
         if let Some(claims) = self.claims.get_mut(channel) {
             claims.retain(|(claimer, _), _| claimer != nick);
         }
@@ -869,11 +879,6 @@ impl Presence {
                 members.insert(new.to_owned(), lines);
             }
         }
-        for members in self.alerted.values_mut() {
-            if let Some(paths) = members.remove(nick) {
-                members.insert(new.to_owned(), paths);
-            }
-        }
         for claims in self.claims.values_mut() {
             let moved: Vec<(String, String)> = claims
                 .keys()
@@ -906,7 +911,6 @@ impl Presence {
     pub fn clear(&mut self) {
         self.working.clear();
         self.lines.clear();
-        self.alerted.clear();
         self.claims.clear();
         self.intents.clear();
         self.scopes.clear();
@@ -990,51 +994,14 @@ impl Presence {
                     channel: channel.to_owned(),
                     nick: nick.clone(),
                     paths,
-                    why: None,
+                    ..Overlap::default()
                 })
             })
             .collect()
     }
 
-    /// The overlaps in `channel` worth an alert at `now` (seconds since the Unix epoch):
-    /// only the paths not alerted about since they started overlapping. A path that stops
-    /// overlapping for longer than [`ALERT_GRACE_SECS`] and starts again is new again.
-    pub fn new_overlaps(
-        &mut self,
-        channel: &str,
-        mine: &BTreeSet<String>,
-        now: u64,
-    ) -> Vec<Overlap> {
-        let current = self.overlaps(channel, mine);
-        let alerted = self.alerted.entry(channel.to_owned()).or_default();
-        // Nicks no longer overlapping at all age out like their paths.
-        for (nick, paths) in alerted.iter_mut() {
-            if !current.iter().any(|overlap| &overlap.nick == nick) {
-                fresh(paths, &BTreeSet::new(), now);
-            }
-        }
-        alerted.retain(|_, paths| !paths.is_empty());
-        current
-            .into_iter()
-            .filter_map(|overlap| {
-                let paths: BTreeSet<String> = overlap.paths.iter().cloned().collect();
-                let new = fresh(
-                    alerted.entry(overlap.nick.clone()).or_default(),
-                    &paths,
-                    now,
-                );
-                (!new.is_empty()).then_some(Overlap {
-                    paths: new,
-                    ..overlap
-                })
-            })
-            .collect()
-    }
-}
-
-impl Presence {
     /// Which of `clashing`, the paths a conflict between two sides named by `key` is in,
-    /// are news at `now`, by the same rule as [`Presence::new_overlaps`].
+    /// are news at `now`, by the same rule as [`Presence::new_local_overlaps`].
     pub fn new_conflicts(
         &mut self,
         key: &str,
@@ -1049,9 +1016,9 @@ impl Presence {
         new
     }
 
-    /// The overlaps between this machine's `worktrees` in `channel` worth an alert, by the
-    /// same rule as [`Presence::new_overlaps`]: once per path, until it stops overlapping
-    /// for longer than [`ALERT_GRACE_SECS`].
+    /// The overlaps between this machine's `worktrees` in `channel` worth an alert at `now`
+    /// (seconds since the Unix epoch): once per path, until it stops overlapping for longer
+    /// than [`ALERT_GRACE_SECS`].
     pub fn new_local_overlaps(
         &mut self,
         channel: &str,
@@ -1180,7 +1147,7 @@ mod tests {
                 channel: "#api".into(),
                 nick: "beta".into(),
                 paths: paths(&["guide.md"]),
-                why: None,
+                ..Overlap::default()
             }]
         );
     }
@@ -1204,13 +1171,13 @@ mod tests {
                     channel: "#api".into(),
                     nick: "beta".into(),
                     paths: paths(&["a.rs"]),
-                    why: None,
+                    ..Overlap::default()
                 },
                 Overlap {
                     channel: "#api".into(),
                     nick: "gamma".into(),
                     paths: paths(&["c.rs"]),
-                    why: None,
+                    ..Overlap::default()
                 },
             ]
         );
@@ -1388,58 +1355,6 @@ mod tests {
         assert_eq!(overlaps[0].paths, ["src/auth.rs"]);
         // Once per path.
         assert!(presence.new_local_overlaps("#api", &local, 101).is_empty());
-    }
-
-    #[test]
-    fn alerts_once_per_path_until_it_stops_overlapping() {
-        let mut presence = Presence::default();
-        let mine = set(&["a.rs", "b.rs"]);
-        presence.working_at("#api", "beta", Place::default(), paths(&["a.rs"]), false);
-        assert_eq!(
-            presence.new_overlaps("#api", &mine, 0)[0].paths,
-            paths(&["a.rs"])
-        );
-        assert!(presence.new_overlaps("#api", &mine, 1).is_empty());
-
-        // A second path alerts on its own.
-        presence.working_at(
-            "#api",
-            "beta",
-            Place::default(),
-            paths(&["a.rs", "b.rs"]),
-            false,
-        );
-        assert_eq!(
-            presence.new_overlaps("#api", &mine, 2)[0].paths,
-            paths(&["b.rs"])
-        );
-
-        // A path gone for a moment, as when a working set arrives in parts, isn't news.
-        presence.working_at("#api", "beta", Place::default(), paths(&["b.rs"]), false);
-        assert!(presence.new_overlaps("#api", &mine, 3).is_empty());
-        presence.working_at(
-            "#api",
-            "beta",
-            Place::default(),
-            paths(&["a.rs", "b.rs"]),
-            false,
-        );
-        assert!(presence.new_overlaps("#api", &mine, 4).is_empty());
-
-        // Beta commits a.rs; when it changes it again later, that's new again.
-        presence.working_at("#api", "beta", Place::default(), paths(&["b.rs"]), false);
-        assert!(presence.new_overlaps("#api", &mine, 10).is_empty());
-        presence.working_at(
-            "#api",
-            "beta",
-            Place::default(),
-            paths(&["a.rs", "b.rs"]),
-            false,
-        );
-        assert_eq!(
-            presence.new_overlaps("#api", &mine, 11 + ALERT_GRACE_SECS)[0].paths,
-            paths(&["a.rs"])
-        );
     }
 
     #[test]

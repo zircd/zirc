@@ -2822,6 +2822,48 @@
           },
           "description": "The paths both have changed, sorted."
         },
+        "worktree": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Worktree"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Which worktree here changes them, when zircd says."
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "That machine's sessions whose lines in those paths were compared with the\nworktree's, sorted: none when it said no lines, or what they're counted from isn't\nhere."
+        },
+        "same_lines": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "description": "Of the paths, the ones both change on the same or neighbouring lines, with those\nlines: likely to conflict."
+        },
+        "apart": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Of the paths, the ones both change in different parts: likely to merge."
+        },
         "why": {
           "anyOf": [
             {
@@ -2839,7 +2881,7 @@
         "nick",
         "paths"
       ],
-      "description": "Paths someone else has uncommitted changes in that one also has."
+      "description": "Paths another machine's work changes that a worktree on this one changes too."
     },
     "LocalOverlap": {
       "type": "object",

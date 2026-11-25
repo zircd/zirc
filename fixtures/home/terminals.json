@@ -186,10 +186,10 @@
         "output": "  ↳ hint (default): Different files, different parts of yours, or a plan with nothing changed yet, as zircd compared them: nothing to agree, so don't ask. Carry on; zircd says so if their changes reach your lines."
       },
       {
-        "output": "#backend overlap: henrik-mbp is also changing tests/e2e/harness.rs"
+        "output": "#backend overlap: henrik-mbp/cc-7d3a is also changing tests/e2e/harness.rs (same lines: 1)"
       },
       {
-        "output": "  ↳ hint (default): Ask the other session now rather than wait to see: zirc who names it, then zirc ask --session <your session> --to <machine>/<session>, naming each file of yours and what you change in it, and asking whether its changes touch the same lines. Tell the user its answer in one line; meanwhile keep your changes there small and commit your part soon."
+        "output": "  ↳ hint (default): The same lines in both: ask the other session now (zirc who names it) with zirc ask --session <your session> --to <machine>/<session>, naming what you change in each file and asking what it changes there and who lands first. Tell the user its answer; once you've agreed, say it for people to see: zirc settle --session <your session> --with <their session> --first <me|them> <files>, with --same-lines if so."
       },
       {
         "output": "#agents ci-runner/ci: cc-91b7: main-fix landed as 9c1e2ab (build 1419): rebase onto it [id 7f3a2c]"

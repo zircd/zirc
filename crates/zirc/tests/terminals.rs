@@ -56,7 +56,16 @@ impl Machine {
         let text = std::fs::read_to_string(&config).unwrap();
         std::fs::write(&config, format!("owner = \"{owner}\"\n{text}")).unwrap();
         let repo = zirc_test_ergo::git::clone("https://github.com/zirc/backend.git");
-        Self { home, repo }
+        let machine = Self { home, repo };
+        // The harness two of them go on to change, in every clone and on its origin's main
+        // as far as each knows: a file both change is compared by its lines, which takes a
+        // commit both have and are built on.
+        machine.edit("tests/e2e/harness.rs", "pub const RETRIES: u32 = 1;\n");
+        let git = |args: &[&str]| zirc_test_ergo::git::git(machine.repo.path(), args);
+        git(&["add", "tests"]);
+        zirc_test_ergo::git::commit(machine.repo.path(), "The e2e harness");
+        git(&["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        machine
     }
 
     /// `zirc <args>` in the machine's clone, as a person types it, less what this machine's

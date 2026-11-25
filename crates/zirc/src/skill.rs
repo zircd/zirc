@@ -225,7 +225,7 @@ mod tests {
             channel: "#c".into(),
             nick: "n".into(),
             paths: vec!["p".into()],
-            why: None,
+            ..Default::default()
         });
         assert_eq!(overlap, "#c overlap: n is also changing p");
         assert!(AGENT_GUIDE.contains("overlap: <nick> is also changing <paths>"));

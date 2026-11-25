@@ -4,8 +4,9 @@
 use std::collections::BTreeSet;
 use std::time::Instant;
 
+use zirc_core::clashes::Meets;
 use zirc_core::ipc::{ChannelPresence, Member, Response, Worktree};
-use zirc_core::presence::LocalOverlap;
+use zirc_core::presence::{LocalOverlap, Overlap};
 use zirc_core::project::ORG_CHANNEL;
 use zirc_irc::Line;
 use zirc_proto::telemetry as usage;
@@ -226,6 +227,11 @@ impl Daemon {
         }
         self.last_announced
             .insert(channel.to_owned(), (now, parts.clone()));
+        // Its lines before the sets they're of: a machine that hears a set compares it with
+        // its own work then, by the lines it has ([`Daemon::check_overlaps`]).
+        for (_, said) in said {
+            self.publish_lines(channel, said.session(), &said);
+        }
         let count = u32::try_from(parts.len()).unwrap_or(u32::MAX);
         for (i, (session, mut event)) in parts.into_iter().enumerate() {
             if let Event::Working {
@@ -238,9 +244,6 @@ impl Daemon {
             }
             self.publish(channel, &session, event);
         }
-        for (_, said) in said {
-            self.publish_lines(channel, said.session(), &said);
-        }
         self.told_whole(channel);
     }
 
@@ -248,20 +251,12 @@ impl Daemon {
     /// with other machines now, and between this machine's own worktrees once Git has said
     /// which lines they share, in a task of its own ([`Input::Predicted`]).
     pub(super) fn check_overlaps(&mut self, channel: &str) {
-        self.predict_remote(channel);
+        // Where another machine's lines are being compared, what's found tells
+        // ([`Daemon::fitted`]): an overlap is said once, with its lines.
+        if !self.predict_remote(channel) {
+            self.tell_remote(channel);
+        }
         self.refresh_pairs(channel);
-        let mine = self.mine(channel);
-        let alerts: Vec<(Response, bool)> = self
-            .presence
-            .new_overlaps(channel, &mine, now())
-            .into_iter()
-            .filter_map(|mut overlap| {
-                self.told
-                    .remote(&mut overlap, self.clock.now())
-                    .then_some((Response::Overlap(overlap), false))
-            })
-            .collect();
-        self.tell_overlaps(channel, alerts);
         let local: Vec<(Worktree, BTreeSet<String>)> = self
             .local(channel)
             .into_iter()
@@ -284,6 +279,29 @@ impl Daemon {
             }
             let _ = inputs.send(Input::Predicted(channel, overlaps));
         });
+    }
+
+    /// Tells watching clients where each worktree here in `channel` and another machine
+    /// change the same files, with what was last found of their lines
+    /// ([`Daemon::predict_remote`]): what's news of it, as between this machine's own.
+    pub(super) fn tell_remote(&mut self, channel: &str) {
+        let mut alerts = Vec::new();
+        for (worktree, _, paths) in self.local(channel) {
+            for mut overlap in self.presence.overlaps(channel, &paths) {
+                overlap.worktree = Some(worktree.clone());
+                self.predictions.dress(&mut overlap);
+                if let Some(escalated) = self.told.remote_news(&mut overlap, self.clock.now()) {
+                    alerts.push((Response::Overlap(overlap), escalated));
+                }
+            }
+        }
+        let met: Vec<Response> = alerts.iter().map(|(alert, _)| alert.clone()).collect();
+        self.tell_overlaps(channel, alerts);
+        for alert in &met {
+            if let Response::Overlap(overlap) = alert {
+                self.met_remotely(overlap);
+            }
+        }
     }
 
     /// Tells watching clients about the `overlaps` between this machine's own worktrees in
@@ -319,7 +337,11 @@ impl Daemon {
             tracing::info!("overlap in {channel}: {alert:?}");
             self.tell_watchers(&alert);
             let kind = overlap_kind(&alert);
-            let woke = !matches!(&alert, Response::LocalOverlap(overlap) if overlap.quiet());
+            let woke = match &alert {
+                Response::LocalOverlap(overlap) => !overlap.quiet(),
+                Response::Overlap(overlap) => meets(overlap) == Meets::SameLines,
+                _ => true,
+            };
             self.noticed(&alert, Some(kind), woke, escalated);
             self.count(&Usage::OverlapNotified(usage::OverlapNotified {
                 local: matches!(alert, Response::LocalOverlap(_)),
@@ -348,7 +370,14 @@ fn overlap_kind(alert: &Response) -> usage::OverlapKind {
                 .iter()
                 .filter(|path| !overlap.apart.contains(path)),
         ),
-        Response::Overlap(overlap) => kind_of_unknown(overlap.paths.iter()),
+        Response::Overlap(overlap) if !overlap.same_lines.is_empty() => SameLines,
+        Response::Overlap(overlap) if meets(overlap) == Meets::Apart => Apart,
+        Response::Overlap(overlap) => kind_of_unknown(
+            overlap
+                .paths
+                .iter()
+                .filter(|path| !overlap.apart.contains(path)),
+        ),
         _ => Path,
     }
 }
@@ -361,4 +390,9 @@ fn kind_of_unknown<'a>(mut paths: impl Iterator<Item = &'a String>) -> usage::Ov
     } else {
         usage::OverlapKind::Path
     }
+}
+
+/// How `overlap`'s two sides meet, by their lines.
+pub(super) fn meets(overlap: &Overlap) -> Meets {
+    Meets::of(&overlap.paths, &overlap.same_lines, &overlap.apart)
 }

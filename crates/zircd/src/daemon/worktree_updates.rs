@@ -238,11 +238,12 @@ impl Daemon {
             if !fits {
                 continue;
             }
-            for (session, event) in events {
-                self.publish(&channel, &session, event);
-            }
+            // Lines first, as when the sets are told whole ([`Daemon::announce`]).
             for (session, said) in lines {
                 self.publish_lines(&channel, &session, &said);
+            }
+            for (session, event) in events {
+                self.publish(&channel, &session, event);
             }
             self.worktree_updates
                 .told

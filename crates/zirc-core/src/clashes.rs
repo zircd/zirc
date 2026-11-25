@@ -19,6 +19,43 @@ pub const TOLD_FOR: u64 = 12 * 60 * 60;
 /// rule, said here for whatever else models it.
 pub const SETTLED_FOR: u64 = 4 * 60 * 60;
 
+/// How two sides' changes to the files both change meet, by their lines: what decides
+/// whether a session is woken for them, with another machine's work as with another
+/// worktree's here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Meets {
+    /// Some of the same lines of a file: it will conflict, so it's a question to ask now.
+    SameLines,
+    /// Every file in different parts: they merge on their own, and nobody need hear.
+    Apart,
+    /// Some file's lines couldn't be compared, and none compared meet: worth a note with
+    /// the session's next wake (the user's choice, 25 Nov 2026: "Note it").
+    Unknown,
+}
+
+impl Meets {
+    /// Of `paths`, given the ones changed on the `same_lines` and the ones changed `apart`.
+    /// A lockfile's lines never meet: the second to land regenerates it.
+    #[must_use]
+    pub fn of<Lines>(
+        paths: &[String],
+        same_lines: &std::collections::BTreeMap<String, Lines>,
+        apart: &[String],
+    ) -> Self {
+        let settled = |path: &String| apart.contains(path) || crate::hunks::is_lockfile(path);
+        if same_lines
+            .keys()
+            .any(|path| !crate::hunks::is_lockfile(path))
+        {
+            Self::SameLines
+        } else if !paths.is_empty() && paths.iter().all(settled) {
+            Self::Apart
+        } else {
+            Self::Unknown
+        }
+    }
+}
+
 /// Another session on some of the paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Clash {
@@ -204,6 +241,31 @@ fn some_of(paths: &[String]) -> String {
 mod tests {
     use super::*;
     use crate::presence::{Intent, Member};
+
+    #[test]
+    fn two_sides_meet_by_their_lines_and_a_lockfile_never_does() {
+        let paths = |names: &[&str]| -> Vec<String> { names.iter().map(|&it| it.into()).collect() };
+        let same = |names: &[&str]| -> std::collections::BTreeMap<String, Vec<[u32; 2]>> {
+            names.iter().map(|&it| (it.into(), vec![[1, 1]])).collect()
+        };
+        let both = paths(&["a.rs", "b.rs"]);
+        assert_eq!(
+            Meets::of(&both, &same(&["a.rs"]), &paths(&["b.rs"])),
+            Meets::SameLines
+        );
+        assert_eq!(Meets::of(&both, &same(&[]), &both), Meets::Apart);
+        // One file compared, one not: nothing says they meet.
+        assert_eq!(
+            Meets::of(&both, &same(&[]), &paths(&["a.rs"])),
+            Meets::Unknown
+        );
+        let locked = paths(&["a.rs", "Cargo.lock"]);
+        let apart = paths(&["a.rs"]);
+        assert_eq!(
+            Meets::of(&locked, &same(&["Cargo.lock"]), &apart),
+            Meets::Apart
+        );
+    }
 
     fn member(nick: &str, session: Option<&str>, paths: &[&str]) -> Member {
         Member {

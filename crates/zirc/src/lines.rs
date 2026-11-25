@@ -1,5 +1,7 @@
 //! How what zircd hears reads as one line.
 
+use std::collections::BTreeMap;
+
 use zirc_core::decisions;
 use zirc_core::hunks;
 use zirc_core::ipc::{self, Conflict, Delivery, Direct, LocalOverlap, Overlap, Worktree};
@@ -60,39 +62,52 @@ fn awaited_reaction_line(reaction: &ipc::Reaction) -> String {
 }
 
 /// An overlap as a line an agent can act on.
+/// Each path says, where zircd could compare them, whether both change the same lines.
 pub(crate) fn overlap_line(overlap: &Overlap) -> String {
+    let who = match &overlap.sessions[..] {
+        [session] => format!("{}/{session}", overlap.nick),
+        _ => overlap.nick.clone(),
+    };
     format!(
-        "{} overlap: {} is also changing {}",
+        "{} overlap: {who} is also changing {}",
         overlap.channel,
-        overlap.nick,
-        some_of(&overlap.paths)
+        some_of(&marked(&overlap.paths, &overlap.same_lines, &overlap.apart))
     )
+}
+
+/// An overlap's `paths`, each with how the two sides' lines meet in it where that's known:
+/// what will conflict first, what may and what will merge after, so a cut-off line still
+/// shows what matters.
+fn marked(
+    paths: &[String],
+    same_lines: &BTreeMap<String, Vec<[u32; 2]>>,
+    apart: &[String],
+) -> Vec<String> {
+    let mut paths: Vec<&String> = paths.iter().collect();
+    paths.sort_by_key(|path| {
+        (
+            !same_lines.contains_key(*path) || hunks::is_lockfile(path),
+            apart.contains(path),
+        )
+    });
+    paths
+        .into_iter()
+        .map(|path| match same_lines.get(path) {
+            Some(_) if hunks::is_lockfile(path) => {
+                format!("{path} (a lockfile: the second to land regenerates it after the first)")
+            }
+            Some(lines) => format!("{path} (same lines: {})", hunks::describe(lines)),
+            None if apart.contains(path) => format!("{path} (different parts)"),
+            None => path.clone(),
+        })
+        .collect()
 }
 
 /// Two worktrees on this machine changing the same files: two sessions here, most likely.
 /// Each path says, where zircd could tell, whether they change the same lines.
 pub(crate) fn local_overlap_line(overlap: &LocalOverlap) -> String {
     let [a, b] = &overlap.worktrees;
-    // What will conflict first, what may and what will merge after, so a cut-off line still
-    // shows what matters.
-    let mut paths: Vec<&String> = overlap.paths.iter().collect();
-    paths.sort_by_key(|path| {
-        (
-            !overlap.same_lines.contains_key(*path) || hunks::is_lockfile(path),
-            overlap.apart.contains(path),
-        )
-    });
-    let paths: Vec<String> = paths
-        .into_iter()
-        .map(|path| match overlap.same_lines.get(path) {
-            Some(_) if hunks::is_lockfile(path) => {
-                format!("{path} (a lockfile: the second to land regenerates it after the first)")
-            }
-            Some(lines) => format!("{path} (same lines: {})", hunks::describe(lines)),
-            None if overlap.apart.contains(path) => format!("{path} (different parts)"),
-            None => path.clone(),
-        })
-        .collect();
+    let paths = marked(&overlap.paths, &overlap.same_lines, &overlap.apart);
     format!(
         "{} overlap: worktrees {} and {} are both changing {}",
         overlap.channel,
@@ -336,7 +351,7 @@ pub(crate) mod tests {
             channel: "#acme/api".into(),
             nick: "beta".into(),
             paths: vec!["src/auth.rs".into()],
-            why: None,
+            ..Overlap::default()
         };
         assert_eq!(
             overlap_line(&overlap),

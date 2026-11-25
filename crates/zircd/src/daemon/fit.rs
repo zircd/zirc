@@ -14,10 +14,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
+use zirc_core::clashes::Meets;
 use zirc_core::fit::{Fit, Shared, Verdict};
 use zirc_core::hunks::{self, Hunk, Hunks};
 use zirc_core::ipc::{Delivery, Response, Why};
-use zirc_core::presence::{self, LocalOverlap};
+use zirc_core::presence::{self, LocalOverlap, Overlap};
 use zirc_proto::Event;
 
 use super::{Daemon, Input, now};
@@ -46,9 +47,10 @@ pub(crate) type RemoteKey = (PathBuf, String, String);
 /// What a task predicting lines for intents' fits found.
 #[derive(Debug)]
 pub(crate) enum Found {
-    /// Of worktrees here and other machines' sessions, from the lines those said
-    /// ([`Daemon::predict_remote`]).
-    Remote(Vec<(RemoteKey, Predicted)>),
+    /// Of worktrees here in a channel and other machines' sessions, from the lines those
+    /// said ([`Daemon::predict_remote`]): nothing where what theirs are counted from isn't
+    /// here.
+    Remote(String, Vec<(RemoteKey, Option<Predicted>)>),
     /// Of pairs of worktrees here, with what each was made from ([`Daemon::refresh_pairs`]).
     Pairs(Vec<(u64, LocalOverlap)>),
 }
@@ -78,6 +80,40 @@ impl Predictions {
         self.pairs.retain(|[a, b], _| a != root && b != root);
         self.stamps.retain(|[a, b], _| a != root && b != root);
         self.remote.retain(|(here, _, _), _| here != root);
+    }
+
+    /// Gives `overlap`, a worktree here's with another machine, what was last predicted of
+    /// its paths against each of that machine's sessions: the lines both change, the paths
+    /// changed apart, and the sessions compared.
+    pub(super) fn dress(&self, overlap: &mut Overlap) {
+        let Some(root) = overlap.worktree.as_ref().map(|worktree| &worktree.path) else {
+            return;
+        };
+        let mut sessions = BTreeSet::new();
+        for ((here, nick, session), (same, apart)) in &self.remote {
+            if here != root || *nick != overlap.nick {
+                continue;
+            }
+            for path in &overlap.paths {
+                if let Some(lines) = same.get(path) {
+                    let all = overlap.same_lines.entry(path.clone()).or_default();
+                    all.extend(lines);
+                    all.sort_unstable();
+                    all.dedup();
+                } else if apart.contains(path) {
+                    overlap.apart.push(path.clone());
+                } else {
+                    continue;
+                }
+                sessions.insert(session.clone());
+            }
+        }
+        overlap.apart.sort_unstable();
+        overlap.apart.dedup();
+        overlap
+            .apart
+            .retain(|path| !overlap.same_lines.contains_key(path));
+        overlap.sessions = sessions.into_iter().collect();
     }
 
     /// How the worktree at `root` and `session` on `nick` both change `path`, as last
@@ -156,28 +192,6 @@ impl Daemon {
             })
     }
 
-    /// Keeps for later, rather than waking them, the watching sessions whose reason in
-    /// `reasons` is an intent that needs nothing of them ([`Daemon::quiet_intent`]).
-    pub(super) fn hold_quiet_intents(&mut self, response: &Response, reasons: &mut [Option<Why>]) {
-        let quiet: Vec<String> = self
-            .watchers
-            .iter()
-            .zip(reasons.iter_mut())
-            .filter_map(|(watcher, why)| {
-                let session = watcher.session.clone()?;
-                if *why != Some(Why::Intent) || !self.quiet_intent(response, &session) {
-                    return None;
-                }
-                *why = None;
-                Some(session)
-            })
-            .collect();
-        for session in quiet {
-            let dressed = self.dressed(response, Some(Why::Intent), Some(&session));
-            self.keep_for_later(&session, &dressed, Why::Intent);
-        }
-    }
-
     /// Whether `response`, a push that changes files `session` changes, needs nothing of it
     /// now: this machine made the push, so it has its commits and compares their lines with
     /// each worktree's own, waking the session if they meet (`scans.rs`, a conflict ahead);
@@ -201,15 +215,23 @@ impl Daemon {
     }
 
     /// Keeps for later, rather than waking them, the watching sessions whose reason in
-    /// `reasons` is a landing that needs nothing of them now ([`Daemon::quiet_landing`]).
-    pub(super) fn hold_quiet_landings(&mut self, response: &Response, reasons: &mut [Option<Why>]) {
+    /// `reasons` is `held` and of whom `quiet` says `response` needs nothing now: an intent
+    /// ([`Daemon::quiet_intent`]), a landing ([`Daemon::quiet_landing`]), or an overlap
+    /// with another machine whose lines couldn't be compared ([`noted_overlap`]).
+    pub(super) fn hold(
+        &mut self,
+        response: &Response,
+        reasons: &mut [Option<Why>],
+        held: Why,
+        quiet: fn(&Self, &Response, &str) -> bool,
+    ) {
         let quiet: Vec<String> = self
             .watchers
             .iter()
             .zip(reasons.iter_mut())
             .filter_map(|(watcher, why)| {
                 let session = watcher.session.clone()?;
-                if *why != Some(Why::Landing) || !self.quiet_landing(response, &session) {
+                if *why != Some(held) || !quiet(self, response, &session) {
                     return None;
                 }
                 *why = None;
@@ -217,8 +239,8 @@ impl Daemon {
             })
             .collect();
         for session in quiet {
-            let dressed = self.dressed(response, Some(Why::Landing), Some(&session));
-            self.keep_for_later(&session, &dressed, Why::Landing);
+            let dressed = self.dressed(response, Some(held), Some(&session));
+            self.keep_for_later(&session, &dressed, held);
         }
     }
 
@@ -359,10 +381,14 @@ impl Daemon {
     pub(super) fn fitted(&mut self, found: Found) {
         self.checking = self.checking.saturating_sub(1);
         match found {
-            Found::Remote(predicted) => {
+            Found::Remote(channel, predicted) => {
                 for (key, it) in predicted {
-                    self.predictions.remote.insert(key, it);
+                    match it {
+                        Some(it) => self.predictions.remote.insert(key, it),
+                        None => self.predictions.remote.remove(&key),
+                    };
                 }
+                self.tell_remote(&channel);
             }
             Found::Pairs(predicted) => self.pairs_predicted(predicted),
         }
@@ -401,10 +427,11 @@ impl Daemon {
 
     /// Predicts, in a task of its own, each worktree in `channel` here against the lines
     /// each other machine's session there said, where both change some of the same files
-    /// ([`Found::Remote`]).
-    pub(super) fn predict_remote(&mut self, channel: &str) {
+    /// ([`Found::Remote`]). Whether there's any to predict: then what's found tells the
+    /// overlaps ([`Daemon::tell_remote`]).
+    pub(super) fn predict_remote(&mut self, channel: &str) -> bool {
         let Some(me) = self.client.as_ref().map(|client| client.nick().to_owned()) else {
-            return;
+            return false;
         };
         let said = self.presence.all_lines(channel);
         let jobs: Vec<Job> = self
@@ -440,20 +467,31 @@ impl Daemon {
                     })
             })
             .collect();
+        // A session that no longer changes a worktree's files has nothing predicted of it.
+        let here: BTreeSet<&PathBuf> = self
+            .repos
+            .iter()
+            .filter(|(_, watched)| watched.scope == channel)
+            .map(|(root, _)| root)
+            .collect();
+        self.predictions
+            .remote
+            .retain(|key, _| !here.contains(&key.0) || jobs.iter().any(|job| job.key == *key));
         if jobs.is_empty() {
-            return;
+            return false;
         }
         let inputs = self.inputs.clone();
+        let channel = channel.to_owned();
         self.checking += 1;
         tokio::spawn(async move {
             let mut predicted = Vec::new();
             for job in jobs {
-                if let Some(it) = predict_against(&job).await {
-                    predicted.push((job.key, it));
-                }
+                let it = predict_against(&job).await;
+                predicted.push((job.key, it));
             }
-            let _ = inputs.send(Input::Fitted(Found::Remote(predicted)));
+            let _ = inputs.send(Input::Fitted(Found::Remote(channel, predicted)));
         });
+        true
     }
 }
 
@@ -488,6 +526,13 @@ async fn predict_against(job: &Job) -> Option<Predicted> {
         prediction.same_lines,
         prediction.apart.into_iter().collect(),
     ))
+}
+
+/// Whether `response` is an overlap with another machine whose lines couldn't be compared:
+/// a note for the session's next wake, as nothing says they meet (the user's choice, 25 Nov
+/// 2026: "Note it").
+pub(super) fn noted_overlap(response: &Response) -> bool {
+    matches!(response, Response::Overlap(overlap) if super::announce::meets(overlap) == Meets::Unknown)
 }
 
 #[cfg(test)]

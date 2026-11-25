@@ -12,7 +12,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use zirc_core::presence::LocalOverlap;
+use zirc_core::presence::{LocalOverlap, Overlap};
 use zirc_proto::woke::Settled;
 
 use super::{Daemon, now};
@@ -135,6 +135,36 @@ impl Daemon {
         let files: Vec<String> = overlap.same_lines.keys().cloned().collect();
         if let Some(kept) = self.meetings.met(channel, (a, b), &files, now()) {
             self.tell_keeps_meeting(channel, (a, b), &kept);
+        }
+    }
+
+    /// The session of `overlap`'s worktree here met another machine's sessions in its same
+    /// lines: it's told when it keeps meeting one, as that one is by its own machine.
+    pub(super) fn met_remotely(&mut self, overlap: &Overlap) {
+        let Some(mine) = overlap
+            .worktree
+            .as_ref()
+            .and_then(|worktree| self.session_of(worktree))
+            .map(str::to_owned)
+        else {
+            return;
+        };
+        let files: Vec<String> = overlap.same_lines.keys().cloned().collect();
+        if files.is_empty() {
+            return;
+        }
+        for other in &overlap.sessions {
+            let theirs = format!("{}/{other}", overlap.nick);
+            if let Some(kept) = self
+                .meetings
+                .met(&overlap.channel, (&mine, &theirs), &files, now())
+            {
+                tracing::info!(
+                    "{mine} and {theirs} keep meeting in {}: {kept:?}",
+                    overlap.channel
+                );
+                self.tell_dropped(&overlap.channel, keeps_meeting_line(&mine, &theirs, &kept));
+            }
         }
     }
 

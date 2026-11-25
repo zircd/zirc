@@ -139,38 +139,32 @@ pub fn seen(heard: &Heard, watching: Option<&str>) -> Option<Seen> {
     let lockfiles = |paths: &[String]| {
         !paths.is_empty() && paths.iter().all(|path| crate::hunks::is_lockfile(path))
     };
-    let (kind, channel, names_me, lockfile) = match heard {
-        Heard::Overlap(overlap) => {
-            fields.insert("who", overlap.nick.clone());
-            fields.insert("paths", paths_field(&overlap.paths));
-            (
-                kind::OVERLAP,
-                overlap.channel.clone(),
-                false,
-                lockfiles(&overlap.paths),
-            )
+    // An overlap with `who`, in `paths`: one whose lines meet has a hint of its own, with
+    // another machine as with another worktree here.
+    let mut overlap = |who: &str, paths: &[String], same_lines: &BTreeMap<String, _>| {
+        let same: Vec<String> = same_lines
+            .keys()
+            .filter(|path| !crate::hunks::is_lockfile(path))
+            .cloned()
+            .collect();
+        fields.insert("who", who.to_owned());
+        if same.is_empty() {
+            fields.insert("paths", paths_field(paths));
+            (kind::OVERLAP, lockfiles(paths))
+        } else {
+            fields.insert("paths", paths_field(&same));
+            (kind::OVERLAP_SAME_LINES, false)
         }
-        Heard::LocalOverlap(overlap) => {
-            fields.insert("paths", paths_field(&overlap.paths));
-            let same: Vec<String> = overlap
-                .same_lines
-                .keys()
-                .filter(|path| !crate::hunks::is_lockfile(path))
-                .cloned()
-                .collect();
-            if same.is_empty() {
-                fields.insert("who", "another worktree here".to_owned());
-                let lockfile = lockfiles(&overlap.paths);
-                (kind::OVERLAP, overlap.channel.clone(), false, lockfile)
-            } else {
-                fields.insert("paths", paths_field(&same));
-                (
-                    kind::OVERLAP_SAME_LINES,
-                    overlap.channel.clone(),
-                    false,
-                    false,
-                )
-            }
+    };
+    let (kind, channel, names_me, lockfile) = match heard {
+        Heard::Overlap(heard) => {
+            let (kind, lockfile) = overlap(&heard.nick, &heard.paths, &heard.same_lines);
+            (kind, heard.channel.clone(), false, lockfile)
+        }
+        Heard::LocalOverlap(heard) => {
+            let here = "another worktree here";
+            let (kind, lockfile) = overlap(here, &heard.paths, &heard.same_lines);
+            (kind, heard.channel.clone(), false, lockfile)
         }
         Heard::Conflict(conflict) => {
             let paths: Vec<String> = conflict.same_lines.keys().cloned().collect();
