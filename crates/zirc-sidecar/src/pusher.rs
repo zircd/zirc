@@ -32,7 +32,7 @@ use tracing::{info, warn};
 use zirc_chat::chat::NotifySettings;
 use zirc_chat::chat::push::{Heard, why};
 use zirc_irc::Line;
-use zirc_proto::push::{PUSHER, QUOTE_TAG, Said, TAG, WHY_TAG, Why};
+use zirc_proto::push::{PUSHER, QUOTE_TAG, SAID_AT_HEADER, Said, TAG, WHY_TAG, Why};
 
 use crate::exporter::{NOTICE, PRIVMSG, TAGMSG};
 use kept::{Kept, Place};
@@ -713,7 +713,8 @@ impl Running {
         }
         let subscription = self.subscription(&push.endpoint).await;
         if let Some(subscription) = subscription {
-            self.send(&subscription, &push.line, true).await;
+            self.send(&subscription, &push.line, Some(push.nanotime))
+                .await;
         } else {
             info!("a push not sent: its phone is no longer on file");
         }
@@ -747,13 +748,16 @@ impl Running {
         .flatten()
         .unwrap_or_default();
         for phone in phones {
-            self.send(&phone, line, false).await;
+            self.send(&phone, line, None).await;
         }
     }
 
-    /// Encrypts `line` for `subscription`'s phone and sends it; `urgent` for what notifies.
-    /// A phone its push service says is gone is forgotten.
-    async fn send(&self, subscription: &Subscription, line: &str, urgent: bool) {
+    /// Encrypts `line` for `subscription`'s phone and sends it. A push that notifies is
+    /// urgent, and says when its message was `said`, in nanoseconds since the epoch, for the
+    /// relay to time it from ([`SAID_AT_HEADER`]); a silent sync says neither. A phone its push
+    /// service says is gone is forgotten.
+    async fn send(&self, subscription: &Subscription, line: &str, said: Option<i64>) {
+        let urgent = said.is_some();
         // Kept before the pusher checked them: never posted to.
         if !relayed(&subscription.endpoint, &self.pusher.subscriber) {
             warn!("a phone on file whose endpoint isn't zirc.dev's relay: forgetting it");
@@ -786,10 +790,14 @@ impl Running {
         // with it (four in two days, 21 and 22 Nov 2026).
         let mut again = AGAIN.iter();
         loop {
-            let sent = self
+            let mut request = self
                 .http
                 .post(&subscription.endpoint)
-                .header("Authorization", &authorization)
+                .header("Authorization", &authorization);
+            if let Some(said) = said {
+                request = request.header(SAID_AT_HEADER, (said / 1_000_000).to_string());
+            }
+            let sent = request
                 .header("Content-Encoding", "aes128gcm")
                 .header("Content-Type", "application/octet-stream")
                 .header("TTL", TTL.to_string())

@@ -445,6 +445,18 @@ async fn pushes_through_a_real_ergo_unless_read_elsewhere_first() {
     assert_eq!(line.params, ["ada", "lunch?"]);
     assert_eq!(line.tag(WHY_TAG), Some("direct"));
     assert!(line.source.as_deref().unwrap().starts_with("bob!"));
+    // It says when its message was said, to the millisecond of the line's own time, for the
+    // relay to time it from the message.
+    let said: jiff::Timestamp = line.tag("time").unwrap().parse().unwrap();
+    let header = format!(
+        "{}: {}",
+        SAID_AT_HEADER.to_lowercase(),
+        said.as_millisecond()
+    );
+    assert!(
+        head.lines().any(|line| line == header),
+        "{header} in {head}"
+    );
 
     // Read on another device before the delay: not pushed, and the phone takes down "lunch?".
     bob.privmsg("ada", "or later?").unwrap();
@@ -456,10 +468,12 @@ async fn pushes_through_a_real_ergo_unless_read_elsewhere_first() {
     };
     read.tags.push((TAG.into(), Some(said.tag())));
     ada.send(read).unwrap();
-    let (_, body) = tokio::time::timeout(Duration::from_secs(20), posts.recv())
+    let (head, body) = tokio::time::timeout(Duration::from_secs(20), posts.recv())
         .await
         .expect("the phone told")
         .unwrap();
+    // A silent sync notifies nothing, so it isn't timed.
+    assert!(!head.contains(&SAID_AT_HEADER.to_lowercase()), "{head}");
     let told: Line = String::from_utf8(webpush::decrypt(&phone, &auth, &body).unwrap())
         .unwrap()
         .parse()

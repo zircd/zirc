@@ -41,6 +41,13 @@ pub const ENDPOINT_KEY: &str = "ep";
 /// The key of a push's own random id, on a push that notifies: what the phone says arrived.
 pub const PUSH_ID_KEY: &str = "pid";
 
+/// The header on a push that notifies, from the pusher to zirc.dev's relay: when the message
+/// it's for was said, in milliseconds since the epoch by the server's clock (the message's
+/// `time`). The relay keeps it beside when it handed the push on and when the phone said it
+/// arrived, so a push is timed from the message to the phone, the pusher's own wait and its
+/// reading of the history included. A time only, never anything of what was said.
+pub const SAID_AT_HEADER: &str = "Zirc-Said-At";
+
 /// Where under its endpoint's address a phone says a push arrived, sending an [`Arrived`] there.
 /// zirc.dev's route lives at this path (`app/api/push/[id]/arrived`), as Next.js routes by
 /// directory.
@@ -191,6 +198,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const PUSH_ENDPOINT_KEY = {ENDPOINT_KEY:?};"),
         format!("const PUSH_ID_KEY = {PUSH_ID_KEY:?};"),
         format!("const PUSH_ARRIVED_PATH = {ARRIVED_PATH:?};"),
+        format!("const PUSH_SAID_AT_HEADER = {SAID_AT_HEADER:?};"),
     ]
 }
 
