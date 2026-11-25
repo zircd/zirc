@@ -910,6 +910,7 @@ impl<'a> Layout<'a> {
             lines.push(line);
         }
         self.receipt(&mut lines);
+        self.role_waiting(&mut lines);
         self.once(&mut lines);
         self.next_step(&mut lines);
         lines
@@ -966,6 +967,35 @@ impl<'a> Layout<'a> {
         let key = format!("{}-receipt", lines[at].key);
         let mut line = self.blank(key, None, time, LineKind::Note);
         line.text = receipt.says();
+        line.shape = RowShape::of(&line);
+        lines.insert(at + 1, line);
+    }
+
+    /// Puts, under our latest message to a role while nobody holds it, that it waits:
+    /// `Waiting: nobody holds the fixer role` ([`zirc_proto::roles::waiting`]), where a
+    /// message to an agent says it was seen. A note, as a receipt is.
+    fn role_waiting(&mut self, lines: &mut Vec<Line>) {
+        let name = &self.conversation.name;
+        if !self.chat.is_role(name)
+            || self
+                .chat
+                .role_seat(name)
+                .is_none_or(|seat| seat.holder.is_some())
+        {
+            return;
+        }
+        let Some(at) = lines
+            .iter()
+            .rposition(|line| line.mine && line.kind == LineKind::Chat)
+        else {
+            return;
+        };
+        let Some(time) = DateTime::from_timestamp_millis(lines[at].time_ms) else {
+            return;
+        };
+        let key = format!("{}-waiting", lines[at].key);
+        let mut line = self.blank(key, None, time, LineKind::Note);
+        line.text = zirc_proto::roles::waiting(name);
         line.shape = RowShape::of(&line);
         lines.insert(at + 1, line);
     }

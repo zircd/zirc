@@ -62,6 +62,10 @@ impl Chat {
             EntryKind::Zirc(message) => match &message.event {
                 Event::File(_) => named(files(&entries[..=at])),
                 Event::Text { body } => named(line(body)),
+                // A vacant role's answer by its card's heading, whatever its plain words.
+                event if let Some(vacant) = zirc_proto::roles::Vacant::of(event) => {
+                    named(vacant.title())
+                }
                 event => named(super::describe::describe(event).headline),
             },
             _ => return None,
