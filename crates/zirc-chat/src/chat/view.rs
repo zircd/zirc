@@ -209,19 +209,6 @@ pub enum SenderKind {
     Integration,
 }
 
-impl SenderKind {
-    /// The pill apps show beside the sender's name, if any: an agent has none, as its name
-    /// line says whose agent it is ([`super::Speaker::detail`]).
-    #[must_use]
-    pub fn pill(self) -> Option<&'static str> {
-        match self {
-            Self::Person => Some("PERSON"),
-            Self::Agent => None,
-            Self::Integration => Some("APP"),
-        }
-    }
-}
-
 impl super::Chat {
     /// What `nick` is: one of zirc's apps, or else as [`sender_kind`] says, by whose machine
     /// its host says it is ([`super::Chat::machine_owner`]).
