@@ -566,6 +566,9 @@ pub struct Daemon {
     topics: Topics,
     presence: Presence,
     watchers: Vec<Watcher>,
+    /// How many lines are being told to the watchers now, one inside another
+    /// ([`Daemon::tell_watchers`]): none drops a watcher until the outermost is told.
+    telling: usize,
     /// How long its one task was busy with one thing lately ([`busy`]).
     busy: busy::Busy,
     /// The repositories being read now.
@@ -780,6 +783,7 @@ impl Daemon {
             topics: Topics::new(),
             presence: Presence::default(),
             watchers: Vec::new(),
+            telling: 0,
             busy: busy::Busy::new(Instant::now()),
             scanning: BTreeSet::new(),
             checking: 0,

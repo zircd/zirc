@@ -58,6 +58,7 @@ impl Daemon {
             return;
         }
         let stale = self.stale_intent(response);
+        self.telling += 1;
         let mut reasons: Vec<Option<Why>> = self
             .watchers
             .iter()
@@ -102,12 +103,9 @@ impl Daemon {
             .zip(&reasons)
             .map(|(watcher, why)| self.dressed(response, *why, watcher.session.as_deref()))
             .collect();
-        let mut reasons = reasons.into_iter().zip(dressed);
-        // A watcher that can't keep up misses messages rather than stalling the daemon;
-        // one that hung up is dropped.
-        self.watchers.retain(|watcher| {
-            let (why, dressed) = reasons.next().unzip();
-            let why = why.flatten();
+        let reasons = reasons.into_iter().zip(dressed);
+        // A watcher that can't keep up misses messages rather than stalling the daemon.
+        for (watcher, (why, dressed)) in self.watchers.iter().zip(reasons) {
             if why.is_some()
                 && let Some(earlier) = watcher
                     .session
@@ -123,15 +121,17 @@ impl Daemon {
                 && watcher.session.is_some()
                 && matches!(response, Response::Direct(direct) if direct.note)
             {
-                return !watcher.heard.is_closed();
+                continue;
             }
-            !matches!(
-                watcher
-                    .heard
-                    .try_send(dressed.unwrap_or_else(|| response.clone())),
-                Err(mpsc::error::TrySendError::Closed(_))
-            )
-        });
+            let _ = watcher.heard.try_send(dressed);
+        }
+        // One that hung up is dropped, but never while a line is being told: telling one
+        // can say another (a landing's `done:`, a wake's own line), and each watcher's
+        // reason for the first is found by its place among them.
+        self.telling -= 1;
+        if self.telling == 0 {
+            self.watchers.retain(|watcher| !watcher.heard.is_closed());
+        }
         // Kept for the sessions that have watched, while none of their watches is open.
         // A watch that fell behind and dropped this line doesn't count as one.
         let watching: BTreeSet<&str> = self

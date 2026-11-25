@@ -133,6 +133,61 @@ async fn a_landing_landing_finishes_the_task_it_was_queued_under() {
     }
 }
 
+/// A session's own landing reaches its watch though another watch hung up just before:
+/// zircd's `done:` for the landing is told to the watchers while they're being told the
+/// landing itself, and dropped the watch that was gone, so each watch after it was handed
+/// the line of the one before, without its reason, and a `--once` watch stayed asleep
+/// (build 10420's landing, 25 Nov 2026).
+#[tokio::test]
+async fn a_sessions_landing_wakes_it_though_another_watch_just_ended() {
+    let ergo = require_ergo!();
+    let [(alpha, alpha_clone), _beta] = two_machines(&ergo).await;
+    alpha
+        .request(Request::RepoAdd {
+            path: alpha_clone.path().to_owned(),
+            session: Some("cc-t".into()),
+        })
+        .await;
+    let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#agents").await;
+    // The watch that ends is the earlier of the two.
+    let gone = alpha.watch(Some("cc-gone")).await;
+    let mut hears = alpha.watch(Some("cc-t")).await;
+    post(&alpha, alpha_clone.path(), "cc-t", "taking: the recorder").await;
+    let Response::Task { task: Some(_) } = alpha
+        .request(Request::Task {
+            session: "cc-t".into(),
+            landing: true,
+        })
+        .await
+    else {
+        panic!("its landing claims the task it's on")
+    };
+    // It waits on its build, as a session that queued its landing does.
+    post(&alpha, alpha_clone.path(), "cc-t", "waiting for build 7").await;
+    drop(gone);
+    alpha
+        .eventually(
+            |status| !status.watching.contains(&Some("cc-gone".into())),
+            "the watch gone",
+        )
+        .await;
+    let landed = "cc-t: landed login as 1a2b3c4 (build 7)";
+    let line = zirc_proto::encode(&ci_message(Event::Custom {
+        kind: "x-zirc/landing".into(),
+        data: serde_json::json!({ "session": "cc-t", "branch": "login" }),
+        text: landed.into(),
+    }))
+    .unwrap();
+    ci.privmsg("#agents", &line).unwrap();
+    loop {
+        let (event, _why) = next_concerning(&mut hears).await;
+        if matches!(&event, Event::Custom { text, .. } if text == landed) {
+            break;
+        }
+    }
+}
+
 #[tokio::test]
 async fn a_sessions_title_goes_on_its_card_and_its_link_stays_here() {
     let ergo = require_ergo!();
