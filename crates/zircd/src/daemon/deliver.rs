@@ -540,8 +540,10 @@ impl Daemon {
                         .filter(|path| mine.contains(path))
                         .collect();
                     (!shared.is_empty()
-                        && !session
-                            .is_some_and(|session| self.apart_here(delivery, session, &shared)))
+                        && !session.is_some_and(|session| {
+                            self.apart_here(delivery, session, &shared)
+                                || self.settled_sender(delivery, session)
+                        }))
                     .then_some(Why::Paths)
                 }
             }
@@ -771,13 +773,30 @@ impl Daemon {
             .session
     }
 
+    /// Whether `session` and the session `delivery` is from settled who lands first
+    /// ([`Daemon::settled_with`]): the second hears that landing, and neither needs the
+    /// other's commits and pushes meanwhile.
+    pub(super) fn settled_sender(&self, delivery: &Delivery, session: &str) -> bool {
+        self.client.as_ref().map(Client::nick).is_some_and(|me| {
+            self.settled_with(
+                &delivery.scope(),
+                (me, session),
+                (&delivery.from, &delivery.message.session),
+            )
+        })
+    }
+
     /// Whether `delivery`, a commit or push to `branch`, is by the other side of an overlap
     /// `session` was told of: then its changes are moving, and the session may want to update
-    /// from them once they land.
+    /// from them once they land. Not once the two settled
+    /// ([`Daemon::settled_sender`]).
     pub(super) fn partner(&self, delivery: &Delivery, branch: &str, session: Option<&str>) -> bool {
         let Some(session) = session else {
             return false;
         };
+        if self.settled_sender(delivery, session) {
+            return false;
+        }
         let me = self.client.as_ref().map(Client::nick);
         if Some(delivery.from.as_str()) == me {
             if delivery.message.session == session {

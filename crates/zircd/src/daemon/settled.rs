@@ -2,9 +2,16 @@
 //! one line in the agents' room naming both, the files and who lands first, for people to
 //! see that agents sorted it out (the user's decision, 24 Nov 2026: agents say it, as zircd
 //! can't read an order from their words). Said once: the side that says it second is told
-//! the other already did. A settled overlap between two of this machine's sessions is no
-//! news to either again while it's remembered, as a split said in an intent isn't
-//! ([`Daemon::agreed`]).
+//! the other already did.
+//!
+//! Two sessions that settled are quiet to each other wherever their work meets, until the
+//! first of them lands or the settle is forgotten: an overlap between them in files it didn't
+//! name is no news ([`Daemon::settled`]), as a split said in an intent isn't
+//! ([`Daemon::agreed`]), and neither wakes for the other's commits and pushes
+//! ([`Daemon::settled_with`]). They agreed who lands first, and the second hears that landing.
+//! Until 25 Nov 2026 a settle quieted its own files only, and never the commits: of 60 wakes
+//! for overlaps in a day, 42 went to pairs that had settled already, one pair settling six
+//! times in 80 minutes as it met in file after file.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -12,8 +19,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, Result};
 use zirc_core::ipc::Response;
 use zirc_core::presence::{self, LocalOverlap};
-use zirc_proto::Message;
 use zirc_proto::woke::{Settled, Side};
+use zirc_proto::{Event, Message};
 
 use super::{Daemon, git, now};
 
@@ -55,6 +62,29 @@ impl SettledLately {
                 let agreed: Vec<&str> = settled.paths.iter().map(String::as_str).collect();
                 settled.between(a, b) && presence::touching(paths, &agreed).len() == paths.len()
             })
+    }
+
+    /// The one between `a` and `b` in `scope`, whatever its files, if it's still remembered
+    /// at `at` and its first hasn't landed ([`Self::landed`]).
+    fn standing(
+        &self,
+        scope: &str,
+        (a, b): ((&str, &str), (&str, &str)),
+        at: u64,
+    ) -> Option<&Settled> {
+        self.0
+            .iter()
+            .filter(|(then, said_in, _)| at.saturating_sub(*then) < REMEMBERED && said_in == scope)
+            .map(|(_, _, settled)| settled)
+            .find(|settled| settled.between(a, b))
+    }
+
+    /// Forgets what `session` on `machine` settled to land first in `scope`: it has landed,
+    /// and what the two change from here on is news again.
+    fn landed(&mut self, scope: &str, machine: &str, session: &str) {
+        self.0.retain(|(_, said_in, settled)| {
+            !(said_in == scope && settled.first.is(machine, session))
+        });
     }
 }
 
@@ -151,13 +181,41 @@ impl Daemon {
         Ok(Response::Settled { text, said: true })
     }
 
-    /// Remembers the settled overlap `response` says, if it's one, heard or said here.
+    /// Remembers the settled overlap `response` says, if it's one, heard or said here; and
+    /// forgets those a session settled to land first once CI says it landed.
     pub(super) fn settled_heard(&mut self, response: &Response) {
-        if let Response::Delivery(delivery) = response
-            && let Some(settled) = Settled::of(&delivery.message.event)
-        {
+        let Response::Delivery(delivery) = response else {
+            return;
+        };
+        if let Some(settled) = Settled::of(&delivery.message.event) {
             self.settled_lately.keep(&delivery.scope(), settled, now());
+        } else if let Event::Custom { kind, data, .. } = &delivery.message.event
+            && kind == zirc_proto::ci::LANDING_KIND
+        {
+            let data = zirc_proto::ci::Data::of(data);
+            if let (Some("passed"), Some(_), Some(machine), Some(session)) = (
+                data.state.as_deref(),
+                data.commit.as_deref(),
+                data.machine.as_deref(),
+                data.session.as_deref(),
+            ) {
+                self.settled_lately
+                    .landed(&delivery.scope(), machine, session);
+            }
         }
+    }
+
+    /// Whether `session` on this machine, `me`, and `other` on `machine` have a settle
+    /// standing in `scope`: whatever its files, until its first lands.
+    pub(super) fn settled_with(
+        &self,
+        scope: &str,
+        (me, session): (&str, &str),
+        (machine, other): (&str, &str),
+    ) -> bool {
+        self.settled_lately
+            .standing(scope, ((me, session), (machine, other)), now())
+            .is_some()
     }
 
     /// Whether `session` on `me` and the session on the other side of `overlap` settled it
@@ -168,16 +226,7 @@ impl Daemon {
             .iter()
             .filter(|worktree| !self.works_in(worktree, session))
             .filter_map(|worktree| self.session_of(worktree))
-            .any(|other| {
-                self.settled_lately
-                    .covering(
-                        &overlap.channel,
-                        ((me, session), (me, other)),
-                        &overlap.paths,
-                        now(),
-                    )
-                    .is_some()
-            })
+            .any(|other| self.settled_with(&overlap.channel, (me, session), (me, other)))
     }
 }
 
@@ -217,5 +266,37 @@ mod tests {
                 .covering("#web", pair, &inside, 100 + REMEMBERED)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn stands_between_the_two_wherever_they_meet_until_the_first_lands() {
+        let mut lately = SettledLately::default();
+        let settled = Settled {
+            first: side("cc-1"),
+            second: side("cc-2"),
+            paths: vec!["web/src/a.rs".into()],
+            same_lines: true,
+        };
+        lately.keep("#web", settled, 100);
+        let pair = (("ada-mbp", "cc-2"), ("ada-mbp", "cc-1"));
+        // A file it never named is covered by none, yet the pair's settle stands.
+        assert!(
+            lately
+                .covering("#web", pair, &["docs/a.md".to_owned()], 200)
+                .is_none()
+        );
+        assert!(lately.standing("#web", pair, 200).is_some());
+        // Not for another pair, another repository, or once it's forgotten.
+        let other = (("ada-mbp", "cc-2"), ("ada-mbp", "cc-3"));
+        assert!(lately.standing("#web", other, 200).is_none());
+        assert!(lately.standing("#api", pair, 200).is_none());
+        assert!(lately.standing("#web", pair, 100 + REMEMBERED).is_none());
+        // The second landing changes nothing; the first landing ends it.
+        lately.landed("#web", "ada-mbp", "cc-2");
+        assert!(lately.standing("#web", pair, 200).is_some());
+        lately.landed("#api", "ada-mbp", "cc-1");
+        assert!(lately.standing("#web", pair, 200).is_some());
+        lately.landed("#web", "ada-mbp", "cc-1");
+        assert!(lately.standing("#web", pair, 200).is_none());
     }
 }

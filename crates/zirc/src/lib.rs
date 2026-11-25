@@ -619,7 +619,8 @@ enum Command {
     /// Once the two of you agreed who lands first over files you both change (`zirc ask`,
     /// `zirc reply`), say it: one line in #agents naming both of you, the files, who lands
     /// first and whether it conflicts, so people see that it's sorted. It wakes no one, and
-    /// zircd stops telling the two of you of those files. Only one of you need say it.
+    /// zircd stops waking the two of you for each other's work, there and wherever else you
+    /// meet, until the first of you lands. Only one of you need say it, once.
     #[command(after_long_help = examples("settle", ""))]
     Settle(queries::SettleArgs),
     /// Ask another agent a question.

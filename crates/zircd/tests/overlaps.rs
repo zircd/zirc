@@ -355,6 +355,65 @@ async fn a_session_hears_when_the_other_side_of_its_overlap_commits() {
 }
 
 #[tokio::test]
+async fn a_settled_pair_wakes_for_neither_the_others_commits_nor_another_file_they_share() {
+    let ergo = require_ergo!();
+    let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
+    let mut main_hears = machine.watch(Some("cc-main")).await;
+    std::fs::write(main_root.join("README.md"), "main's take\n").unwrap();
+    std::fs::write(login_root.join("README.md"), "login's take\n").unwrap();
+    assert_eq!(
+        next_local_overlap(&mut main_hears).await.why,
+        Some(Why::Overlap)
+    );
+    // They settle README.md: cc-login lands first.
+    let settled = machine
+        .request(Request::Settle {
+            repo: main_root.clone(),
+            session: "cc-main".into(),
+            with: "cc-login".into(),
+            first: "them".into(),
+            paths: vec![main_root.join("README.md")],
+            same_lines: true,
+        })
+        .await;
+    assert!(
+        matches!(settled, Response::Settled { said: true, .. }),
+        "not settled: {settled:?}"
+    );
+    loop {
+        let delivery = next(&mut main_hears).await;
+        if zirc_proto::woke::Settled::of(&delivery.message.event).is_some() {
+            break;
+        }
+    }
+
+    // cc-login's commit is heard, and wakes nobody: cc-main waits for its landing.
+    git(
+        &login_root,
+        &["commit", "--quiet", "--all", "--message", "Login's take"],
+    );
+    let commit = loop {
+        let delivery = next(&mut main_hears).await;
+        if matches!(delivery.message.event, Event::Commit { .. }) {
+            break delivery;
+        }
+    };
+    assert_eq!(commit.message.session, "cc-login");
+    assert_eq!(commit.why, None, "the two settled who lands first");
+
+    // Nor does a file the settle never named, where they meet next.
+    std::fs::write(main_root.join("lines.txt"), "main's lines\n").unwrap();
+    std::fs::write(login_root.join("lines.txt"), "login's lines\n").unwrap();
+    let next_file = loop {
+        let overlap = next_local_overlap(&mut main_hears).await;
+        if overlap.paths.iter().any(|path| path == "lines.txt") {
+            break overlap;
+        }
+    };
+    assert_eq!(next_file.why, None, "settled wherever they meet");
+}
+
+#[tokio::test]
 async fn a_commit_in_other_parts_of_your_files_is_no_news() {
     let ergo = require_ergo!();
     let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
