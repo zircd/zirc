@@ -21,3 +21,17 @@ rust_binary(
     visibility = ["//visibility:public"],
     deps = [":zirc-proto"],
 )
+
+# Checks role definitions by the server's rules, as JSON on stdin and out, for zirc.dev's
+# ready-made roles' test (web/src/lib/role-templates.test.ts).
+rust_binary(
+    name = "check_roles",
+    srcs = ["bin/check_roles.rs"],
+    lint_config = "//bazel:lints",
+    version = VERSION,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":zirc-proto",
+        "@crates//:serde_json",
+    ],
+)

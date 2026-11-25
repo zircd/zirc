@@ -1152,6 +1152,7 @@ const ROLE_WORDS: [(&str, &[&str]); 16] = [
         &[
             "research",
             "researcher",
+            "triage",
             "explore",
             "investigate",
             "spike",
