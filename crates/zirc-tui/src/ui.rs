@@ -3136,6 +3136,60 @@ mod tests {
     }
 
     #[test]
+    fn a_vacant_roles_conversation_says_so_and_how_to_fill_it() {
+        use zirc_proto::roles::{Holder, Seat, Vacant};
+        let mut app = app();
+        let host = zirc_proto::names::role_host("fixer");
+        let vacant = Vacant {
+            seat: Seat {
+                role: "fixer".into(),
+                repository: "monorepo".into(),
+                holder: None,
+                last: Some(Holder {
+                    machine: "henrik-mbp".into(),
+                    since: 0,
+                    session: zirc_proto::session::SessionCard {
+                        session: "cc-1".into(),
+                        name: Some("main-fix".into()),
+                        title: String::new(),
+                        tool: Some(zirc_proto::CLAUDE_CODE.into()),
+                    },
+                }),
+                waiting: 1,
+                wakes_on: Vec::new(),
+                woke_today: 0,
+            },
+            reply_to: None,
+        };
+        let answer =
+            zirc_proto::encode_up_to(&zirc_proto::Message::new("fixer", vacant.event()), 4096)
+                .unwrap();
+        for line in [
+            format!(":fixer!u@{host} JOIN #api"),
+            format!("@time=2026-10-30T11:05:00.000Z;msgid=v1 :fixer!u@{host} PRIVMSG me :{answer}"),
+        ] {
+            app.handle(line.parse().unwrap());
+        }
+        for c in "/query fixer".chars() {
+            app.key(KeyEvent::from(KeyCode::Char(c)));
+        }
+        let _ = app.key(KeyEvent::from(KeyCode::Enter));
+        let (rows, _) = draw(&app, 140, 24);
+        // The header says it's a role, and that nobody holds it, in zirc-chat's words.
+        let header = app.chat.role_header("fixer").unwrap();
+        row_with(&rows, &header);
+        // The card, never the event's plain text: its title, then how to fill it with the
+        // command, and who held it last.
+        row_with(&rows, &vacant.title());
+        row_with(&rows, &vacant.command());
+        assert!(
+            !rows
+                .iter()
+                .any(|row| row.contains(&format!("{}.", vacant.title())))
+        );
+    }
+
+    #[test]
     fn lists_zircs_apps_apart_from_the_people() {
         let mut app = app();
         let _ = app.select(1);
