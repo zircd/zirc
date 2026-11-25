@@ -136,14 +136,25 @@ impl Subject {
         }
     }
 
-    /// Who finds one, as a wake says it: `CI` for a warning or a flaky test, `the alerts` for
-    /// a container, zirc for a kind reported by hand.
+    /// What reports it to a role by itself, with nothing to connect, as a role's card names it
+    /// among the tools posting to it: `CI` for a warning or a flaky test, `Alerts` (the alert
+    /// bridge) for a container; none for a kind a tool reports ([`crate::inbound::Tool`]).
+    #[must_use]
+    pub const fn reporter(self) -> Option<&'static str> {
+        match self {
+            Self::Warning | Self::Flaky => Some("CI"),
+            Self::Container => Some("Alerts"),
+            Self::Error | Self::Issue | Self::Incident => None,
+        }
+    }
+
+    /// Who finds one, as a wake says it: its [`Subject::reporter`], `CI` or `Alerts`, and
+    /// zirc for a kind reported by hand.
     #[must_use]
     pub const fn found_by(self) -> &'static str {
-        match self {
-            Self::Warning | Self::Flaky => "CI",
-            Self::Container => "the alerts",
-            Self::Error | Self::Issue | Self::Incident => crate::NAME,
+        match self.reporter() {
+            Some(reporter) => reporter,
+            None => crate::NAME,
         }
     }
 
@@ -621,14 +632,16 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const ROLE_ITEMS_PATH = {ITEMS_PATH:?};"),
         format!("const ROLE_ITEM_NUDGED = {NUDGED:?};"),
         format!(
-            "const ROLE_REPORT_SUBJECTS: readonly {{ id: RoleReportSubject; phrase: string; label: string }}[] = [{}];",
+            "const ROLE_REPORT_SUBJECTS: readonly {{ id: RoleReportSubject; phrase: string; label: string; reporter: string | null }}[] = [{}];",
             Subject::ALL
                 .iter()
                 .map(|kind| format!(
-                    "{{ id: {:?}, phrase: {:?}, label: {:?} }}",
+                    "{{ id: {:?}, phrase: {:?}, label: {:?}, reporter: {} }}",
                     kind.as_str(),
                     kind.phrase(),
-                    kind.label()
+                    kind.label(),
+                    kind.reporter()
+                        .map_or_else(|| "null".to_owned(), |reporter| format!("{reporter:?}"))
                 ))
                 .collect::<Vec<_>>()
                 .join(", ")
