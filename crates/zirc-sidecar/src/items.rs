@@ -65,6 +65,39 @@ impl Wake {
     }
 }
 
+/// A landing that passed closed some of a role's items: what wakes its holder, so the role's
+/// conversation says it (`CI landed ops-watch · build 1502 · the item is closed`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Closed {
+    /// The role.
+    pub role: String,
+    /// The items it closed, by id.
+    pub ids: Vec<String>,
+    /// The landing's build.
+    pub build: Option<String>,
+    /// The branch that landed.
+    pub branch: Option<String>,
+}
+
+impl Closed {
+    /// The wake its role's holder is woken with.
+    #[must_use]
+    pub fn woke(&self) -> zirc_proto::woke::Woke {
+        zirc_proto::woke::Woke::closed_by_landing(
+            &self.role,
+            self.build.clone(),
+            self.branch.clone(),
+            u32::try_from(self.ids.len()).unwrap_or(u32::MAX),
+        )
+    }
+
+    /// What the holder's watch shows of it: the wake's words, and the items' ids.
+    #[must_use]
+    pub fn text(&self) -> String {
+        format!("{} [{}]", self.woke().words(None), self.ids.join(", "))
+    }
+}
+
 /// What a [`Items::catch_up`] did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Read {
@@ -84,6 +117,10 @@ pub struct Items {
     /// Open items, oldest first, and those closed within [`KEEP_CLOSED`].
     #[serde(default)]
     pub items: Vec<OpenItem>,
+    /// What landings closed since [`Items::due`] last said it. Not kept: a restart's
+    /// catch-up reads only what's new.
+    #[serde(skip)]
+    pub closed: Vec<Closed>,
 }
 
 impl Items {
@@ -147,15 +184,31 @@ impl Items {
             && !data.tried
         {
             let ids = role_report::fixed_by(&data.fixes);
-            let roles: Vec<String> = self
+            let mut roles: Vec<String> = self
                 .items
                 .iter()
                 .filter(|item| item.closed.is_none() && ids.contains(&item.id))
                 .map(|item| item.report.role.clone())
                 .collect();
+            roles.dedup();
             let mut changed = false;
             for role in roles {
+                let closing: Vec<String> = ids
+                    .iter()
+                    .filter(|id| {
+                        self.items.iter().any(|item| {
+                            item.closed.is_none() && item.report.role == role && &item.id == *id
+                        })
+                    })
+                    .cloned()
+                    .collect();
                 changed |= self.close(&role, &ids, End::Landed, now);
+                self.closed.push(Closed {
+                    role,
+                    ids: closing,
+                    build: data.build.clone(),
+                    branch: data.branch.clone(),
+                });
             }
             return changed;
         }
@@ -265,10 +318,12 @@ pub fn kept(history: &Path) -> Items {
 }
 
 /// Keeps the items beside the history at `history` until the process ends: every
-/// [`EVERY`], what's new in the history, then what's due, each wake handed to `wake`.
-pub async fn keep_items<W>(history: PathBuf, wake: W)
+/// [`EVERY`], what's new in the history, then what's due, each wake handed to `wake`, and what
+/// landings closed to `closed`.
+pub async fn keep_items<W, C>(history: PathBuf, wake: W, closed: C)
 where
     W: Fn(Wake) + Send + Sync + 'static,
+    C: Fn(Closed) + Send + Sync + 'static,
 {
     let path = path_for(&history);
     let mut items = Items::load(&path);
@@ -301,6 +356,9 @@ where
         changed |= !wakes.is_empty();
         for each in wakes {
             wake(each);
+        }
+        for each in std::mem::take(&mut items.closed) {
+            closed(each);
         }
         if changed && let Err(error) = items.save(&path) {
             warn!(%error, "couldn't keep roles' items");
@@ -399,6 +457,24 @@ mod tests {
                 .listing("fixer", 2 + KEEP_CLOSED)
                 .closed_today
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_landing_that_closes_an_item_wakes_its_role_saying_so() {
+        let mut items = Items::default();
+        items.heard(OPS, None, &flaky("//a:b"), 0);
+        let id = items.items[0].id.clone();
+        let fix = format!("report {id}");
+        items.heard("#agents", Some("zirc-ci"), &landed(&[&fix], "passed"), 2);
+        let closed = std::mem::take(&mut items.closed);
+        assert_eq!(closed.len(), 1);
+        assert_eq!(closed[0].ids, std::slice::from_ref(&id));
+        assert!(
+            closed[0]
+                .woke()
+                .words(None)
+                .ends_with("· the item is closed (fixer)")
         );
     }
 

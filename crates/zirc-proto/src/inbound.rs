@@ -412,6 +412,23 @@ mod tests {
     }
 
     #[test]
+    fn a_landing_that_closes_a_roles_item_says_so() {
+        let woke = crate::woke::Woke::closed_by_landing(
+            "oncall",
+            Some("1502".into()),
+            Some("ops-watch".into()),
+            1,
+        );
+        assert_eq!(
+            woke.words(None),
+            "CI landed ops-watch · build 1502 · the item is closed (oncall)"
+        );
+        assert_eq!(woke.tone(), crate::woke::Tone::Passed);
+        let two = crate::woke::Woke { closed: 2, ..woke };
+        assert!(two.words(None).contains("· 2 items are closed"));
+    }
+
+    #[test]
     fn an_unknown_tools_post_is_said_as_it_was_sent() {
         let woke = crate::woke::Woke::webhook("backup job nightly-db\nfinished with warnings");
         assert_eq!(woke.tone(), crate::woke::Tone::Person);

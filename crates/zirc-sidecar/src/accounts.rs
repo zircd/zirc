@@ -267,10 +267,14 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
     // Roles' open items (crate::items), from the reports said in #ops: each new one, and each
     // reminder, wakes the role's holder through its nick, or waits for the next.
     let roles = ergo.roles.clone();
+    let closing = ergo.roles.clone();
     tokio::spawn(crate::items::keep_items(
         ergo.history.clone(),
         move |wake| {
             roles.reported(&wake);
+        },
+        move |closed| {
+            closing.wake(&closed.role, closed.woke(), &closed.text());
         },
     ));
     // Ergo's logins: when the socket can't be had, passphrases still work, as Ergo checks

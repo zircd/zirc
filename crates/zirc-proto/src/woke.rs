@@ -214,6 +214,10 @@ pub struct Woke {
     /// reported, which its line says, as CI's build is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report: Option<Box<Reported>>,
+    /// For a landing that closed items of the role it was woken as (`Fixes: report <id>`):
+    /// how many, which its line says after the landing, `· the item is closed`.
+    #[serde(default, skip_serializing_if = "crate::is_zero")]
+    pub closed: u32,
     /// For a post from a tool zirc doesn't know, how what it sent begins
     /// ([`EXCERPT_MAX`] characters), which its line says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -258,6 +262,27 @@ impl Woke {
             role: None,
             report: None,
             excerpt: None,
+            closed: 0,
+        }
+    }
+
+    /// A wake for `role`, whose `closed` items a landing of `branch` in `build` closed, as it
+    /// passed: `CI landed ops-watch · build 1502 · the item is closed`.
+    #[must_use]
+    pub fn closed_by_landing(
+        role: &str,
+        build: Option<String>,
+        branch: Option<String>,
+        closed: u32,
+    ) -> Self {
+        Self {
+            role: Some(role.to_owned()),
+            build,
+            branch,
+            state: Some(State::Passed),
+            landing: true,
+            closed,
+            ..Self::new(What::Build, By::Ci)
         }
     }
 
@@ -381,7 +406,11 @@ impl Woke {
             return format!("{who} has news for it");
         }
         match self.what {
-            What::Build => self.build_words(),
+            What::Build => match self.closed {
+                0 => self.build_words(),
+                1 => format!("{} · the item is closed", self.build_words()),
+                n => format!("{} · {n} items are closed", self.build_words()),
+            },
             What::State => {
                 let name = branch.unwrap_or("the default branch");
                 match self.level {

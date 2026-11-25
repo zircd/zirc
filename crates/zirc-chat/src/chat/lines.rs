@@ -782,9 +782,41 @@ impl Chat {
         let Some(conversation) = self.conversation(name) else {
             return Vec::new();
         };
+        let with_wakes;
+        let conversation = if conversation.kind == super::Kind::Query && self.is_role(name) {
+            with_wakes = self.with_role_wakes(conversation);
+            &with_wakes
+        } else {
+            conversation
+        };
         let mut lines = Layout::new(self, conversation, offset, HashMap::new()).lines(people_only);
         settle_briefs(&mut lines);
         lines
+    }
+
+    /// Our conversation with a role, with the role's wakes said in the rooms in among what we
+    /// and it said, in time order (the user's choice, 25 Nov 2026, as mock `PhoneOnCall`):
+    /// what a tool or a trigger woke it for, which its holder's machine said. They stay the
+    /// room's, so they count nothing unread here and push nothing.
+    fn with_role_wakes(&self, conversation: &Conversation) -> Conversation {
+        let role = fold(&conversation.name);
+        let wakes = self
+            .conversations
+            .iter()
+            .filter(|room| room.kind == super::Kind::Channel)
+            .flat_map(|room| &room.entries)
+            .filter(|entry| {
+                woke_of(entry)
+                    .and_then(|woke| woke.role)
+                    .is_some_and(|of| fold(&of) == role)
+            });
+        let mut merged = conversation.clone();
+        merged.entries.extend(wakes.cloned());
+        merged
+            .entries
+            .dedup_by(|a, b| a.id.is_some() && a.id == b.id);
+        merged.entries.sort_by_key(|entry| entry.time);
+        merged
     }
 
     /// The agent session `name`'s conversation (`<machine>/<session>`) as its lines: its
@@ -1126,6 +1158,13 @@ impl<'a> Layout<'a> {
         let mut line = self.blank(key, Some(entry), entry.time, LineKind::Event);
         let (shape, callout) = match (woke_of(entry), settled_of(entry)) {
             (Some(woke), _) => {
+                // In our conversation with the role, its wakes needn't say whose they are.
+                let woke = zirc_proto::woke::Woke {
+                    role: woke
+                        .role
+                        .filter(|role| fold(role) != fold(&self.conversation.name)),
+                    ..woke
+                };
                 let callout = self.chat.woke_callout(&woke);
                 self.woken = Some((line.key.clone(), woke));
                 (RowShape::Woke, callout)

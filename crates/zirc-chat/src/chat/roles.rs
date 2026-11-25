@@ -449,4 +449,57 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn a_roles_wakes_show_in_our_conversation_with_it_saying_no_role() {
+        use zirc_proto::woke::Woke;
+        let mut chat = with_fixer();
+        // Our conversation with the fixer, as when we wrote it.
+        from_fixer(
+            &mut chat,
+            "me",
+            "09:00:00",
+            &zirc_proto::Event::Text {
+                body: "on it".into(),
+            },
+        );
+        // The holder's machine says its wake in the room, as its zircd does.
+        let host = zirc_proto::names::machine_host("henrik");
+        feed(&mut chat, &[&format!(":henrik-mbp!u@{host} JOIN #api")]);
+        let woke = Woke {
+            role: Some("fixer".into()),
+            ..Woke::webhook("backup job nightly-db finished with warnings")
+        };
+        feed(
+            &mut chat,
+            &[&at(
+                "10:00:00",
+                Some("w1"),
+                &format!(":henrik-mbp!u@{host} PRIVMSG #api :x"),
+            )],
+        );
+        // Put in by hand, as the event is longer than a fed line, as zircd's multiline is.
+        let at = chat.position("#api").unwrap();
+        chat.conversations[at].entries.last_mut().unwrap().kind =
+            EntryKind::Zirc(Message::new("cc-1", woke.event()));
+        let lines = chat.lines("fixer", utc(), false);
+        let wakes: Vec<&crate::chat::lines::Line> = lines
+            .iter()
+            .filter(|line| line.shape == RowShape::Woke)
+            .collect();
+        assert_eq!(wakes.len(), 1);
+        assert_eq!(
+            wakes[0].text,
+            "Woke: A webhook from an unknown tool, as it was sent: “backup job nightly-db finished with warnings”"
+        );
+        // Below what was said before it, and nothing unread for it.
+        assert!(
+            lines
+                .last()
+                .is_some_and(|line| line.shape == RowShape::Woke)
+        );
+        let unread = chat.conversation("fixer").unwrap().unread;
+        // The fixer's own line before it counts once; the wake adds nothing.
+        assert_eq!(unread, 1);
+    }
 }

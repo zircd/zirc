@@ -2275,6 +2275,12 @@
           ],
           "description": "For a report: the item it opened ([`crate::role_report::OpenItem::id`]) and what was\nreported, which its line says, as CI's build is."
         },
+        "closed": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "For a landing that closed items of the role it was woken as (`Fixes: report <id>`):\nhow many, which its line says after the landing, `· the item is closed`."
+        },
         "excerpt": {
           "type": [
             "string",
