@@ -581,6 +581,13 @@ impl Conversation {
             .map(|entry| entry.time)
     }
 
+    /// Whether something a row would show was said in it, but none of it at or above its
+    /// threshold ([`Conversation::shows`]): its row says [`super::NOTHING_AT_THIS_LEVEL`].
+    #[must_use]
+    pub fn all_hidden(&self) -> bool {
+        self.last_said().is_none() && self.entries.iter().any(Entry::is_shown_in_list)
+    }
+
     /// The server's id for the newest thing said in it that has one: what `/react` and
     /// `/reply` answer when no message is picked.
     #[must_use]

@@ -220,7 +220,9 @@ pub use settings_list::{
     mute_org_note, settings_group_title, settings_sections, sign_out_of, theme_dark, themes,
     type_to_confirm,
 };
-pub use sidebar::{ListKind, ListOptions, ListRow, NO_MESSAGES, RowUnder, UnderKind};
+pub use sidebar::{
+    ListKind, ListOptions, ListRow, NO_MESSAGES, NOTHING_AT_THIS_LEVEL, RowUnder, UnderKind,
+};
 pub use speaker::{
     AGENT_TAG, APP_TAG, Avatar, ROLE_TAG, Speaker, YOU, agent_avatar, agent_label, agent_name,
     agent_session, app_name, machine_words, possessive, sender_text, tool_mark,

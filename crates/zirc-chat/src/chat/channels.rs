@@ -32,7 +32,7 @@ impl Chat {
             if conversation.kind == Kind::Channel
                 && !conversation.joined
                 && !is_group(name)
-                && self.last_said(name).is_some()
+                && (self.last_said(name).is_some() || conversation.all_hidden())
                 && !self
                     .listed
                     .iter()

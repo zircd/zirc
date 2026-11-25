@@ -227,8 +227,8 @@ pub struct Thread {
     /// That count as its badge says it, `3`, `99+` ([`badge_label`]); `None` for none.
     pub badge_label: Option<String>,
     /// The one line under its title, as a row of the sidebar's ([`super::ListRow::under`]):
-    /// the newest thing said in it ([`Chat::preview`]), or a faint [`super::NO_MESSAGES`] once
-    /// its history came back with nothing said. Every app draws this.
+    /// the newest thing said in it ([`Chat::preview`]), or a faint placeholder
+    /// ([`Chat::placeholder`]). Every app draws this.
     pub under: Option<super::RowUnder>,
     /// When that was, as the list says it ([`super::ago_short`]): `5m`, `3h`.
     pub when: Option<String>,
@@ -241,14 +241,21 @@ pub struct Thread {
 
 impl Chat {
     /// When something was last said in the conversation called `name`, by anyone, us
-    /// included: the time its row shows ([`super::Conversation::last_said`]), or, before
+    /// included, at or above its threshold: the time its row shows
+    /// ([`super::Conversation::last_said`]), or, before
     /// any of its history is here, what the server's `CHATHISTORY TARGETS` said. Never the
     /// later of the two: `TARGETS` counts what no row shows, such as a card's live update, and
     /// a row sorted by it showed `5h` above one showing `3m` (Android, 19 Nov 2026). Anything
     /// newer it knows of comes in the history it has us ask for.
     #[must_use]
     pub fn last_said(&self, name: &str) -> Option<DateTime<Utc>> {
-        self.conversation(name)
+        let conversation = self.conversation(name);
+        // All of it below its threshold: nothing its row shows, so nothing to sort it by,
+        // not even what `TARGETS` said, which counts those lines too.
+        if conversation.is_some_and(super::Conversation::all_hidden) {
+            return None;
+        }
+        conversation
             .and_then(super::Conversation::last_said)
             .or_else(|| self.active.get(&fold(name)).copied())
     }
@@ -977,11 +984,10 @@ impl Chat {
             .map(|name| {
                 let (unread, mentions, latest) = self.counts(&name);
                 let (preview, when) = self.row_preview([name.as_str()]);
-                let placeholder = preview.is_none() && self.nothing_said(&name);
-                let preview =
-                    preview.or_else(|| placeholder.then(|| super::NO_MESSAGES.to_owned()));
+                let under =
+                    super::RowUnder::of(None, preview, false).or_else(|| self.placeholder(&name));
                 Thread {
-                    under: super::RowUnder::of(None, preview, placeholder),
+                    under,
                     of: started
                         .iter()
                         .find(|(_, thread)| thread.eq_ignore_ascii_case(&name))

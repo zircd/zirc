@@ -24,6 +24,11 @@ use super::{Attendance, Chat, Presence, ago_short, badge_label, room_label};
 /// nothing's been said in it ([`UnderKind::Nothing`]).
 pub const NO_MESSAGES: &str = "No messages yet";
 
+/// What a row says under its name, faint, when all that's been said in it is below the level
+/// its "Show" menu picked ([`super::Conversation::all_hidden`]): `#ops` at Warnings with only
+/// info in it (the user's choice, 25 Nov 2026).
+pub const NOTHING_AT_THIS_LEVEL: &str = "Nothing at this level";
+
 /// The line under a conversation's name in the sidebar, as every app draws it
 /// ([`ListRow::under`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -63,7 +68,7 @@ pub enum UnderKind {
     Note,
     /// The newest thing said in it, muted, in the text's colour while it's unread.
     Said,
-    /// [`NO_MESSAGES`], faint.
+    /// [`NO_MESSAGES`] or [`NOTHING_AT_THIS_LEVEL`], faint.
     Nothing,
 }
 
@@ -154,7 +159,8 @@ pub struct ListRow {
     pub presence: Option<Presence>,
     /// The one line under a conversation's name: its note while it has one, else the newest
     /// thing said in it, or under it for a channel, as every list previews it (the user's
-    /// choice, 22 Nov 2026); [`NO_MESSAGES`] for one whose history came back with nothing
+    /// choice, 22 Nov 2026), of what its threshold shows; [`NOTHING_AT_THIS_LEVEL`] when that
+    /// hides all of it; [`NO_MESSAGES`] for one whose history came back with nothing
     /// said, never while its history is on its way, so a row doesn't say so and then change.
     /// `None` for a heading, a fold and a row with nothing to say. Every app draws this.
     pub under: Option<RowUnder>,
@@ -316,20 +322,29 @@ impl Chat {
             row.pip = row.bold
                 && !row.direct
                 && matches!(row.kind, ListKind::Conversation | ListKind::Room);
-            if self.says_no_messages(row) {
-                row.under = RowUnder::of(None, Some(NO_MESSAGES.to_owned()), true);
+            if matches!(row.kind, ListKind::Conversation | ListKind::Room) && row.under.is_none() {
+                row.under = self.placeholder(&row.name);
             }
         }
         list
     }
 
-    /// Whether `row` says [`NO_MESSAGES`] under its name: a channel's, a room's under its
-    /// channel or a direct message's, with nothing to preview or note
-    /// ([`Chat::nothing_said`]).
-    fn says_no_messages(&self, row: &ListRow) -> bool {
-        matches!(row.kind, ListKind::Conversation | ListKind::Room)
-            && row.under.is_none()
-            && self.nothing_said(&row.name)
+    /// What a channel's, a room's or a direct message's row with nothing to preview or note
+    /// says under its name, faint: [`NOTHING_AT_THIS_LEVEL`] when all of it is below its
+    /// threshold, [`NO_MESSAGES`] when nothing's been said ([`Chat::nothing_said`]), or
+    /// nothing while that isn't known yet.
+    pub(super) fn placeholder(&self, name: &str) -> Option<RowUnder> {
+        let text = if self
+            .conversation(name)
+            .is_some_and(super::Conversation::all_hidden)
+        {
+            NOTHING_AT_THIS_LEVEL
+        } else if self.nothing_said(name) {
+            NO_MESSAGES
+        } else {
+            return None;
+        };
+        RowUnder::of(None, Some(text.to_owned()), true)
     }
 
     /// Whether nothing's been said in the conversation called `name`, as far as the server
@@ -338,6 +353,7 @@ impl Chat {
     pub(super) fn nothing_said(&self, name: &str) -> bool {
         self.conversation(name).is_some_and(|conversation| {
             self.last_said(name).is_none()
+                && !conversation.all_hidden()
                 && !self.history_coming(name)
                 && (self.link.is_some() || conversation.beginning)
         })
