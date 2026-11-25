@@ -39,9 +39,14 @@ impl Chat {
         } else {
             self.speaker(entry).name
         };
+        // Its first line as Activity's excerpt reads ([`Chat::shown_text`]): Markdown's marks
+        // and IRC's codes gone, each mention by the name it shows as.
         let line = |text: &str| {
-            super::strip_formatting(text.lines().next().unwrap_or_default())
-                .trim()
+            self.shown_text(text)
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty())
+                .unwrap_or_default()
                 .to_owned()
         };
         // The person a one-to-one conversation is with goes unnamed: its title names them, as

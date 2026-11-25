@@ -7715,6 +7715,15 @@ fn previews_a_conversations_last_words_as_discord_does() {
     // In a channel, whoever said it is named.
     feed(&mut chat, &[":bob!u@h PRIVMSG #api :sounds good"]);
     assert_eq!(chat.preview("#api").unwrap().text, "bob: sounds good");
+    // Words as Activity's excerpt reads them: Markdown's marks gone, a mention by its name.
+    feed(
+        &mut chat,
+        &[":bob!u@h PRIVMSG #api :- the **plan** is up, @carol"],
+    );
+    assert_eq!(
+        chat.preview("#api").unwrap().text,
+        "bob: the plan is up, carol"
+    );
     // A list's time, from the chat's clock (noon).
     let noon = noon();
     assert_eq!(ago_short(noon, noon), "now");
