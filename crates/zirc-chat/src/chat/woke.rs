@@ -517,6 +517,7 @@ mod tests {
             second: side("me-mbp", "cc-1", "checkout"),
             paths: vec!["server/src/config.rs".into()],
             same_lines: false,
+            agreed: zirc_proto::woke::Agreed::Order,
         }
     }
 

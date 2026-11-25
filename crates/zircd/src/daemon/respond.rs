@@ -156,8 +156,9 @@ impl Daemon {
                 first,
                 paths,
                 same_lines,
+                agreed,
             } => {
-                self.settle(&repo, &session, &with, &first, &paths, same_lines)
+                self.settle(&repo, &session, &with, &first, &paths, (same_lines, agreed))
                     .await?
             }
             Request::Reply {

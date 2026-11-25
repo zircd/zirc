@@ -620,7 +620,8 @@ enum Command {
     /// `zirc reply`), say it: one line in #agents naming both of you, the files, who lands
     /// first and whether it conflicts, so people see that it's sorted. It wakes no one, and
     /// zircd stops waking the two of you for each other's work, there and wherever else you
-    /// meet, until the first of you lands. Only one of you need say it, once.
+    /// meet, until the first of you lands. Only one of you need say it, once. With --leaves
+    /// you leave the files to the other session; with --builds-on you build on its branch.
     #[command(after_long_help = examples("settle", ""))]
     Settle(queries::SettleArgs),
     /// Ask another agent a question.

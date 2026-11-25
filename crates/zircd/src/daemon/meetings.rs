@@ -120,8 +120,8 @@ fn keeps_meeting_line(session: &str, other: &str, kept: &Kept) -> String {
         "{session}: you and {other} keep meeting: {how}. Before either of you carries on, ask \
          it what's left of its task and agree who continues, not only who lands first: `zirc \
          ask --session {session} --to {other}`. One of you can leave those files to the other, \
-         or build on the other's branch (`zirc stack`); say what you agreed with `zirc settle`, \
-         and tell your user in a line. If one of you should take the other's whole task over, \
+         or build on the other's branch; say which with `zirc settle --with {other} --leaves \
+         <files>` or `--builds-on <files>`, and tell your user in a line. If one of you should take the other's whole task over, \
          that's your users' call: ask with `zirc request --session {session}`, which waits for \
          their yes"
     )
@@ -234,7 +234,16 @@ mod tests {
             "cc-2",
             &Kept::Files(files(&["a.rs", "b.rs", "c.rs"])),
         );
-        assert!(line.starts_with("cc-1: you and cc-2 keep meeting: your lines have met in 3 files (`a.rs`, `b.rs`, `c.rs`)."), "{line}");
+        assert!(
+            line.starts_with(
+                "cc-1: you and cc-2 keep meeting: your lines have met in 3 files (`a.rs`, `b.rs`, `c.rs`)."
+            ),
+            "{line}"
+        );
+        assert!(
+            line.contains("`zirc settle --with cc-2 --leaves <files>`"),
+            "{line}"
+        );
         assert!(
             line.contains("`zirc ask --session cc-1 --to cc-2`"),
             "{line}"

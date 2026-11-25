@@ -170,6 +170,10 @@ pub enum Request {
         /// Whether both change the same lines of them, so the second resolves a conflict.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         same_lines: bool,
+        /// What they agreed, when it's more than who lands first: then `first` is the one
+        /// the files are left to, or whose branch is built on.
+        #[serde(default, skip_serializing_if = "zirc_proto::woke::Agreed::is_order")]
+        agreed: zirc_proto::woke::Agreed,
     },
     /// Ask agents something, as `session` ([`zirc_proto::Event::Query`]): those of the
     /// machine `to` names, `<machine>/<session>` for one of them, or a person's nick for

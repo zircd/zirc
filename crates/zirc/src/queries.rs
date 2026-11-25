@@ -7,6 +7,7 @@ use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
 use zirc_core::agents;
 use zirc_core::ipc::{Request, Response};
+use zirc_proto::woke::Agreed;
 
 use crate::args::{OrgArg, session_or_user, words};
 use crate::client::{ask, ask_in, org_here};
@@ -73,8 +74,16 @@ pub(crate) struct SettleArgs {
     #[arg(long, value_name = "SESSION")]
     pub(crate) with: String,
     /// Who lands first: me, them, or either session's id or name.
-    #[arg(long, value_name = "WHO")]
-    pub(crate) first: String,
+    #[arg(long, value_name = "WHO", required_unless_present_any = ["leaves", "builds_on"])]
+    pub(crate) first: Option<String>,
+    /// You leave these files to the other session, and take your own changes out of them:
+    /// it carries on there.
+    #[arg(long, conflicts_with_all = ["first", "builds_on"])]
+    pub(crate) leaves: bool,
+    /// You build on the other session's branch, and land after it. Then rebase onto its
+    /// branch and say so: zirc stack <its branch>.
+    #[arg(long, conflicts_with_all = ["first", "leaves"])]
+    pub(crate) builds_on: bool,
     /// Both change the same lines, so whoever lands second resolves a conflict. Without
     /// it, different parts of the files, which merge by themselves.
     #[arg(long)]
@@ -140,17 +149,26 @@ pub(crate) async fn settle(socket: &Path, args: SettleArgs, out: &mut impl Write
         paths,
         with,
         first,
+        leaves,
+        builds_on,
         same_lines,
         session,
     } = args;
+    let agreed = match (leaves, builds_on) {
+        (true, _) => Agreed::Leaves,
+        (_, true) => Agreed::BuildsOn,
+        _ => Agreed::Order,
+    };
     let cwd = std::env::current_dir()?;
     let request = Request::Settle {
         paths: paths.iter().map(|path| cwd.join(path)).collect(),
         repo: cwd,
         session: session_or_user(session),
         with,
-        first,
+        // Leaving them the files, or building on theirs: they go first.
+        first: first.unwrap_or_else(|| "them".to_owned()),
         same_lines,
+        agreed,
     };
     let Response::Settled { text, said } = ask(socket, request).await? else {
         return Err(crate::client::unexpected());
@@ -159,6 +177,12 @@ pub(crate) async fn settle(socket: &Path, args: SettleArgs, out: &mut impl Write
         writeln!(out, "said in #agents: {text}")?;
     } else {
         writeln!(out, "already said in #agents, so not again: {text}")?;
+    }
+    if builds_on {
+        writeln!(
+            out,
+            "next: rebase onto its branch (zirc who shows it), then say so: zirc stack <its branch>"
+        )?;
     }
     Ok(())
 }

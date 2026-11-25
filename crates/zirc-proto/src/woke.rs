@@ -466,13 +466,40 @@ impl Side {
     }
 }
 
-/// Two sessions agreed an order over files both change: what an [`Event::Custom`] of
-/// [`SETTLED_KIND`] carries, from the session that says so (`zirc settle`).
+/// What two sessions agreed over files both change (the user's choices, 25 Nov 2026: theirs
+/// to agree without asking; one taking the other's whole task over is their users').
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Agreed {
+    /// Who lands first: the second updates onto the first.
+    #[default]
+    Order,
+    /// The second leaves the files to the first, and takes its own changes out of them.
+    Leaves,
+    /// The second builds on the first's branch, and lands after it.
+    BuildsOn,
+}
+
+impl Agreed {
+    /// Whether it's only an order, as every settle was before there were others: left out of
+    /// what's sent.
+    #[must_use]
+    pub fn is_order(&self) -> bool {
+        *self == Self::Order
+    }
+}
+
+/// Two sessions settled files both change: what an [`Event::Custom`] of [`SETTLED_KIND`]
+/// carries, from the session that says so (`zirc settle`). Whatever they agreed
+/// ([`Agreed`]), the first is the one whose changes land first and the second the one that
+/// follows, so a reader from before there was more than an order reads it rightly.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settled {
-    /// The session whose changes land first.
+    /// The session whose changes land first: the one the files are left to, or whose branch
+    /// is built on.
     pub first: Side,
-    /// The one that updates onto them.
+    /// The one that updates onto them: the one that leaves the files, or builds on the
+    /// first's branch.
     pub second: Side,
     /// The files both change, from the repository's root.
     pub paths: Vec<String>,
@@ -480,6 +507,9 @@ pub struct Settled {
     /// else different parts, which merge by themselves.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub same_lines: bool,
+    /// What they agreed, when it's more than the order.
+    #[serde(default, skip_serializing_if = "Agreed::is_order")]
+    pub agreed: Agreed,
 }
 
 /// How many of a settled overlap's files its line names before `and N more`: few, as they're
@@ -506,21 +536,26 @@ impl Settled {
     /// Never: it always serialises.
     #[must_use]
     pub fn event(&self) -> Event {
-        Event::Custom {
-            kind: SETTLED_KIND.to_owned(),
-            data: serde_json::to_value(self).expect("a settled overlap serialises"),
-            // Short, as an event's words go in its line twice: once for plain clients.
-            text: format!(
-                "overlap settled: {} lands first, {} rebases onto it: {} ({})",
-                self.first.label(),
-                self.second.label(),
-                self.files(),
+        let (first, second, files) = (self.first.label(), self.second.label(), self.files());
+        // Short, as an event's words go in its line twice: once for plain clients.
+        let text = match self.agreed {
+            Agreed::Order => format!(
+                "overlap settled: {first} lands first, {second} rebases onto it: {files} ({})",
                 if self.same_lines {
                     "same lines"
                 } else {
                     "different lines, no conflict"
                 }
             ),
+            Agreed::Leaves => format!("overlap settled: {second} leaves {files} to {first}"),
+            Agreed::BuildsOn => {
+                format!("overlap settled: {second} builds on {first}'s branch: {files}")
+            }
+        };
+        Event::Custom {
+            kind: SETTLED_KIND.to_owned(),
+            data: serde_json::to_value(self).expect("a settled overlap serialises"),
+            text,
         }
     }
 
@@ -552,15 +587,29 @@ impl Settled {
     /// monospace, and read no other meaning into where the parts are cut.
     #[must_use]
     pub fn sentences(&self, first: &str, second: &str) -> [String; 4] {
+        let (agreed, then) = match self.agreed {
+            Agreed::Order => (
+                format!(". Agreed: {first} lands first; {second} rebases onto it. "),
+                if self.same_lines {
+                    format!("Same lines: {second} resolves the conflict.")
+                } else {
+                    "Different lines, no conflict.".to_owned()
+                },
+            ),
+            Agreed::Leaves => (
+                format!(". Agreed: {second} leaves them to {first}. "),
+                format!("{first} carries on there."),
+            ),
+            Agreed::BuildsOn => (
+                format!(". Agreed: {second} builds on {first}'s branch. "),
+                format!("{first} lands first."),
+            ),
+        };
         [
             format!("{second} and {first} both change "),
             self.files(),
-            format!(". Agreed: {first} lands first; {second} rebases onto it. "),
-            if self.same_lines {
-                format!("Same lines: {second} resolves the conflict.")
-            } else {
-                "Different lines, no conflict.".to_owned()
-            },
+            agreed,
+            then,
         ]
     }
 
@@ -741,6 +790,7 @@ mod tests {
             second: side("cc-2", "replay-metrics"),
             paths: vec!["server/src/config.rs".into()],
             same_lines: false,
+            agreed: Agreed::Order,
         };
         let event = settled.event();
         assert_eq!(Settled::of(&event), Some(settled.clone()));
@@ -794,5 +844,46 @@ mod tests {
                 .starts_with("still open: ")
         );
         assert_eq!(Woke::of(&woke.event()), Some(woke));
+    }
+
+    #[test]
+    fn what_was_agreed_beyond_an_order_is_said_and_left_out_when_its_only_that() {
+        let side = |session: &str| Side {
+            machine: "ada-mbp".into(),
+            session: session.into(),
+            name: None,
+        };
+        let mut settled = Settled {
+            first: side("cc-1"),
+            second: side("cc-2"),
+            paths: vec!["a.rs".into()],
+            same_lines: true,
+            agreed: Agreed::Order,
+        };
+        assert!(
+            serde_json::to_value(&settled)
+                .unwrap()
+                .get("agreed")
+                .is_none()
+        );
+        settled.agreed = Agreed::Leaves;
+        assert_eq!(
+            settled.event().human_text(),
+            "overlap settled: cc-2 leaves a.rs to cc-1"
+        );
+        assert_eq!(
+            settled.sentences("one", "two").concat(),
+            "two and one both change a.rs. Agreed: two leaves them to one. one carries on there."
+        );
+        assert_eq!(Settled::of(&settled.event()), Some(settled.clone()));
+        settled.agreed = Agreed::BuildsOn;
+        assert_eq!(
+            settled.event().human_text(),
+            "overlap settled: cc-2 builds on cc-1's branch: a.rs"
+        );
+        assert_eq!(
+            settled.sentences("one", "two")[2..].concat(),
+            ". Agreed: two builds on one's branch. one lands first."
+        );
     }
 }

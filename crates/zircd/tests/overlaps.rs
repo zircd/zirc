@@ -374,6 +374,7 @@ async fn a_settled_pair_wakes_for_neither_the_others_commits_nor_another_file_th
             first: "them".into(),
             paths: vec![main_root.join("README.md")],
             same_lines: true,
+            agreed: zirc_proto::woke::Agreed::Order,
         })
         .await;
     assert!(
@@ -427,6 +428,7 @@ async fn two_sessions_that_settle_a_second_time_are_told_to_agree_who_continues(
                 first: "them".into(),
                 paths: vec![main_root.join(file)],
                 same_lines: true,
+                agreed: zirc_proto::woke::Agreed::Order,
             })
             .await;
         assert!(

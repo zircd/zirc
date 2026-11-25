@@ -68,6 +68,26 @@
       ],
       "description": "Which channel a post goes to."
     },
+    "Agreed": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "order",
+          "description": "Who lands first: the second updates onto the first."
+        },
+        {
+          "type": "string",
+          "const": "leaves",
+          "description": "The second leaves the files to the first, and takes its own changes out of them."
+        },
+        {
+          "type": "string",
+          "const": "builds-on",
+          "description": "The second builds on the first's branch, and lands after it."
+        }
+      ],
+      "description": "What two sessions agreed over files both change (the user's choices, 25 Nov 2026: theirs\nto agree without asking; one taking the other's whole task over is their users')."
+    },
     "Level": {
       "oneOf": [
         {
@@ -3818,6 +3838,10 @@
             "same_lines": {
               "type": "boolean",
               "description": "Whether both change the same lines of them, so the second resolves a conflict."
+            },
+            "agreed": {
+              "$ref": "#/$defs/Agreed",
+              "description": "What they agreed, when it's more than who lands first: then `first` is the one\nthe files are left to, or whose branch is built on."
             }
           },
           "required": [

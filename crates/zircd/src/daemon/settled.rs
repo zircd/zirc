@@ -91,7 +91,7 @@ impl SettledLately {
 impl Daemon {
     /// Says, as `session`, that it and the session `with` names settled their overlap in
     /// `paths` ([`zirc_core::ipc::Request::Settle`]): `first` lands first, `me`, `them` or
-    /// either as it's named.
+    /// either as it's named, and what they agreed beyond that order.
     pub(super) async fn settle(
         &mut self,
         repo: &Path,
@@ -99,7 +99,7 @@ impl Daemon {
         with: &str,
         first: &str,
         paths: &[PathBuf],
-        same_lines: bool,
+        (same_lines, agreed): (bool, zirc_proto::woke::Agreed),
     ) -> Result<Response> {
         let scope = self.watched(repo).await?.scope.clone();
         let root = git::root(repo).await?;
@@ -169,6 +169,7 @@ impl Daemon {
             second,
             paths,
             same_lines,
+            agreed,
         };
         let event = settled.event();
         let text = event.human_text();
@@ -243,6 +244,7 @@ mod tests {
             second: side("cc-2"),
             paths: vec!["web/src".into()],
             same_lines: false,
+            agreed: zirc_proto::woke::Agreed::Order,
         };
         lately.keep("#web", settled, 100);
         let pair = (("ada-mbp", "cc-2"), ("ada-mbp", "cc-1"));
@@ -269,6 +271,7 @@ mod tests {
             second: side("cc-2"),
             paths: vec!["web/src/a.rs".into()],
             same_lines: true,
+            agreed: zirc_proto::woke::Agreed::Order,
         };
         lately.keep("#web", settled, 100);
         let pair = (("ada-mbp", "cc-2"), ("ada-mbp", "cc-1"));

@@ -31,6 +31,7 @@ async fn settle(machine: &Machine, repo: &std::path::Path, session: &str, with: 
             first: "cc-b".into(),
             paths: vec![repo.join("README.md")],
             same_lines: false,
+            agreed: zirc_proto::woke::Agreed::Order,
         })
         .await
 }

@@ -115,7 +115,10 @@ would this guide. When a line doesn't affect your task, say nothing and carry on
   <their session> --first <me|them> <files>` (`--same-lines` if so) is one line in
   `#agents` that shows people it's sorted, and zircd stops waking the two of you for each
   other's work, in those files and wherever else you meet, until the first of you lands:
-  say it once, not again for each file. When a landing changes lines you change, zircd
+  say it once, not again for each file. When you agree more than an order, say that
+  instead: `--leaves` when you leave those files to them, `--builds-on` when you build on
+  their branch (then rebase onto it and `zirc stack <their branch>`); one of you taking the
+  other's whole task over is your users' call, asked with `zirc request`. When a landing changes lines you change, zircd
   wakes you to update onto it; one that changes other lines of your files comes with your
   next wake instead: update before you change those files again.
 - `#<channel> <nick>/<session>: <text>`, or `<nick>: <text>` from a person: something that
