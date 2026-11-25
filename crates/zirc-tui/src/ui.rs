@@ -46,27 +46,10 @@ fn fg_colour(colour: Color) -> Style {
     Style::new().fg(colour)
 }
 
-/// An agent's colour, from its `hue` in degrees: as zirc's desktop app colours one, light
+/// A name's colour, from its `hue` in degrees: zirc-theme's, as every app colours one, light
 /// enough on a dark terminal and dark enough on a light one to read.
 fn hue_colour(app: &App, hue: u16) -> Color {
-    let ground = app.theme.ground;
-    let dark = u16::from(ground.r) + u16::from(ground.g) + u16::from(ground.b) < 384;
-    let (saturation, lightness) = (0.55_f32, if dark { 0.7_f32 } else { 0.36 });
-    // HSL to RGB.
-    let chroma = (1. - (2. * lightness - 1.).abs()) * saturation;
-    let sector = f32::from(hue % 360) / 60.;
-    let second = chroma * (1. - (sector % 2. - 1.).abs());
-    let (red, green, blue) = match sector {
-        sector if sector < 1. => (chroma, second, 0.),
-        sector if sector < 2. => (second, chroma, 0.),
-        sector if sector < 3. => (0., chroma, second),
-        sector if sector < 4. => (0., second, chroma),
-        sector if sector < 5. => (second, 0., chroma),
-        _ => (chroma, 0., second),
-    };
-    let base = lightness - chroma / 2.;
-    let byte = |part: f32| Rgb::byte(f64::from(part + base));
-    Color::Rgb(byte(red), byte(green), byte(blue))
+    colour(zirc_theme::Name::get().colour(app.theme.mode, f32::from(hue)))
 }
 
 /// Text in a role's colour.
@@ -893,9 +876,9 @@ fn note_columns(note: &str, room: usize) -> (String, String) {
 }
 
 /// What was said last in a list row, muted; zirc-chat's `No messages yet` in its stead,
-/// faint.
-fn said_style(theme: &Theme, placeholder: bool) -> Style {
-    if placeholder {
+/// faint, but muted on the selected row's ground, where faint wouldn't read.
+fn said_style(theme: &Theme, placeholder: bool, selected: bool) -> Style {
+    if placeholder && !selected {
         fg(theme.faint)
     } else {
         fg(theme.muted)
@@ -1032,10 +1015,11 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
     // What was said last, dimmed after the name, and when, at the right, where there's room.
     let room = width.saturating_sub(lead_width + name.width() + count.width() + 1);
     // The pill pads itself, so the time needs no space before it.
+    let selected = at == app.selected();
     let said_style = if warning {
         fg(theme.warning)
     } else {
-        said_style(theme, placeholder)
+        said_style(theme, placeholder, selected)
     };
     let (said, when) = match note {
         Some(note) => note_columns(&note, room),
@@ -1044,7 +1028,6 @@ fn side_row_line(app: &App, row: Side, width: usize) -> Line<'static> {
     // Unread in bold text with a pip at the edge, read quieter; muted never stands out
     // (`ListRow::bold`).
     let unread = bold;
-    let selected = at == app.selected();
     let name_style = if unread || selected {
         fg(theme.text).add_modifier(Modifier::BOLD)
     } else {
@@ -1509,7 +1492,8 @@ fn jump_card(frame: &mut Frame<'_>, app: &App, jumping: &Jumping, area: Rect) {
             vec![
                 Span::styled(title, fg(theme.text)),
                 Span::raw(" "),
-                Span::styled(badge, fg(theme.on_signal).bg(colour(theme.mention_edge))),
+                // Its count as the list's rows draw one.
+                Span::styled(badge, fg(theme.on_badge).bg(colour(theme.badge))),
             ],
         );
     }
@@ -4879,6 +4863,47 @@ mod tests {
             assert_eq!(cell("irc.zirc.test · #api").fg, colour(theme.muted));
             assert_eq!(cell("● cc-12").fg, colour(theme.muted));
             assert_eq!(cell("● bob").fg, colour(theme.presence_here));
+        }
+    }
+
+    #[test]
+    fn reads_at_aa_dark_and_light() {
+        // WCAG AA, as zirc.dev's Roles tab is held to: each letter 4.5:1 on what's behind it
+        // (the terminal's own ground being the theme's), a mark (●, ▎) 3:1. Lines between
+        // panes are dividers, not measured.
+        for theme in [Theme::dark(), Theme::light()] {
+            let mut app = app();
+            app.chat
+                .set_threshold("#api", zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT);
+            app.theme = theme;
+            let _ = app.select(1);
+            let (_, terminal) = draw(&app, 100, 16);
+            let buffer = terminal.backend().buffer();
+            let rgb = |colour: Color, or: Rgb| match colour {
+                Color::Rgb(r, g, b) => Rgb { r, g, b },
+                _ => or,
+            };
+            let mut failures = Vec::new();
+            for y in 0..16 {
+                for x in 0..100 {
+                    let cell = &buffer[(x, y)];
+                    let Some(letter) = cell.symbol().chars().next() else {
+                        continue;
+                    };
+                    if letter.is_whitespace() || ('\u{2500}'..='\u{257F}').contains(&letter) {
+                        continue;
+                    }
+                    let mark = !letter.is_alphanumeric() && !letter.is_ascii_punctuation();
+                    let ratio = rgb(cell.fg, theme.text).contrast(rgb(cell.bg, theme.ground));
+                    if ratio < if mark { 3.0 } else { 4.5 } {
+                        failures.push(format!(
+                            "{:?} {letter:?} at {x},{y}: {ratio:.2}",
+                            theme.mode
+                        ));
+                    }
+                }
+            }
+            assert!(failures.is_empty(), "below AA: {failures:?}");
         }
     }
 

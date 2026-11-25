@@ -495,6 +495,35 @@ impl Rgb {
         byte
     }
 
+    /// The colour `hue` degrees round the wheel at `saturation` and `lightness`, each from 0
+    /// to 1, as CSS's `hsl()` reckons it.
+    #[must_use]
+    pub fn hsl(hue: f32, saturation: f32, lightness: f32) -> Rgb {
+        let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
+        let sector = hue.rem_euclid(360.0) / 60.0;
+        let second = chroma * (1.0 - (sector % 2.0 - 1.0).abs());
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a sector of the wheel, from 0 to 5"
+        )]
+        let (red, green, blue) = match sector as u8 {
+            0 => (chroma, second, 0.0),
+            1 => (second, chroma, 0.0),
+            2 => (0.0, chroma, second),
+            3 => (0.0, second, chroma),
+            4 => (second, 0.0, chroma),
+            _ => (chroma, 0.0, second),
+        };
+        let lift = lightness - chroma / 2.0;
+        let byte = |channel: f32| Rgb::byte(f64::from(channel + lift));
+        Rgb {
+            r: byte(red),
+            g: byte(green),
+            b: byte(blue),
+        }
+    }
+
     /// It as CSS writes it: `#0A0C0B`.
     #[must_use]
     pub fn hex(self) -> String {
@@ -646,6 +675,8 @@ pub struct Theme {
     pub tonal_ground: Rgb,
     /// Text on [`Theme::tonal_ground`].
     pub tonal_text: Rgb,
+    /// The ground of a tag after a name (APP, AGENT, ROLE), whose words are [`Theme::muted`].
+    pub tag_ground: Rgb,
 }
 
 impl Theme {
@@ -681,7 +712,7 @@ impl Theme {
 
     /// Every role, by its name in `tokens.json`, and its colour.
     #[must_use]
-    pub fn roles(&self) -> [(&'static str, Rgb); 47] {
+    pub fn roles(&self) -> [(&'static str, Rgb); 48] {
         [
             ("ground", self.ground),
             ("panel", self.panel),
@@ -730,6 +761,7 @@ impl Theme {
             ("reaction-mine-text", self.reaction_mine_text),
             ("tonal-ground", self.tonal_ground),
             ("tonal-text", self.tonal_text),
+            ("tag-ground", self.tag_ground),
         ]
     }
 }
@@ -789,6 +821,44 @@ impl Avatar {
     #[must_use]
     pub fn get() -> &'static Avatar {
         &TOKENS_PARSED.avatar
+    }
+}
+
+/// A person's name in their own colour: its hue is theirs, as their avatar's, and these the
+/// same for everyone, light on dark and dark on light, so it reads at WCAG AA's 4.5:1 on
+/// every ground the apps draw it on, for every hue (0.36 and 0.70 gave greens 2.8:1 on a
+/// mentioning row in light).
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Name {
+    /// From 0 to 1.
+    pub saturation: f32,
+    /// Lightness in dark mode, from 0 to 1.
+    pub dark: f32,
+    /// Lightness in light mode, from 0 to 1.
+    pub light: f32,
+}
+
+impl Name {
+    /// zirc's names.
+    #[must_use]
+    pub fn get() -> &'static Name {
+        &TOKENS_PARSED.name
+    }
+
+    /// The lightness a name has in `mode`.
+    #[must_use]
+    pub fn lightness(&self, mode: Mode) -> f32 {
+        match mode {
+            Mode::Dark => self.dark,
+            Mode::Light => self.light,
+        }
+    }
+
+    /// The colour of a name whose hue is `hue` degrees, in `mode`.
+    #[must_use]
+    pub fn colour(&self, mode: Mode, hue: f32) -> Rgb {
+        Rgb::hsl(hue, self.saturation, self.lightness(mode))
     }
 }
 
@@ -1171,6 +1241,7 @@ struct Tokens {
     colors: Colors,
     r#type: Type,
     avatar: Avatar,
+    name: Name,
     logo: Logo,
     design: Design,
 }
@@ -1225,6 +1296,7 @@ struct Colors {
     reaction_mine_text: Pair,
     tonal_ground: Pair,
     tonal_text: Pair,
+    tag_ground: Pair,
 }
 
 #[derive(Deserialize, Clone, Copy)]
@@ -1294,6 +1366,7 @@ static THEMES: LazyLock<(Theme, Theme)> = LazyLock::new(|| {
             reaction_mine_text: pick(c.reaction_mine_text),
             tonal_ground: pick(c.tonal_ground),
             tonal_text: pick(c.tonal_text),
+            tag_ground: pick(c.tag_ground),
         }
     };
     (theme(Mode::Dark), theme(Mode::Light))
@@ -1341,6 +1414,13 @@ pub fn css() -> String {
                 let _ = writeln!(out, "{indent}--zirc-{role}: {};", rgb.hex());
                 out
             });
+        let name = Name::get();
+        let _ = writeln!(
+            out,
+            "{indent}--zirc-name-saturation: {}%;\n{indent}--zirc-name-lightness: {}%;",
+            (name.saturation * 100.).round(),
+            (name.lightness(theme.mode) * 100.).round(),
+        );
         for (name, shadow) in design.elevation.all() {
             let colour = shadow.colour(theme.mode);
             let _ = writeln!(
@@ -1496,7 +1576,7 @@ mod tests {
     #[test]
     fn reads_the_tokens() {
         assert_eq!(Theme::dark().signal.hex(), "#7AA7FF");
-        assert_eq!(Theme::light().ok.hex(), "#128246");
+        assert_eq!(Theme::light().ok.hex(), "#107640");
         assert_eq!(Theme::light().on_signal.hex(), "#FFFFFF");
         assert_eq!(Theme::of(Mode::Light).mode, Mode::Light);
         let ty = Type::get();
@@ -1664,6 +1744,7 @@ mod tests {
                     ("mention-chip-text", "mention-chip-ground"),
                     ("reaction-mine-text", "reaction-mine-ground"),
                     ("tonal-text", "tonal-ground"),
+                    ("muted", "tag-ground"),
                     ("on-badge", "badge"),
                 ]);
             for (fg, bg) in pairs {
@@ -1705,34 +1786,10 @@ mod tests {
             g: 255,
             b: 255,
         };
-        let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
         let worst = (0..360u16)
             .map(|hue| {
-                let sector = f32::from(hue) / 60.0;
-                let second = chroma * (1.0 - (sector % 2.0 - 1.0).abs());
-                let (red, green, blue) = match hue / 60 {
-                    0 => (chroma, second, 0.0),
-                    1 => (second, chroma, 0.0),
-                    2 => (0.0, chroma, second),
-                    3 => (0.0, second, chroma),
-                    4 => (second, 0.0, chroma),
-                    _ => (chroma, 0.0, second),
-                };
-                let lift = lightness - chroma / 2.0;
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    clippy::cast_sign_loss,
-                    reason = "a channel from 0 to 1, as a byte"
-                )]
-                let byte = |channel: f32| ((channel + lift) * 255.0).round() as u8;
-                (
-                    white.contrast(Rgb {
-                        r: byte(red),
-                        g: byte(green),
-                        b: byte(blue),
-                    }),
-                    hue,
-                )
+                let ground = Rgb::hsl(f32::from(hue), saturation, lightness);
+                (white.contrast(ground), hue)
             })
             .min_by(|a, b| a.0.total_cmp(&b.0))
             .unwrap_or((0.0, 0));
@@ -1748,6 +1805,102 @@ mod tests {
                 let ratio = role(theme, "edge").contrast(role(theme, bg));
                 if ratio < 3.0 {
                     failures.push(format!("{:?} edge on {bg}: {ratio:.2}", theme.mode));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "below 3:1: {failures:?}");
+    }
+
+    /// Where every app draws text and marks: the window's grounds, its lists and sheets.
+    const GROUNDS: [&str; 7] = [
+        "ground",
+        "panel",
+        "surface-ground",
+        "surface-sidebar",
+        "surface-chat",
+        "surface-raised",
+        "surface-overlay",
+    ];
+
+    #[test]
+    fn every_apps_words_read_at_aa() {
+        // WCAG AA, as zirc.dev's Roles tab measures it (web/e2e/contrast.ts): 4.5:1 for
+        // text, each role on each ground the apps draw it on, and on a selected row, a
+        // mentioning row, code and a pill.
+        let mut failures = Vec::new();
+        for theme in [Theme::dark(), Theme::light()] {
+            let words = [
+                "text", "body", "muted", "faint", "signal", "channel", "ok", "warning", "error",
+                "agent",
+            ];
+            let under = GROUNDS.into_iter().chain([
+                "selected",
+                "mention-ground",
+                "code-ground",
+                "pill-ground",
+            ]);
+            for bg in under {
+                // "No messages yet" is muted on a selected row, where faint wouldn't read.
+                for fg in words
+                    .into_iter()
+                    .filter(|fg| !(*fg == "faint" && bg == "selected"))
+                {
+                    let ratio = role(theme, fg).contrast(role(theme, bg));
+                    if ratio < 4.5 {
+                        failures.push(format!("{:?} {fg} on {bg}: {ratio:.2}", theme.mode));
+                    }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "below 4.5:1: {failures:?}");
+    }
+
+    #[test]
+    fn every_name_reads_at_aa() {
+        // A person's name in their colour, every hue, on every ground (not a selected row,
+        // where it's in the text's colour).
+        let mut failures = Vec::new();
+        for theme in [Theme::dark(), Theme::light()] {
+            for bg in GROUNDS.into_iter().chain(["mention-ground"]) {
+                let worst = (0..360u16)
+                    .map(|hue| {
+                        let name = Name::get().colour(theme.mode, f32::from(hue));
+                        (name.contrast(role(theme, bg)), hue)
+                    })
+                    .min_by(|a, b| a.0.total_cmp(&b.0))
+                    .unwrap();
+                if worst.0 < 4.5 {
+                    failures.push(format!(
+                        "{:?} hue {} on {bg}: {:.2}",
+                        theme.mode, worst.1, worst.0
+                    ));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "below 4.5:1: {failures:?}");
+    }
+
+    #[test]
+    fn hsl_reads_as_css_does() {
+        assert_eq!(Rgb::hsl(0.0, 1.0, 0.5).hex(), "#FF0000");
+        assert_eq!(Rgb::hsl(120.0, 1.0, 0.25).hex(), "#008000");
+        assert_eq!(Rgb::hsl(240.0, 0.5, 0.5).hex(), "#4040BF");
+        assert_eq!(Rgb::hsl(360.0, 0.0, 1.0).hex(), "#FFFFFF");
+    }
+
+    #[test]
+    fn every_apps_marks_show_at_aa() {
+        // A mark that says something (a control's edge, a mentioning row's edge, the edge of
+        // a reaction of ours, a count's pill): 3:1 on every ground, as WCAG asks of a graphic.
+        let mut failures = Vec::new();
+        for theme in [Theme::dark(), Theme::light()] {
+            // Not inside a field (surface-ground), whose edge is drawn against what's around it.
+            for bg in GROUNDS.into_iter().filter(|bg| *bg != "surface-ground") {
+                for mark in ["edge", "mention-edge", "reaction-mine-border", "badge"] {
+                    let ratio = role(theme, mark).contrast(role(theme, bg));
+                    if ratio < 3.0 {
+                        failures.push(format!("{:?} {mark} on {bg}: {ratio:.2}", theme.mode));
+                    }
                 }
             }
         }
