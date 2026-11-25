@@ -268,6 +268,7 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
     // reminder, wakes the role's holder through its nick, or waits for the next.
     let roles = ergo.roles.clone();
     let closing = ergo.roles.clone();
+    let ending = ergo.roles.clone();
     tokio::spawn(crate::items::keep_items(
         ergo.history.clone(),
         move |wake| {
@@ -276,6 +277,7 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
         move |closed| {
             closing.wake(&closed.role, closed.woke(), &closed.text());
         },
+        move |role, id| ending.drop_waiting(role, id),
     ));
     // Ergo's logins: when the socket can't be had, passphrases still work, as Ergo checks
     // them itself when the sidecar doesn't answer, and everything else here goes on.

@@ -121,6 +121,10 @@ pub struct Items {
     /// catch-up reads only what's new.
     #[serde(skip)]
     pub closed: Vec<Closed>,
+    /// Every item closed since [`Items::due`] last said it, however it ended, by role and id:
+    /// a wake waiting for its role's next holder goes with it ([`keep_items`]).
+    #[serde(skip)]
+    pub ended: Vec<(String, String)>,
 }
 
 impl Items {
@@ -223,6 +227,7 @@ impl Items {
                 item.closed = Some(now);
                 item.end = Some(end);
                 changed = true;
+                self.ended.push((role.to_owned(), id.clone()));
             }
         }
         changed
@@ -318,12 +323,13 @@ pub fn kept(history: &Path) -> Items {
 }
 
 /// Keeps the items beside the history at `history` until the process ends: every
-/// [`EVERY`], what's new in the history, then what's due, each wake handed to `wake`, and what
-/// landings closed to `closed`.
-pub async fn keep_items<W, C>(history: PathBuf, wake: W, closed: C)
+/// [`EVERY`], what's new in the history, then what's due, each wake handed to `wake`, what
+/// landings closed to `closed`, and each item closed, however, to `ended` (role, id).
+pub async fn keep_items<W, C, E>(history: PathBuf, wake: W, closed: C, ended: E)
 where
     W: Fn(Wake) + Send + Sync + 'static,
     C: Fn(Closed) + Send + Sync + 'static,
+    E: Fn(&str, &str) + Send + Sync + 'static,
 {
     let path = path_for(&history);
     let mut items = Items::load(&path);
@@ -359,6 +365,9 @@ where
         }
         for each in std::mem::take(&mut items.closed) {
             closed(each);
+        }
+        for (role, id) in std::mem::take(&mut items.ended) {
+            ended(&role, &id);
         }
         if changed && let Err(error) = items.save(&path) {
             warn!(%error, "couldn't keep roles' items");
@@ -476,6 +485,23 @@ mod tests {
                 .words(None)
                 .ends_with("· the item is closed (fixer)")
         );
+    }
+
+    #[test]
+    fn every_item_closed_is_said_once_by_role_and_id() {
+        let mut items = Items::default();
+        items.heard(OPS, None, &flaky("//a:b"), 0);
+        let id = items.items[0].id.clone();
+        let closing = Closing {
+            role: "fixer".into(),
+            id: id.clone(),
+            end: End::Done,
+        };
+        items.heard(OPS, Some("m3-mac"), &said(closing.event()), 1);
+        assert_eq!(std::mem::take(&mut items.ended), [("fixer".to_owned(), id)]);
+        // Closed already, it isn't said again.
+        items.heard(OPS, Some("m3-mac"), &said(closing.event()), 2);
+        assert!(items.ended.is_empty());
     }
 
     #[test]

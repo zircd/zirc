@@ -329,3 +329,38 @@ fn how_roles_stand_never_says_their_addresses() {
     );
     assert!(brain.standing(LATER).listing.addresses.is_empty());
 }
+
+#[test]
+fn a_closed_items_wake_no_longer_waits_for_the_next_holder() {
+    let mut brain = brain();
+    let item = |key: &str| {
+        zirc_proto::role_report::OpenItem::opened(
+            zirc_proto::role_report::RoleReport::new(
+                "fixer",
+                zirc_proto::role_report::Subject::Flaky,
+                key,
+            ),
+            0,
+        )
+    };
+    let (closed, open) = (item("//a:b"), item("//c:d"));
+    for each in [&closed, &open] {
+        let woke = zirc_proto::woke::Woke::reported(each, false);
+        assert!(
+            brain
+                .wake("fixer", woke, &each.told(false), LATER)
+                .is_empty()
+        );
+    }
+    assert_eq!(brain.standing(LATER).seats[0].waiting, 2);
+    brain.drop_waiting("fixer", &closed.id);
+    assert_eq!(brain.standing(LATER).seats[0].waiting, 1);
+    assert_eq!(
+        brain.kept.waiting["fixer"][0]
+            .woke
+            .report
+            .as_ref()
+            .map(|reported| reported.id.as_str()),
+        Some(open.id.as_str())
+    );
+}

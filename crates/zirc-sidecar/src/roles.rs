@@ -441,6 +441,25 @@ impl Brain {
         Vec::new()
     }
 
+    /// Forgets what waits for `role`'s next holder about its item `id`, which closed: its next
+    /// holder isn't woken for what's done.
+    pub fn drop_waiting(&mut self, role: &str, id: &str) {
+        let Some(waiting) = self.kept.waiting.get_mut(role) else {
+            return;
+        };
+        let before = waiting.len();
+        waiting.retain(|waited| {
+            waited
+                .woke
+                .report
+                .as_ref()
+                .is_none_or(|reported| reported.id != id)
+        });
+        if waiting.len() != before {
+            self.changed = true;
+        }
+    }
+
     /// Wakes `wake`'s role for one of its items at `now`, or keeps it for the next holder;
     /// for a tool's new report, the role's card in the agents' room too, saying whether it
     /// woke the holder or waits ([`zirc_proto::inbound::card`]).
@@ -882,6 +901,15 @@ impl Roles {
     /// new report, has the role's nick say its card in the agents' room.
     pub fn reported(&self, wake: &crate::items::Wake) {
         self.with(|brain| ((), brain.reported(wake, crate::now_ms())));
+    }
+
+    /// Forgets what waits for `role`'s next holder about its item `id`, which closed
+    /// ([`Brain::drop_waiting`]).
+    pub fn drop_waiting(&self, role: &str, id: &str) {
+        self.with(|brain| {
+            brain.drop_waiting(role, id);
+            ((), Vec::new())
+        });
     }
 
     /// What `input` has the nicks say.
