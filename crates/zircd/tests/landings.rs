@@ -8,6 +8,98 @@ use zirc_test_ergo::require_ergo;
 mod common;
 use common::*;
 
+/// `lines.txt` pushed from main to a remote of its own, and the login session changing its
+/// line 9: the remote, and the session's watch once zircd has seen both.
+async fn login_on_line_9(
+    machine: &Machine,
+    main_root: &std::path::Path,
+    login_root: &std::path::Path,
+) -> (tempfile::TempDir, Watching) {
+    let remote = tempfile::tempdir().unwrap();
+    git(remote.path(), &["init", "--quiet", "--bare"]);
+    let url = remote.path().to_str().unwrap();
+    git(main_root, &["remote", "set-url", "origin", url]);
+    std::fs::write(main_root.join("lines.txt"), ten_lines(0, "")).unwrap();
+    git(main_root, &["add", "lines.txt"]);
+    git(main_root, &["commit", "--quiet", "--message", "Lines"]);
+    git(login_root, &["merge", "--quiet", "--ff-only", "main"]);
+    git(main_root, &["push", "--quiet", "origin", "main"]);
+    let login_hears = machine.watch(Some("cc-login")).await;
+    until_who(
+        machine,
+        |channels| channels.iter().any(|c| !c.landings.is_empty()),
+        "the first push",
+    )
+    .await;
+    std::fs::write(login_root.join("lines.txt"), ten_lines(9, "login's")).unwrap();
+    until_who(
+        machine,
+        |channels| {
+            channels
+                .iter()
+                .flat_map(|c| &c.members)
+                .any(|m| m.session.as_deref() == Some("cc-login") && m.paths == ["lines.txt"])
+        },
+        "the login worktree's change",
+    )
+    .await;
+
+    (remote, login_hears)
+}
+
+#[tokio::test]
+async fn a_landing_in_other_lines_of_a_sessions_file_waits_for_its_next_wake() {
+    let ergo = require_ergo!();
+    let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
+    let (_remote, mut login_hears) = login_on_line_9(&machine, &main_root, &login_root).await;
+
+    // Main lands line 1: the login session's file, not its lines. No wake.
+    std::fs::write(main_root.join("lines.txt"), ten_lines(1, "main's")).unwrap();
+    git(
+        &main_root,
+        &["commit", "--quiet", "--all", "--message", "Line 1"],
+    );
+    git(&main_root, &["push", "--quiet", "origin", "main"]);
+    let apart = loop {
+        let delivery = next(&mut login_hears).await;
+        if matches!(&delivery.message.event, Event::Push { subjects, .. } if subjects == &["Line 1"])
+        {
+            break delivery;
+        }
+    };
+    assert_eq!(apart.why, None);
+
+    // Then main lands next to line 9, the login session's own: a conflict ahead wakes it,
+    // and the landing that waited is said again with it, as one that changed its files.
+    let mut both = ten_lines(1, "main's");
+    both = both.replace("line 8\n", "main's eight\n");
+    std::fs::write(main_root.join("lines.txt"), both).unwrap();
+    git(
+        &main_root,
+        &["commit", "--quiet", "--all", "--message", "Line 8"],
+    );
+    git(&main_root, &["push", "--quiet", "origin", "main"]);
+    let mut waited = None;
+    loop {
+        match heard(&mut login_hears).await {
+            zirc_core::ipc::Heard::Conflict(conflict) => {
+                assert_eq!(conflict.why, Some(Why::Conflict));
+                break;
+            }
+            zirc_core::ipc::Heard::Message(delivery) if matches!(&delivery.message.event, Event::Push { subjects, .. } if subjects == &["Line 1"]) =>
+            {
+                waited = delivery.why;
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(
+        waited,
+        Some(Why::Landing),
+        "the landing that waited comes with the wake"
+    );
+}
+
 #[tokio::test]
 async fn a_landing_wakes_the_sessions_it_changes_files_under_but_not_one_already_at_it() {
     let ergo = require_ergo!();
@@ -55,9 +147,19 @@ async fn a_landing_wakes_the_sessions_it_changes_files_under_but_not_one_already
         &["commit", "--quiet", "--all", "--message", "Main's line"],
     );
     git(&main_root, &["push", "--quiet", "origin", "main"]);
-    let (event, why) = next_concerning(&mut login_hears).await;
-    assert!(matches!(event, Event::Push { .. }), "{event:?}");
-    assert_eq!(why, Why::Landing);
+    // It changed another line of the file than the login session does: heard, and no wake.
+    // It waits as a note for the session's next wake (the test below).
+    let push = loop {
+        let delivery = next(&mut login_hears).await;
+        if matches!(&delivery.message.event, Event::Push { subjects, .. } if subjects == &["Main's line"])
+        {
+            break delivery;
+        }
+    };
+    assert_eq!(
+        push.why, None,
+        "other lines of its file: a note, not a wake"
+    );
 
     // Main makes another change, the login worktree catches up to it before it's pushed,
     // and then it lands: the login session is at it already.

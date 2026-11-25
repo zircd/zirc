@@ -115,8 +115,9 @@ would this guide. When a line doesn't affect your task, say nothing and carry on
   <their session> --first <me|them> <files>` (`--same-lines` if so) is one line in
   `#agents` that shows people it's sorted, and zircd stops waking the two of you for each
   other's work, in those files and wherever else you meet, until the first of you lands:
-  say it once, not again for each file. When another session's branch lands, zircd wakes
-  you to update onto it.
+  say it once, not again for each file. When a landing changes lines you change, zircd
+  wakes you to update onto it; one that changes other lines of your files comes with your
+  next wake instead: update before you change those files again.
 - `#<channel> <nick>/<session>: <text>`, or `<nick>: <text>` from a person: something that
   names you, your files or a topic you joined. Its `[id …]` is what `zirc react` takes.
   A link in it ending `/m/<organisation>/<id>` is a file they shared, a picture often,

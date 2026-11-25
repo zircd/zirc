@@ -203,6 +203,52 @@ impl Daemon {
         }
     }
 
+    /// Whether `response`, a push that changes files `session` changes, needs nothing of it
+    /// now: this machine made the push, so it has its commits and compares their lines with
+    /// each worktree's own, waking the session if they meet (`scans.rs`, a conflict ahead);
+    /// and it's neither the other side of an overlap the session was told of, nor a branch
+    /// its own is built on. Such a push waits for the session's next wake, where its hint
+    /// says to update before changing those files again. Every landing in a file a session
+    /// changed woke it, 91 of a week's 216 wakes for others' work (20 to 25 Nov 2026), most
+    /// for lines it never touched. The user's choice, 25 Nov 2026: "Note it, wake only for
+    /// lines". A push heard from another machine still wakes: without its commits the lines
+    /// can be compared only when this worktree is built on exactly what it was pushed onto.
+    pub(super) fn quiet_landing(&self, response: &Response, session: &str) -> bool {
+        let Response::Delivery(delivery) = response else {
+            return false;
+        };
+        let Event::Push { branch, head, .. } = &delivery.message.event else {
+            return false;
+        };
+        self.client
+            .as_ref()
+            .is_some_and(|client| client.nick() == delivery.from)
+            && !self.partner(delivery, branch, Some(session))
+            && !self.awaits.moves_stack(session, branch, head)
+    }
+
+    /// Keeps for later, rather than waking them, the watching sessions whose reason in
+    /// `reasons` is a landing that needs nothing of them now ([`Daemon::quiet_landing`]).
+    pub(super) fn hold_quiet_landings(&mut self, response: &Response, reasons: &mut [Option<Why>]) {
+        let quiet: Vec<String> = self
+            .watchers
+            .iter()
+            .zip(reasons.iter_mut())
+            .filter_map(|(watcher, why)| {
+                let session = watcher.session.clone()?;
+                if *why != Some(Why::Landing) || !self.quiet_landing(response, &session) {
+                    return None;
+                }
+                *why = None;
+                Some(session)
+            })
+            .collect();
+        for session in quiet {
+            let dressed = self.dressed(response, Some(Why::Landing), Some(&session));
+            self.keep_for_later(&session, &dressed, Why::Landing);
+        }
+    }
+
     /// How `delivery`, another session's intent, meets the work of `session` here.
     pub(super) fn intent_fit(&self, delivery: &Delivery, session: &str) -> Option<Fit> {
         let Event::Intent { paths, .. } = &delivery.message.event else {

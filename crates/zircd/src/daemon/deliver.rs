@@ -67,6 +67,7 @@ impl Daemon {
         self.follow_branches(response, &reasons);
         self.hold_reports(response, &mut reasons);
         self.hold_quiet_intents(response, &mut reasons);
+        self.hold_quiet_landings(response, &mut reasons);
         self.gate_wakes(response, &mut reasons);
         // Before what waited is taken: a state fine again takes back its note that it broke.
         let waking: BTreeSet<String> = self
