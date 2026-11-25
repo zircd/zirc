@@ -110,6 +110,9 @@ pub enum What {
     /// Something was reported to the role it holds ([`crate::role_report`]), or an item of
     /// it is still open ([`Woke::reminder`]).
     Reported,
+    /// A tool zirc doesn't know posted to the role's address ([`crate::inbound`]): what it
+    /// sent arrives as it was sent ([`Woke::excerpt`] begins it).
+    Webhook,
     /// One a newer zircd says that this reader doesn't know.
     #[serde(other)]
     Other,
@@ -211,7 +214,14 @@ pub struct Woke {
     /// reported, which its line says, as CI's build is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report: Option<Box<Reported>>,
+    /// For a post from a tool zirc doesn't know, how what it sent begins
+    /// ([`EXCERPT_MAX`] characters), which its line says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub excerpt: Option<String>,
 }
+
+/// The most characters of an unknown tool's post a wake's line says.
+pub const EXCERPT_MAX: usize = 120;
 
 /// What a report's wake says of it ([`What::Reported`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -223,6 +233,9 @@ pub struct Reported {
     /// Whether it's a reminder of an item still open.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reminder: bool,
+    /// How many times it's been reported so far, for a tool's: `37 events`.
+    #[serde(default, skip_serializing_if = "crate::is_zero")]
+    pub events: u32,
 }
 
 impl Woke {
@@ -244,6 +257,17 @@ impl Woke {
             wake: None,
             role: None,
             report: None,
+            excerpt: None,
+        }
+    }
+
+    /// A wake for what a tool zirc doesn't know posted to a role's address, `text` as it
+    /// was sent.
+    #[must_use]
+    pub fn webhook(text: &str) -> Self {
+        Self {
+            excerpt: Some(crate::clip_line(text, EXCERPT_MAX)),
+            ..Self::new(What::Webhook, By::Zirc)
         }
     }
 
@@ -257,6 +281,7 @@ impl Woke {
                 id: item.id.clone(),
                 report: item.report.clone(),
                 reminder,
+                events: item.reports,
             })),
             ..Self::new(What::Reported, By::Zirc)
         }
@@ -337,7 +362,7 @@ impl Woke {
         if matches!(self.by, By::Ci | By::Zirc)
             && !matches!(
                 self.what,
-                What::Build | What::State | What::Landed | What::Reported
+                What::Build | What::State | What::Landed | What::Reported | What::Webhook
             )
         {
             return format!("{who} has news for it");
@@ -376,9 +401,14 @@ impl Woke {
                     id,
                     report,
                     reminder,
-                }) => crate::role_report::head(&report.words(), id, *reminder),
+                    events,
+                }) => match report.tool {
+                    Some(_) => crate::inbound::woke_words(report, *events, *reminder),
+                    None => crate::role_report::head(&report.words(), id, *reminder),
+                },
                 None => "something was reported".to_owned(),
             },
+            What::Webhook => crate::inbound::webhook_words(self.excerpt.as_deref().unwrap_or("")),
             What::Other => "something concerned it".to_owned(),
         }
     }

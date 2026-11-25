@@ -1438,10 +1438,6 @@ pub async fn request_in(
 }
 
 /// Something heard while watching.
-#[expect(
-    clippy::large_enum_variant,
-    reason = "each is handled as it's heard, not kept"
-)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Heard {
     /// A message someone sent.

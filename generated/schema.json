@@ -127,6 +127,24 @@
             "null"
           ],
           "description": "The CI build it was seen in."
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Tool"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The tool that posted it to the role's address ([`crate::inbound`]), when one did."
+        },
+        "reference": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "What the tool calls it, as people know it there: `#412`, `ENG-12`."
         }
       },
       "required": [
@@ -153,9 +171,54 @@
           "type": "string",
           "const": "container",
           "description": "A container that restarted, or a tenant's server that stays not ready: its key is\nthe workload, `<namespace>/<name>`."
+        },
+        {
+          "type": "string",
+          "const": "error",
+          "description": "An error a tool such as Sentry caught ([`crate::inbound`]): its key is the tool's\nissue."
+        },
+        {
+          "type": "string",
+          "const": "issue",
+          "description": "A new issue in a tracker, GitHub's or Linear's: its key is the issue."
+        },
+        {
+          "type": "string",
+          "const": "incident",
+          "description": "An incident, `PagerDuty`'s: its key is the incident."
         }
       ],
       "description": "What a report is about. Kinds are added here; a sidecar older than a kind doesn't read its\nreports, as it couldn't say what they are."
+    },
+    "Tool": {
+      "oneOf": [
+        {
+          "type": "string",
+          "const": "sentry",
+          "description": "Sentry: its issue and error alerts."
+        },
+        {
+          "type": "string",
+          "const": "github",
+          "description": "GitHub: a repository's `issues` events."
+        },
+        {
+          "type": "string",
+          "const": "linear",
+          "description": "Linear: its Issue webhooks."
+        },
+        {
+          "type": "string",
+          "const": "pagerduty",
+          "description": "`PagerDuty`: its v3 incident webhooks."
+        },
+        {
+          "type": "string",
+          "const": "other",
+          "description": "Any other tool: what it posts arrives as a message to the role."
+        }
+      ],
+      "description": "A tool that posts to a role's address."
     },
     "Closing": {
       "type": "object",
@@ -170,7 +233,7 @@
         },
         "end": {
           "$ref": "#/$defs/End",
-          "description": "How it ended: done or baselined, never landed, which only CI says."
+          "description": "How it ended: done or baselined by the holder, resolved by the tool that reported it\n(said by the role's nick), never landed, which only CI says."
         }
       },
       "required": [
@@ -196,6 +259,11 @@
           "type": "string",
           "const": "baselined",
           "description": "Its holder added it to the baseline: it can't be fixed here, as a dependency's own\nwarning."
+        },
+        {
+          "type": "string",
+          "const": "resolved",
+          "description": "The tool that reported it said it's resolved there, as Sentry does of an issue."
         }
       ],
       "description": "How an item ended."
@@ -2186,6 +2254,13 @@
             }
           ],
           "description": "For a report: the item it opened ([`crate::role_report::OpenItem::id`]) and what was\nreported, which its line says, as CI's build is."
+        },
+        "excerpt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "For a post from a tool zirc doesn't know, how what it sent begins\n([`EXCERPT_MAX`] characters), which its line says."
         }
       },
       "required": [
@@ -2288,6 +2363,11 @@
         },
         {
           "type": "string",
+          "const": "webhook",
+          "description": "A tool zirc doesn't know posted to the role's address ([`crate::inbound`]): what it\nsent arrives as it was sent ([`Woke::excerpt`] begins it)."
+        },
+        {
+          "type": "string",
           "const": "other",
           "description": "One a newer zircd says that this reader doesn't know."
         }
@@ -2373,6 +2453,12 @@
         "reminder": {
           "type": "boolean",
           "description": "Whether it's a reminder of an item still open."
+        },
+        "events": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "description": "How many times it's been reported so far, for a tool's: `37 events`."
         }
       },
       "required": [

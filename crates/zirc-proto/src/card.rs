@@ -17,6 +17,9 @@ pub const KEY: &str = "card";
 /// The longest a card is, as JSON: small enough that its event is one multiline message.
 pub const MAX_BYTES: usize = 2000;
 
+/// The longest a card's note is, in characters.
+pub const MAX_NOTE: usize = 120;
+
 /// A card: see the module.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(optional_fields)]
@@ -200,7 +203,7 @@ impl Card {
             within("about", about, 64)?;
         }
         if let Some(note) = &self.note {
-            within("the note", note, 120)?;
+            within("the note", note, MAX_NOTE)?;
         }
         at_most("fields", self.fields.len(), 8)?;
         at_most("links", self.links.len(), 4)?;

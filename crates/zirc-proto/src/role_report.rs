@@ -71,11 +71,25 @@ pub enum Subject {
     /// A container that restarted, or a tenant's server that stays not ready: its key is
     /// the workload, `<namespace>/<name>`.
     Container,
+    /// An error a tool such as Sentry caught ([`crate::inbound`]): its key is the tool's
+    /// issue.
+    Error,
+    /// A new issue in a tracker, GitHub's or Linear's: its key is the issue.
+    Issue,
+    /// An incident, `PagerDuty`'s: its key is the incident.
+    Incident,
 }
 
 impl Subject {
     /// Every kind.
-    pub const ALL: [Self; 3] = [Self::Warning, Self::Flaky, Self::Container];
+    pub const ALL: [Self; 6] = [
+        Self::Warning,
+        Self::Flaky,
+        Self::Container,
+        Self::Error,
+        Self::Issue,
+        Self::Incident,
+    ];
 
     /// How it's written: `warning`, `flaky`, `container`.
     #[must_use]
@@ -84,6 +98,9 @@ impl Subject {
             Self::Warning => "warning",
             Self::Flaky => "flaky",
             Self::Container => "container",
+            Self::Error => "error",
+            Self::Issue => "issue",
+            Self::Incident => "incident",
         }
     }
 
@@ -100,6 +117,9 @@ impl Subject {
             Self::Warning => "new warning",
             Self::Flaky => "flaky test",
             Self::Container => "container",
+            Self::Error => "error",
+            Self::Issue => "new issue",
+            Self::Incident => "incident",
         }
     }
 
@@ -110,17 +130,24 @@ impl Subject {
             Self::Warning => "a new warning",
             Self::Flaky => "a flaky test",
             Self::Container => "a container or tenant",
+            Self::Error => "an error",
+            Self::Issue => "a new issue",
+            Self::Incident => "an incident",
         }
     }
 
     /// How long an item of this kind stays open before its holder is reminded, in seconds:
-    /// a warning's two hours, as nothing is broken yet; a flaky test's or a container's half
-    /// an hour (the nudges of the workflows they replace).
+    /// a warning's two hours, as nothing is broken yet; a flaky test's, a container's or an
+    /// error's half an hour (the nudges of the workflows they replace); an incident's a quarter
+    /// of an hour, as someone was paged; an issue's a working day, as it's to be read, not
+    /// fixed at once.
     #[must_use]
     pub const fn remind_after(self) -> u64 {
         match self {
             Self::Warning => 2 * 60 * 60,
-            Self::Flaky | Self::Container => 30 * 60,
+            Self::Flaky | Self::Container | Self::Error => 30 * 60,
+            Self::Incident => 15 * 60,
+            Self::Issue => 8 * 60 * 60,
         }
     }
 }
@@ -148,6 +175,14 @@ pub struct RoleReport {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub build: Option<String>,
+    /// The tool that posted it to the role's address ([`crate::inbound`]), when one did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub tool: Option<crate::inbound::Tool>,
+    /// What the tool calls it, as people know it there: `#412`, `ENG-12`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reference: Option<String>,
 }
 
 /// Why a report can't be sent.
@@ -173,6 +208,8 @@ impl RoleReport {
             link: None,
             details: None,
             build: None,
+            tool: None,
+            reference: None,
         }
         .tidied()
     }
@@ -197,6 +234,8 @@ impl RoleReport {
             link: some(self.link, SUMMARY_MAX),
             details: some(self.details, SUMMARY_MAX),
             build: some(self.build, BUILD_MAX),
+            tool: self.tool,
+            reference: some(self.reference, BUILD_MAX),
             key,
         }
     }
@@ -223,9 +262,13 @@ impl RoleReport {
         item_id(&self.role, self.kind, &self.key)
     }
 
-    /// What a wake or a card says of it: `new warning in build 612: unused import`.
+    /// What a wake or a card says of it: `new warning in build 612: unused import`, or a
+    /// tool's, `Sentry: TypeError in web`.
     #[must_use]
     pub fn words(&self) -> String {
+        if let Some(tool) = self.tool {
+            return format!("{}: {}", tool.name(), self.summary);
+        }
         let build = self
             .build
             .as_ref()
@@ -334,6 +377,8 @@ pub enum End {
     /// Its holder added it to the baseline: it can't be fixed here, as a dependency's own
     /// warning.
     Baselined,
+    /// The tool that reported it said it's resolved there, as Sentry does of an issue.
+    Resolved,
 }
 
 impl End {
@@ -344,11 +389,12 @@ impl End {
             Self::Landed => "fixed",
             Self::Done => "done",
             Self::Baselined => "to the baseline",
+            Self::Resolved => "resolved",
         }
     }
 
     /// Every end, in the order a count of them is said.
-    pub const ALL: [Self; 3] = [Self::Landed, Self::Done, Self::Baselined];
+    pub const ALL: [Self; 4] = [Self::Landed, Self::Done, Self::Baselined, Self::Resolved];
 }
 
 /// The holder says an item is done or baselined: what an [`Event::Custom`] of
@@ -360,7 +406,8 @@ pub struct Closing {
     pub role: String,
     /// The item's id ([`item_id`]).
     pub id: String,
-    /// How it ended: done or baselined, never landed, which only CI says.
+    /// How it ended: done or baselined by the holder, resolved by the tool that reported it
+    /// (said by the role's nick), never landed, which only CI says.
     pub end: End,
 }
 
@@ -633,7 +680,10 @@ mod tests {
 
     #[test]
     fn the_kinds_and_a_trailer_are_said_once() {
-        assert_eq!(kinds_said(), "warning, flaky or container");
+        assert_eq!(
+            kinds_said(),
+            "warning, flaky, container, error, issue or incident"
+        );
         assert_eq!(fixes_trailer("3f2a1b9c"), "Fixes: report 3f2a1b9c");
         assert_eq!(
             fixed_by(&[fixes_trailer("3f2a1b9c")["Fixes: ".len()..].to_owned()]),

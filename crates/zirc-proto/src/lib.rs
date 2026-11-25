@@ -22,6 +22,7 @@ pub mod files;
 pub mod gotchas;
 pub mod hints;
 pub mod images;
+pub mod inbound;
 pub mod irc;
 pub mod join;
 pub mod leases;
