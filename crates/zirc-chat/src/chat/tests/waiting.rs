@@ -365,8 +365,8 @@ fn an_ended_sessions_conversation_says_why_it_cant_be_written_to() {
     assert_eq!(
         scene.read_only_note("me-mbp/cc-2"),
         Some(ReadOnlyNote {
-            text: "cc-2 ended 6 days ago on me-mbp. Messages can't reach it".into(),
-            button: "Message me-mbp's agents".into(),
+            text: "cc-2 ended 6 days ago on your mbp. Messages can't reach it".into(),
+            button: "Message your mbp's agents".into(),
             dm: "me-mbp".into(),
             remove: "Remove from Messages".into(),
         })
@@ -401,8 +401,10 @@ fn a_message_that_reached_no_one_says_so_under_it_and_ends_the_session() {
     assert!(scene.position("me-mbp").is_none());
     assert_eq!(scene.session_live("me-mbp", "cc-2"), Some(false));
     assert!(!scene.can_message("me-mbp/cc-2"));
-    // Its row folds once it isn't open, and Jump to still finds it.
-    let _ = scene.open("#api");
+    // Removed from Messages, it isn't shown, and Jump to still finds it.
+    let _ = scene.remove_from_messages("me-mbp/cc-2");
+    assert_ne!(scene.selected().name, "me-mbp/cc-2");
+    assert!(scene.closed().iter().any(|c| c.name == "me-mbp/cc-2"));
     let row = scene
         .direct_rows()
         .into_iter()

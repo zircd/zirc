@@ -43,9 +43,9 @@ pub struct ActivityEntry {
 #[ts(rename_all = "camelCase")]
 pub struct ReadOnlyNote {
     /// The line: `Only Maya Chen can message checkout`, or `checkout ended 6 days ago on
-    /// mbp. Messages can't reach it`.
+    /// your mbp. Messages can't reach it`.
     pub text: String,
-    /// The button: `Message Maya Chen`, or `Message mbp's agents`. Empty, as is
+    /// The button: `Message Maya Chen`, or `Message your mbp's agents`. Empty, as is
     /// [`Self::dm`], where there's no one to go to instead, as in zirc's own direct
     /// messages: apps then show no button.
     pub button: String,
@@ -174,8 +174,8 @@ impl Chat {
     /// teammate's agent, `Only Maya Chen can message checkout`, with a `Message Maya Chen`
     /// button that opens her direct conversation; in zirc's own direct messages,
     /// `Zirc's notices can't be answered.` and no button; in the conversation with one of
-    /// our agents that has ended, `checkout ended 6 days ago on mbp. Messages can't reach
-    /// it`, with `Message mbp's agents`, which opens the machine's own thread, and `Remove
+    /// our agents that has ended, `checkout ended 6 days ago on your mbp. Messages can't
+    /// reach it`, with `Message your mbp's agents`, which opens the machine's own thread, and `Remove
     /// from Messages` (the user's choices, 25 Nov 2026). `None` where [`Chat::can_message`].
     #[must_use]
     pub fn read_only_note(&self, name: &str) -> Option<ReadOnlyNote> {
@@ -224,13 +224,14 @@ impl Chat {
                 let ago = u64::try_from(((self.clock)() - at).num_seconds()).unwrap_or(0);
                 super::profile::span_words(ago)
             });
+        let machine = self.machine_said(nick);
         let text = match ended {
-            Some(ago) => format!("{who} ended {ago} ago on {nick}. Messages can't reach it"),
-            None => format!("{who} ended on {nick}. Messages can't reach it"),
+            Some(ago) => format!("{who} ended {ago} ago on {machine}. Messages can't reach it"),
+            None => format!("{who} ended on {machine}. Messages can't reach it"),
         };
         ReadOnlyNote {
             text,
-            button: format!("Message {nick}'s agents"),
+            button: format!("Message {machine}'s agents"),
             dm: nick.to_owned(),
             remove: REMOVE_FROM_MESSAGES.to_owned(),
         }

@@ -29,6 +29,17 @@ impl Chat {
         self.closed.insert(fold(name), (self.clock)());
     }
 
+    /// What an ended agent's note's [`super::REMOVE_FROM_MESSAGES`] does: closes the direct
+    /// message `name` ([`Chat::close_direct`]) and, while it's shown, shows the one before
+    /// it instead, as leaving a channel does. Its history is kept for Jump to and search.
+    pub fn remove_from_messages(&mut self, name: &str) -> Vec<super::Line> {
+        self.close_direct(name);
+        match self.position(name) {
+            Some(at) => self.stop_showing(at),
+            None => Vec::new(),
+        }
+    }
+
     /// The direct messages closed, sorted by name, for an app to keep.
     #[must_use]
     pub fn closed(&self) -> Vec<Closed> {

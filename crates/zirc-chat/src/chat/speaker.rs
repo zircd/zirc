@@ -201,6 +201,17 @@ pub fn agent_session<'a>(nick: &str, message: &'a zirc_proto::Message) -> Option
 }
 
 impl Chat {
+    /// The machine `nick` as people read it ([`machine_words`]): `Henrik's mbp`, `your mbp`;
+    /// its nick where nobody's machine it is.
+    pub(super) fn machine_said(&self, nick: &str) -> String {
+        match self.whose(nick) {
+            Some((owner, machine)) => machine_words(&owner, &self.owner_name(&owner), &machine),
+            None => nick.to_owned(),
+        }
+    }
+}
+
+impl Chat {
     /// What a message's head calls whoever said something, [`Speaker::name`], by their
     /// `nick` and the agent `session` it came from, for where there's no message to ask,
     /// such as a search's match from the organisation's history: an agent session by its

@@ -133,12 +133,7 @@ impl Chat {
 
     /// The machine `holder` works on, as people read it: `Henrik's mbp`, `your mbp`.
     fn holder_machine(&self, holder: &Holder) -> String {
-        match self.whose(&holder.machine) {
-            Some((owner, machine)) => {
-                super::speaker::machine_words(&owner, &self.owner_name(&owner), &machine)
-            }
-            None => holder.machine.clone(),
-        }
+        self.machine_said(&holder.machine)
     }
 
     /// The line under a role's name in our conversation with it: `Private to you · held by
