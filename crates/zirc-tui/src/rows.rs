@@ -10,7 +10,7 @@ use zirc_core::chat::lines::Line;
 use zirc_core::chat::{
     CellAlign, EDITED, Face, Icon, LineFile, LineKind, LineReaction, LineSpeaker, RichBlock,
     RichSpan, RichSpanKind, RowShape, SHOWN_PATHS, SystemBody, SystemLine, WordStyle, link_label,
-    name_pill, show_more_paths_label,
+    show_more_paths_label,
 };
 
 use crate::hyperlink::{Link, Links, fragments};
@@ -120,9 +120,9 @@ pub enum Row {
         hint: String,
         /// The id of its first message.
         id: Option<String>,
-        /// What's marked after the nick, zirc-chat's ([`zirc_core::chat::name_pill`]): `APP`
-        /// for an app.
-        pill: Option<&'static str>,
+        /// What's marked after the nick, zirc-chat's tag ([`zirc_core::chat::LineSpeaker::tag`]):
+        /// `APP` for an app, `ROLE` for a role.
+        pill: Option<String>,
         /// When an agent session said it, its mark and whose agent it is.
         agent: Option<Agent>,
     },
@@ -390,7 +390,7 @@ fn header(line: &Line, speaker: &LineSpeaker) -> Row {
         time: line.clock.clone(),
         hint: line.room.clone().unwrap_or_default(),
         id: line_id(line).map(str::to_owned),
-        pill: name_pill(speaker.app),
+        pill: speaker.tag.clone(),
         agent: agent(speaker),
     }
 }
@@ -1163,7 +1163,10 @@ mod tests {
                     pill,
                     ..
                 } => {
-                    let pill = pill.map(|pill| format!(" {pill}")).unwrap_or_default();
+                    let pill = pill
+                        .as_ref()
+                        .map(|pill| format!(" {pill}"))
+                        .unwrap_or_default();
                     format!("{nick}{pill} {time}  {hint}").trim_end().to_owned()
                 }
                 Row::Text {

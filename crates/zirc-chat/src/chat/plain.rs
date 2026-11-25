@@ -1,6 +1,6 @@
 //! The stream's decisions in plain text, for an app that draws text alone, the terminal's:
 //! the same choices the other apps draw with their own widgets, made once here. What a
-//! message's reactions come to, which of a card's buttons show, the pill after a name, a
+//! message's reactions come to, which of a card's buttons show, a
 //! reply's quote, an event's one line and its words, and what a landing says with the links
 //! in it. The app lays them out: widths, wrapping, colours and columns stay its own.
 
@@ -8,7 +8,7 @@ use zirc_proto::card::{Action, Card};
 
 use super::conversation::{Conversation, Quote};
 use super::view::{Icon, Landing, Parts};
-use super::{APP_TAG, Block, SpanKind, each_span};
+use super::{Block, SpanKind, each_span};
 
 /// What a list of people heads zirc's apps with, CI and the like, under the people.
 pub const APPS_SECTION: &str = "Apps";
@@ -50,13 +50,6 @@ impl Conversation {
             })
             .collect()
     }
-}
-
-/// The pill after the name heading a line: an app's [`APP_TAG`] when its speaker is one
-/// (`app`, [`super::Speaker::is_app`]); a person and an agent have none.
-#[must_use]
-pub fn name_pill(app: bool) -> Option<&'static str> {
-    app.then_some(APP_TAG)
 }
 
 impl super::Chat {

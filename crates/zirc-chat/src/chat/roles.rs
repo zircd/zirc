@@ -426,6 +426,13 @@ mod tests {
         let line = lines.last().unwrap();
         assert_eq!(line.shape, RowShape::System);
         assert_eq!(line.from, "fixer");
+        // The role's tag after its name, as an app's after its.
+        assert_eq!(
+            line.speaker
+                .as_ref()
+                .and_then(|speaker| speaker.tag.as_deref()),
+            Some(crate::chat::ROLE_TAG)
+        );
         let said: Vec<&str> = line
             .rich
             .iter()

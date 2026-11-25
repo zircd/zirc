@@ -43,6 +43,10 @@ pub enum Avatar {
 /// `Alerts APP`. An app never has a presence dot.
 pub const APP_TAG: &str = "APP";
 
+/// What tags a role's lines after its name, in a room as in our conversation with it (mock
+/// `MacTools`): `oncall ROLE`.
+pub const ROLE_TAG: &str = "ROLE";
+
 /// What tags an agent session's own conversation in its header, after its title:
 /// `checkout · Maya Chen AGENT`.
 pub const AGENT_TAG: &str = "AGENT";

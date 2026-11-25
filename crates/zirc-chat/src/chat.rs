@@ -185,7 +185,7 @@ pub use notify::{Level, Muted, NotifySettings, menu as conversation_menu};
 pub use org::{OrgHeader, members_label, threads_label};
 pub use people::{Person, machine_label, runs_on};
 pub use plain::{
-    APPS_SECTION, NO_OTHER_CHANNELS, PEOPLE_SECTION, QUOTE_MARK, ReactionChip, TO_MARK, name_pill,
+    APPS_SECTION, NO_OTHER_CHANNELS, PEOPLE_SECTION, QUOTE_MARK, ReactionChip, TO_MARK,
 };
 pub use preview::Preview;
 pub use profile::{
@@ -222,8 +222,8 @@ pub use settings_list::{
 };
 pub use sidebar::{ListKind, ListOptions, ListRow, NO_MESSAGES, RowUnder, UnderKind};
 pub use speaker::{
-    AGENT_TAG, APP_TAG, Avatar, Speaker, YOU, agent_avatar, agent_label, agent_name, agent_session,
-    app_name, machine_words, possessive, sender_text, tool_mark,
+    AGENT_TAG, APP_TAG, Avatar, ROLE_TAG, Speaker, YOU, agent_avatar, agent_label, agent_name,
+    agent_session, app_name, machine_words, possessive, sender_text, tool_mark,
 };
 pub use split::split_message;
 pub use status::{Connection, Logged, Notice, Status};

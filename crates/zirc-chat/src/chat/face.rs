@@ -85,6 +85,10 @@ pub struct LineSpeaker {
     pub session: Option<String>,
     /// Whether it's one of zirc's apps, CI or Alerts, which [`super::APP_TAG`] follows.
     pub app: bool,
+    /// The tag after its name, decided here for every app, which draws it as it's given:
+    /// [`super::APP_TAG`] for one of zirc's apps, [`super::ROLE_TAG`] for a role; none for a
+    /// person or an agent session.
+    pub tag: Option<String>,
 }
 
 /// Where pictures load from: the web app and the organisation signed in to
@@ -225,6 +229,13 @@ impl Chat {
             label,
             session,
             app: speaker.is_app,
+            tag: if speaker.is_app {
+                Some(super::APP_TAG.to_owned())
+            } else if self.is_role(&entry.from) {
+                Some(super::ROLE_TAG.to_owned())
+            } else {
+                None
+            },
         }
     }
 }

@@ -1721,7 +1721,7 @@ fn row_line(app: &App, row: &Row, width: u16) -> Line<'static> {
             agent,
         } => highlight(
             app,
-            header_line(app, (nick, agent.as_ref()), time, *pill, hint),
+            header_line(app, (nick, agent.as_ref()), time, pill.as_deref(), hint),
             picked(id),
         ),
         Row::New => new_line(app, width),
