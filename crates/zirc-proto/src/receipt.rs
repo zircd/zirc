@@ -1,5 +1,6 @@
 //! What a machine says of a message sent to one of its agent sessions: that the session's
-//! watch was told it, or that it waits for a session with no watch open. Until 22 Nov 2026
+//! watch was told it, that it waits for a session with no watch open, or that it reached no
+//! one, as no session of that name works there any more. Until 22 Nov 2026
 //! nothing said either, so a message to a stopped agent looked delivered (a user's review of
 //! a weekend with 14 agents). People's reading is not said: IRCv3's `draft/read-marker` keeps
 //! that between a person's own clients.
@@ -19,7 +20,14 @@ pub enum State {
     Seen,
     /// It's kept for the session, which has no watch open.
     Waiting,
+    /// It reached no one: no session of that name works on the machine, as one that ended
+    /// (the user's choice, 25 Nov 2026: said under the message, never as a message of its
+    /// own).
+    Undelivered,
 }
+
+/// What a message that reached no one says under it, before why ([`Receipt::says`]).
+pub const NOT_DELIVERED: &str = "Not delivered";
 
 /// A machine's word on a message sent to one of its sessions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +49,7 @@ impl Receipt {
         let state = match self.state {
             State::Seen => "seen",
             State::Waiting => "waiting",
+            State::Undelivered => "undelivered",
         };
         match &self.sender {
             Some(sender) => format!("{state},{},{sender}", self.session),
@@ -57,6 +66,7 @@ impl Receipt {
         let state = match parts.next()? {
             "seen" => State::Seen,
             "waiting" => State::Waiting,
+            "undelivered" => State::Undelivered,
             _ => return None,
         };
         let session = parts.next().filter(|name| plain(name))?.to_owned();
@@ -72,13 +82,14 @@ impl Receipt {
         })
     }
 
-    /// What a person reads under the message they sent: `Seen by cc-1a2b3c`, or
-    /// `Waiting: cc-1a2b3c isn't running`.
+    /// What a person reads under the message they sent: `Seen by cc-1a2b3c`,
+    /// `Waiting: cc-1a2b3c isn't running`, or `Not delivered: cc-1a2b3c has ended`.
     #[must_use]
     pub fn says(&self) -> String {
         match self.state {
             State::Seen => format!("Seen by {}", self.session),
             State::Waiting => format!("Waiting: {} isn't running", self.session),
+            State::Undelivered => format!("{NOT_DELIVERED}: {} has ended", self.session),
         }
     }
 
@@ -124,6 +135,11 @@ mod tests {
                 session: "cc-1a2b3c".into(),
                 sender: Some("cc-4d5e6f".into()),
             },
+            Receipt {
+                state: State::Undelivered,
+                session: "cc-1a2b3c".into(),
+                sender: None,
+            },
         ] {
             assert_eq!(Receipt::parse(&receipt.value()), Some(receipt));
         }
@@ -151,6 +167,9 @@ mod tests {
         receipt.state = State::Seen;
         assert_eq!(receipt.waits("ada-mbp"), None);
         assert_eq!(receipt.says(), "Seen by cc-1a2b3c");
+        receipt.state = State::Undelivered;
+        assert_eq!(receipt.waits("ada-mbp"), None);
+        assert_eq!(receipt.says(), "Not delivered: cc-1a2b3c has ended");
         receipt.state = State::Waiting;
         receipt.sender = None;
         assert_eq!(receipt.waits("ada-mbp"), None);

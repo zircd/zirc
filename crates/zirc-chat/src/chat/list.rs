@@ -791,7 +791,8 @@ pub struct DirectRow {
     /// in their place: `17m away · 1 waiting` ([`Chat::not_listening_short`]).
     pub not_listening: Option<String>,
     /// Whether it's an agent session whose task has landed, or that has been away 12 hours
-    /// (the user's choice, 23 Nov 2026), with nothing unread, unstarred and not shown: the
+    /// (the user's choice, 23 Nov 2026), with nothing unread, or that has ended, whatever is
+    /// unread (25 Nov 2026); unstarred and not shown: the
     /// sidebar leaves it out, and Jump to and search still find it ([`Chat::agent_folds`]).
     /// People and groups never fold.
     pub folded: bool,
@@ -915,8 +916,11 @@ impl Chat {
     /// Whether the agent session `session` on the machine `nick`, whose conversation was
     /// last active at `active`, folds out of Messages: once its task has landed (it said
     /// `done:` after anything was said with it), or once it's been away 12 hours
-    /// ([`super::live::away_fold`]): ended, by its machine's word, or quiet that long when
-    /// its machine has never said. Online, it stays until its task lands.
+    /// ([`super::live::away_fold`]), or quiet that long when its machine has never said.
+    /// Once it's seen to end, its machine leaving it out of its list or saying a message to
+    /// it reached no one, it folds at once (the user's choice, 25 Nov 2026); one its machine
+    /// hasn't named since we connected, quiet 12 hours. Online, it stays until its task
+    /// lands.
     #[must_use]
     pub fn agent_folds(&self, nick: &str, session: &str, active: Option<DateTime<Utc>>) -> bool {
         let now = (self.clock)();
@@ -934,8 +938,8 @@ impl Chat {
             || match self.listening(nick, session) {
                 Some(Listening::Online) => false,
                 Some(Listening::Away { since, .. }) => long_away(Some(since)),
-                Some(Listening::Ended { since }) => long_away(since.or(active)),
-                None => long_away(active),
+                Some(Listening::Ended { since: Some(_) }) => true,
+                Some(Listening::Ended { since: None }) | None => long_away(active),
             }
     }
 
@@ -1104,9 +1108,13 @@ impl Chat {
             row.owner = Some(self.owner_name(&owner));
             // Active is anything it said, anywhere we are, or anything said with it.
             let active = row.latest.max(session.latest).max(heard(nick, session_id));
-            row.folded =
-                !self.kept(&row.name, row.unread) && self.agent_folds(nick, session_id, active);
             let listening = self.listening(nick, session_id);
+            // Ended, nothing unread keeps it, as nothing can reach it (the user's choice, 25
+            // Nov 2026): only starring it or having it open does.
+            let ended = matches!(listening, Some(Listening::Ended { .. }));
+            let unread = if ended { 0 } else { row.unread };
+            row.folded =
+                !self.kept(&row.name, unread) && self.agent_folds(nick, session_id, active);
             row.presence = match listening {
                 Some(Listening::Online) => Some(super::Presence::Here),
                 Some(Listening::Away { .. }) => Some(super::Presence::Away),
@@ -1114,7 +1122,7 @@ impl Chat {
             };
             row.not_listening = self.not_listening_short(nick, session_id);
             // Ended, it says so where its time was.
-            if matches!(listening, Some(Listening::Ended { .. })) {
+            if ended {
                 row.when = Some(super::live::ENDED.to_owned());
             }
         } else if row.kind == DirectKind::Person {

@@ -138,14 +138,13 @@ fn a_session_that_ended_leaves_the_list_its_conversation_kept() {
     feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-2"]))]);
     assert_eq!(chat.session_live("me-mbp", "cc-1"), Some(false));
     assert!(chat.session_ended("me-mbp/cc-1"));
-    assert!(
-        find(&rows(&chat), "me-mbp/cc-1").is_some(),
-        "still listed within 12 hours of its last watch"
-    );
-    chat.clock = || noon() + chrono::Duration::minutes(62);
-    assert!(find(&rows(&chat), "me-mbp/cc-1").is_some(), "an hour on");
-    chat.clock = || noon() + chrono::Duration::hours(12);
+    // Folded at once, as nothing reaches it (the user's choice, 25 Nov 2026), though open
+    // or starred it stays.
     assert!(find(&rows(&chat), "me-mbp/cc-1").is_none(), "not listed");
+    chat.star("me-mbp/cc-1", true);
+    assert!(find(&rows(&chat), "me-mbp/cc-1").is_some(), "starred");
+    chat.star("me-mbp/cc-1", false);
+    chat.clock = || noon() + chrono::Duration::hours(12);
     assert!(
         chat.position("me-mbp/cc-1").is_some(),
         "its conversation is kept, for Jump to… and search"
@@ -168,7 +167,7 @@ fn a_session_that_ended_leaves_the_list_its_conversation_kept() {
 }
 
 #[test]
-fn an_ended_session_with_something_unread_stays_until_read() {
+fn an_ended_session_folds_with_something_unread() {
     let mut chat = with_mbp();
     feed(
         &mut chat,
@@ -178,10 +177,14 @@ fn an_ended_session_with_something_unread_stays_until_read() {
             &zirc("me-mbp", &live(&[])),
         ],
     );
-    chat.clock = || noon() + chrono::Duration::hours(13);
-    assert!(find(&rows(&chat), "me-mbp/cc-1").is_some());
-    let _ = chat.mark_read("me-mbp/cc-1");
+    assert!(chat.conversation("me-mbp/cc-1").unwrap().unread > 0);
     assert!(find(&rows(&chat), "me-mbp/cc-1").is_none());
+    // Jump to still finds it.
+    assert!(
+        chat.direct_rows()
+            .iter()
+            .any(|row| row.name == "me-mbp/cc-1" && row.folded)
+    );
 }
 
 #[test]
@@ -354,7 +357,7 @@ fn a_session_chip_knows_the_machine_that_runs_it() {
 }
 
 #[test]
-fn an_ended_session_says_so_and_folds_twelve_hours_after_its_last_watch_unless_unread() {
+fn an_ended_session_says_so_and_folds_at_once_unread_or_not() {
     let mut chat = with_mbp();
     feed(
         &mut chat,
@@ -374,14 +377,13 @@ fn an_ended_session_says_so_and_folds_twelve_hours_after_its_last_watch_unless_u
         chat.listening("me-mbp", "cc-1"),
         Some(Listening::Ended { since: Some(two) })
     );
-    let listed = rows(&chat);
-    let row = find(&listed, "me-mbp/cc-1").expect("listed while unread");
-    // Where its time was, it says it ended; ours, it goes by its name alone.
+    // Folded, though unread, and found by Jump to: where its time was, it says it ended;
+    // ours, it goes by its name alone.
+    assert!(find(&rows(&chat), "me-mbp/cc-1").is_none());
+    let row = chat.direct_row("me-mbp/cc-1".to_owned());
+    assert!(row.folded && row.unread > 0);
     assert_eq!(row.when.as_deref(), Some(crate::chat::ENDED));
     assert!(!row.title.contains(" · "), "{}", row.title);
-    // Read, it folds.
-    let _ = chat.mark_read("me-mbp/cc-1");
-    assert!(find(&rows(&chat), "me-mbp/cc-1").is_none());
     // Listed again, it lives on.
     feed(&mut chat, &[&zirc("me-mbp", &live(&["cc-1"]))]);
     assert_eq!(chat.listening("me-mbp", "cc-1"), Some(Listening::Online));

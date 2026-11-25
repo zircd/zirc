@@ -220,7 +220,7 @@ impl Chat {
     /// of its agent sessions, if it is one ([`zirc_proto::receipt`]): kept for that session's
     /// conversation, in place of any earlier one. Only the machine's own word counts, as the
     /// conversation is keyed by who sent it; our own machines' receipts to others aren't ours.
-    fn receipt_tag(&mut self, line: &Line, from: &str) -> bool {
+    pub(super) fn receipt_tag(&mut self, line: &Line, from: &str) -> bool {
         let Some(value) = line.tag(zirc_proto::receipt::TAG) else {
             return false;
         };

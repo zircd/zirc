@@ -111,8 +111,8 @@ use zirc_proto::{Event, Message};
 pub use crate::connection::CONNECTING;
 pub use activity::{ActivityKind, ActivityRow, InboxButton, MENTIONED, REACTED, REPLIED, UNREAD};
 pub use agent_activity::{
-    AGENTS_GLYPH, AGENTS_LABEL, ActivityEntry, AgentHeader, AgentIntro, ReadOnlyNote,
-    activity_conversation,
+    AGENTS_GLYPH, AGENTS_LABEL, ActivityEntry, AgentHeader, AgentIntro, REMOVE_FROM_MESSAGES,
+    ReadOnlyNote, activity_conversation,
 };
 pub use agent_card::{AgentCard, MESSAGE, OPEN_SESSION};
 pub use avatar::{initials, nick_degrees};

@@ -94,10 +94,24 @@ impl Daemon {
                 self.remember_direct(&mut direct, line);
                 self.tell_direct(direct);
             }
-            // The owner named a session that isn't here: say so, rather than drop it.
-            Some(Err(notice)) => {
+            // The owner named a session that isn't here: say so, rather than drop it, as a
+            // notice for plain IRC clients that carries a receipt naming the message, so
+            // zirc's apps say it under the message and show no notice of its own.
+            Some(Err((session, notice))) => {
                 if let Some(client) = &self.client {
-                    let _ = client.send(Line::new("NOTICE", [from, notice.as_str()]));
+                    let mut said = Line::new("NOTICE", [from, notice.as_str()]);
+                    if let Some(id) = line.tag("msgid") {
+                        let receipt = zirc_proto::receipt::Receipt {
+                            state: zirc_proto::receipt::State::Undelivered,
+                            session,
+                            sender: None,
+                        };
+                        said.tags = vec![
+                            (zirc_proto::receipt::TAG.to_owned(), Some(receipt.value())),
+                            ("+draft/reply".to_owned(), Some(id.to_owned())),
+                        ];
+                    }
+                    let _ = client.send(said);
                 }
             }
             None => {}

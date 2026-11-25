@@ -3551,6 +3551,7 @@ fn zircs_system_account_is_zirc_everywhere_and_its_messages_take_no_replies() {
             text: "Zirc's notices can't be answered.".into(),
             button: String::new(),
             dm: String::new(),
+            remove: String::new(),
         })
     );
     assert_eq!(chat.read_only_note("#api"), None);
@@ -8182,12 +8183,14 @@ fn the_card_the_note_and_the_header_are_the_wire_records() {
             text: "Only Maya Chen can message checkout".into(),
             button: "Message Maya Chen".into(),
             dm: "maya".into(),
+            remove: String::new(),
         })
         .unwrap(),
         json!({
             "text": "Only Maya Chen can message checkout",
             "button": "Message Maya Chen",
             "dm": "maya",
+            "remove": "",
         })
     );
     assert_eq!(

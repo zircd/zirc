@@ -225,6 +225,10 @@ impl Chat {
             }
         }
         let mut lines = match line.command.as_str() {
+            // A machine's notice that a message reached no one carries its receipt: said
+            // under the message, never as a conversation of its own (the user's choice, 25
+            // Nov 2026).
+            "NOTICE" if self.receipt_tag(&line, super::nick_of(&line)) => Vec::new(),
             "PRIVMSG" | "NOTICE" => {
                 let mut lines = self.message(&line, history);
                 // A part sealed with a key this device lacks: it asks for the key.

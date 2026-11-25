@@ -182,6 +182,7 @@ fn a_teammates_agent_is_read_only_with_a_button_to_its_owner() {
             text: "Only Bob Lee can message cc-9".into(),
             button: "Message Bob Lee".into(),
             dm: "bob".into(),
+            remove: String::new(),
         })
     );
 }

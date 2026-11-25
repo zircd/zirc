@@ -36,20 +36,30 @@ pub struct ActivityEntry {
 }
 
 /// What stands in the place of the composer where the person can't write: an agent that
-/// isn't ours, whose machine hears only its owner, and zirc's own direct messages
-/// ([`Chat::read_only_note`]).
+/// isn't ours, whose machine hears only its owner, one of ours that has ended, and zirc's
+/// own direct messages ([`Chat::read_only_note`]).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub struct ReadOnlyNote {
-    /// The line: `Only Maya Chen can message checkout`.
+    /// The line: `Only Maya Chen can message checkout`, or `checkout ended 6 days ago on
+    /// mbp. Messages can't reach it`.
     pub text: String,
-    /// The button: `Message Maya Chen`. Empty, as is [`Self::dm`], where there's no one to
-    /// go to instead, as in zirc's own direct messages: apps then show no button.
+    /// The button: `Message Maya Chen`, or `Message mbp's agents`. Empty, as is
+    /// [`Self::dm`], where there's no one to go to instead, as in zirc's own direct
+    /// messages: apps then show no button.
     pub button: String,
-    /// The conversation the button opens: the owner's nick.
+    /// The conversation the button opens: the owner's nick, or the machine's own thread,
+    /// where a line reaches its agents working now.
     pub dm: String,
+    /// A second button, for an agent of ours that has ended: [`REMOVE_FROM_MESSAGES`],
+    /// which closes the conversation ([`Chat::close_direct`]), its history kept for Jump to
+    /// and search. Empty for none.
+    pub remove: String,
 }
+
+/// What an ended agent's note offers besides: takes its conversation out of Messages.
+pub const REMOVE_FROM_MESSAGES: &str = "Remove from Messages";
 
 /// The top of an agent's conversation, before its first entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,13 +164,19 @@ impl Chat {
     /// other conversation, can.
     #[must_use]
     pub fn can_message(&self, name: &str) -> bool {
-        !super::is_system(name) && agent(name).is_none_or(|(nick, _)| self.ours(nick))
+        !super::is_system(name)
+            && agent(name).is_none_or(|(nick, session)| {
+                self.ours(nick) && self.session_live(nick, session) != Some(false)
+            })
     }
 
     /// What replaces the composer where the person can't write: in the conversation with a
     /// teammate's agent, `Only Maya Chen can message checkout`, with a `Message Maya Chen`
     /// button that opens her direct conversation; in zirc's own direct messages,
-    /// `Zirc's notices can't be answered.` and no button. `None` where [`Chat::can_message`].
+    /// `Zirc's notices can't be answered.` and no button; in the conversation with one of
+    /// our agents that has ended, `checkout ended 6 days ago on mbp. Messages can't reach
+    /// it`, with `Message mbp's agents`, which opens the machine's own thread, and `Remove
+    /// from Messages` (the user's choices, 25 Nov 2026). `None` where [`Chat::can_message`].
     #[must_use]
     pub fn read_only_note(&self, name: &str) -> Option<ReadOnlyNote> {
         if super::is_system(name) {
@@ -168,11 +184,13 @@ impl Chat {
                 text: format!("{}'s notices can't be answered.", zirc_proto::NAME),
                 button: String::new(),
                 dm: String::new(),
+                remove: String::new(),
             });
         }
         let (nick, session) = agent(name)?;
         if self.ours(nick) {
-            return None;
+            return (self.session_live(nick, session) == Some(false))
+                .then(|| self.ended_note(nick, session));
         }
         // A machine whose host says no owner, as one not logged in through zirc.dev's: it
         // hears no one's messages, ours included, until it's logged in.
@@ -183,6 +201,7 @@ impl Chat {
                 ),
                 button: String::new(),
                 dm: String::new(),
+                remove: String::new(),
             });
         };
         let who = self.owner_name(&owner);
@@ -190,7 +209,31 @@ impl Chat {
             text: format!("Only {who} can message {}", self.session_label(session)),
             button: format!("Message {who}"),
             dm: owner,
+            remove: String::new(),
         })
+    }
+
+    /// The note in place of the composer of our agent `session` on the machine `nick`, which
+    /// has ended: when, as far as anyone knows, by when it last listened or was last heard.
+    fn ended_note(&self, nick: &str, session: &str) -> ReadOnlyNote {
+        let who = self.session_label(session);
+        let ended = self
+            .listened_at(nick, session)
+            .or_else(|| self.heard(nick, session))
+            .map(|at| {
+                let ago = u64::try_from(((self.clock)() - at).num_seconds()).unwrap_or(0);
+                super::profile::span_words(ago)
+            });
+        let text = match ended {
+            Some(ago) => format!("{who} ended {ago} ago on {nick}. Messages can't reach it"),
+            None => format!("{who} ended on {nick}. Messages can't reach it"),
+        };
+        ReadOnlyNote {
+            text,
+            button: format!("Message {nick}'s agents"),
+            dm: nick.to_owned(),
+            remove: REMOVE_FROM_MESSAGES.to_owned(),
+        }
     }
 
     /// The top of the conversation with the agent session `name`: its card's title, where

@@ -32,14 +32,14 @@ impl Daemon {
     ///
     /// Any line will do, with or without the `/agent` older apps start it with. Its first
     /// word may name one of the sessions working here, as `cc-1531f8` or `cc-1531f8:`, for
-    /// that session alone; one that names a session not here comes back as the notice to
-    /// answer it with, `Err`, rather than reaching every session.
+    /// that session alone; one that names a session not here comes back as that session and
+    /// the notice to answer it with, `Err`, rather than reaching every session.
     pub(super) fn direct(
         &self,
         sender: Sender<'_>,
         from: &str,
         body: &str,
-    ) -> Option<Result<Direct, String>> {
+    ) -> Option<Result<Direct, (String, String)>> {
         let owner = self.owner.as_deref()?;
         let standing = agents::standing(sender, Some(owner), self.zirc_dev);
         if standing != Standing::Owner {
@@ -60,7 +60,9 @@ impl Daemon {
         let name = first.strip_suffix([':', ',']).unwrap_or(first);
         let (session, text) = match self.session_here(name) {
             Some(session) => (Some(session), more),
-            None if looks_like_session(name) => return Some(Err(self.no_session(name))),
+            None if looks_like_session(name) => {
+                return Some(Err((name.to_owned(), self.no_session(name))));
+            }
             None => (None, text),
         };
         if text.is_empty() {

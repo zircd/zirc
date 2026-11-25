@@ -169,10 +169,22 @@ impl Chat {
 
     /// Whether the agent session `session` on the machine `nick` is listening, as its
     /// machine says: `None` when its machine has never said, as zircds before the lists
-    /// don't. Every app's dot, row line and header read it.
+    /// don't, unless it said a message to the session reached no one, as no session of that
+    /// name works there ([`zirc_proto::receipt::State::Undelivered`]): then it has ended,
+    /// when it was last heard.
+    /// Every app's dot, row line and header read it.
     #[must_use]
     pub fn listening(&self, nick: &str, session: &str) -> Option<Listening> {
-        let known = self.live.get(&fold(nick))?;
+        let Some(known) = self.live.get(&fold(nick)) else {
+            let refused = self
+                .receipt(&super::agent_channel(nick, session))
+                .is_some_and(|(_, receipt)| {
+                    receipt.state == zirc_proto::receipt::State::Undelivered
+                });
+            return refused.then(|| Listening::Ended {
+                since: self.heard(nick, session),
+            });
+        };
         let now = (self.clock)();
         // Gone from the server, or unheard since we connected again past the grace.
         let gone = known

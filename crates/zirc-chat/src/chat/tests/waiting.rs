@@ -325,3 +325,88 @@ fn a_direct_question_leaves_when_we_answer_or_its_agent_says_something_else() {
     scene.hears(&["@time=2026-10-30T12:06:00.000Z;msgid=mine :me!u@h PRIVMSG me-mbp :cc-2 main"]);
     assert_eq!(questions(&scene), [] as [&str; 0]);
 }
+
+/// What the machine `me-mbp` says of its sessions at `time`: `live` are, and nothing else.
+fn lists(live: &[&str], time: &str) -> String {
+    let message = Message {
+        level: Some(zirc_proto::Level::Debug),
+        ..Message::new(
+            zirc_proto::NO_SESSION,
+            zirc_proto::session::Live {
+                sessions: live.iter().map(|&s| s.to_owned()).collect(),
+                ..Default::default()
+            }
+            .event(),
+        )
+    };
+    format!("@time={time} {}", zirc("me-mbp", &message))
+}
+
+#[test]
+fn a_question_from_a_session_that_ended_leaves_at_once() {
+    let mut scene = asked_directly();
+    scene.hears(&[&lists(&["cc-1", "cc-2"], "2026-10-30T12:03:00.000Z")]);
+    assert_eq!(questions(&scene), ["Which branch should I use?"]);
+    // Its machine no longer names it: nothing reaches it, so nothing waits for an answer.
+    scene.hears(&[&lists(&["cc-1"], "2026-10-30T12:05:00.000Z")]);
+    assert_eq!(questions(&scene), [] as [&str; 0]);
+    assert_eq!(scene.waiting_card(None, utc()), None);
+}
+
+#[test]
+fn an_ended_sessions_conversation_says_why_it_cant_be_written_to() {
+    let mut scene = asked_directly();
+    scene.hears(&[
+        &lists(&["cc-1", "cc-2"], "2026-10-30T12:03:00.000Z"),
+        &lists(&["cc-1"], "2026-10-30T12:05:00.000Z"),
+    ]);
+    scene.clock = || noon() + chrono::Duration::days(6) + chrono::Duration::minutes(5);
+    assert!(!scene.can_message("me-mbp/cc-2"));
+    assert_eq!(
+        scene.read_only_note("me-mbp/cc-2"),
+        Some(ReadOnlyNote {
+            text: "cc-2 ended 6 days ago on me-mbp. Messages can't reach it".into(),
+            button: "Message me-mbp's agents".into(),
+            dm: "me-mbp".into(),
+            remove: "Remove from Messages".into(),
+        })
+    );
+    // Its history stays, and one still running can be written to.
+    assert!(!scene.lines("me-mbp/cc-2", utc(), false).is_empty());
+    assert!(scene.can_message("me-mbp/cc-1"));
+    assert_eq!(scene.read_only_note("me-mbp/cc-1"), None);
+}
+
+/// The user's case (25 Nov 2026): a question from a session long ended, from a machine that
+/// never said its sessions, written to; its machine answers that no session of that name
+/// works there.
+#[test]
+fn a_message_that_reached_no_one_says_so_under_it_and_ends_the_session() {
+    let mut scene = asked_directly();
+    assert_eq!(questions(&scene), ["Which branch should I use?"]);
+    let _ = scene.open("me-mbp/cc-2");
+    scene.hears(&[
+        "@time=2026-10-30T12:06:00.000Z;msgid=mine :me!u@h PRIVMSG me-mbp :cc-2 main",
+        "@time=2026-10-30T12:06:01.000Z;+zirc/receipt=undelivered,cc-2;+draft/reply=mine \
+         :me-mbp!u@machine/me NOTICE me :No session cc-2 here: this didn't reach anyone. \
+         Working here: cc-1.",
+    ]);
+    let lines = scene.lines("me-mbp/cc-2", utc(), false);
+    let texts: Vec<&str> = lines.iter().map(|line| line.text.as_str()).collect();
+    assert_eq!(
+        texts[texts.len() - 2..],
+        ["main", "Not delivered: cc-2 has ended"]
+    );
+    // No conversation of the machine's own for it.
+    assert!(scene.position("me-mbp").is_none());
+    assert_eq!(scene.session_live("me-mbp", "cc-2"), Some(false));
+    assert!(!scene.can_message("me-mbp/cc-2"));
+    // Its row folds once it isn't open, and Jump to still finds it.
+    let _ = scene.open("#api");
+    let row = scene
+        .direct_rows()
+        .into_iter()
+        .find(|row| row.name == "me-mbp/cc-2")
+        .unwrap();
+    assert!(row.folded);
+}

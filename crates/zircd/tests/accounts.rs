@@ -158,6 +158,9 @@ async fn logs_in_as_its_account_and_hears_messages_to_it() {
         notice.params[1],
         "No session cc-0badc0 here: this didn't reach anyone. Working here: cc-1531f8."
     );
+    // Its receipt names the message, so apps say it under the message, not as a notice.
+    assert_eq!(notice.tag("+zirc/receipt"), Some("undelivered,cc-0badc0"));
+    assert!(notice.tag("+draft/reply").is_some());
     owner.privmsg("mattias-mbp", "still lunch at 12").unwrap();
     assert_eq!(
         without_id(next_direct(&mut watching).await),

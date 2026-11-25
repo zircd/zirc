@@ -469,6 +469,23 @@ pub fn span(seconds: u64) -> String {
     }
 }
 
+/// A span of `seconds` in words, as a sentence says it: `1 minute`, `3 hours`, `6 days`;
+/// under a minute, `under a minute`.
+#[must_use]
+pub fn span_words(seconds: u64) -> String {
+    let (n, unit) = match seconds {
+        0..60 => return "under a minute".to_owned(),
+        60..3600 => (seconds / 60, "minute"),
+        3600..86_400 => (seconds / 3600, "hour"),
+        _ => (seconds / 86_400, "day"),
+    };
+    if n == 1 {
+        format!("1 {unit}")
+    } else {
+        format!("{n} {unit}s")
+    }
+}
+
 /// When `at` was, from `now`, as a list's right edge says it: `now`, `5m`, `3h`, `9d`,
 /// `1 mo`, `1 yr`. Every list's time is this one.
 #[must_use]
