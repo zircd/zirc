@@ -119,6 +119,11 @@ pub enum RowShape {
     /// [`Callout::button`] filled, which takes the step. Never dashed, so a prompt and a
     /// one-time note can't look alike (mocks `OnbPhoneHello`, `OnbPhoneTest`).
     Prompt,
+    /// A vacant role's answer ([`Chat::vacant_callout`]): a plain card of its own, no icon,
+    /// its [`Callout::label`] in bold over its words, then [`Callout::command`] in a
+    /// monospace box of its own with a Copy button, then [`Callout::footer`], muted (the
+    /// user's choice, 25 Nov 2026, as mock `PhoneVacant`).
+    Vacant,
 }
 
 /// How a message's words are styled, decided here for every app, which never styles them
@@ -1136,7 +1141,7 @@ impl<'a> Layout<'a> {
                 let vacant = super::vacant_of(entry).expect(
                     "only a wake's, a settled overlap's or a vacant role's line is a callout",
                 );
-                (RowShape::Settled, self.chat.vacant_callout(&vacant))
+                (RowShape::Vacant, self.chat.vacant_callout(&vacant))
             }
         };
         line.id = None;

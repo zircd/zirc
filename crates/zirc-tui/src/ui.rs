@@ -3181,7 +3181,13 @@ mod tests {
         // The card, never the event's plain text: its title, then how to fill it with the
         // command, and who held it last.
         row_with(&rows, &vacant.title());
-        row_with(&rows, &vacant.command());
+        // Its command on a row of its own, to select and copy.
+        assert!(
+            rows.iter().any(
+                |row| row.trim().ends_with(&vacant.command()) && !row.contains(&vacant.title())
+            ),
+            "{rows:#?}"
+        );
         assert!(
             !rows
                 .iter()

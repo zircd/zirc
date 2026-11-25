@@ -44,6 +44,11 @@ pub struct Callout {
     /// What its button does, for the app to hand back to the core: for a one-time note,
     /// which it is, as zirc.dev names it (`first_wake`), which [`Chat::see_note`] marks seen.
     pub action: Option<String>,
+    /// A command to run, in a monospace box of its own with a Copy button
+    /// ([`super::COPY`]), after its words: a vacant role's `zirc role take fixer`.
+    pub command: Option<String>,
+    /// Words under [`Callout::command`]'s box, muted: who held the role last.
+    pub footer: Option<String>,
 }
 
 impl Callout {
@@ -60,7 +65,15 @@ impl Callout {
     #[must_use]
     pub fn said(&self) -> String {
         let words: String = self.spans.iter().map(|span| span.text.as_str()).collect();
-        format!("{} {words}", self.label)
+        [
+            Some(format!("{} {words}", self.label)),
+            self.command.clone(),
+            self.footer.clone(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
     }
 }
 
@@ -211,6 +224,8 @@ impl Chat {
             tone: woke.tone().role().to_owned(),
             button: None,
             action: None,
+            command: None,
+            footer: None,
         }
     }
 
@@ -272,6 +287,8 @@ impl Chat {
             tone: woke::Tone::Person.role().to_owned(),
             button: None,
             action: None,
+            command: None,
+            footer: None,
         }
     }
 
@@ -349,6 +366,8 @@ fn once(note: Note, agent: &str, what: &str) -> Callout {
         tone: woke::Tone::Quiet.role().to_owned(),
         button: Some(woke::GOT_IT.to_owned()),
         action: Some(note_id(note)),
+        command: None,
+        footer: None,
     }
 }
 

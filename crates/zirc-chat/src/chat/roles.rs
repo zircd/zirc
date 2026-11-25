@@ -230,7 +230,7 @@ impl Chat {
         }
     }
 
-    /// A vacant role's answer to us, as the box every app draws ([`super::RowShape::Settled`]):
+    /// A vacant role's answer to us, as the card every app draws ([`super::RowShape::Vacant`]):
     /// who it is that nobody is, what waits, how to fill it, and who held it last.
     #[must_use]
     pub fn vacant_callout(&self, vacant: &Vacant) -> Callout {
@@ -241,14 +241,12 @@ impl Chat {
             .map(|last| self.holder_machine(last));
         Callout {
             label: vacant.title(),
-            spans: vec![
-                super::woke::text(format!("{} ", vacant.body())),
-                super::woke::code(vacant.command()),
-                super::woke::text(format!(". {}", vacant.footer(machine.as_deref()))),
-            ],
+            spans: vec![super::woke::text(vacant.body())],
             tone: zirc_proto::woke::Tone::Person.role().to_owned(),
             button: None,
             action: None,
+            command: Some(vacant.command()),
+            footer: Some(vacant.footer(machine.as_deref())),
         }
     }
 }
@@ -338,7 +336,7 @@ mod tests {
     }
 
     #[test]
-    fn a_vacant_role_answers_with_the_box_saying_how_to_fill_it() {
+    fn a_vacant_role_answers_with_its_card_and_the_command_to_copy() {
         let mut chat = with_fixer();
         let vacant = Vacant {
             seat: Seat {
@@ -360,15 +358,21 @@ mod tests {
         let lines = chat.lines("fixer", utc(), false);
         let line = lines
             .iter()
-            .find(|line| line.shape == RowShape::Settled)
-            .expect("the vacant box");
+            .find(|line| line.shape == RowShape::Vacant)
+            .expect("the vacant card");
         let callout = line.callout.as_ref().unwrap();
         assert_eq!(callout.label, "Nobody is the fixer in monorepo");
-        assert!(callout.said().contains("zirc role take fixer"));
+        // The command in a box of its own, its words around it, not in them.
+        assert_eq!(callout.command.as_deref(), Some("zirc role take fixer"));
         assert!(
             callout
-                .said()
-                .contains("Last held by main-fix (Claude Code) on henrik-mbp")
+                .spans
+                .iter()
+                .all(|span| !span.text.contains("zirc role"))
         );
+        assert!(callout.footer.as_deref().is_some_and(|footer| {
+            footer.starts_with("Last held by main-fix (Claude Code) on henrik-mbp")
+        }));
+        assert!(callout.said().contains("zirc role take fixer"));
     }
 }

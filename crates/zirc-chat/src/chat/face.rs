@@ -46,13 +46,12 @@ pub enum Face {
         owner_hue: u16,
         /// The owner's photo's address; `None` for their initials.
         owner_photo: Option<String>,
-        /// The session's id, `cc-598aa1`; `None` for the machine itself, drawn without a
-        /// session's colour.
+        /// The session's id, `cc-598aa1`; `None` for the machine itself and for a role.
         session: Option<String>,
         /// The bot it's drawn as, one of [`zirc_proto::AGENT_AVATARS`] such as `reviewer`,
         /// which the apps bundle and draw white on its colour: the role it says, else the one
         /// its name tells, else the plain bot. `None` for the machine itself, drawn with its
-        /// tool's icon.
+        /// tool's icon on no colour of its own; with one, a session or a role, on `hue`.
         picture: Option<String>,
     },
     /// One of zirc's apps, CI or Alerts, or a machine's thread: a square with a glyph, never

@@ -232,6 +232,8 @@ impl Chat {
             action: prompt
                 .button
                 .map(|_| format!("{PROMPT_ACTION}{}", prompt.step)),
+            command: None,
+            footer: None,
         };
         Some((after.clone(), callout))
     }
