@@ -25,7 +25,7 @@ use zirc_proto::PROGRAM;
 use zirc_proto::request::{Answer, Request as DecisionRequest};
 
 pub use crate::presence::{
-    Built, Claim, Conflict, Intent, Landing, LocalOverlap, Member, Overlap, Why, Worktree,
+    Built, Claim, Intent, Landing, LocalOverlap, Member, Overlap, Why, Worktree,
 };
 
 /// The version of the socket protocol this crate speaks. See the module's documentation.
@@ -795,8 +795,6 @@ pub enum Response {
         /// What was sealed.
         value: String,
     },
-    /// While watching: a push changes the same lines as a worktree on this machine.
-    Conflict(Conflict),
     /// The answer to [`Request::Lease`], [`Request::LeaseRelease`] and [`Request::Leases`].
     Leases {
         /// The leases, by name.
@@ -1456,8 +1454,6 @@ pub enum Heard {
     Overlap(Overlap),
     /// Two worktrees on this machine started changing the same paths.
     LocalOverlap(LocalOverlap),
-    /// A push changes the same lines as a worktree on this machine.
-    Conflict(Conflict),
 }
 
 /// A stream of what's heard, from [`watch`].
@@ -1498,7 +1494,6 @@ impl Watching {
             Some(Response::Answered(answered)) => Ok(Some(Heard::Answered(answered))),
             Some(Response::Overlap(overlap)) => Ok(Some(Heard::Overlap(overlap))),
             Some(Response::LocalOverlap(overlap)) => Ok(Some(Heard::LocalOverlap(overlap))),
-            Some(Response::Conflict(conflict)) => Ok(Some(Heard::Conflict(conflict))),
             Some(Response::Error { message }) => Err(Error::Daemon(message)),
             Some(other) => Err(Error::Daemon(format!("{UNEXPECTED}{other:?}"))),
             None => Ok(None),

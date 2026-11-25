@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use zirc_core::decisions;
 use zirc_core::hunks;
-use zirc_core::ipc::{self, Conflict, Delivery, Direct, LocalOverlap, Overlap, Worktree};
+use zirc_core::ipc::{self, Delivery, Direct, LocalOverlap, Overlap, Worktree};
 use zirc_proto::decision::Decision;
 
 use crate::client::{channel_in, shown};
@@ -68,11 +68,19 @@ pub(crate) fn overlap_line(overlap: &Overlap) -> String {
         [session] => format!("{}/{session}", overlap.nick),
         _ => overlap.nick.clone(),
     };
-    format!(
-        "{} overlap: {who} is also changing {}",
-        overlap.channel,
-        some_of(&marked(&overlap.paths, &overlap.same_lines, &overlap.apart))
-    )
+    let paths = some_of(&marked(&overlap.paths, &overlap.same_lines, &overlap.apart));
+    // A push: whichever of the two merges second has a conflict to resolve.
+    let doing = match (&overlap.pushed, &overlap.worktree) {
+        (Some(branch), Some(worktree)) => {
+            format!(
+                "pushed {branch}, which changes what worktree {} does:",
+                describe(worktree)
+            )
+        }
+        (Some(branch), None) => format!("pushed {branch}, which changes"),
+        (None, _) => "is also changing".to_owned(),
+    };
+    format!("{} overlap: {who} {doing} {paths}", overlap.channel)
 }
 
 /// An overlap's `paths`, each with how the two sides' lines meet in it where that's known:
@@ -114,24 +122,6 @@ pub(crate) fn local_overlap_line(overlap: &LocalOverlap) -> String {
         describe(a),
         describe(b),
         some_of(&paths)
-    )
-}
-
-/// A push that changes the same lines as a worktree here: whichever merges second will
-/// have a conflict to resolve.
-pub(crate) fn conflict_line(conflict: &Conflict) -> String {
-    let lines: Vec<String> = conflict
-        .same_lines
-        .iter()
-        .map(|(path, lines)| format!("{path} (lines {})", hunks::describe(lines)))
-        .collect();
-    format!(
-        "{} conflict ahead: {} pushed {}, changing the same lines as worktree {}: {}",
-        conflict.channel,
-        conflict.nick,
-        conflict.branch,
-        describe(&conflict.worktree),
-        some_of(&lines)
     )
 }
 
@@ -389,18 +379,19 @@ pub(crate) mod tests {
              /src/api/.claude/worktrees/login [login] are both changing src/auth.rs \
              (same lines: 40-58), new.rs, src/login.rs (different parts)"
         );
-        let conflict = Conflict {
+        let pushed = Overlap {
             channel: "#acme/api".into(),
             nick: "alpha".into(),
-            branch: "main".into(),
-            worktree: local.worktrees[1].clone(),
+            paths: vec!["src/auth.rs".into()],
+            pushed: Some("main".into()),
+            worktree: Some(local.worktrees[1].clone()),
             same_lines: [("src/auth.rs".to_owned(), vec![[3, 4], [9, 9]])].into(),
-            why: None,
+            ..Overlap::default()
         };
         assert_eq!(
-            conflict_line(&conflict),
-            "#acme/api conflict ahead: alpha pushed main, changing the same lines as worktree \
-             /src/api/.claude/worktrees/login [login]: src/auth.rs (lines 3-4, 9)"
+            overlap_line(&pushed),
+            "#acme/api overlap: alpha pushed main, which changes what worktree \
+             /src/api/.claude/worktrees/login [login] does: src/auth.rs (same lines: 3-4, 9)"
         );
     }
 

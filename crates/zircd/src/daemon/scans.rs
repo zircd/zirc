@@ -8,7 +8,7 @@ use anyhow::Result;
 use tokio::sync::mpsc;
 use zirc_core::hunks;
 use zirc_core::ipc::{Delivery, Response, Worktree};
-use zirc_core::presence::Conflict;
+use zirc_core::presence::Overlap;
 use zirc_proto::telemetry as usage;
 use zirc_proto::telemetry::Event as Usage;
 use zirc_proto::{Event, Message};
@@ -322,7 +322,7 @@ impl Daemon {
                     self.session_acted(&session, how);
                 }
                 let me = self.client.as_ref().map(|client| client.nick().to_owned());
-                self.check_push(&channel, &me.unwrap_or_default(), &event);
+                self.check_push(&channel, (&me.unwrap_or_default(), &session), &event);
                 self.check_undone(root, &session, &event);
                 self.note_stack(root, &session, &event);
                 self.await_own_branch(root, &session, &event);
@@ -335,7 +335,7 @@ impl Daemon {
     /// task of its own ([`clashes`]), and what it finds comes back as
     /// [`Input::PushChecked`]. Only a push whose commits are in the repository already can be
     /// compared, as another worktree's on this machine are; zircd doesn't fetch.
-    pub(super) fn check_push(&mut self, channel: &str, nick: &str, event: &Event) {
+    pub(super) fn check_push(&mut self, channel: &str, by: (&str, &str), event: &Event) {
         let Event::Push {
             branch,
             head,
@@ -391,7 +391,7 @@ impl Daemon {
             onto: base.clone(),
             lines: lines.clone(),
         };
-        let (channel, nick) = (channel.to_owned(), nick.to_owned());
+        let (channel, nick, session) = (channel.to_owned(), by.0.to_owned(), by.1.to_owned());
         let inputs = self.inputs.clone();
         self.checking += 1;
         tokio::spawn(async move {
@@ -399,6 +399,7 @@ impl Daemon {
             let _ = inputs.send(Input::PushChecked(Clashes {
                 channel,
                 nick,
+                session,
                 branch: push.branch,
                 found,
             }));
@@ -426,9 +427,15 @@ impl Daemon {
         let Clashes {
             channel,
             nick,
+            session,
             branch,
             found,
         } = clashes;
+        // The session to settle with, when the push says whose it is.
+        let sessions: Vec<String> = [session]
+            .into_iter()
+            .filter(|session| session != zirc_proto::NO_SESSION && session != WATCHER_SESSION)
+            .collect();
         for (worktree, same_lines) in found {
             let clashing: BTreeSet<String> = same_lines.keys().cloned().collect();
             let key = format!("{}\n{nick}\n{branch}", worktree.path.display());
@@ -440,12 +447,17 @@ impl Daemon {
             if same_lines.is_empty() {
                 continue;
             }
-            let conflict = Response::Conflict(Conflict {
+            // An overlap like any other, its other side a push: who hears it, and that a
+            // settle quiets it, is decided as theirs is ([`Daemon::overlap_news`]).
+            let conflict = Response::Overlap(Overlap {
                 channel: channel.clone(),
                 nick: nick.clone(),
-                branch: branch.clone(),
-                worktree,
+                paths: same_lines.keys().cloned().collect(),
+                worktree: Some(worktree),
+                sessions: sessions.clone(),
                 same_lines,
+                apart: Vec::new(),
+                pushed: Some(branch.clone()),
                 why: None,
             });
             tracing::info!("conflict ahead in {channel}: {conflict:?}");
@@ -488,7 +500,9 @@ struct Against {
 /// What a push was found to clash with ([`Daemon::check_push`]).
 pub struct Clashes {
     channel: String,
+    /// Whose push it is: the machine, and its session.
     nick: String,
+    session: String,
     branch: String,
     /// Each worktree whose own work changes the same lines, and those lines by path.
     found: Vec<(Worktree, SameLines)>,

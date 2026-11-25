@@ -418,6 +418,14 @@ impl Daemon {
                 };
                 (Noticed::Overlap, side.into_iter().collect())
             }
+            Response::Overlap(pushed) if pushed.pushed.is_some() => {
+                let side = pushed
+                    .worktree
+                    .as_ref()
+                    .and_then(|worktree| self.session_of(worktree))
+                    .map(|session| (session.to_owned(), Some(pushed.nick.clone())));
+                (Noticed::ConflictAhead, side.into_iter().collect())
+            }
             Response::Overlap(remote) => {
                 let sides = self
                     .local(&remote.channel)
@@ -426,12 +434,6 @@ impl Daemon {
                     .filter_map(|(_, session, _)| Some((session?, Some(remote.nick.clone()))))
                     .collect();
                 (Noticed::Overlap, sides)
-            }
-            Response::Conflict(conflict) => {
-                let side = self
-                    .session_of(&conflict.worktree)
-                    .map(|session| (session.to_owned(), Some(conflict.nick.clone())));
-                (Noticed::ConflictAhead, side.into_iter().collect())
             }
             _ => return,
         };

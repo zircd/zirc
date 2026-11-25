@@ -324,7 +324,7 @@ async fn warns_a_worktree_of_a_push_that_changes_the_same_lines() {
     let conflict = tokio::time::timeout(WAIT, async {
         loop {
             match heard(&mut login_hears).await {
-                Heard::Conflict(conflict) => return conflict,
+                Heard::Overlap(pushed) if pushed.pushed.is_some() => return pushed,
                 other => meanwhile.push(format!("{other:?}")),
             }
         }
@@ -334,13 +334,16 @@ async fn warns_a_worktree_of_a_push_that_changes_the_same_lines() {
         let who = who(&machine).await;
         panic!("no conflict ahead; heard instead: {meanwhile:#?}; who: {who:#?}")
     };
-    assert_eq!(conflict.branch, "main");
-    assert_eq!(conflict.worktree.path, login_root);
+    assert_eq!(conflict.pushed.as_deref(), Some("main"));
+    assert_eq!(
+        conflict.worktree.map(|worktree| worktree.path),
+        Some(login_root)
+    );
     assert_eq!(
         conflict.same_lines,
         [("lines.txt".to_owned(), vec![[3, 4]])].into()
     );
-    assert_eq!(conflict.why, Some(Why::Conflict));
+    assert_eq!(conflict.why, Some(Why::Overlap));
 
     // And `who` lists it among what's landed.
     until_who(
@@ -576,15 +579,17 @@ async fn another_machine_hears_of_a_conflict_ahead_without_the_pushed_commits() 
 
     let conflict = tokio::time::timeout(WAIT, async {
         loop {
-            if let Heard::Conflict(conflict) = heard(&mut beta_hears).await {
-                return conflict;
+            if let Heard::Overlap(pushed) = heard(&mut beta_hears).await
+                && pushed.pushed.is_some()
+            {
+                return pushed;
             }
         }
     })
     .await
     .expect("a conflict ahead");
     assert_eq!(conflict.nick, "alpha");
-    assert_eq!(conflict.branch, "main");
+    assert_eq!(conflict.pushed.as_deref(), Some("main"));
     assert_eq!(
         conflict.same_lines,
         [("lines.txt".to_owned(), vec![[4, 4]])].into()

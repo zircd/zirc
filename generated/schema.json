@@ -1716,11 +1716,6 @@
         },
         {
           "type": "string",
-          "const": "conflict",
-          "description": "A push changes the same lines as the session's worktree: one of them will have to\nresolve a conflict."
-        },
-        {
-          "type": "string",
           "const": "topic",
           "description": "A post in a topic channel the session joined."
         },
@@ -2864,6 +2859,13 @@
           },
           "description": "Of the paths, the ones both change in different parts: likely to merge."
         },
+        "pushed": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The branch whose push changes them, when it's a push that was compared with the\nworktree: whichever of the two merges second has a conflict to resolve. Until 25 Nov\n2026 that was an alert of its own, \"conflict ahead\"."
+        },
         "why": {
           "anyOf": [
             {
@@ -2881,7 +2883,7 @@
         "nick",
         "paths"
       ],
-      "description": "Paths another machine's work changes that a worktree on this one changes too."
+      "description": "Paths work elsewhere changes that a worktree on this machine changes too: another\nmachine's working set, or a push, another worktree's here included, whose lines meet the\nworktree's ([`Overlap::pushed`])."
     },
     "LocalOverlap": {
       "type": "object",
@@ -2948,63 +2950,6 @@
         "paths"
       ],
       "description": "Paths two worktrees on this machine both have uncommitted changes in: two sessions\nstepping on each other."
-    },
-    "Conflict": {
-      "type": "object",
-      "properties": {
-        "channel": {
-          "type": "string",
-          "description": "The channel the push was announced in."
-        },
-        "nick": {
-          "type": "string",
-          "description": "The nick of the machine that pushed."
-        },
-        "branch": {
-          "type": "string",
-          "description": "The branch pushed."
-        },
-        "worktree": {
-          "$ref": "#/$defs/Worktree",
-          "description": "The worktree whose changes it clashes with."
-        },
-        "same_lines": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "array",
-            "items": {
-              "type": "array",
-              "items": {
-                "type": "integer",
-                "format": "uint32",
-                "minimum": 0
-              },
-              "minItems": 2,
-              "maxItems": 2
-            }
-          },
-          "description": "The paths both change on the same or neighbouring lines, with those lines of their\nmerge base."
-        },
-        "why": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Why"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Why it concerns the watching session, if it does."
-        }
-      },
-      "required": [
-        "channel",
-        "nick",
-        "branch",
-        "worktree",
-        "same_lines"
-      ],
-      "description": "A push of someone else's changing the same lines as a worktree on this machine: what\nwill conflict when one is merged with the other."
     },
     "Lease": {
       "type": "object",
@@ -5638,21 +5583,6 @@
           ],
           "description": "The answer to [`Request::Unseal`]: the part's value.",
           "title": "UnsealedResponse"
-        },
-        {
-          "$ref": "#/$defs/Conflict",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "conflict"
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "description": "While watching: a push changes the same lines as a worktree on this machine.",
-          "title": "ConflictResponse"
         },
         {
           "type": "object",

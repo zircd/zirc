@@ -104,7 +104,7 @@ would this guide. When a line doesn't affect your task, say nothing and carry on
 
 - `#<channel> overlap: <nick> is also changing <paths>`,
   `overlap: worktrees <path> [<branch>] and <path> [<branch>] are both changing <paths>`,
-  `conflict ahead: …`, `<nick>/<session>: about to change <paths>`, `pushed <branch>`,
+  `overlap: <nick> pushed <branch>, which changes …`, `<nick>/<session>: about to change <paths>`, `pushed <branch>`,
   `committed on <branch>`: others' work meeting yours. A path marked `(same lines: …)` will
   conflict; `(a lockfile: …)` needn't be agreed. One that wakes you says the same lines,
   and is a question to ask at once, never something to wait out: `zirc ask` the other

@@ -82,8 +82,8 @@ async fn a_landing_in_other_lines_of_a_sessions_file_waits_for_its_next_wake() {
     let mut waited = None;
     loop {
         match heard(&mut login_hears).await {
-            zirc_core::ipc::Heard::Conflict(conflict) => {
-                assert_eq!(conflict.why, Some(Why::Conflict));
+            zirc_core::ipc::Heard::Overlap(pushed) if pushed.pushed.is_some() => {
+                assert_eq!(pushed.why, Some(Why::Overlap));
                 break;
             }
             zirc_core::ipc::Heard::Message(delivery) if matches!(&delivery.message.event, Event::Push { subjects, .. } if subjects == &["Line 1"]) =>

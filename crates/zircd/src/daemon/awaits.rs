@@ -770,7 +770,7 @@ impl Daemon {
                         _ => None,
                     }
                 }
-                (Response::Conflict(conflict), Why::Conflict) => Some(conflict.branch.clone()),
+                (Response::Overlap(overlap), Why::Overlap) => overlap.pushed.clone(),
                 (Response::LocalOverlap(overlap), Why::Overlap) => overlap
                     .worktrees
                     .iter()

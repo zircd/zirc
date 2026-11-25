@@ -24,7 +24,6 @@ impl Daemon {
         let said_in = match response {
             Response::Delivery(delivery) => Some(delivery.scope()),
             Response::Overlap(overlap) => Some(overlap.channel.clone()),
-            Response::Conflict(conflict) => Some(conflict.channel.clone()),
             Response::LocalOverlap(overlap) => Some(overlap.channel.clone()),
             _ => None,
         };
@@ -68,14 +67,17 @@ impl Daemon {
                 line: Some(answered.msgid.clone()),
                 ..Woke::new(What::Decided, By::Person)
             },
+            // A push's is recorded as it was when it was an alert of its own.
             Response::Overlap(overlap) => Woke {
                 from: Some(overlap.nick.clone()),
-                ..Woke::new(What::Overlap, By::Agent)
-            },
-            Response::Conflict(conflict) => Woke {
-                from: Some(conflict.nick.clone()),
-                branch: Some(conflict.branch.clone()),
-                ..Woke::new(What::Conflict, By::Agent)
+                branch: overlap.pushed.clone(),
+                ..Woke::new(
+                    overlap
+                        .pushed
+                        .as_ref()
+                        .map_or(What::Overlap, |_| What::Conflict),
+                    By::Agent,
+                )
             },
             // The other worktree's session, on this machine.
             Response::LocalOverlap(overlap) => Woke {
@@ -162,7 +164,6 @@ impl Daemon {
             (Why::Intent, _) => What::Intends,
             (Why::Overlap | Why::Paths, Event::Commit { .. }) => What::Committed,
             (Why::Overlap, _) => What::Overlap,
-            (Why::Conflict, _) => What::Conflict,
             (Why::StackedOn, _) => What::StackedOn,
             (Why::Landing | Why::BranchLanded, _) => What::Landed,
             (Why::Paths | Why::Topic | Why::Channel, _) => What::Posted,

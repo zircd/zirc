@@ -382,7 +382,8 @@ impl Daemon {
             // With the branch the session built on, in its files alone, there's nothing to
             // ask: it's what it built on.
             Response::Overlap(overlap)
-                if session.is_some_and(|s| self.awaits.in_its_base(s, &overlap.paths)) =>
+                if overlap.pushed.is_none()
+                    && session.is_some_and(|s| self.awaits.in_its_base(s, &overlap.paths)) =>
             {
                 None
             }
@@ -391,18 +392,15 @@ impl Daemon {
             // or the two settled ([`Daemon::overlap_news`]). The person here hears it all.
             Response::Overlap(overlap) => {
                 let mine = self.paths_in(&overlap.channel, session);
-                (overlap
-                    .paths
-                    .iter()
-                    .any(|path| mine.contains(path.as_str()))
-                    && session.is_none_or(|session| self.overlap_news(heard, me, session)))
-                .then_some(Why::Overlap)
+                // A push's lines were compared with a worktree's work, committed too.
+                let its = overlap.pushed.is_some()
+                    || overlap
+                        .paths
+                        .iter()
+                        .any(|path| mine.contains(path.as_str()));
+                (its && session.is_none_or(|session| self.overlap_news(heard, me, session)))
+                    .then_some(Why::Overlap)
             }
-            // In a shared workspace, only to the session whose branch or claimed changes the
-            // push clashes with.
-            Response::Conflict(conflict) => (anyone
-                || session.is_some_and(|session| self.works_in(&conflict.worktree, session)))
-            .then_some(Why::Conflict),
             Response::LocalOverlap(_) => (anyone
                 || session.is_some_and(|session| self.overlap_news(heard, me, session)))
             .then_some(Why::Overlap),

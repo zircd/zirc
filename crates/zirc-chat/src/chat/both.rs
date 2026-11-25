@@ -2,7 +2,7 @@
 //! at once, as every app shows it (the design lead's `STEP-BOTH-CHANGING.md`). It counts by
 //! session, so two agent sessions on one machine count as two. Whether they change the same
 //! lines is known only from this machine's zircd, which compares its own worktrees
-//! ([`LocalOverlap`]) and a push with a worktree ([`Conflict`]): elsewhere it's never
+//! ([`LocalOverlap`]) and work elsewhere with a worktree ([`Overlap`]): elsewhere it's never
 //! guessed.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -13,7 +13,7 @@ use ts_rs::TS;
 use zirc_proto::{Event, Message};
 
 use super::{Chat, Entry, EntryKind, Icon, Parts, fold};
-use crate::presence::{Conflict, LocalOverlap, Member};
+use crate::presence::{LocalOverlap, Member, Overlap};
 
 /// The kind of the stream's row saying a file is now changed by two at once. Only this
 /// client makes it, from what it hears: it's never sent.
@@ -39,7 +39,7 @@ pub struct BothChanging {
     /// Who, each once, sorted by name.
     pub who: Vec<BothChanger>,
     /// Whether two of them change the same or neighbouring lines: only ever from this
-    /// machine's zircd ([`Chat::learn_overlap`], [`Chat::learn_conflict`]).
+    /// machine's zircd ([`Chat::learn_overlap`], [`Chat::learn_elsewhere`]).
     pub same_lines: bool,
     /// Whether one of them is ours: this machine, or one of our own.
     pub mine: bool,
@@ -337,7 +337,7 @@ impl Chat {
     }
 
     /// The channel here that this machine's zircd means by `key`, as its alerts name where
-    /// they happen ([`LocalOverlap::channel`], [`Conflict::channel`] and an overlap's): a
+    /// they happen ([`LocalOverlap::channel`] and [`Overlap::channel`]): a
     /// repository's scope, `#monorepo`, is no channel, and means the room its work is said
     /// in, `#agents` ([`crate::presence::Presence::room_of`]); a channel means itself.
     /// `None` when this organisation has neither.
@@ -382,37 +382,44 @@ impl Chat {
         }
     }
 
-    /// Learns from this machine's zircd that a push changes the same lines as one of its
-    /// worktrees.
-    pub fn learn_conflict(&mut self, conflict: &Conflict) {
-        let Some(room) = self.zircd_room(&conflict.channel).map(fold) else {
+    /// Learns from this machine's zircd that work elsewhere changes the same lines as one of
+    /// its worktrees: another machine's sessions', or a push's.
+    pub fn learn_elsewhere(&mut self, overlap: &Overlap) {
+        let (Some(room), Some(worktree)) = (
+            self.zircd_room(&overlap.channel).map(fold),
+            &overlap.worktree,
+        ) else {
             return;
         };
-        let members = self.presence.members(&conflict.channel);
-        let name = conflict
-            .worktree
+        let members = self.presence.members(&overlap.channel);
+        let name = worktree
             .path
             .file_name()
             .and_then(|name| name.to_str())
             .map(str::to_owned);
-        let ours = members.iter().find(|member| {
+        let Some(ours) = members.iter().find(|member| {
             self.is_ours(&member.nick)
                 && (member.name.is_some() && member.name == name
-                    || member.branch.is_some() && member.branch == conflict.worktree.branch)
-        });
-        let theirs = members.iter().find(|member| {
-            member.nick.eq_ignore_ascii_case(&conflict.nick)
-                && member.branch.as_deref() == Some(conflict.branch.as_str())
-        });
-        let (Some(ours), Some(theirs)) = (ours, theirs) else {
+                    || member.branch.is_some() && member.branch == worktree.branch)
+        }) else {
             return;
         };
-        for path in conflict.same_lines.keys() {
-            self.both
-                .same_lines
-                .entry((room.clone(), path.clone()))
-                .or_default()
-                .insert(pair(key(ours), key(theirs)));
+        let theirs = members.iter().filter(|member| {
+            let pushed = overlap.pushed.is_some() && member.branch == overlap.pushed;
+            let compared = member
+                .session
+                .as_ref()
+                .is_some_and(|session| overlap.sessions.contains(session));
+            member.nick.eq_ignore_ascii_case(&overlap.nick) && (pushed || compared)
+        });
+        for theirs in theirs {
+            for path in overlap.same_lines.keys() {
+                self.both
+                    .same_lines
+                    .entry((room.clone(), path.clone()))
+                    .or_default()
+                    .insert(pair(key(ours), key(theirs)));
+            }
         }
     }
 

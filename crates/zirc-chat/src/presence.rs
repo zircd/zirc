@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use zirc_line::Line;
 use zirc_proto::{Event, Message};
 
-/// Paths another machine's work changes that a worktree on this one changes too.
+/// Paths work elsewhere changes that a worktree on this machine changes too: another
+/// machine's working set, or a push, another worktree's here included, whose lines meet the
+/// worktree's ([`Overlap::pushed`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Overlap {
     /// The channel both work in.
@@ -36,6 +38,11 @@ pub struct Overlap {
     /// Of the paths, the ones both change in different parts: likely to merge.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub apart: Vec<String>,
+    /// The branch whose push changes them, when it's a push that was compared with the
+    /// worktree: whichever of the two merges second has a conflict to resolve. Until 25 Nov
+    /// 2026 that was an alert of its own, "conflict ahead".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pushed: Option<String>,
     /// Why it concerns the watching session, if it does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<Why>,
@@ -68,26 +75,6 @@ pub struct LocalOverlap {
     /// Of those, the ones both change in different parts: likely to merge.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub apart: Vec<String>,
-    /// Why it concerns the watching session, if it does.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub why: Option<Why>,
-}
-
-/// A push of someone else's changing the same lines as a worktree on this machine: what
-/// will conflict when one is merged with the other.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct Conflict {
-    /// The channel the push was announced in.
-    pub channel: String,
-    /// The nick of the machine that pushed.
-    pub nick: String,
-    /// The branch pushed.
-    pub branch: String,
-    /// The worktree whose changes it clashes with.
-    pub worktree: Worktree,
-    /// The paths both change on the same or neighbouring lines, with those lines of their
-    /// merge base.
-    pub same_lines: BTreeMap<String, Vec<[u32; 2]>>,
     /// Why it concerns the watching session, if it does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<Why>,
@@ -1072,9 +1059,6 @@ pub enum Why {
     Paths,
     /// Someone is about to touch paths the session has changed or is about to touch.
     Intent,
-    /// A push changes the same lines as the session's worktree: one of them will have to
-    /// resolve a conflict.
-    Conflict,
     /// A post in a topic channel the session joined.
     Topic,
     /// A push to the default branch, or to the session's branch, that changed paths the

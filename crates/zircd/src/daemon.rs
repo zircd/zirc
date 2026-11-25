@@ -17,7 +17,7 @@ use zirc_core::ipc::{
     Answered, Delivery, Direct, Reaction, RepoSession, Request, Response, Why, Worktree,
 };
 use zirc_core::paths;
-use zirc_core::presence::{Conflict, LocalOverlap, Overlap, Presence};
+use zirc_core::presence::{LocalOverlap, Overlap, Presence};
 use zirc_core::project::Project;
 use zirc_irc::{Client, Line};
 use zirc_proto::decision::Decision;
@@ -1398,7 +1398,6 @@ fn channel_of(response: &Response) -> Option<&str> {
         Response::Delivery(delivery) => Some(&delivery.channel),
         Response::Overlap(overlap) => Some(&overlap.channel),
         Response::LocalOverlap(overlap) => Some(&overlap.channel),
-        Response::Conflict(conflict) => Some(&conflict.channel),
         _ => None,
     }
 }
@@ -1614,7 +1613,6 @@ fn with_why(response: Response, why: Option<Why>) -> Response {
         Response::Direct(direct) => Response::Direct(Direct { why, ..direct }),
         Response::Overlap(overlap) => Response::Overlap(Overlap { why, ..overlap }),
         Response::LocalOverlap(overlap) => Response::LocalOverlap(LocalOverlap { why, ..overlap }),
-        Response::Conflict(conflict) => Response::Conflict(Conflict { why, ..conflict }),
         Response::Reaction(reaction) => Response::Reaction(Reaction { why, ..reaction }),
         Response::Answered(answered) => Response::Answered(Box::new(Answered { why, ..*answered })),
         other => other,
@@ -1628,7 +1626,6 @@ fn why_of(response: &Response) -> Option<Why> {
         Response::Direct(direct) => direct.why,
         Response::Overlap(overlap) => overlap.why,
         Response::LocalOverlap(overlap) => overlap.why,
-        Response::Conflict(conflict) => conflict.why,
         Response::Reaction(reaction) => reaction.why,
         Response::Answered(answered) => answered.why,
         _ => None,

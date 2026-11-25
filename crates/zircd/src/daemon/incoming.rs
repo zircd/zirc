@@ -250,8 +250,9 @@ impl Daemon {
                     self.predict_remote(&channel);
                 }
                 let push = delivery.message.event.clone();
+                let by = delivery.message.session.clone();
                 self.tell_watchers(&Response::Delivery(delivery));
-                self.check_push(&channel, from, &push);
+                self.check_push(&channel, (from, &by), &push);
             }
             _ => {}
         }

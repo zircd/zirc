@@ -157,6 +157,15 @@ pub fn seen(heard: &Heard, watching: Option<&str>) -> Option<Seen> {
         }
     };
     let (kind, channel, names_me, lockfile) = match heard {
+        // A push whose lines meet a worktree's has a hint of its own: what to do about a
+        // branch that's pushed isn't what to ask a session still changing its files.
+        Heard::Overlap(heard) if heard.pushed.is_some() => {
+            let paths: Vec<String> = heard.same_lines.keys().cloned().collect();
+            fields.insert("who", heard.nick.clone());
+            fields.insert("branch", heard.pushed.clone().unwrap_or_default());
+            fields.insert("paths", paths_field(&paths));
+            (kind::CONFLICT_AHEAD, heard.channel.clone(), false, false)
+        }
         Heard::Overlap(heard) => {
             let (kind, lockfile) = overlap(&heard.nick, &heard.paths, &heard.same_lines);
             (kind, heard.channel.clone(), false, lockfile)
@@ -165,13 +174,6 @@ pub fn seen(heard: &Heard, watching: Option<&str>) -> Option<Seen> {
             let here = "another worktree here";
             let (kind, lockfile) = overlap(here, &heard.paths, &heard.same_lines);
             (kind, heard.channel.clone(), false, lockfile)
-        }
-        Heard::Conflict(conflict) => {
-            let paths: Vec<String> = conflict.same_lines.keys().cloned().collect();
-            fields.insert("who", conflict.nick.clone());
-            fields.insert("branch", conflict.branch.clone());
-            fields.insert("paths", paths_field(&paths));
-            (kind::CONFLICT_AHEAD, conflict.channel.clone(), false, false)
         }
         Heard::Direct(direct) => {
             fields.insert("who", direct.from.clone());

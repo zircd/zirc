@@ -14,9 +14,7 @@ use crate::client::{ask, ask_in, not_running, shown};
 use crate::daemon::{SocketId, socket_id};
 use crate::decide::answered_line;
 use crate::hints::{hint_line, watch_hints};
-use crate::lines::{
-    conflict_line, direct_line, line, local_overlap_line, one_line, overlap_line, reaction_line,
-};
+use crate::lines::{direct_line, line, local_overlap_line, one_line, overlap_line, reaction_line};
 use crate::repo::{main_checkout, repo_here, unregistered};
 use crate::sessions::{name_session, waiting, waiting_line};
 use crate::status::stuck_channelless;
@@ -347,9 +345,6 @@ pub(crate) fn print_heard(heard: Heard, how: &How<'_>, out: &mut impl Write) -> 
             }
             writeln!(out, "{value}")?;
         }
-        (Heard::Conflict(conflict), false) => {
-            writeln!(out, "{}", one_line(&conflict_line(conflict)))?;
-        }
         (Heard::Message(delivery), false) => writeln!(out, "{}", one_line(&line(delivery)))?,
         (Heard::Direct(direct), false) => {
             writeln!(out, "{}", one_line(&direct_line(direct)))?;
@@ -416,7 +411,6 @@ pub(crate) fn heard_json(heard: &Heard) -> Result<serde_json::Value> {
         Heard::Direct(direct) => serde_json::to_value(direct)?,
         Heard::Overlap(overlap) => serde_json::to_value(overlap)?,
         Heard::LocalOverlap(overlap) => serde_json::to_value(overlap)?,
-        Heard::Conflict(conflict) => serde_json::to_value(conflict)?,
         Heard::Reaction(reaction) => serde_json::to_value(reaction)?,
         Heard::Answered(answered) => serde_json::to_value(answered)?,
     })
@@ -431,7 +425,6 @@ pub(crate) fn why(heard: &Heard) -> Option<ipc::Why> {
         Heard::Direct(direct) => direct.why,
         Heard::Overlap(overlap) => overlap.why,
         Heard::LocalOverlap(overlap) => overlap.why,
-        Heard::Conflict(conflict) => conflict.why,
         Heard::Reaction(reaction) => reaction.why,
         Heard::Answered(answered) => answered.why,
     }
