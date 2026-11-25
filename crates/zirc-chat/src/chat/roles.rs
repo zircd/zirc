@@ -248,6 +248,7 @@ impl Chat {
             action: None,
             command: Some(vacant.command()),
             footer: Some(vacant.footer(machine.as_deref())),
+            heads: true,
         }
     }
 }

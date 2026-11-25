@@ -49,6 +49,10 @@ pub struct Callout {
     pub command: Option<String>,
     /// Words under [`Callout::command`]'s box, muted: who held the role last.
     pub footer: Option<String>,
+    /// Whether its label heads its box, on a line of its own over its words (a settled
+    /// overlap, getting started's prompt, a vacant role's card), decided here for every app;
+    /// else it leads its words, in bold, as [`Callout::drawn`] has it (a wake, a one-time note).
+    pub heads: bool,
 }
 
 impl Callout {
@@ -226,6 +230,7 @@ impl Chat {
             action: None,
             command: None,
             footer: None,
+            heads: false,
         }
     }
 
@@ -289,6 +294,7 @@ impl Chat {
             action: None,
             command: None,
             footer: None,
+            heads: true,
         }
     }
 
@@ -368,6 +374,7 @@ fn once(note: Note, agent: &str, what: &str) -> Callout {
         action: Some(note_id(note)),
         command: None,
         footer: None,
+        heads: false,
     }
 }
 

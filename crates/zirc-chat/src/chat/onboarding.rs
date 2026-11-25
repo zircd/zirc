@@ -234,6 +234,7 @@ impl Chat {
                 .map(|_| format!("{PROMPT_ACTION}{}", prompt.step)),
             command: None,
             footer: None,
+            heads: true,
         };
         Some((after.clone(), callout))
     }
