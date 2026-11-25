@@ -837,7 +837,7 @@ enum Command {
     /// A role is a standing job its organisation's admins define on zirc.dev, with one seat a
     /// session takes only by this command, in a checkout of the role's repository: its nick
     /// is then yours to answer for. What wakes it, a direct message to it among them, wakes
-    /// your watch; you hold it while your watch runs.
+    /// your watch; you hold it while your watch runs. `zirc roles` says who holds each.
     #[command(subcommand)]
     #[command(after_long_help = examples("role", ""))]
     Role(roles::RoleCommand),
