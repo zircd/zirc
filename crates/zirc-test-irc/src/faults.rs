@@ -146,10 +146,51 @@ fn reset(stream: TcpStream) {
 /// of the round trip.
 pub struct Latency {
     port: u16,
+    one_way: std::time::Duration,
     task: JoinHandle<()>,
 }
 
+/// The round trips a cold start may wait on, one after another, before every channel it's in
+/// is caught up: registering (CAP, SASL, the welcome), then the channels' joins and histories,
+/// sent together. With 13 channels it took the apps' core (zirc-app) 5.5 and the TUI 6.6 when
+/// this was set (25 Nov 2026); one more for each channel asked after the last would be 19 and
+/// over. Both their reconnect tests keep it ([`Latency::keeps_cold_start`]).
+pub const COLD_START_ROUND_TRIPS: f64 = 10.0;
+
 impl Latency {
+    /// How far a phone's network is from the server, each way.
+    pub const PHONE: std::time::Duration = std::time::Duration::from_millis(50);
+
+    /// Starts carrying connections to the server on loopback port `upstream` as a phone's
+    /// network would ([`Latency::PHONE`]).
+    pub async fn phone(upstream: u16) -> Self {
+        Self::start(upstream, Self::PHONE).await
+    }
+
+    /// How many of this network's round trips `took` is.
+    #[must_use]
+    pub fn round_trips(&self, took: std::time::Duration) -> f64 {
+        took.as_secs_f64() / (self.one_way * 2).as_secs_f64()
+    }
+
+    /// Says how long `what`, a cold start, took over this network, and fails when that's
+    /// more than [`COLD_START_ROUND_TRIPS`].
+    ///
+    /// # Panics
+    ///
+    /// When it took longer.
+    pub fn keeps_cold_start(&self, what: &str, took: std::time::Duration) {
+        let trips = self.round_trips(took);
+        println!(
+            "PERF {what}: caught up in {took:?}, {trips:.1} round trips of {:?}",
+            self.one_way * 2
+        );
+        assert!(
+            trips < COLD_START_ROUND_TRIPS,
+            "{what} took {took:?}, {trips:.1} round trips: more than {COLD_START_ROUND_TRIPS}"
+        );
+    }
+
     /// Starts carrying connections to the server on loopback port `upstream`, `one_way` late.
     ///
     /// # Panics
@@ -175,7 +216,11 @@ impl Latency {
                 });
             }
         });
-        Self { port, task }
+        Self {
+            port,
+            one_way,
+            task,
+        }
     }
 
     /// The port to connect to on 127.0.0.1.

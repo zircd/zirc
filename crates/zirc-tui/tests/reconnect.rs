@@ -408,16 +408,6 @@ async fn a_channel_left_on_another_device_while_away_stays_left() {
     assert!(!in_channel(&laptop.app, "#ops"), "left stays left");
 }
 
-/// How far away the server is for [`a_cold_start_catches_up_within_its_round_trips`], each
-/// way: a phone's network.
-const ONE_WAY: Duration = Duration::from_millis(50);
-
-/// The round trips a cold start may wait on, one after another, before every channel it's in
-/// is caught up: registering, then the channels' joins and histories, sent together. It took
-/// 6.6 when this was set (25 Nov 2026, 13 channels; the apps' core 5.5, zirc-app's reconnect
-/// test, which keeps the same budget); one more for each channel would be 19 and over.
-const COLD_START_ROUND_TRIPS: u32 = 10;
-
 #[tokio::test]
 async fn a_cold_start_catches_up_within_its_round_trips() {
     let ergo = require_ergo!();
@@ -429,7 +419,7 @@ async fn a_cold_start_catches_up_within_its_round_trips() {
         let count = if channel == "#long" { 600 } else { 40 };
         pour(&ergo, channel, count, &format!("the last of {channel}")).await;
     }
-    let far = Latency::start(ergo.port(), ONE_WAY).await;
+    let far = Latency::phone(ergo.port()).await;
     let mut config = config(&ergo, "tui");
     config.port = far.port();
     config
@@ -456,15 +446,8 @@ async fn a_cold_start_catches_up_within_its_round_trips() {
         caught_up,
     )
     .await;
-    let took = started.elapsed();
-    let round_trip = ONE_WAY * 2;
-    let trips = took.as_secs_f64() / round_trip.as_secs_f64();
-    println!(
-        "PERF cold start, {} channels, {round_trip:?} round trip: caught up in {took:?} ({trips:.1} round trips)",
-        channels.len()
-    );
-    assert!(
-        took < round_trip * COLD_START_ROUND_TRIPS,
-        "a cold start took {took:?}, {trips:.1} round trips: more than {COLD_START_ROUND_TRIPS}"
+    far.keeps_cold_start(
+        &format!("the TUI's cold start, {} channels", channels.len()),
+        started.elapsed(),
     );
 }
