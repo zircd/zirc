@@ -312,6 +312,10 @@ pub struct SeatShown {
     pub last_machine: Option<String>,
     /// Its day in words ([`Seat::day`]).
     pub day: String,
+    /// Who holds it, as a member row's second line says ([`Seat::member_line`]): `main-fix ·
+    /// Henrik's mbp`, or `vacant`. Empty from a server older than it.
+    #[serde(default)]
+    pub held: String,
 }
 
 /// How an organisation's roles stand, as its server answers zirc.dev at [`ACCOUNTS_PATH`]:

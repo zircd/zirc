@@ -645,13 +645,23 @@ async fn roles_shown(State(ergo): State<Arc<Ergo>>) -> Response {
     let seats = standing
         .seats
         .into_iter()
-        .map(|seat| zirc_proto::roles::SeatShown {
-            picture: zirc_proto::agent_picture(Some(&seat.role), Some(&seat.role)).to_owned(),
-            hue: zirc_chat::chat::nick_degrees(&seat.role),
-            holder_machine: seat.holder.as_ref().and_then(&machine),
-            last_machine: seat.last.as_ref().and_then(&machine),
-            day: seat.day(),
-            seat,
+        .map(|seat| {
+            let holder_machine = seat.holder.as_ref().and_then(&machine);
+            let held = seat.member_line(
+                holder_machine
+                    .as_deref()
+                    .or(seat.holder.as_ref().map(|holder| holder.machine.as_str()))
+                    .unwrap_or_default(),
+            );
+            zirc_proto::roles::SeatShown {
+                picture: zirc_proto::agent_picture(Some(&seat.role), Some(&seat.role)).to_owned(),
+                hue: zirc_chat::chat::nick_degrees(&seat.role),
+                holder_machine,
+                last_machine: seat.last.as_ref().and_then(&machine),
+                day: seat.day(),
+                held,
+                seat,
+            }
         })
         .collect();
     Json(zirc_proto::roles::StandingShown {
