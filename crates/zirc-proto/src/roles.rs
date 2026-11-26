@@ -603,7 +603,7 @@ pub struct Vacant {
 }
 
 impl Vacant {
-    /// The card's heading: `Nobody is the fixer in monorepo`.
+    /// The card's heading: `Nobody holds fixer in monorepo`.
     #[must_use]
     pub fn title(&self) -> String {
         vacant_title(&self.seat.role, &self.seat.repository)
@@ -665,10 +665,10 @@ impl Vacant {
     }
 }
 
-/// A vacant role's card's heading ([`Vacant::title`]): `Nobody is the fixer in monorepo`.
+/// A vacant role's card's heading ([`Vacant::title`]): `Nobody holds fixer in monorepo`.
 #[must_use]
 pub fn vacant_title(role: &str, repository: &str) -> String {
-    format!("Nobody is the {role} in {repository}")
+    format!("Nobody holds {role} in {repository}")
 }
 
 /// The vacant card's last words.
@@ -697,7 +697,8 @@ pub struct SeatChange {
 
 impl SeatChange {
     /// Its line, in the agents' room and the role's conversations: `main-fix took the fixer
-    /// role in monorepo · zirc role take fixer`, `main-fix left the fixer role`. What plain
+    /// role in monorepo`, `main-fix left the fixer role`: how to take it is said only while
+    /// it's vacant, on its card ([`Vacant::command`]). What plain
     /// IRC clients show; apps say whose the session is ([`SeatChange::words_with`]).
     #[must_use]
     pub fn words(&self) -> String {
@@ -705,7 +706,7 @@ impl SeatChange {
     }
 
     /// Its line, `whose` being the session's owner as the reader's app says it, possessive:
-    /// `main-fix (Henrik's) took the fixer role in monorepo · zirc role take fixer`. Zirc
+    /// `main-fix (Henrik's) took the fixer role in monorepo`. Zirc
     /// can't know who asked the session to take it, so it names whose the session is.
     #[must_use]
     pub fn words_with(&self, whose: Option<&str>) -> String {
@@ -717,7 +718,7 @@ impl SeatChange {
     }
 
     /// Its line in a room, read by the session's owner: `your main-fix took the fixer role
-    /// in monorepo · zirc role take fixer`, `your main-fix left the fixer role`.
+    /// in monorepo`, `your main-fix left the fixer role`.
     #[must_use]
     pub fn words_ours(&self) -> String {
         self.words_of(&format!("your {}", self.holder.session.who()))
@@ -726,12 +727,7 @@ impl SeatChange {
     /// Its line, the session named as `who`.
     fn words_of(&self, who: &str) -> String {
         if self.took {
-            format!(
-                "{who} took the {} role in {} · {}",
-                self.role,
-                self.repository,
-                take_command(&self.role)
-            )
+            format!("{who} took the {} role in {}", self.role, self.repository)
         } else {
             left_words(who, &self.role)
         }
@@ -974,7 +970,7 @@ mod tests {
             },
             reply_to: None,
         };
-        assert_eq!(vacant.title(), "Nobody is the fixer in monorepo");
+        assert_eq!(vacant.title(), "Nobody holds fixer in monorepo");
         assert_eq!(vacant.command(), "zirc role take fixer");
         assert_eq!(
             vacant.footer(Some("Henrik's MacBook")),
@@ -1013,7 +1009,7 @@ mod tests {
         };
         assert_eq!(
             change.words_with(Some("Henrik's")),
-            "main-fix (Henrik's) took the fixer role in monorepo · zirc role take fixer"
+            "main-fix (Henrik's) took the fixer role in monorepo"
         );
         assert_eq!(change.words_yours(), "your main-fix took the role");
         assert_eq!(SeatChange::of(&change.event()), Some(change));

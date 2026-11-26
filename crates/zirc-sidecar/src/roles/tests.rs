@@ -98,10 +98,7 @@ fn the_next_holder_is_woken_by_what_waited_and_its_writer_told() {
         ["ada", "henrik", zirc_proto::AGENTS_CHANNEL, "henrik-mbp"]
     );
     let change = SeatChange::of(&outs[2].message.event).unwrap();
-    assert_eq!(
-        change.words(),
-        "cc-1 took the fixer role in monorepo · zirc role take fixer"
-    );
+    assert_eq!(change.words(), "cc-1 took the fixer role in monorepo");
     let (wake, text) = wake_of(&outs[3]);
     assert_eq!(
         (wake.session.as_str(), text.as_str()),

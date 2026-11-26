@@ -172,9 +172,8 @@ impl Chat {
 
     /// A seat taken or left as the conversation called `name` says it: of one of our
     /// sessions, in our own conversation with the role, `your main-fix took the role`, and in
-    /// a room, `your main-fix took the fixer role in monorepo · zirc role take fixer`; of
-    /// anyone else's, whose the session is, `main-fix (Henrik's) took the fixer role in monorepo ·
-    /// zirc role take fixer`.
+    /// a room, `your main-fix took the fixer role in monorepo`; of anyone else's, whose the
+    /// session is, `main-fix (Henrik's) took the fixer role in monorepo`.
     #[must_use]
     pub fn seat_words(&self, change: &SeatChange, name: &str) -> String {
         let owner = self.whose(&change.holder.machine).map(|(owner, _)| owner);
@@ -335,7 +334,7 @@ mod tests {
         };
         assert_eq!(
             chat.seat_words(&change, "#api"),
-            "your main-fix took the fixer role in monorepo · zirc role take fixer"
+            "your main-fix took the fixer role in monorepo"
         );
         assert_eq!(
             chat.seat_words(&change, "fixer"),
@@ -420,7 +419,7 @@ mod tests {
             .find(|line| line.shape == RowShape::Vacant)
             .expect("the vacant card");
         let callout = line.callout.as_ref().unwrap();
-        assert_eq!(callout.label, "Nobody is the fixer in monorepo");
+        assert_eq!(callout.label, "Nobody holds fixer in monorepo");
         // The command in a box of its own, its words around it, not in them.
         assert_eq!(callout.command.as_deref(), Some("zirc role take fixer"));
         assert!(
