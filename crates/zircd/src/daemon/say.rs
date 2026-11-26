@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use anyhow::Result;
+use zirc_core::chat::{SESSION_TAG, TYPING_TAG};
 use zirc_core::decisions;
 use zirc_core::ipc::{Delivery, Direct, Reaction, Response, Target, Why};
 use zirc_core::project::ORG_CHANNEL;
@@ -514,7 +515,7 @@ impl Daemon {
             is_nick(to) || (to.starts_with('#') && !to.contains([',', ' '])),
             "{to:?} isn't a person's nick or a channel"
         );
-        self.send_typing(to, "active")?;
+        self.send_typing(&session, to, "active")?;
         let now = self.clock.now();
         self.typing.insert(
             (session, to.to_owned()),
@@ -536,11 +537,11 @@ impl Daemon {
                 done.push((session.clone(), to.clone()));
             } else if now.duration_since(typing.sent) >= TYPING_EVERY {
                 typing.sent = now;
-                again.push(to.clone());
+                again.push((session.clone(), to.clone()));
             }
         }
-        for to in again {
-            let _ = self.send_typing(&to, "active");
+        for (session, to) in again {
+            let _ = self.send_typing(&session, &to, "active");
         }
         for (session, to) in done {
             self.stop_typing(&session, &to);
@@ -555,15 +556,21 @@ impl Daemon {
             .remove(&(session.to_owned(), to.to_owned()))
             .is_some()
         {
-            let _ = self.send_typing(to, "done");
+            let _ = self.send_typing(session, to, "done");
         }
     }
 
-    /// The `TAGMSG` that tells `to` this machine is typing, or has stopped (`state`).
-    pub(super) fn send_typing(&self, to: &str, state: &str) -> Result<()> {
+    /// The `TAGMSG` that tells `to` this machine's `session` is typing, or has stopped
+    /// (`state`). It names the session in [`SESSION_TAG`], so apps show it as thinking in
+    /// that session's conversation, where the person wrote to it: without it, they show the
+    /// machine thinking in the machine's own, which nobody is looking at.
+    pub(super) fn send_typing(&self, session: &str, to: &str, state: &str) -> Result<()> {
         let client = self.connected()?;
         let mut line = Line::new("TAGMSG", [to]);
-        line.tags = vec![("+typing".to_owned(), Some(state.to_owned()))];
+        line.tags = vec![
+            (TYPING_TAG.to_owned(), Some(state.to_owned())),
+            (SESSION_TAG.to_owned(), Some(session.to_owned())),
+        ];
         client
             .send(line)
             .with_context(|| format!("couldn't tell {to}"))?;

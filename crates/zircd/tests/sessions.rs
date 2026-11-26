@@ -940,7 +940,7 @@ async fn a_session_messages_a_person_it_names() {
 }
 
 #[tokio::test]
-async fn a_session_shows_its_typing_until_it_answers_or_its_time_is_up() {
+async fn a_session_shows_its_thinking_in_its_own_conversation_until_it_answers_or_its_time_is_up() {
     let ergo = require_ergo!();
     let alpha = Machine::start(&ergo, "alpha").await;
     let (_ada, mut ada_hears) = zirc_test_irc::person(&ergo, "ada").await;
@@ -954,7 +954,17 @@ async fn a_session_shows_its_typing_until_it_answers_or_its_time_is_up() {
     let tagmsg = |line: &zirc_irc::Line| {
         line.command == "TAGMSG" && line.tag(zirc_proto::EVENT_TAG).is_none()
     };
-    let state = |line: &zirc_irc::Line| line.tag("+typing").map(str::to_owned);
+    // Each says which session: apps show it thinking in that session's conversation, where
+    // ada wrote to it, not in the machine's own (the user's "no longer see thinking…", 26
+    // Nov 2026).
+    let state = |line: &zirc_irc::Line| {
+        assert_eq!(
+            line.tag(zirc_core::chat::SESSION_TAG),
+            Some("cc-1"),
+            "{line:?}"
+        );
+        line.tag(zirc_core::chat::TYPING_TAG).map(str::to_owned)
+    };
 
     // Typing until it answers: the answer, then done.
     assert_eq!(alpha.request(typing(60)).await, Response::channel("ada"));
