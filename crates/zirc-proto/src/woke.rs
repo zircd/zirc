@@ -34,6 +34,17 @@ pub const WOKE: &str = "woke";
 /// What a settled overlap's line is headed by.
 pub const SETTLED_LABEL: &str = "Overlap settled";
 
+/// How many wake lines a conversation has, as its row says when they're all it has (the
+/// user's choice, 26 Nov 2026): `1 wake`, `3 wakes`.
+#[must_use]
+pub fn wakes(n: usize) -> String {
+    if n == 1 {
+        "1 wake".to_owned()
+    } else {
+        format!("{n} wakes")
+    }
+}
+
 /// Whether `event` is a wake's line: what a room keeps to Everything, never counts unread
 /// and never pushes.
 #[must_use]
@@ -209,7 +220,7 @@ pub struct Woke {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wake: Option<String>,
     /// The role ([`crate::roles`]) the session was woken as, when it was: its line ends
-    /// with it, `main-fix woke as the fixer: master is broken`.
+    /// with it, `main-fix woke as fixer: master is broken`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     /// For a report: the item it opened ([`crate::role_report::OpenItem::id`]) and what was
@@ -390,11 +401,7 @@ impl Woke {
             kind: KIND.to_owned(),
             data: serde_json::to_value(self).expect("a wake serialises"),
             text: {
-                let why = self
-                    .role
-                    .as_ref()
-                    .map(|role| format!(" as the {role}"))
-                    .unwrap_or_default();
+                let why = self.as_role(None);
                 let what = Self {
                     branch: None,
                     ..self.clone()
@@ -430,13 +437,23 @@ impl Woke {
     }
 
     /// What its line starts with, set in bold: the agent that woke, `agent` as the reader
-    /// knows it, and why when a role was why: `main-fix woke:`, `ops-watch woke as the
-    /// oncall:` (the user's choice, 25 Nov 2026: who, why, then what).
+    /// knows it, and why when a role was why: `main-fix woke:`, `ops-watch woke as oncall:`
+    /// (the user's choices, 25 Nov 2026: who, why, then what; 26 Nov 2026: a role without
+    /// "the"). When `agent` is the role already, as a session that holds one is called, the
+    /// role isn't said twice: `oncall woke:`.
     #[must_use]
     pub fn heading(&self, agent: &str) -> String {
+        format!("{agent} {WOKE}{}:", self.as_role(Some(agent)))
+    }
+
+    /// Why, after [`WOKE`], when a role was why: ` as fixer`, a space first; nothing
+    /// without one, or when `agent` is the role.
+    fn as_role(&self, agent: Option<&str>) -> String {
         match &self.role {
-            Some(role) => format!("{agent} {WOKE} as the {role}:"),
-            None => format!("{agent} {WOKE}:"),
+            Some(role) if !agent.is_some_and(|agent| role.eq_ignore_ascii_case(agent)) => {
+                format!(" as {role}")
+            }
+            _ => String::new(),
         }
     }
 
@@ -1001,13 +1018,15 @@ mod tests {
             woke.words(None),
             "CI found a new warning, unused import · build 612"
         );
-        assert_eq!(woke.heading("main-fix"), "main-fix woke as the fixer:");
+        assert_eq!(woke.heading("main-fix"), "main-fix woke as fixer:");
+        // Called by its role already, as a session that holds one is: said once.
+        assert_eq!(woke.heading("fixer"), "fixer woke:");
         let Event::Custom { text, .. } = woke.event() else {
             panic!("a wake's event");
         };
         assert_eq!(
             text,
-            "woke as the fixer: CI found a new warning, unused import · build 612"
+            "woke as fixer: CI found a new warning, unused import · build 612"
         );
         assert!(
             Woke::reported(&item, true)

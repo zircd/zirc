@@ -721,7 +721,7 @@ impl Chat {
 
 impl Chat {
     /// The card of `nick`'s agent session `session`, as opened from its row or its header:
-    /// titled by what it's called ([`Chat::agent_label`]) and its owner's, `Fix the coupon
+    /// titled by its title ([`Chat::agent_title`]) and its owner's, `Fix the coupon
     /// field · Henrik Sandberg`, its handle, machine and id under that, `checkout · mbp · cc-4e21`,
     /// what it's doing, `fix the coupon field · 4m`, a line for whose
     /// agent it is and its tool, `Henrik Sandberg's agent · Claude Code`, then what it's changing
@@ -737,7 +737,7 @@ impl Chat {
     ) -> Card {
         let profile = self.profile(nick);
         let mut card = profile.session_card(session, now, wall);
-        let label = self.agent_label(nick, session);
+        let label = self.agent_title(nick, session);
         if let Some((owner, machine)) = &profile.machine {
             let owner = self.shown_name(owner);
             card.title = format!("{label} · {owner}");

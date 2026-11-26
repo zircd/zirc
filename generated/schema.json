@@ -2257,7 +2257,7 @@
             "string",
             "null"
           ],
-          "description": "The role ([`crate::roles`]) the session was woken as, when it was: its line ends\nwith it, `main-fix woke as the fixer: master is broken`."
+          "description": "The role ([`crate::roles`]) the session was woken as, when it was: its line ends\nwith it, `main-fix woke as fixer: master is broken`."
         },
         "report": {
           "anyOf": [

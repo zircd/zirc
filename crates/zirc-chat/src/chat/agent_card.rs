@@ -29,7 +29,7 @@ pub const OPEN_SESSION: &str = "Open session";
 pub struct AgentCard {
     /// The session's id, `cc-4e21`, in mono and muted, for copying.
     pub session: String,
-    /// What it's called, leading, as its row and header say ([`super::Chat::agent_label`]):
+    /// What it's titled, leading ([`super::Chat::agent_title`]), even when it holds a role:
     /// its title as given or as its tool names it, `Fix the coupon field's layout shift on
     /// phones`, at most two lines, else its task; or its handle when it has neither
     /// ([`Self::titled`]).
@@ -85,7 +85,8 @@ impl super::Chat {
     pub fn agent_card(&self, nick: &str, session: &str, now: DateTime<Utc>) -> AgentCard {
         // Its title first, its handle under it, as its row and header (the user's choice, 25
         // Nov 2026).
-        let title = self.agent_label(nick, session);
+        // Its title even when it holds a role, which its row and header say instead.
+        let title = self.agent_title(nick, session);
         let handle = self.session_label(session);
         let titled = self.agent_handle(session, &title).is_some();
         let whose_parts = self.whose(nick);

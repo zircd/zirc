@@ -103,18 +103,33 @@ impl Chat {
     }
 
     /// What the agent session `session` on the machine `nick` is called on its row, header
-    /// and composer: its card's title (as given, else as its tool shows it, else its first
-    /// task), else the task it's on, else the name it goes by, else its id
-    /// ([`zirc_proto::session::agent_title`]); its handle goes under it
+    /// and composer: the role it holds, `oncall`, alone (the user's choice, 26 Nov 2026),
+    /// else its title ([`Chat::agent_title`]); its handle goes under it
     /// ([`Chat::agent_handle`]).
     #[must_use]
     pub fn agent_label(&self, nick: &str, session: &str) -> String {
         let task = self.claim(nick, session).map(|(task, _)| task);
-        self.agent_label_on(session, task.as_deref())
+        self.agent_label_on(nick, session, task.as_deref())
     }
 
     /// [`Chat::agent_label`], the task it's on known as `task`.
-    pub(super) fn agent_label_on(&self, session: &str, task: Option<&str>) -> String {
+    pub(super) fn agent_label_on(&self, nick: &str, session: &str, task: Option<&str>) -> String {
+        self.role_held(nick, session)
+            .unwrap_or_else(|| self.agent_title_on(session, task))
+    }
+
+    /// What the agent session `session` on the machine `nick` is titled on its card, which
+    /// says it even when it holds a role: its card's title (as given, else as its tool shows
+    /// it, else its first task), else the task it's on, else the name it goes by, else its
+    /// id ([`zirc_proto::session::agent_title`]).
+    #[must_use]
+    pub fn agent_title(&self, nick: &str, session: &str) -> String {
+        let task = self.claim(nick, session).map(|(task, _)| task);
+        self.agent_title_on(session, task.as_deref())
+    }
+
+    /// [`Chat::agent_title`], the task it's on known as `task`.
+    fn agent_title_on(&self, session: &str, task: Option<&str>) -> String {
         let card = self.session_titles.get(session);
         zirc_proto::session::agent_title(
             card.and_then(|(_, card)| card.title.as_deref()),

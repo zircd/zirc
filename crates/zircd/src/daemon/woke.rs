@@ -74,7 +74,20 @@ impl Daemon {
         else {
             return;
         };
-        self.publish_message(&scope, message);
+        // A role holder's own line about a build waits for its role's ([`super::woke_held`]).
+        let Some(woke) = self.hold_or_take_woke(session, &scope, woke) else {
+            return;
+        };
+        self.publish_woke(session, &scope, &woke);
+    }
+
+    /// Says, as `session`, the wake `woke` in `scope`, as [`Daemon::say_woke`] decided.
+    pub(super) fn publish_woke(&mut self, session: &str, scope: &str, woke: &Woke) {
+        let message = Message {
+            level: Some(zirc_proto::Level::Info),
+            ..self.signed(session, woke.event())
+        };
+        self.publish_message(scope, message);
     }
 
     /// What `response`, which woke `session` for `why`, was, as its wake's line says it.

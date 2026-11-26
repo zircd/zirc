@@ -508,7 +508,7 @@ impl Chat {
             .map_or_else(|| nick.to_owned(), |(owner, _)| owner);
         Agent {
             latest: self.last_said(&name).max(claimed),
-            label: self.agent_label_on(session, task.as_deref()),
+            label: self.agent_label_on(nick, session, task.as_deref()),
             avatar: super::Avatar::Agent {
                 tool: self.session_tools.get(session).cloned(),
                 picture: self.session_pictures.get(session).cloned(),
@@ -1030,6 +1030,18 @@ impl Chat {
                     .into_iter()
                     .filter(|name| self.position(name).is_none()),
             )
+            // A role's holder by the role's row, one row for the two (the user's choice, 26
+            // Nov 2026: [`super::role_row`]).
+            .map(|name| self.folds_into_role(&name).unwrap_or(name))
+            .collect::<Vec<String>>()
+            .into_iter()
+            .fold(Vec::<String>::new(), |mut names, name| {
+                if !names.iter().any(|known| known.eq_ignore_ascii_case(&name)) {
+                    names.push(name);
+                }
+                names
+            })
+            .into_iter()
             .map(|name| {
                 self.direct_row_heard(name, &|nick, session| {
                     heard.get(&(fold(nick), session.to_owned())).copied()
@@ -1074,8 +1086,22 @@ impl Chat {
         name: String,
         heard: &dyn Fn(&str, &str) -> Option<DateTime<Utc>>,
     ) -> DirectRow {
-        let (unread, mentions, latest) = self.counts(&name);
-        let (preview, when) = self.row_preview([name.as_str()]);
+        // A role's row counts and previews its holder's conversation too ([`super::role_row`]).
+        let names = self.row_names(&name);
+        let (unread, mentions, latest) = names.iter().map(|name| self.counts(name)).fold(
+            (0, 0, None),
+            |(unread, mentions, latest), (more, named, at)| {
+                (unread + more, mentions + named, latest.max(at))
+            },
+        );
+        let (mut preview, mut when) = self.row_preview(names.iter().map(String::as_str));
+        // Only wake lines: how many, never "No messages yet" over lines.
+        if preview.is_none()
+            && let (wakes @ 1.., newest) = self.wakes_shown(&name)
+        {
+            preview = Some(zirc_proto::woke::wakes(wakes));
+            when = newest.map(|at| super::ago_short(at, (self.clock)()));
+        }
         let person = |nick: &str| super::Avatar::Person {
             nick: nick.to_owned(),
         };

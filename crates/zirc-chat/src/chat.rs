@@ -78,6 +78,7 @@ mod profile;
 pub mod push;
 mod rich;
 mod role;
+mod role_row;
 mod roles;
 mod roster;
 mod row_menu;

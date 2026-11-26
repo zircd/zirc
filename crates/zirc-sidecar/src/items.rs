@@ -51,7 +51,7 @@ pub struct Wake {
 }
 
 impl Wake {
-    /// The wake its role's holder is woken with: `main-fix woke as the fixer: CI found a
+    /// The wake its role's holder is woken with: `main-fix woke as fixer: CI found a
     /// flaky test, //a:b · build 612`.
     #[must_use]
     pub fn woke(&self) -> zirc_proto::woke::Woke {

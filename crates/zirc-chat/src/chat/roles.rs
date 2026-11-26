@@ -143,6 +143,19 @@ impl Chat {
             .map(|(_, seat)| seat.clone())
     }
 
+    /// The role the agent session `session` on the machine `machine` holds, as the newest
+    /// line of each role heard says: `None` when it holds none.
+    #[must_use]
+    pub fn role_held(&self, machine: &str, session: &str) -> Option<String> {
+        self.role_seats
+            .values()
+            .filter_map(|(_, seat)| Some((seat, seat.holder.as_ref()?)))
+            .find(|(_, holder)| {
+                holder.session.session == session && holder.machine.eq_ignore_ascii_case(machine)
+            })
+            .map(|(seat, _)| seat.role.clone())
+    }
+
     /// The role `nick`'s standing, as its dot shows it: its holder's, here while its watch is
     /// open and away once it closes, as an agent's row says; away while nobody holds it (the
     /// user's choice, 26 Nov 2026: a vacant role was drawn here, as its nick always is).
@@ -451,6 +464,225 @@ mod tests {
     }
 
     #[test]
+    fn a_session_that_holds_a_role_is_called_by_it_and_its_card_keeps_its_title() {
+        let mut chat = with_fixer();
+        let titled = SessionCard {
+            title: Some("An organisation's server that couldn't be reached".into()),
+            ..holder().session
+        };
+        let now = chrono::Utc::now();
+        chat.session_titles
+            .insert("cc-1".into(), (now, titled.clone()));
+        assert_eq!(
+            chat.agent_label("henrik-mbp", "cc-1"),
+            "An organisation's server that couldn't be reached"
+        );
+        let took = SeatChange {
+            role: "fixer".into(),
+            repository: "monorepo".into(),
+            holder: Holder {
+                session: titled,
+                ..holder()
+            },
+            took: true,
+        };
+        from_fixer(&mut chat, "#api", "10:00:00", &took.event());
+        assert_eq!(
+            chat.role_held("henrik-mbp", "cc-1").as_deref(),
+            Some("fixer")
+        );
+        // Its row, header and composer say the role alone; its card, its title (the
+        // user's choice, 26 Nov 2026).
+        assert_eq!(chat.agent_label("HENRIK-MBP", "cc-1"), "fixer");
+        assert_eq!(chat.short_title("henrik-mbp/cc-1"), "fixer");
+        assert_eq!(
+            chat.agent_title("henrik-mbp", "cc-1"),
+            "An organisation's server that couldn't be reached"
+        );
+        assert_eq!(
+            chat.agent_card("henrik-mbp", "cc-1", now).title,
+            "An organisation's server that couldn't be reached"
+        );
+        // Another session on the machine holds nothing.
+        assert_eq!(chat.role_held("henrik-mbp", "cc-2"), None);
+        // Left, it's called by its title again.
+        let left = SeatChange {
+            took: false,
+            ..took
+        };
+        from_fixer(&mut chat, "#api", "10:05:00", &left.event());
+        assert_eq!(chat.role_held("henrik-mbp", "cc-1"), None);
+        assert_eq!(
+            chat.agent_label("henrik-mbp", "cc-1"),
+            "An organisation's server that couldn't be reached"
+        );
+    }
+
+    #[test]
+    fn a_role_holders_wakes_are_headed_by_the_role_said_once() {
+        use zirc_proto::woke::Woke;
+        let mut chat = with_fixer();
+        cc1_takes_the_fixer(&mut chat, "10:00:00");
+        // `fixer woke:`, as a wake as the fixer and a plain one alike (the user's choice, 26
+        // Nov 2026).
+        let plain = Woke::webhook("backup job nightly-db finished with warnings");
+        let as_fixer = Woke {
+            role: Some("fixer".into()),
+            ..plain.clone()
+        };
+        for woke in [as_fixer, plain] {
+            assert_eq!(
+                chat.woke_callout(&woke, "henrik-mbp", "cc-1", "fixer")
+                    .label,
+                "fixer woke:"
+            );
+        }
+    }
+
+    /// The fixer's seat taken by henrik's cc-1, said in `#api` at `time`.
+    fn cc1_takes_the_fixer(chat: &mut Chat, time: &str) {
+        let took = SeatChange {
+            role: "fixer".into(),
+            repository: "monorepo".into(),
+            holder: holder(),
+            took: true,
+        };
+        from_fixer(chat, "#api", time, &took.event());
+    }
+
+    /// `event` from henrik's cc-1, said to us at `time`, or in `#api` as its zircd says a wake.
+    fn from_cc1(chat: &mut Chat, to: &str, time: &str, event: zirc_proto::Event) {
+        let host = zirc_proto::names::machine_host("henrik");
+        let message = Message {
+            name: Some("main-fix".into()),
+            ..Message::new("cc-1", event)
+        };
+        let body = if to == "me" {
+            zirc_proto::encode(&message).unwrap()
+        } else {
+            "x".to_owned()
+        };
+        feed(
+            chat,
+            &[&at(
+                time,
+                Some(&format!("h{time}")),
+                &format!(":henrik-mbp!u@{host} PRIVMSG {to} :{body}"),
+            )],
+        );
+        // In a room by hand, as a wake's event is longer than a fed line.
+        if to != "me" {
+            let at = chat.position(to).unwrap();
+            let id = format!("h{time}");
+            let entry = chat.conversations[at]
+                .entries
+                .iter_mut()
+                .find(|entry| entry.id.as_deref() == Some(id.as_str()))
+                .unwrap();
+            entry.kind = EntryKind::Zirc(message);
+        }
+    }
+
+    #[test]
+    fn a_role_and_the_session_holding_it_are_one_row_in_messages() {
+        let mut chat = with_fixer();
+        from_cc1(
+            &mut chat,
+            "me",
+            "08:00:00",
+            zirc_proto::Event::Text {
+                body: "on the flaky test".into(),
+            },
+        );
+        let names = |chat: &Chat| -> Vec<String> {
+            chat.direct_rows().into_iter().map(|row| row.name).collect()
+        };
+        assert!(
+            names(&chat).contains(&"henrik-mbp/cc-1".to_owned()),
+            "{:?}",
+            names(&chat)
+        );
+        // Once it holds the fixer, its row is the fixer's (the user's choice, 26 Nov 2026).
+        cc1_takes_the_fixer(&mut chat, "09:00:00");
+        assert_eq!(
+            chat.folds_into_role("henrik-mbp/cc-1").as_deref(),
+            Some("fixer")
+        );
+        let rows = names(&chat);
+        assert_eq!(
+            rows.iter()
+                .filter(|name| name.contains("fixer") || name.contains("cc-1"))
+                .collect::<Vec<_>>(),
+            ["fixer"],
+            "{rows:?}"
+        );
+        // Its row previews what the holder said to us, and opening it shows it.
+        let row = chat.direct_row("fixer".into());
+        assert!(
+            row.preview
+                .as_deref()
+                .is_some_and(|said| said.contains("on the flaky test")),
+            "{row:?}"
+        );
+        assert!(
+            chat.lines("fixer", utc(), false)
+                .iter()
+                .any(|line| line.text.contains("on the flaky test"))
+        );
+        // Left, the session has its own row again.
+        let left = SeatChange {
+            role: "fixer".into(),
+            repository: "monorepo".into(),
+            holder: holder(),
+            took: false,
+        };
+        from_fixer(&mut chat, "#api", "10:00:00", &left.event());
+        assert!(names(&chat).contains(&"henrik-mbp/cc-1".to_owned()));
+    }
+
+    #[test]
+    fn a_rows_preview_skips_wakes_and_counts_them_when_theyre_all_there_is() {
+        use zirc_proto::woke::Woke;
+        let mut chat = with_fixer();
+        let host = zirc_proto::names::machine_host("henrik");
+        feed(&mut chat, &[&format!(":henrik-mbp!u@{host} JOIN #api")]);
+        cc1_takes_the_fixer(&mut chat, "08:00:00");
+        // Two wakes, one as the fixer and one of the holder's own, and nothing said.
+        let as_fixer = Woke {
+            role: Some("fixer".into()),
+            ..Woke::webhook("backup job nightly-db finished with warnings")
+        };
+        let plain = Woke::new(
+            zirc_proto::woke::What::Mentioned,
+            zirc_proto::woke::By::Agent,
+        );
+        from_cc1(&mut chat, "#api", "09:00:00", as_fixer.event());
+        from_cc1(&mut chat, "#api", "09:01:00", plain.event());
+        assert_eq!(chat.wakes_shown("fixer").0, 2);
+        let lines = chat.lines("fixer", utc(), false);
+        let wakes = lines
+            .iter()
+            .filter(|line| line.shape == RowShape::Woke)
+            .count();
+        assert_eq!(wakes, 2);
+        // Never "No messages yet" over lines: how many wakes, as the core words it.
+        let row = chat.direct_row("fixer".into());
+        assert_eq!(row.preview.as_deref(), Some("2 wakes"));
+        assert_eq!(zirc_proto::woke::wakes(1), "1 wake");
+        // Something said is what it previews, the wakes after it skipped.
+        from_fixer(
+            &mut chat,
+            "me",
+            "08:30:00",
+            &zirc_proto::Event::Text {
+                body: "on it".into(),
+            },
+        );
+        let row = chat.direct_row("fixer".into());
+        assert_eq!(row.preview.as_deref(), Some("on it"));
+    }
+
+    #[test]
     fn a_vacant_role_answers_with_its_card_and_the_command_to_copy() {
         let mut chat = with_fixer();
         let vacant = Vacant {
@@ -574,7 +806,7 @@ mod tests {
         assert_eq!(wakes.len(), 1);
         assert_eq!(
             wakes[0].text,
-            "henrik's cc-1 woke as the fixer: A webhook from an unknown tool, as it was sent: “backup job nightly-db finished with warnings”"
+            "henrik's cc-1 woke as fixer: A webhook from an unknown tool, as it was sent: “backup job nightly-db finished with warnings”"
         );
         // Below what was said before it, and nothing unread for it.
         assert!(
@@ -656,11 +888,9 @@ mod tests {
         let [said] = &said[..] else {
             panic!("one wake: {said:#?}");
         };
-        assert!(said.starts_with("henrik's "), "{said}");
-        assert!(
-            said.ends_with(" woke as the fixer: you wrote to it"),
-            "{said}"
-        );
+        // Its holder is called by the role it holds, which isn't said twice (the user's
+        // choices, 26 Nov 2026).
+        assert_eq!(said, "fixer woke: you wrote to it");
         assert_eq!(chat.conversation("fixer").unwrap().unread, 0);
     }
 

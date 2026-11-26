@@ -68,6 +68,7 @@ mod unowned;
 mod wakes;
 mod warn_once;
 mod woke;
+mod woke_held;
 mod worktree_updates;
 
 pub use worktree_updates::UPDATE_EVERY;
@@ -637,6 +638,8 @@ pub struct Daemon {
     auto_intents: auto_intents::AutoIntents,
     /// How sessions' watches woke, and whether they acted on it.
     wakes: wakes::Wakes,
+    /// Wake lines of role holders waiting for their role's own line ([`woke_held`]).
+    woke_held: woke_held::Held,
     /// The overlaps sessions settled lately ([`settled`]).
     settled_lately: settled::SettledLately,
     /// The sessions the recorder was told have started watching, since zircd started
@@ -815,6 +818,7 @@ impl Daemon {
             requests: requests::Requests::default(),
             auto_intents: auto_intents::AutoIntents::default(),
             wakes: wakes::Wakes::default(),
+            woke_held: woke_held::Held::default(),
             settled_lately: settled::SettledLately::default(),
             watching_told: BTreeSet::new(),
             broadcasts: broadcast::Broadcasts::default(),

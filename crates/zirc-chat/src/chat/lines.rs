@@ -781,7 +781,13 @@ impl Chat {
     /// Empty for a conversation there isn't.
     #[must_use]
     pub fn lines(&self, name: &str, offset: FixedOffset, people_only: bool) -> Vec<Line> {
-        let Some(conversation) = self.conversation(name) else {
+        // A role's row is there before anything's said with it, its holder's folded in
+        // ([`super::role_row`]): its lines are too.
+        let unsaid = Conversation::new(name, super::Kind::Query);
+        let Some(conversation) = self
+            .conversation(name)
+            .or_else(|| self.is_role(name).then_some(&unsaid))
+        else {
             return Vec::new();
         };
         let with_wakes;
@@ -798,29 +804,32 @@ impl Chat {
 
     /// Our conversation with a role, with the role's wakes said in the rooms in among what we
     /// and it said, in time order (the user's choice, 25 Nov 2026, as mock `PhoneOnCall`):
-    /// what a tool or a trigger woke it for, which its holder's machine said. They stay the
-    /// room's, so they count nothing unread here and push nothing.
+    /// what a tool or a trigger woke it for, which its holder's machine said, and what we
+    /// and its holder said to each other, whose row folds into the role's (the user's
+    /// choice, 26 Nov 2026; [`Chat::role_wakes`]). The wakes stay the room's, so they count
+    /// nothing unread here and push nothing.
     fn with_role_wakes(&self, conversation: &Conversation) -> Conversation {
-        let role = fold(&conversation.name);
-        let wakes = self
-            .conversations
-            .iter()
-            .filter(|room| room.kind == super::Kind::Channel)
-            .flat_map(|room| room.entries.iter().map(move |entry| (room, entry)))
-            // A wake a room's message caused is that room's alone.
-            .filter(|(room, entry)| {
-                woke_of(entry)
-                    .filter(|woke| !woke.in_its_chat(&room.name))
-                    .and_then(|woke| woke.role)
-                    .is_some_and(|of| fold(&of) == role)
-            })
-            .map(|(_, entry)| entry);
         let mut merged = conversation.clone();
-        merged.entries.extend(wakes.cloned());
         merged
             .entries
-            .dedup_by(|a, b| a.id.is_some() && a.id == b.id);
+            .extend(self.role_wakes(&conversation.name).into_iter().cloned());
+        if let Some(holder) = self
+            .holder_conversation(&conversation.name)
+            .and_then(|name| self.conversation(&name))
+        {
+            merged.entries.extend(holder.entries.iter().cloned());
+        }
         merged.entries.sort_by_key(|entry| entry.time);
+        // Each once, a line by its id and a wake by its own, however many ways it came: a
+        // wake relayed to us by the role as well as said in a room.
+        let mut seen = std::collections::HashSet::new();
+        merged.entries.retain(|entry| {
+            let key = woke_of(entry)
+                .and_then(|woke| woke.wake)
+                .map(|wake| format!("wake {wake}"))
+                .or_else(|| entry.id.clone());
+            key.is_none_or(|key| seen.insert(key))
+        });
         merged
     }
 

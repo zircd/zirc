@@ -153,7 +153,7 @@ fn a_trigger_wakes_the_holder_and_its_words_say_the_role() {
     let (wake, text) = wake_of(&outs[0]);
     assert_eq!(text, "master is broken");
     assert_eq!(wake.woke.words(None), "master is broken");
-    assert_eq!(wake.woke.heading("main-fix"), "main-fix woke as the fixer:");
+    assert_eq!(wake.woke.heading("main-fix"), "main-fix woke as fixer:");
 }
 
 #[test]

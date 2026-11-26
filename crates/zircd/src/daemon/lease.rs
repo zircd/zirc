@@ -775,6 +775,7 @@ impl Daemon {
         }
         self.release_idle(&mine, now).await;
         self.roles_tick();
+        self.say_held_wokes();
         // Read again: a request held for room may have been asked for since `mine` was.
         let mine = self.leases.leases.mine(&me, now_ms());
         self.leases.forget_ended(&mine);

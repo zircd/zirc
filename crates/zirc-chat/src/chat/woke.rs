@@ -232,8 +232,13 @@ impl Chat {
     /// conversation called `here`: who woke, and why, in bold ([`Woke::heading`]), then what.
     #[must_use]
     pub fn woke_callout(&self, woke: &Woke, nick: &str, session: &str, here: &str) -> Callout {
+        // A session that holds a role is called by it, as its row and header say, so the
+        // heading doesn't say it twice: `oncall woke:` (the user's choice, 26 Nov 2026).
+        let agent = self
+            .role_held(nick, session)
+            .unwrap_or_else(|| self.side_name(nick, Some(session)));
         Callout {
-            label: woke.heading(&self.side_name(nick, Some(session))),
+            label: woke.heading(&agent),
             spans: vec![text(self.woke_words(woke, here))],
             tone: woke.tone().role().to_owned(),
             button: None,
@@ -579,7 +584,7 @@ mod tests {
         };
         assert_eq!(
             ours(&as_fixer).said(),
-            "checkout woke as the fixer: build 612 failed"
+            "checkout woke as fixer: build 612 failed"
         );
         let asked = Woke {
             from: Some("me-mbp".into()),

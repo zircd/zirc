@@ -29,7 +29,7 @@ use zirc_proto::telemetry::OverlapKind;
 use super::{Daemon, now, read_saved};
 
 /// Lines within this many seconds of a session's last wake are part of it.
-const TOGETHER: u64 = 5;
+pub(super) const TOGETHER: u64 = 5;
 
 /// How many days of counts are kept.
 const DAYS: usize = 60;
