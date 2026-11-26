@@ -242,6 +242,11 @@ impl Chat {
     /// someone shows, their name or picture, `value` none when it's gone.
     pub(super) fn metadata(&mut self, params: &[String]) -> Vec<zirc_line::Line> {
         if let [target, key, _visibility, rest @ ..] = params
+            && key == zirc_proto::roles::LOOK_KEY
+        {
+            self.role_look_said(target, rest.first().map(String::as_str));
+        }
+        if let [target, key, _visibility, rest @ ..] = params
             && (key == NAME_KEY || key == AVATAR_KEY)
         {
             let value = rest.first().filter(|value| !value.is_empty()).cloned();

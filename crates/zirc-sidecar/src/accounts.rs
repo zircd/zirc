@@ -585,6 +585,7 @@ fn spawn_roles(ergo: &Arc<Ergo>) {
                         Ok(answers) => debug!(nick, ?answers, "couldn't set a role's host yet"),
                         Err(failure) => warn!(%failure, nick, "couldn't set a role's host"),
                     }
+                    tokio::spawn(role_look_on_connect(ergo.clone(), nick));
                     true
                 }
             },
@@ -619,9 +620,56 @@ async fn set_roles(
         }
     }
     match ergo.roles.set_listing(listing) {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            // Apps hear a picture or colour picked as it's picked; a new role's nick isn't
+            // on yet, and is given its own as it connects (`spawn_roles`).
+            tokio::spawn(async move { say_role_looks(&ergo, None).await });
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(why) => error(StatusCode::BAD_REQUEST, "invalid", &why),
     }
+}
+
+/// Says what each role's admins picked of how it looks ([`zirc_proto::roles::Look`]) on its
+/// nick, as METADATA [`zirc_proto::roles::LOOK_KEY`], which apps follow as they do people's
+/// names and pictures ([`profiles`]); nothing picked deletes the key. `only` is the one role
+/// to say it of, else every role. A role whose nick isn't on is passed over: Ergo keeps
+/// METADATA only while an account has a client, so it's said again as the nick connects, and
+/// every [`profiles::EVERY`].
+async fn say_role_looks(ergo: &Ergo, only: Option<&str>) {
+    let looks: Vec<(String, Option<String>)> = ergo
+        .roles
+        .standing()
+        .listing
+        .roles
+        .iter()
+        .filter(|role| only.is_none_or(|only| role.name.eq_ignore_ascii_case(only)))
+        .map(|role| (role.name.to_lowercase(), role.look().said()))
+        .collect();
+    let keys: Vec<(String, crate::ergo::Metadata<'_>)> = looks
+        .iter()
+        .map(|(role, said)| {
+            (
+                role.clone(),
+                vec![(zirc_proto::roles::LOOK_KEY, said.as_deref())],
+            )
+        })
+        .collect();
+    if let Err(failure) = ergo.operator.set_metadata(&keys).await {
+        warn!(%failure, "couldn't say the roles' looks");
+    }
+}
+
+/// Role `nick`'s nick is connecting: once it's on, or the looks for it run out
+/// ([`profiles::ON_LOGIN`]), says its look ([`say_role_looks`]).
+async fn role_look_on_connect(ergo: Arc<Ergo>, nick: String) {
+    for _ in 0..profiles::ON_LOGIN.as_secs() {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        if whois(&ergo.api, &nick).await.is_some() {
+            break;
+        }
+    }
+    say_role_looks(&ergo, Some(&nick)).await;
 }
 
 /// `GET /v1/roles`: how the organisation's roles stand, each seat as zirc.dev's Roles tab
@@ -653,9 +701,15 @@ async fn roles_shown(State(ergo): State<Arc<Ergo>>) -> Response {
                     .or(seat.holder.as_ref().map(|holder| holder.machine.as_str()))
                     .unwrap_or_default(),
             );
+            let picked = standing
+                .listing
+                .role(&seat.role)
+                .map(zirc_proto::roles::Definition::look)
+                .unwrap_or_default();
+            let (picture, hue) = zirc_chat::chat::role_look(&seat.role, &picked);
             zirc_proto::roles::SeatShown {
-                picture: zirc_proto::agent_picture(Some(&seat.role), Some(&seat.role)).to_owned(),
-                hue: zirc_chat::chat::nick_degrees(&seat.role),
+                picture,
+                hue,
                 holder_machine,
                 last_machine: seat.last.as_ref().and_then(&machine),
                 day: seat.day(),
@@ -2352,6 +2406,7 @@ async fn look_for_profiles(ergo: &Ergo) {
         }
     }
     set_profiles(ergo, &due).await;
+    say_role_looks(ergo, None).await;
     host_machines(ergo).await;
 }
 

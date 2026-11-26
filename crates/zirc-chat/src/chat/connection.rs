@@ -74,7 +74,13 @@ impl Chat {
         if metadata {
             lines.push(Line::new(
                 "METADATA",
-                ["*", "SUB", names::NAME_KEY, names::AVATAR_KEY],
+                [
+                    "*",
+                    "SUB",
+                    names::NAME_KEY,
+                    names::AVATAR_KEY,
+                    zirc_proto::roles::LOOK_KEY,
+                ],
             ));
         }
         // The server forgets a connection's away with it: this app is away again.

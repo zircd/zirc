@@ -8,7 +8,7 @@
 
 use serde::Serialize;
 use ts_rs::TS;
-use zirc_proto::roles::{self, Holder, Seat, SeatChange, Vacant};
+use zirc_proto::roles::{self, Holder, Look, Seat, SeatChange, Vacant};
 
 use chrono::{DateTime, Utc};
 
@@ -43,6 +43,18 @@ impl RoleMember {
     pub fn said(&self) -> String {
         format!("{} · {}", self.label, self.line)
     }
+}
+
+/// The picture and the colour, a hue in degrees, the role named `role` is drawn with
+/// everywhere, in every app as on zirc.dev's Roles tab: what its admins `picked`, else the
+/// gem its name tells ([`zirc_proto::agent_picture`]) and its name's colour
+/// ([`nick_degrees`]).
+#[must_use]
+pub fn role_look(role: &str, picked: &Look) -> (String, u16) {
+    (
+        picked.picture_of(role).to_owned(),
+        picked.hue.unwrap_or_else(|| nick_degrees(role)),
+    )
 }
 
 /// What `event` says of a role's seat, when it's one of a role's own lines.
@@ -221,23 +233,38 @@ impl Chat {
         members
     }
 
-    /// The role `nick`'s face: its bot ([`zirc_proto::agent_picture`]) on its colour, its
-    /// holder's tool's. A role is nobody's, held or vacant, so it has no owner and every app
-    /// draws no owner's face on it (the user's choice, 26 Nov 2026: a vacant role's was a
-    /// blank disc).
+    /// Takes in what the server says role `nick`'s admins picked of how it looks, under
+    /// [`zirc_proto::roles::LOOK_KEY`]: nothing, when it says none.
+    pub(super) fn role_look_said(&mut self, nick: &str, said: Option<&str>) {
+        match said.filter(|said| !said.is_empty()) {
+            Some(said) => self.role_looks.insert(fold(nick), Look::of(said)),
+            None => self.role_looks.remove(&fold(nick)),
+        };
+    }
+
+    /// The role `nick`'s face: its gem and its colour, as its admins picked them or as its
+    /// name tells ([`role_look`]), and its holder's tool's. A role is nobody's, held or
+    /// vacant, so it has no owner and every app draws no owner's face on it (the user's
+    /// choice, 26 Nov 2026: a vacant role's was a blank disc).
     #[must_use]
     pub fn role_face(&self, nick: &str) -> Face {
+        let picked = self
+            .role_looks
+            .get(&fold(nick))
+            .cloned()
+            .unwrap_or_default();
+        let (picture, hue) = role_look(&fold(nick), &picked);
         let holder = self.role_seat(nick).and_then(|seat| seat.holder);
         Face::Agent {
             tool: holder.and_then(|holder| holder.session.tool),
-            hue: nick_degrees(nick),
+            hue,
             owner: String::new(),
             owner_initials: String::new(),
             owner_hue: 0,
             owner_photo: None,
             session: None,
-            picture: Some(zirc_proto::agent_picture(Some(&fold(nick)), Some(nick)).to_owned()),
-            ground: Some(nick_degrees(nick)),
+            picture: Some(picture),
+            ground: Some(hue),
         }
     }
 
@@ -391,6 +418,36 @@ mod tests {
             chat.standing("fixer").presence(),
             super::super::Presence::Here
         );
+    }
+
+    #[test]
+    fn a_roles_face_is_what_its_admins_picked_once_the_server_says_it() {
+        let mut chat = with_fixer();
+        let said = |chat: &mut Chat, value: &[&str]| {
+            let mut params = vec!["fixer", roles::LOOK_KEY, "*"];
+            params.extend(value);
+            let params: Vec<String> = params.into_iter().map(str::to_owned).collect();
+            chat.metadata(&params);
+        };
+        let look = |chat: &Chat| match chat.role_face("Fixer") {
+            Face::Agent {
+                picture: Some(picture),
+                hue,
+                ground,
+                ..
+            } => (picture, hue, ground),
+            other => panic!("{other:?}"),
+        };
+        let named = nick_degrees("fixer");
+        assert_eq!(look(&chat), ("fixer".to_owned(), named, Some(named)));
+        // A colour alone keeps its name's gem; a picture this reader can't draw, too.
+        said(&mut chat, &[r#"{"picture":"hologram","hue":210}"#]);
+        assert_eq!(look(&chat), ("fixer".to_owned(), 210, Some(210)));
+        said(&mut chat, &[r#"{"picture":"designer","hue":30}"#]);
+        assert_eq!(look(&chat), ("designer".to_owned(), 30, Some(30)));
+        // The key deleted: nothing's picked any more.
+        said(&mut chat, &[]);
+        assert_eq!(look(&chat), ("fixer".to_owned(), named, Some(named)));
     }
 
     #[test]

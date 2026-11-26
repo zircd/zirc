@@ -200,7 +200,7 @@ pub use rich::{
     breakable_words, chip_words, each_span, link_label, map_spans, media_link, rich, tables_in,
     unchipped,
 };
-pub use roles::{ROLES_SECTION, RoleMember, vacant_of};
+pub use roles::{ROLES_SECTION, RoleMember, role_look, vacant_of};
 pub use row_menu::{LevelChoice, MuteChoice, RowMenu};
 pub use run::{Here, Ran};
 pub use scroll::{SCROLL_RULES, ScrollRules, Splice, splices};
@@ -614,6 +614,9 @@ pub struct Chat {
     /// Folded nick → how that role stands, as the newest of its own lines heard says, and
     /// when it said it: see [`Chat::role_seat`].
     role_seats: HashMap<String, (DateTime<Utc>, zirc_proto::roles::Seat)>,
+    /// Folded nick → what that role's admins picked of how it looks, as its server says
+    /// (METADATA [`zirc_proto::roles::LOOK_KEY`]): see [`Chat::role_face`].
+    role_looks: HashMap<String, zirc_proto::roles::Look>,
     /// Folded nick → the account they're logged in to, `None` for none, as extended-join,
     /// WHOX and messages' account tags say.
     accounts: HashMap<String, Option<String>>,
@@ -765,6 +768,7 @@ impl Chat {
             machines: HashMap::new(),
             roles: std::collections::BTreeSet::new(),
             role_seats: HashMap::new(),
+            role_looks: HashMap::new(),
             accounts: HashMap::new(),
             names: names::Names::new(),
             asked_profiles: std::collections::HashSet::new(),

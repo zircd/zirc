@@ -116,6 +116,79 @@ pub struct Definition {
     #[ts(as = "Vec<crate::role_report::Subject>")]
     #[schemars(with = "Vec<crate::role_report::Subject>")]
     pub reports: Vec<crate::role_report::Subject>,
+    /// The picture its admins picked for it, one of [`crate::AGENT_AVATARS`]; without one,
+    /// the one its name tells ([`Definition::picture`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub picture: Option<String>,
+    /// The colour its admins picked for it, a hue in degrees under 360, one of [`HUES`] as
+    /// zirc.dev offers them; without one, its name's, as every nick's is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hue: Option<u16>,
+}
+
+/// The colours a role's admins pick from, each a hue in degrees with what a screen reader
+/// calls it, in the order zirc.dev's picker offers them.
+pub const HUES: [(u16, &str); 12] = [
+    (0, "red"),
+    (30, "orange"),
+    (60, "yellow"),
+    (90, "lime"),
+    (120, "green"),
+    (150, "mint"),
+    (180, "teal"),
+    (210, "azure"),
+    (240, "blue"),
+    (270, "violet"),
+    (300, "magenta"),
+    (330, "rose"),
+];
+
+/// The METADATA key a role's server says its [`Look`] under, on the role's nick, for apps
+/// to draw it as its admins picked: deleted while they've picked nothing.
+pub const LOOK_KEY: &str = "zirc.dev/role-look";
+
+/// What a role's admins picked of how it looks: what its server says under [`LOOK_KEY`],
+/// as JSON.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Look {
+    /// Its picture, if one's picked ([`Definition::picture`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picture: Option<String>,
+    /// Its colour, if one's picked ([`Definition::hue`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hue: Option<u16>,
+}
+
+impl Look {
+    /// It as its server says it, or `None` when nothing's picked, which deletes the key.
+    #[must_use]
+    pub fn said(&self) -> Option<String> {
+        (self != &Self::default()).then(|| serde_json::to_string(self).unwrap_or_default())
+    }
+
+    /// What `said` under [`LOOK_KEY`] picks: nothing where it doesn't read, or picks what
+    /// this reader can't draw.
+    #[must_use]
+    pub fn of(said: &str) -> Self {
+        let look: Self = serde_json::from_str(said).unwrap_or_default();
+        Self {
+            picture: look
+                .picture
+                .filter(|picture| crate::AGENT_AVATARS.iter().any(|(id, _)| id == picture)),
+            hue: look.hue.filter(|hue| *hue < 360),
+        }
+    }
+
+    /// The picture a role named `role` is drawn with: the one picked, else the one its name
+    /// tells ([`crate::agent_picture`]).
+    #[must_use]
+    pub fn picture_of(&self, role: &str) -> &str {
+        self.picture
+            .as_deref()
+            .unwrap_or_else(|| crate::agent_picture(Some(role), Some(role)))
+    }
 }
 
 fn one_seat() -> u8 {
@@ -365,7 +438,24 @@ impl Definition {
         for trigger in &self.triggers {
             trigger.check()?;
         }
+        if let Some(picture) = &self.picture
+            && !crate::AGENT_AVATARS.iter().any(|(id, _)| id == picture)
+        {
+            return Err(format!("{picture} isn't a picture a role can have"));
+        }
+        if self.hue.is_some_and(|hue| hue >= 360) {
+            return Err("a role's colour is a hue under 360 degrees".to_owned());
+        }
         Ok(())
+    }
+
+    /// What its admins picked of how it looks.
+    #[must_use]
+    pub fn look(&self) -> Look {
+        Look {
+            picture: self.picture.clone(),
+            hue: self.hue,
+        }
     }
 
     /// What wakes it, as people read it after "Wakes on": its triggers', then a direct
@@ -793,6 +883,11 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
             SeatShown::decl(config),
             StandingShown::decl(config),
             format!("const ROLE_SEATS = {SEATS};"),
+            format!(
+                "const ROLE_HUES: readonly {{ hue: number; name: string }}[] = [{}];",
+                HUES.map(|(hue, name)| format!("{{ hue: {hue}, name: {name:?} }}"))
+                    .join(", ")
+            ),
             format!("const ROLE_MAX_BRIEF = {MAX_BRIEF};"),
             format!("const TAKE_COMMAND = {TAKE_COMMAND:?};"),
             format!("const TELL_AN_AGENT = {TELL_AN_AGENT:?};"),
@@ -836,6 +931,36 @@ mod tests {
         assert!(TAKE_COMMAND.starts_with(&format!("{} ", crate::PROGRAM)));
         assert_eq!(take_command("fixer"), "zirc role take fixer");
         assert_eq!(tell_an_agent("fixer"), "Take the fixer role.");
+    }
+
+    #[test]
+    fn a_role_has_the_picture_and_colour_picked_or_its_names() {
+        let mut role = fixer();
+        assert_eq!(role.look().said(), None);
+        assert_eq!(role.look().picture_of("fixer"), "fixer");
+        assert!(!serde_json::to_string(&role).unwrap().contains("picture"));
+        role.picture = Some("designer".into());
+        role.hue = Some(210);
+        role.check().unwrap();
+        let said = role.look().said().unwrap();
+        assert_eq!(said, r#"{"picture":"designer","hue":210}"#);
+        assert_eq!(Look::of(&said), role.look());
+        assert_eq!(role.look().picture_of("fixer"), "designer");
+        // What a newer server may say and this reader can't draw is nothing picked.
+        assert_eq!(
+            Look::of(r#"{"picture":"hologram","hue":400}"#),
+            Look::default()
+        );
+        role.picture = Some("hologram".into());
+        assert!(role.check().unwrap_err().contains("hologram"));
+        // Every colour offered is one a role can have.
+        role.picture = None;
+        for (hue, _) in HUES {
+            role.hue = Some(hue);
+            role.check().unwrap();
+        }
+        role.hue = Some(360);
+        assert!(role.check().is_err());
     }
 
     fn fixer() -> Definition {

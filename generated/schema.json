@@ -3080,6 +3080,23 @@
             "$ref": "#/$defs/Subject"
           },
           "description": "The kinds of report it takes ([`crate::role_report::Subject`]), as its admins chose\nthem on zirc.dev's Roles tab. A kind this reader doesn't know is left out\n([`crate::lenient`]), as it couldn't take one."
+        },
+        "picture": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The picture its admins picked for it, one of [`crate::AGENT_AVATARS`]; without one,\nthe one its name tells ([`Definition::picture`])."
+        },
+        "hue": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "The colour its admins picked for it, a hue in degrees under 360, one of [`HUES`] as\nzirc.dev offers them; without one, its name's, as every nick's is."
         }
       },
       "required": [
