@@ -814,6 +814,9 @@ pub struct Avatar {
     pub saturation: f32,
     /// From 0 to 1.
     pub lightness: f32,
+    /// The corner of an avatar that isn't a person's, an agent's or an app's rounded square,
+    /// as a share of its side: only people are round (the user's choice, 26 Nov 2026).
+    pub corner: f32,
 }
 
 impl Avatar {
@@ -1436,7 +1439,8 @@ pub fn css() -> String {
         "\n:root {{\n  color-scheme: light dark;\n  \
          --zirc-font: \"{}\", {};\n  --zirc-font-mono: var(--zirc-font);\n  \
          --zirc-font-ui: {}, {};\n  --zirc-label-tracking: {}em;\n  --zirc-radius: {}px;\n  \
-         --zirc-avatar-saturation: {}%;\n  --zirc-avatar-lightness: {}%;\n{}{}}}\n",
+         --zirc-avatar-saturation: {}%;\n  --zirc-avatar-lightness: {}%;\n  \
+         --zirc-avatar-corner: {}%;\n{}{}}}\n",
         ty.family,
         ty.fallback,
         ty.ui,
@@ -1445,6 +1449,7 @@ pub fn css() -> String {
         ty.radius_px,
         (avatar.saturation * 100.).round(),
         (avatar.lightness * 100.).round(),
+        (avatar.corner * 100.).round(),
         scales(design),
         roles(Theme::light(), "  "),
     );
@@ -1780,6 +1785,7 @@ mod tests {
         let Avatar {
             saturation,
             lightness,
+            ..
         } = *Avatar::get();
         let white = Rgb {
             r: 255,
