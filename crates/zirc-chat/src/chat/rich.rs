@@ -834,6 +834,32 @@ pub fn addressed(text: &str) -> Option<(&str, &str)> {
     Some((session, rest.trim_start_matches([':', ',']).trim_start()))
 }
 
+/// What follows a hyphen inside a word in [`breakable_words`]: a zero-width space, where a
+/// line may break, and which nothing shows.
+const BREAK_AFTER_HYPHEN: char = '\u{200B}';
+
+/// `text` with a place to break a line after each hyphen inside a word, for an app whose
+/// text layout doesn't break there itself: Android's, which broke
+/// `very-long-hyphenated-identifier` mid-word (`…withou` / `t-spaces`), where the iPhone and
+/// the web break after a hyphen (the user's choice, 26 Nov 2026). For drawing only: copying
+/// takes the message's own words.
+#[must_use]
+pub fn breakable_words(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    let mut before: Option<char> = None;
+    while let Some(c) = chars.next() {
+        out.push(c);
+        let inside = before.is_some_and(char::is_alphanumeric)
+            && chars.peek().copied().is_some_and(char::is_alphanumeric);
+        if c == '-' && inside {
+            out.push(BREAK_AFTER_HYPHEN);
+        }
+        before = Some(c);
+    }
+    out
+}
+
 /// File extensions that are also top-level domains, which a bare word ending in them links
 /// only with a path after it: `main.rs` and `README.md` are files, `docs.rs/serde` a site.
 const FILE_EXTENSIONS: &[&str] = &[
@@ -1325,6 +1351,15 @@ mod tests {
         assert_eq!(link_of("`zirc.dev`"), None);
         let fenced = rich("```\nzirc.dev\n```");
         assert!(matches!(fenced[0], Block::Code { .. }), "{fenced:?}");
+    }
+
+    #[test]
+    fn breaks_after_a_hyphen_inside_a_word_only() {
+        assert_eq!(
+            breakable_words("a very-long-word - and -x y-"),
+            "a very-\u{200B}long-\u{200B}word - and -x y-"
+        );
+        assert_eq!(breakable_words("no hyphens"), "no hyphens");
     }
 
     #[test]
