@@ -420,14 +420,28 @@ async fn a_cold_start_catches_up_within_its_round_trips() {
         pour(&ergo, channel, count, &format!("the last of {channel}")).await;
     }
     let far = Latency::phone(ergo.port()).await;
-    let mut config = config(&ergo, "tui");
-    config.port = far.port();
+    // The same cold start on loopback, then over the phone's network: the first is the
+    // machine's own work, which the budget leaves out.
+    let near = cold_start(&ergo, ergo.port(), "tui-near", &channels).await;
+    let took = cold_start(&ergo, far.port(), "tui", &channels).await;
+    far.keeps_cold_start(
+        &format!("the TUI's cold start, {} channels", channels.len()),
+        took,
+        near,
+    );
+}
+
+/// How long the TUI, as `nick`, takes from starting to every one of `channels` caught up to
+/// its last message, connecting to `ergo` through `port`.
+async fn cold_start(ergo: &Ergo, port: u16, nick: &str, channels: &[String]) -> Duration {
+    let mut config = config(ergo, nick);
+    config.port = port;
     config
         .caps
         .extend(zirc_tui::cli::EXTRA_CAPS.iter().map(|&cap| cap.to_owned()));
 
     let started = Instant::now();
-    let app = App::new("tui", "127.0.0.1", channels.clone());
+    let app = App::new(nick, "127.0.0.1", channels.to_vec());
     let mut session = Session::connect(app, config).await.unwrap();
     let caught_up = |app: &App| {
         channels.iter().all(|channel| {
@@ -446,8 +460,5 @@ async fn a_cold_start_catches_up_within_its_round_trips() {
         caught_up,
     )
     .await;
-    far.keeps_cold_start(
-        &format!("the TUI's cold start, {} channels", channels.len()),
-        started.elapsed(),
-    );
+    started.elapsed()
 }

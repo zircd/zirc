@@ -154,7 +154,10 @@ pub struct Latency {
 /// is caught up: registering (CAP, SASL, the welcome), then the channels' joins and histories,
 /// sent together. With 13 channels it took the apps' core (zirc-app) 5.5 and the TUI 6.6 when
 /// this was set (25 Nov 2026); one more for each channel asked after the last would be 19 and
-/// over. Both their reconnect tests keep it ([`Latency::keeps_cold_start`]).
+/// over. Both their reconnect tests keep it ([`Latency::keeps_cold_start`]), counting only
+/// what the network added: the cold start over it, less the same one on loopback just before,
+/// which is the machine's own work. Counted whole, a daily full check's load made the TUI's
+/// 17.3 (build 10669).
 pub const COLD_START_ROUND_TRIPS: f64 = 10.0;
 
 impl Latency {
@@ -173,16 +176,23 @@ impl Latency {
         took.as_secs_f64() / (self.one_way * 2).as_secs_f64()
     }
 
-    /// Says how long `what`, a cold start, took over this network, and fails when that's
-    /// more than [`COLD_START_ROUND_TRIPS`].
+    /// Says how long `what`, a cold start, took over this network, and fails when what the
+    /// network added to it is more than [`COLD_START_ROUND_TRIPS`]: `took`, less `near`, the
+    /// same cold start on loopback just before, so a machine slowed by other work counts none
+    /// of it.
     ///
     /// # Panics
     ///
     /// When it took longer.
-    pub fn keeps_cold_start(&self, what: &str, took: std::time::Duration) {
-        let trips = self.round_trips(took);
+    pub fn keeps_cold_start(
+        &self,
+        what: &str,
+        took: std::time::Duration,
+        near: std::time::Duration,
+    ) {
+        let trips = self.round_trips(took.saturating_sub(near));
         println!(
-            "PERF {what}: caught up in {took:?}, {trips:.1} round trips of {:?}",
+            "PERF {what}: caught up in {took:?}, {near:?} of it the machine's own, {trips:.1} round trips of {:?}",
             self.one_way * 2
         );
         assert!(
