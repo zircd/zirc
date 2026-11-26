@@ -911,15 +911,27 @@ pub const LINK_LABEL_CHARS: usize = 40;
 /// What pads a chip's words either side: a narrow no-break space, which a line can't break
 /// at, as a thin space let it (a chip's ground left alone at a line's end, 25 Nov 2026).
 const CHIP_PAD: char = '\u{202F}';
-/// What follows each hyphen in a chip's words, so a line doesn't break there: a word joiner.
-const CHIP_JOIN: char = '\u{2060}';
+/// What a hyphen in a chip's words is drawn as, so a line doesn't break there: a
+/// non-breaking hyphen. Not a hyphen and a word joiner, which GPUI (the desktop) breaks
+/// before, as it does before any character it doesn't know.
+const CHIP_HYPHEN: char = '\u{2011}';
+/// What a space between a chip's words is drawn as, so a name stays on one line ("Jun
+/// Park"): a no-break space.
+const CHIP_SPACE: char = '\u{00A0}';
 
 /// A chip's words as every app draws them, a mention's or an agent session's: padded either
-/// side and kept whole on its line, `cc-ae9ec0` never broken after `cc-`. [`unchipped`] is
-/// what copying them gives back.
+/// side and kept whole on its line, `cc-ae9ec0` never broken after `cc-` nor "Jun Park"
+/// after "Jun". [`unchipped`] is what copying them gives back.
 #[must_use]
 pub fn chip_words(text: &str) -> String {
-    let joined = text.replace('-', &format!("-{CHIP_JOIN}"));
+    let joined: String = text
+        .chars()
+        .map(|c| match c {
+            '-' => CHIP_HYPHEN,
+            ' ' => CHIP_SPACE,
+            c => c,
+        })
+        .collect();
     format!("{CHIP_PAD}{joined}{CHIP_PAD}")
 }
 
@@ -927,7 +939,12 @@ pub fn chip_words(text: &str) -> String {
 #[must_use]
 pub fn unchipped(text: &str) -> String {
     text.chars()
-        .filter(|c| *c != CHIP_PAD && *c != CHIP_JOIN)
+        .filter(|c| *c != CHIP_PAD)
+        .map(|c| match c {
+            CHIP_HYPHEN => '-',
+            CHIP_SPACE => ' ',
+            c => c,
+        })
         .collect()
 }
 
@@ -993,11 +1010,14 @@ mod tests {
     #[test]
     fn a_chip_stays_whole_and_copies_as_written() {
         let drawn = chip_words("cc-ae9ec0");
-        assert_eq!(drawn, "\u{202F}cc-\u{2060}ae9ec0\u{202F}");
+        assert_eq!(drawn, "\u{202F}cc\u{2011}ae9ec0\u{202F}");
         assert_eq!(
             unchipped(&format!("on it: {drawn}, x")),
             "on it: cc-ae9ec0, x"
         );
+        let name = chip_words("Jun Park");
+        assert_eq!(name, "\u{202F}Jun\u{00A0}Park\u{202F}");
+        assert_eq!(unchipped(&format!("ask {name}")), "ask Jun Park");
     }
 
     use super::*;
