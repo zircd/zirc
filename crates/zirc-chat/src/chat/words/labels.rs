@@ -308,6 +308,9 @@ pub mod tui {
     /// Under search's hits, in a search opened in a conversation: what Tab does, as the
     /// control beside the box does in the other apps.
     pub const TAB_EVERYWHERE: &str = "Tab here or everywhere";
+    /// On a profile card's bottom edge, before [`super::ESC_CLOSES`], where the other apps
+    /// have a Message button.
+    pub const ENTER_TALKS: &str = "Enter talks to them";
     /// On a card's bottom edge while more of it is below, for ↓ to scroll to.
     pub const MORE_BELOW: &str = "↓ more";
 }

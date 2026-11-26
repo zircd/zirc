@@ -533,7 +533,8 @@ fn profile(frame: &mut Frame<'_>, app: &App, profile: &Profile, area: Rect) {
         zirc_core::chat::labels::ESC_CLOSES.to_owned()
     } else {
         format!(
-            "Enter talks to them · {}",
+            "{} · {}",
+            zirc_core::chat::labels::tui::ENTER_TALKS,
             zirc_core::chat::labels::ESC_CLOSES
         )
     };
@@ -3989,14 +3990,15 @@ mod tests {
         assert!(card.contains("last said 11:01 here"), "{card}");
         assert!(
             card.contains(&format!(
-                "Enter talks to them · {}",
+                "{} · {}",
+                zirc_core::chat::labels::tui::ENTER_TALKS,
                 zirc_core::chat::labels::ESC_CLOSES
             )),
             "{card}"
         );
         // Its keys on its edge, kept where the terminal's too short for the whole card.
         let (rows, _) = draw(&app, 40, 10);
-        row_with(&rows, "Enter talks to them");
+        row_with(&rows, zirc_core::chat::labels::tui::ENTER_TALKS);
 
         // A machine's card says whose it is.
         app.key(KeyEvent::from(KeyCode::Esc));
