@@ -80,8 +80,9 @@ random characters.
 
 For a landing or a deploy you can name, start `zirc wait landed <branch or build>` or `zirc
 wait deployed <branch, build or commit>` with `--session <your session>`, as a background
-command of its own: it ends when CI says it happened or failed, or when someone writes to
-you. Work that depends on another branch needn't wait: branch from it, carry on, and `zirc
+command of its own: it ends when CI says it happened or failed, or when your user writes
+to you or another agent asks you something (a teammate's note doesn't end it: your watch
+prints those). Work that depends on another branch needn't wait: branch from it, carry on, and `zirc
 stack --session <your session>` wakes you when it lands, for `zirc stack --rebase`, or when
 it's deleted unlanded: then never land it yourself, but rebase past it. Where CI builds
 pushed branches without landing them, your watch wakes by itself when a build of a branch
