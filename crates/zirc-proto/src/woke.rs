@@ -347,7 +347,7 @@ impl Woke {
         match self.what {
             What::Mentioned | What::Replied | What::Posted | What::Reacted => {
                 match self.channel.as_deref() {
-                    Some(channel) if channel.starts_with(['#', '&']) => {
+                    Some(channel) if crate::names::is_channel(channel) => {
                         Some(Chat::Channel(channel))
                     }
                     _ => self.person_wrote(),
@@ -374,7 +374,7 @@ impl Woke {
     pub fn in_its_chat(&self, name: &str) -> bool {
         match self.chat() {
             Some(Chat::Channel(channel)) => channel.eq_ignore_ascii_case(name),
-            Some(Chat::Direct(_)) => !name.starts_with(['#', '&']),
+            Some(Chat::Direct(_)) => !crate::names::is_channel(name),
             None => false,
         }
     }

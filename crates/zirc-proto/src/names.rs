@@ -37,6 +37,12 @@ pub const RESERVED_INTEGRATION_NICKS: [&str; 7] = [
 // A handle and `-<machine>` fit a nick.
 const _: () = assert!(HANDLE_MAX + 1 < NICK_MAX);
 
+/// Whether `target` names a channel rather than a nick: what IRC starts one with.
+#[must_use]
+pub fn is_channel(target: &str) -> bool {
+    target.starts_with(['#', '&'])
+}
+
 /// A handle, as a regular expression for languages that check one that way: lower case,
 /// starting with a letter, [`HANDLE_MIN`] to [`HANDLE_MAX`] letters, digits and `_`.
 #[must_use]

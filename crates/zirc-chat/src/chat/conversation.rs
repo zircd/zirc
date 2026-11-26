@@ -1014,11 +1014,7 @@ pub fn fold(name: &str) -> String {
     name.to_ascii_lowercase()
 }
 
-/// Whether `target` names a channel rather than a nick.
-#[must_use]
-pub fn is_channel(target: &str) -> bool {
-    target.starts_with(['#', '&'])
-}
+pub use zirc_proto::names::is_channel;
 
 /// What separates a machine's nick from one of its agent sessions in the name of a
 /// conversation with that session, `mattias-mbp/cc-1531f8`. No nick has one.
