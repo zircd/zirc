@@ -45,7 +45,7 @@ pub(crate) enum RoleCommand {
         /// Your session. Defaults to $ZIRC_SESSION, then $USER.
         #[arg(long, env = "ZIRC_SESSION")]
         session: Option<String>,
-        /// What to say.
+        /// What to say, or - to read it from stdin.
         #[arg(required = true)]
         text: Vec<String>,
     },
@@ -96,7 +96,7 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
                 session: session_or_user(session),
                 to: to.clone(),
                 reply_to,
-                text: text.join(" "),
+                text: crate::args::words(&text)?,
             };
             let Response::Done = ask(socket, request).await? else {
                 return Err(unexpected());
