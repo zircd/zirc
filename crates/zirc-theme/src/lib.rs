@@ -817,6 +817,9 @@ pub struct Avatar {
     /// The corner of an avatar that isn't a person's, an agent's or an app's rounded square,
     /// as a share of its side: only people are round (the user's choice, 26 Nov 2026).
     pub corner: f32,
+    /// How much of its square an agent's picture takes, as a share of its side: the white
+    /// bot, in the middle of its colour.
+    pub picture: f32,
 }
 
 impl Avatar {
@@ -824,6 +827,22 @@ impl Avatar {
     #[must_use]
     pub fn get() -> &'static Avatar {
         &TOKENS_PARSED.avatar
+    }
+
+    /// Its tokens as `:root`'s variables, each a percentage: `--zirc-avatar-saturation`,
+    /// `-lightness`, `-corner` and `-picture`.
+    fn css(&self) -> String {
+        [
+            ("saturation", self.saturation),
+            ("lightness", self.lightness),
+            ("corner", self.corner),
+            ("picture", self.picture),
+        ]
+        .iter()
+        .fold(String::new(), |mut css, (name, share)| {
+            let _ = writeln!(css, "  --zirc-avatar-{name}: {}%;", (share * 100.).round());
+            css
+        })
     }
 }
 
@@ -1438,18 +1457,15 @@ pub fn css() -> String {
         css,
         "\n:root {{\n  color-scheme: light dark;\n  \
          --zirc-font: \"{}\", {};\n  --zirc-font-mono: var(--zirc-font);\n  \
-         --zirc-font-ui: {}, {};\n  --zirc-label-tracking: {}em;\n  --zirc-radius: {}px;\n  \
-         --zirc-avatar-saturation: {}%;\n  --zirc-avatar-lightness: {}%;\n  \
-         --zirc-avatar-corner: {}%;\n{}{}}}\n",
+         --zirc-font-ui: {}, {};\n  --zirc-label-tracking: {}em;\n  --zirc-radius: {}px;\n\
+         {}{}{}}}\n",
         ty.family,
         ty.fallback,
         ty.ui,
         ty.ui_fallback,
         ty.label_tracking_em,
         ty.radius_px,
-        (avatar.saturation * 100.).round(),
-        (avatar.lightness * 100.).round(),
-        (avatar.corner * 100.).round(),
+        avatar.css(),
         scales(design),
         roles(Theme::light(), "  "),
     );
