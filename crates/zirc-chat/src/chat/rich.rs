@@ -835,6 +835,29 @@ fn bare_address(word: &str) -> Option<String> {
 /// The most characters [`link_label`] shows before it leaves out the middle of a path.
 pub const LINK_LABEL_CHARS: usize = 40;
 
+/// What pads a chip's words either side: a narrow no-break space, which a line can't break
+/// at, as a thin space let it (a chip's ground left alone at a line's end, 25 Nov 2026).
+const CHIP_PAD: char = '\u{202F}';
+/// What follows each hyphen in a chip's words, so a line doesn't break there: a word joiner.
+const CHIP_JOIN: char = '\u{2060}';
+
+/// A chip's words as every app draws them, a mention's or an agent session's: padded either
+/// side and kept whole on its line, `cc-ae9ec0` never broken after `cc-`. [`unchipped`] is
+/// what copying them gives back.
+#[must_use]
+pub fn chip_words(text: &str) -> String {
+    let joined = text.replace('-', &format!("-{CHIP_JOIN}"));
+    format!("{CHIP_PAD}{joined}{CHIP_PAD}")
+}
+
+/// `text` without what [`chip_words`] adds: what copying drawn words gives.
+#[must_use]
+pub fn unchipped(text: &str) -> String {
+    text.chars()
+        .filter(|c| *c != CHIP_PAD && *c != CHIP_JOIN)
+        .collect()
+}
+
 /// A link as apps show it, the whole `url` on hover: its host and path, without the scheme,
 /// query, fragment or a trailing slash. A longer one keeps its host and as much of the end
 /// of its path as fits in [`LINK_LABEL_CHARS`], with `…` for what's left out:
@@ -893,6 +916,17 @@ pub fn media_link(url: &str, web: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_chip_stays_whole_and_copies_as_written() {
+        let drawn = chip_words("cc-ae9ec0");
+        assert_eq!(drawn, "\u{202F}cc-\u{2060}ae9ec0\u{202F}");
+        assert_eq!(
+            unchipped(&format!("on it: {drawn}, x")),
+            "on it: cc-ae9ec0, x"
+        );
+    }
+
     use super::*;
 
     /// A decision's text (the house style) reads as a bold title, a quote and a list.

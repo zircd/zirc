@@ -195,7 +195,7 @@ pub use profile::{
 };
 pub use rich::{
     Block, CellAlign, LINK_LABEL_CHARS, ListItem, Span, SpanKind, TableSource, addressed,
-    each_span, link_label, map_spans, media_link, rich, tables_in,
+    chip_words, each_span, link_label, map_spans, media_link, rich, tables_in, unchipped,
 };
 pub use roles::{ROLES_SECTION, RoleMember, vacant_of};
 pub use row_menu::{LevelChoice, MuteChoice, RowMenu};
