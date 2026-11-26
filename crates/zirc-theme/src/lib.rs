@@ -1903,6 +1903,16 @@ mod tests {
                     }
                 }
             }
+            // Presence's dots, on a selected row too, where a conversation's face is: here
+            // was 2.75:1 there in light. Not gone's hollow ring, which is drawn to recede.
+            for bg in GROUNDS.into_iter().chain(["selected"]) {
+                for mark in ["presence-here", "presence-away", "presence-busy"] {
+                    let ratio = role(theme, mark).contrast(role(theme, bg));
+                    if ratio < 3.0 {
+                        failures.push(format!("{:?} {mark} on {bg}: {ratio:.2}", theme.mode));
+                    }
+                }
+            }
         }
         assert!(failures.is_empty(), "below 3:1: {failures:?}");
     }

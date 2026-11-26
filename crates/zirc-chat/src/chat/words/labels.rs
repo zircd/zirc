@@ -295,6 +295,8 @@ pub mod tui {
     /// Under search's hits, in a search opened in a conversation: what Tab does, as the
     /// control beside the box does in the other apps.
     pub const TAB_EVERYWHERE: &str = "Tab here or everywhere";
+    /// On a card's bottom edge while more of it is below, for ↓ to scroll to.
+    pub const MORE_BELOW: &str = "↓ more";
 }
 
 /// What a computer's keys for Jump to, search here and search everywhere are, as every app's

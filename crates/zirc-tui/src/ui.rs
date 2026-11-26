@@ -274,6 +274,12 @@ fn details_card(
         Paragraph::new(lines).scroll((scrolled.min(most), 0)).block(
             panel_block(theme)
                 .title_bottom(keys_line(theme, zirc_core::chat::labels::ESC_CLOSES))
+                // While more of it is below, for ↓ to scroll to.
+                .title_bottom(if scrolled < most {
+                    keys_line(theme, zirc_core::chat::labels::tui::MORE_BELOW).right_aligned()
+                } else {
+                    Line::default()
+                })
                 .padding(ratatui::widgets::Padding::horizontal(1)),
         ),
         card,
@@ -2128,8 +2134,40 @@ fn status(frame: &mut Frame<'_>, app: &App, area: Rect) {
         Constraint::Length(right_width),
     ])
     .areas(area);
-    frame.render_widget(Paragraph::new(status_left(app)), left_area);
+    frame.render_widget(
+        Paragraph::new(fit_line(status_left(app), usize::from(left_area.width))),
+        left_area,
+    );
     frame.render_widget(Paragraph::new(right), right_area);
+}
+
+/// `line` cut to `width` columns, with `…` when cut, as [`fit`] cuts a name.
+fn fit_line(line: Line<'static>, width: usize) -> Line<'static> {
+    if line.width() <= width {
+        return line;
+    }
+    let Line {
+        spans,
+        style,
+        alignment,
+    } = line;
+    let mut room = width;
+    let mut kept = Vec::new();
+    for span in spans {
+        let wide = span.content.width();
+        if wide < room {
+            room -= wide;
+            kept.push(span);
+        } else {
+            kept.push(Span::styled(fit(&span.content, room), span.style));
+            break;
+        }
+    }
+    Line {
+        spans: kept,
+        style,
+        alignment,
+    }
 }
 
 /// What the keys do while leaving a channel waits on the person.
@@ -2463,13 +2501,16 @@ mod tests {
         assert!(row_with(&rows, "Task ").contains("t-abc123"));
         row_with(&rows, zirc_core::chat::DATA);
         row_with(&rows, "\"task\": \"t-abc123\"");
-        // How to put it away on its edge, however little of it fits.
+        // How to put it away on its edge, however little of it fits, and that there's
+        // more below only while there is.
+        let more = zirc_core::chat::labels::tui::MORE_BELOW;
         for (width, height) in [(screen.width, screen.height), (40, 10)] {
             let (rows, _) = draw(&app, width, height);
-            row_with(
+            let edge = row_with(
                 &rows,
                 &format!(" {} ─", zirc_core::chat::labels::ESC_CLOSES),
             );
+            assert_eq!(edge.contains(more), height == 10, "{edge}");
         }
         // ↓ scrolls it rather than picking another message.
         app.key(KeyEvent::from(KeyCode::Down));
@@ -4874,7 +4915,10 @@ mod tests {
         // Where we are, cut short of what mentions us rather than run into its pill
         // ("irc.zirc.test · Serve 1 mention").
         let (rows, _) = draw(&super::tests::app(), 40, 10);
-        row_with(&rows, &format!("  {} ", mentions_label(1)));
+        assert!(
+            row_with(&rows, &format!("…  {} ", mentions_label(1))).starts_with(" irc.zirc.test"),
+            "{rows:#?}"
+        );
     }
 
     #[test]
@@ -4912,65 +4956,63 @@ mod tests {
         }
     }
 
+    /// Each cell of `terminal` below WCAG AA, as zirc.dev's Roles tab is held to: each
+    /// letter 4.5:1 on what's behind it (the terminal's own ground being the theme's), a
+    /// mark (●, ▎) 3:1. Lines between panes are dividers, not measured.
+    fn below_aa(terminal: &Terminal<TestBackend>, theme: &Theme, what: &str) -> Vec<String> {
+        let buffer = terminal.backend().buffer();
+        let rgb = |colour: Color, or: Rgb| match colour {
+            Color::Rgb(r, g, b) => Rgb { r, g, b },
+            _ => or,
+        };
+        let mut failures = Vec::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                let cell = &buffer[(x, y)];
+                let Some(letter) = cell.symbol().chars().next() else {
+                    continue;
+                };
+                if letter.is_whitespace() || ('\u{2500}'..='\u{257F}').contains(&letter) {
+                    continue;
+                }
+                let mark = !letter.is_alphanumeric() && !letter.is_ascii_punctuation();
+                let ratio = rgb(cell.fg, theme.text).contrast(rgb(cell.bg, theme.ground));
+                if ratio < if mark { 3.0 } else { 4.5 } {
+                    failures.push(format!(
+                        "{:?} {what} {letter:?} at {x},{y}: {ratio:.2}",
+                        theme.mode
+                    ));
+                }
+            }
+        }
+        failures
+    }
+
     #[test]
     fn reads_at_aa_dark_and_light() {
-        // WCAG AA, as zirc.dev's Roles tab is held to: each letter 4.5:1 on what's behind it
-        // (the terminal's own ground being the theme's), a mark (●, ▎) 3:1. Lines between
-        // panes are dividers, not measured. The conversation with what's new marked, and
-        // Jump to open, its first row picked.
+        // The conversation with what's new marked, and Jump to open, its first row picked.
         let mut failures = Vec::new();
-        for (theme, jump) in [Theme::dark(), Theme::light()]
-            .into_iter()
-            .flat_map(|theme| [(theme, false), (theme, true)])
-        {
+        for theme in [Theme::dark(), Theme::light()] {
             let mut app = app();
             app.chat
                 .set_threshold("#api", zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT);
             app.theme = theme;
             let _ = app.select(1);
-            if jump {
-                let _ = app.key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::ALT));
-                let _ = app.key(KeyEvent::from(KeyCode::Char('a')));
-            } else {
-                // Said in #web while we're in #api: #web opens on the New divider.
-                app.handle(
-                    "@msgid=w1;time=2026-10-30T11:40:00.000Z :bob!u@h PRIVMSG #web :lunch?"
-                        .parse()
-                        .unwrap(),
-                );
-                let _ = app.select(app.chat.position("#web").unwrap());
-            }
+            // Said in #web while we're in #api: #web opens on the New divider.
+            app.handle(
+                "@msgid=w1;time=2026-10-30T11:40:00.000Z :bob!u@h PRIVMSG #web :lunch?"
+                    .parse()
+                    .unwrap(),
+            );
+            let _ = app.select(app.chat.position("#web").unwrap());
             let (rows, terminal) = draw(&app, 100, 16);
-            if jump {
-                row_with(&rows, zirc_core::chat::JUMP_TO);
-            } else {
-                row_with(&rows, &tag_text("new"));
-            }
-            let buffer = terminal.backend().buffer();
-            let rgb = |colour: Color, or: Rgb| match colour {
-                Color::Rgb(r, g, b) => Rgb { r, g, b },
-                _ => or,
-            };
-            for y in 0..16 {
-                for x in 0..100 {
-                    let cell = &buffer[(x, y)];
-                    let Some(letter) = cell.symbol().chars().next() else {
-                        continue;
-                    };
-                    if letter.is_whitespace() || ('\u{2500}'..='\u{257F}').contains(&letter) {
-                        continue;
-                    }
-                    let mark = !letter.is_alphanumeric() && !letter.is_ascii_punctuation();
-                    let ratio = rgb(cell.fg, theme.text).contrast(rgb(cell.bg, theme.ground));
-                    if ratio < if mark { 3.0 } else { 4.5 } {
-                        failures.push(format!(
-                            "{:?}{} {letter:?} at {x},{y}: {ratio:.2}",
-                            theme.mode,
-                            if jump { " Jump to" } else { "" }
-                        ));
-                    }
-                }
-            }
+            row_with(&rows, &tag_text("new"));
+            failures.extend(below_aa(&terminal, theme, "#web"));
+            let _ = app.key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::ALT));
+            let _ = app.key(KeyEvent::from(KeyCode::Char('a')));
+            let (rows, terminal) = draw(&app, 100, 16);
+            row_with(&rows, zirc_core::chat::JUMP_TO);
+            failures.extend(below_aa(&terminal, theme, "jumping"));
         }
         assert!(failures.is_empty(), "below AA: {failures:?}");
     }
