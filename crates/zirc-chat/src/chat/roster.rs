@@ -85,6 +85,13 @@ impl Chat {
         }
     }
 
+    /// Whether `session` is an agent session we know: one that said the name it goes by, or
+    /// registered its card.
+    #[must_use]
+    pub fn knows_session(&self, session: &str) -> bool {
+        self.session_names.contains_key(session) || self.session_titles.contains_key(session)
+    }
+
     /// What to call the agent session `session`, such as one a message names (`cc-598aa1`):
     /// the name it goes by, `zirc-chat`, once one of its messages has said, or else the id.
     #[must_use]

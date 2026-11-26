@@ -183,12 +183,15 @@ impl super::Chat {
     }
 
     /// `blocks` ready to draw: each span showing what [`super::Chat::span_label`] says,
-    /// sessions by their names and bare links by their labels. Every app draws this.
+    /// sessions by their names and bare links by their labels. Every app draws this. A
+    /// word naming a session we know, by any id its tool gives it (`codex-7f2a`, not only
+    /// `cc-598aa1`), is that session's chip too (the user's choice, 26 Nov 2026).
     #[must_use]
     pub fn drawn(&self, blocks: Vec<Block>) -> Vec<Block> {
         map_spans(blocks, &mut |spans| {
             spans
                 .into_iter()
+                .flat_map(|span| self.known_sessions(span))
                 .map(|mut span| {
                     if let Some(label) = self.span_label(&span) {
                         span.text = label;
@@ -197,6 +200,50 @@ impl super::Chat {
                 })
                 .collect()
         })
+    }
+}
+
+impl super::Chat {
+    /// `span`, a run of words, with each word that names a session we know
+    /// ([`super::Chat::knows_session`]) a [`SpanKind::Session`] of its own, punctuation
+    /// around it left as words; any other span as it is.
+    fn known_sessions(&self, span: Span) -> Vec<Span> {
+        if span.kind != SpanKind::Text || !span.text.contains(|c: char| !c.is_whitespace()) {
+            return vec![span];
+        }
+        let mut out: Vec<Span> = Vec::new();
+        let mut words = String::new();
+        let push = |out: &mut Vec<Span>, text: &str, kind: SpanKind| {
+            if !text.is_empty() {
+                out.push(Span {
+                    text: text.to_owned(),
+                    kind,
+                    ..span.clone()
+                });
+            }
+        };
+        for word in span.text.split_inclusive(char::is_whitespace) {
+            let start = word
+                .find(|c: char| !"([\"'<".contains(c))
+                .unwrap_or(word.len());
+            let (before, rest) = word.split_at(start);
+            let end = rest
+                .trim_end_matches(|c: char| c.is_whitespace() || ".,;:!?)]>\"'".contains(c))
+                .len();
+            let (core, after) = rest.split_at(end);
+            let id = core.strip_prefix('@').unwrap_or(core);
+            if !id.is_empty() && self.knows_session(id) {
+                words.push_str(before);
+                push(&mut out, &words, SpanKind::Text);
+                words.clear();
+                push(&mut out, core, SpanKind::Session(id.to_owned()));
+                words.push_str(after);
+            } else {
+                words.push_str(word);
+            }
+        }
+        push(&mut out, &words, SpanKind::Text);
+        out
     }
 }
 

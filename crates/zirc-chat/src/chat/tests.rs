@@ -7618,6 +7618,46 @@ fn draws_sessions_by_name_and_bare_links_by_label() {
     assert!(shown.iter().any(|(text, _)| *text == "the PR"), "{shown:?}");
 }
 
+/// A word naming a session we know is its chip by its name, whatever its id's shape, in
+/// a message's words and so in a preview's and in CI's (the user's choice, 26 Nov 2026);
+/// a word naming none stays a word.
+#[test]
+fn draws_a_known_sessions_bare_id_as_its_chip() {
+    let mut chat = Scene::in_api();
+    let mut named = Message::new("codex-7f2a", Event::Text { body: "hi".into() });
+    named.name = Some("rate-limits".into());
+    feed_all(
+        &mut chat,
+        &[
+            ":s 353 me = #api :me alice-mbp".to_owned(),
+            ":s 366 me #api :End".to_owned(),
+            zirc("alice-mbp", &named),
+        ],
+    );
+    let drawn = chat.drawn(rich(
+        "CI: codex-7f2a: build 419 failed, (codex-7f2a) not codex-7f2b",
+    ));
+    let Block::Paragraph(spans) = &drawn[0] else {
+        panic!("{drawn:?}");
+    };
+    let shown: Vec<(&str, &SpanKind)> = spans.iter().map(|s| (s.text.as_str(), &s.kind)).collect();
+    let session = SpanKind::Session("codex-7f2a".into());
+    assert_eq!(
+        shown,
+        [
+            ("CI: ", &SpanKind::Text),
+            ("rate-limits", &session),
+            (": build 419 failed, (", &SpanKind::Text),
+            ("rate-limits", &session),
+            (") not codex-7f2b", &SpanKind::Text),
+        ]
+    );
+    assert_eq!(
+        chat.shown_text("CI: codex-7f2a: build 419 failed"),
+        "CI: rate-limits: build 419 failed"
+    );
+}
+
 #[test]
 fn links_build_n_in_any_ci_line_to_its_page() {
     let deploying = ci_post(
