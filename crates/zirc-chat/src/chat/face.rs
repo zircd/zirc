@@ -48,12 +48,12 @@ pub enum Face {
         owner_photo: Option<String>,
         /// The session's id, `cc-598aa1`; `None` for the machine itself and for a role.
         session: Option<String>,
-        /// The bot it's drawn as, one of [`zirc_proto::AGENT_AVATARS`] such as `reviewer`,
-        /// which the apps bundle and draw white on its colour: the role it says, else the one
-        /// its name tells, else the plain bot. `None` for the machine itself, drawn with its
+        /// The gem it's drawn as, one of [`zirc_proto::AGENT_AVATARS`] such as `reviewer`,
+        /// which the apps bundle and draw on its colour: the role it says, else the one
+        /// its name tells, else the plain gem. `None` for the machine itself, drawn with its
         /// tool's icon.
         picture: Option<String>,
-        /// The hue its circle is drawn on, decided here for every app: `hue` for a session
+        /// The hue its square is drawn on, decided here for every app: `hue` for a session
         /// or a role; `None` for the machine itself, on the muted ground.
         ground: Option<u16>,
     },

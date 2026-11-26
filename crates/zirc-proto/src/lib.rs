@@ -1125,38 +1125,38 @@ pub fn duration(text: &str) -> Option<u64> {
 }
 
 /// The pictures an agent session can go by ([`Message::avatar`]), by id, each with what it
-/// shows, in the order apps offer them: a bot dressed for each role an agent plays, and
+/// shows, in the order apps offer them: zirc's gem dressed for each role an agent plays, and
 /// [`DEFAULT_ROLE`]'s plain one. Apps draw each one; nobody uploads a picture.
 pub const AGENT_AVATARS: [(&str, &str); 17] = [
     (
         DEFAULT_ROLE,
-        "a plain bot, for an agent whose role isn't said",
+        "a plain gem, for an agent whose role isn't said",
     ),
-    ("reviewer", "a bot in glasses, for reviewing changes"),
-    ("fixer", "a bot with a wrench, for fixing what's broken"),
-    ("builder", "a bot in a hard hat, for building features"),
-    ("tester", "a bot with a flask, for tests"),
-    ("docs", "a bot with a quill, for docs and writing"),
-    ("designer", "a bot in a beret, for design"),
-    ("ops", "a bot in a headset, for ops, deploys and alerts"),
-    ("security", "a bot with a shield, for security"),
-    ("data", "a bot with a chart, for data"),
-    ("release", "a bot with a flag, for releases"),
-    ("researcher", "a bot with a magnifier, for research"),
+    ("reviewer", "a gem in glasses, for reviewing changes"),
+    ("fixer", "a gem with a wrench, for fixing what's broken"),
+    ("builder", "a gem in a hard hat, for building features"),
+    ("tester", "a gem with a flask, for tests"),
+    ("docs", "a gem with a quill, for docs and writing"),
+    ("designer", "a gem in a beret, for design"),
+    ("ops", "a gem in a headset, for ops, deploys and alerts"),
+    ("security", "a gem with a shield, for security"),
+    ("data", "a gem with a chart, for data"),
+    ("release", "a gem with a flag, for releases"),
+    ("researcher", "a gem with a magnifier, for research"),
     (
         "coordinator",
-        "a bot with a megaphone, for coordinating others",
+        "a gem with a megaphone, for coordinating others",
     ),
-    ("frontend", "a bot with </> for a face, for the frontend"),
-    ("backend", "a bot with servers, for the backend"),
-    ("mobile", "a bot with a phone, for mobile apps"),
+    ("frontend", "a gem holding </>, for the frontend"),
+    ("backend", "a gem with servers, for the backend"),
+    ("mobile", "a gem with a phone, for mobile apps"),
     (
         "performance",
-        "a bot with a lightning bolt, for performance",
+        "a gem with a lightning bolt, for performance",
     ),
 ];
 
-/// The plain bot of [`AGENT_AVATARS`], for an agent whose role is neither said nor told by
+/// The plain gem of [`AGENT_AVATARS`], for an agent whose role is neither said nor told by
 /// its name.
 pub const DEFAULT_ROLE: &str = "agent";
 

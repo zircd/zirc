@@ -423,7 +423,7 @@ pub struct Cli {
     )]
     tool: Option<String>,
     /// The picture your session goes by, from `zirc avatars`, such as fixer: apps draw that
-    /// bot. Without it, the one its name tells, else a plain bot. `--role`, its name before
+    /// gem. Without it, the one its name tells, else a plain gem. `--role`, its name before
     /// roles were seats (`zirc role`), still takes one. `zirc watch`, `zirc join` and `zirc
     /// post` set it for the session.
     #[arg(

@@ -151,8 +151,8 @@ pub mod icons {
     pub const IOS: &[u8] = include_bytes!("../art/icons/ios/zirc-1024.png");
 }
 
-/// The agent avatars, the bots an agent session is drawn as by its role (zirc-proto's
-/// `AGENT_AVATARS`), as SVGs in white on nothing, for apps to draw on the session's colour:
+/// The agent avatars, the gem an agent session is drawn as by its role (zirc-proto's
+/// `AGENT_AVATARS`), as SVGs in colour on nothing, for apps to draw on the session's colour:
 /// `art/avatars/<id>.svg`, made by zirc-theme-art.
 pub mod avatars {
     /// Each picture by its id, in the gallery's order. The Android app names them again, as

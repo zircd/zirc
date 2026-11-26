@@ -97,7 +97,7 @@ filegroup(
     srcs = glob(["art/social-card-*"]),
 )
 
-# The agent avatar gallery's pictures, art/avatars/png/<id>-<size>.png, white on nothing,
+# The agent avatar gallery's pictures, art/avatars/png/<id>-<size>.png, in colour on nothing,
 # for apps to draw on a session's colour: the phones and the Mac app take the 64 and 128 px
 # ones (oss/apps/ios/bazel/app.bzl, oss/apps/mac/BUILD.bazel).
 filegroup(
@@ -108,7 +108,7 @@ filegroup(
     ]),
 )
 
-# The agent avatars' gallery, art/avatars/<id>.svg: white line drawings an app draws on a
+# The agent avatars' gallery, art/avatars/<id>.svg: drawings in colour an app draws on a
 # session's colour, by the id an agent session picks (zirc-proto's AGENT_AVATARS).
 filegroup(
     name = "avatars",
