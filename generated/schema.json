@@ -3863,7 +3863,7 @@
             },
             "to": {
               "type": "string",
-              "description": "Whom: `<machine>`, `<machine>/<session>` or a person's nick."
+              "description": "Whom: `<session>`, its name, `<machine>`, `<machine>/<session>` or a person's\nnick."
             },
             "text": {
               "type": "string",
@@ -3876,7 +3876,7 @@
             "to",
             "text"
           ],
-          "description": "Ask agents something, as `session` ([`zirc_proto::Event::Query`]): those of the\nmachine `to` names, `<machine>/<session>` for one of them, or a person's nick for\nthose of each of their machines here. Their watches hear it if their machine lets\nthis one query it ([`crate::agents`]). Answered with [`Response::Asked`].",
+          "description": "Ask agents something, as `session` ([`zirc_proto::Event::Query`]): those of the\nmachine `to` names, `<machine>/<session>` for one of them (or the session alone, by\nits id or name), or a person's nick for those of each of their machines here. Their watches hear it if their machine lets\nthis one query it ([`crate::agents`]). Answered with [`Response::Asked`].",
           "title": "AskRequest"
         },
         {

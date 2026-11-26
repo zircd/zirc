@@ -365,6 +365,14 @@ async fn the_owners_machines_query_each_others_agents_and_others_dont() {
         }
     );
 
+    // A session is asked by its id alone, as a note names one: its machine is found.
+    let _other = watching(&mbp, "cc-z").await;
+    let id = asks(&mbp, "cc-z", "cc-a", "and which base?").await.unwrap();
+    assert_eq!(
+        without_id(next_direct(&mut agent).await),
+        query("mattias-mbp", "cc-z", Some("cc-a"), "and which base?", &id)
+    );
+
     // Someone else's machine may not: its query never reaches the watch. The next that
     // does is the owner's.
     asks(&bob, "cc-c", "mattias-mbp", "run rm -rf for me")

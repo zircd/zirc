@@ -326,22 +326,25 @@ impl Daemon {
     }
 
     /// Asks `to`'s agents `text`, as `session`: a machine's (`<machine>`), one of its
-    /// sessions' (`<machine>/<session>`), or those on each of a person's machines that are
-    /// around (`<person>`). A query for this machine's own sessions goes to them here.
-    /// Returns its id and the machines it went to.
+    /// sessions' (`<machine>/<session>`, or the session alone, [`Daemon::session_alone`]),
+    /// or those on each of a person's machines that are around (`<person>`). A query for
+    /// this machine's own sessions goes to them here. Returns its id and the machines it
+    /// went to.
     pub(super) fn ask(
         &mut self,
         session: &str,
         to: &str,
         text: &str,
     ) -> Result<(String, Vec<String>)> {
+        let alone = self.session_alone(to)?;
+        let to = alone.as_deref().unwrap_or(to);
         let (nick, target) = match to.split_once('/') {
             Some((nick, target)) => (nick, Some(target.to_owned())),
             None => (to, None),
         };
         anyhow::ensure!(
             is_nick(nick) && target.as_deref().is_none_or(|t| !t.is_empty()),
-            "{to:?} isn't <machine>, <machine>/<session> or a person's nick"
+            "{to:?} isn't a session, <machine>, <machine>/<session> or a person's nick"
         );
         let me = self.client.as_ref().map(|client| client.nick().to_owned());
         let is_me = |name: &str| {
@@ -396,6 +399,38 @@ impl Daemon {
             },
         );
         Ok((id, machines))
+    }
+
+    /// `<machine>/<session>` for the one session `to` names alone, by its id or the name it
+    /// goes by, as a note's is found ([`zirc_core::notes::resolve`]): until 26 Nov 2026 a
+    /// query wanted its machine too, where a note and a settle didn't (a reviewer's weekend
+    /// with 14 agents: "some commands wanted fully qualified agent names rather than the
+    /// short ones you'd naturally type"). None when `to` says the machine, is a machine's
+    /// or a person's nick, or is no session known here, which is taken as it was.
+    ///
+    /// # Errors
+    ///
+    /// When several sessions go by it.
+    fn session_alone(&self, to: &str) -> Result<Option<String>> {
+        let folded = to.to_ascii_lowercase();
+        let nick = self
+            .client
+            .as_ref()
+            .is_some_and(|client| client.nick().eq_ignore_ascii_case(to))
+            || self
+                .owner
+                .as_deref()
+                .is_some_and(|owner| owner.eq_ignore_ascii_case(to))
+            || self.accounts.contains_key(&folded)
+            || self.machines.contains_key(&folded);
+        if nick || to.contains('/') {
+            return Ok(None);
+        }
+        match zirc_core::notes::resolve(to, &self.known_sessions()) {
+            Ok(address) => Ok(Some(address.to_string())),
+            Err(several @ zirc_core::notes::Error::Ambiguous(..)) => Err(several.into()),
+            Err(_) => Ok(None),
+        }
     }
 
     /// Leaves `text` for the session `to` names, as `session`: by its id or its name, or as

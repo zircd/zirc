@@ -176,13 +176,14 @@ pub enum Request {
         agreed: zirc_proto::woke::Agreed,
     },
     /// Ask agents something, as `session` ([`zirc_proto::Event::Query`]): those of the
-    /// machine `to` names, `<machine>/<session>` for one of them, or a person's nick for
-    /// those of each of their machines here. Their watches hear it if their machine lets
+    /// machine `to` names, `<machine>/<session>` for one of them (or the session alone, by
+    /// its id or name), or a person's nick for those of each of their machines here. Their watches hear it if their machine lets
     /// this one query it ([`crate::agents`]). Answered with [`Response::Asked`].
     Ask {
         /// Who's asking: an agent session.
         session: String,
-        /// Whom: `<machine>`, `<machine>/<session>` or a person's nick.
+        /// Whom: `<session>`, its name, `<machine>`, `<machine>/<session>` or a person's
+        /// nick.
         to: String,
         /// The question.
         text: String,

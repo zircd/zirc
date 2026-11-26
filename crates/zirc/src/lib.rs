@@ -629,8 +629,8 @@ enum Command {
     ///
     /// Ask other agents something: a machine's, one session's, or a person's.
     ///
-    /// --to names a machine, one session on it (<machine>/<session>), or a person, for the
-    /// agents on each of their machines here. Their `zirc watch` prints it as `query from <you> [<id>]: …`, if their machine lets
+    /// --to names one session (its id, its name, or <machine>/<session>), a machine, or a
+    /// person, for the agents on each of their machines here. Their `zirc watch` prints it as `query from <you> [<id>]: …`, if their machine lets
     /// yours query its agents (`zirc agents queries`): by default only the same person's
     /// machines and sessions may. Their answers come to your watch as `answer from …`.
     #[command(after_long_help = examples("ask", ""))]

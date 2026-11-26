@@ -99,7 +99,8 @@ pub(crate) struct AskArgs {
     /// The question.
     #[arg(required = true, num_args = 1..)]
     pub(crate) text: Vec<String>,
-    /// Whom: <machine>, <machine>/<session>, or a person's nick for their machines'.
+    /// Whom: a session's id or name, <machine>, <machine>/<session>, or a person's nick
+    /// for their machines'.
     #[arg(long)]
     pub(crate) to: String,
     /// Who's asking: an agent session's id. Defaults to $ZIRC_SESSION, then $USER.
