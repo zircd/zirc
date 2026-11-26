@@ -19,7 +19,7 @@ enum Acts {
     /// The organisation of the repository it names or is run in, which always says.
     Repo,
     /// No organisation's conversations: this machine itself, or one it names some other way,
-    /// such as `zirc orgs remove acme`.
+    /// such as `zirc orgs remove zirc`.
     Machine,
 }
 
@@ -184,12 +184,12 @@ fn every_command_says_which_organisations_it_acts_on() {
     }
 }
 
-/// A machine signed in to acme and globex through zirc.dev, whose zirc.dev and zircd don't
+/// A machine signed in to zirc and globex through zirc.dev, whose zirc.dev and zircd don't
 /// answer: nothing's read before the organisation is picked.
 fn two_organisations(home: &Path) {
     std::fs::write(
         zirc_core::paths::config(home),
-        "web = \"http://127.0.0.1:9\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n\
+        "web = \"http://127.0.0.1:9\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n\
          [account]\nname = \"ada-mbp\"\npassword = \"pw\"\n\
          [[org]]\nname = \"globex\"\nweb = \"http://127.0.0.1:9\"\n\
          [org.server]\nhost = \"globex.irc.zirc.dev\"\n\
@@ -215,7 +215,7 @@ async fn reading_one_organisation_on_a_machine_in_two_asks_which() {
         let err = run(cli, &mut Vec::new()).await.unwrap_err();
         assert_eq!(
             format!("{err:#}"),
-            "this machine is in acme and globex: say which with --org",
+            "this machine is in zirc and globex: say which with --org",
             "zirc {}",
             words.join(" ")
         );

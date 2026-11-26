@@ -329,10 +329,10 @@ mod tests {
 
     #[test]
     fn paths_are_the_organisations() {
-        assert_eq!(reports_path("acme"), "/api/organisations/acme/reports");
+        assert_eq!(reports_path("zirc"), "/api/organisations/zirc/reports");
         assert_eq!(
-            block_path("acme", "mallory"),
-            "/api/organisations/acme/blocks/mallory"
+            block_path("zirc", "mallory"),
+            "/api/organisations/zirc/blocks/mallory"
         );
     }
 }

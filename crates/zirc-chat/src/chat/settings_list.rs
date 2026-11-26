@@ -455,38 +455,38 @@ mod tests {
             "This deletes your account on zirc.dev and signs you out everywhere. Signing up \
              again with the same address makes a new account."
         );
-        let words = deletion_words(&["Acme".to_owned(), "Zirc".to_owned()]);
-        assert!(words.contains("You leave Acme, Zirc: "), "{words}");
+        let words = deletion_words(&["Zirc".to_owned(), "Fjord".to_owned()]);
+        assert!(words.contains("You leave Zirc, Fjord: "), "{words}");
         assert!(words.contains("on their servers are deleted"), "{words}");
     }
 
     #[test]
     fn deleting_is_confirmed_by_the_address_however_typed() {
         assert!(confirms_deletion(
-            "henrik@acme.example",
-            " Henrik@Acme.example "
+            "henrik@zirc.example",
+            " Henrik@Zirc.example "
         ));
         assert!(!confirms_deletion("", ""));
-        assert!(!confirms_deletion("henrik@acme.example", "henrik"));
+        assert!(!confirms_deletion("henrik@zirc.example", "henrik"));
         assert_eq!(
-            type_to_confirm("henrik@acme.example"),
-            "Type henrik@acme.example to confirm"
+            type_to_confirm("henrik@zirc.example"),
+            "Type henrik@zirc.example to confirm"
         );
     }
 
     #[test]
     fn a_group_is_titled_the_organisations_by_its_name() {
         assert_eq!(
-            settings_group_title(SettingsGroup::Organisation, "Acme"),
-            "Acme"
+            settings_group_title(SettingsGroup::Organisation, "Zirc"),
+            "Zirc"
         );
-        assert_eq!(settings_group_title(SettingsGroup::App, "Acme"), "App");
+        assert_eq!(settings_group_title(SettingsGroup::App, "Zirc"), "App");
         // Unnamed, as on the desktop's first run: a word, never a blank heading.
         assert_eq!(
             settings_group_title(SettingsGroup::Organisation, ""),
             SETTINGS_ORGANISATION
         );
-        assert_eq!(sign_out_of("Acme"), "Sign out of Acme…");
+        assert_eq!(sign_out_of("Zirc"), "Sign out of Zirc…");
         // The system's, unless one is kept.
         assert!(theme_dark(None, true) && !theme_dark(Some("light"), true));
         assert!(theme_dark(Some("dark"), false) && theme_dark(Some("system"), true));

@@ -29,7 +29,7 @@ async fn zirc_dev(good: &'static str) -> (String, Heard) {
                     heard.lock().unwrap().push(request);
                     if ok {
                         Json(Joined {
-                            organisation: "acme".into(),
+                            organisation: "zirc".into(),
                             accounts_token: "accounts-token-from-zirc-dev".into(),
                             controller_token: "controller-token-from-zirc-dev".into(),
                             media_settings: serde_json::json!({"video": true}),
@@ -62,13 +62,13 @@ async fn it_joins_once_and_is_managed_with_zirc_dev_s_tokens() {
         return;
     };
     let noted = join::joined(&server.options.data).expect("joined");
-    assert_eq!(noted.organisation, "acme");
+    assert_eq!(noted.organisation, "zirc");
     // The running server's: one that stopped as it started, on a port taken, joined too, with
     // its own ports, before start_with tried again on others.
     let request = heard.lock().unwrap().last().cloned().expect("a join");
     assert_eq!(
         (request.host.as_str(), request.port),
-        ("irc.acme.test", server.irc)
+        ("irc.zirc.test", server.irc)
     );
 
     let list = |token: &'static str| {

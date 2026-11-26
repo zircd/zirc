@@ -41,11 +41,11 @@ async fn until(orgs: &mut Orgs<Session>, what: &str, done: impl Fn(&Orgs<Session
 
 #[tokio::test]
 async fn hears_each_organisation_and_switches_between_them() {
-    let (Some(acme), Some(globex)) = (Ergo::start(), Ergo::start()) else {
+    let (Some(zirc), Some(globex)) = (Ergo::start(), Ergo::start()) else {
         return;
     };
     let mut orgs = Orgs::new();
-    for (org, ergo) in [("acme", &acme), ("globex", &globex)] {
+    for (org, ergo) in [("zirc", &zirc), ("globex", &globex)] {
         let app = App::new("me", "127.0.0.1", vec!["#general".into()]);
         let session = Session::connect(app, config(ergo, "me")).await.unwrap();
         orgs.insert(org, session);
@@ -59,13 +59,13 @@ async fn hears_each_organisation_and_switches_between_them() {
             .any(|c| c.name == "#general" && c.joined)
     };
     until(&mut orgs, "joining both", |orgs| {
-        joined(orgs, "acme") && joined(orgs, "globex")
+        joined(orgs, "zirc") && joined(orgs, "globex")
     })
     .await;
     // As the client does before each draw: globex, not shown, stops marking what's said read.
     tell_orgs(&mut orgs);
 
-    // Someone in globex says something, while acme is shown.
+    // Someone in globex says something, while zirc is shown.
     let (bob, mut bob_in) = connect(&config(&globex, "bob")).await.unwrap();
     bob.join("#general").unwrap();
     next_matching(&mut bob_in, |line| line.command == "JOIN").await;
@@ -81,9 +81,9 @@ async fn hears_each_organisation_and_switches_between_them() {
     .await;
     tell_orgs(&mut orgs);
     let (shown, session) = orgs.selected().unwrap();
-    assert_eq!(shown, "acme");
+    assert_eq!(shown, "zirc");
     let screen = screen(&session.app);
-    assert!(screen.contains(" acme · #"), "{screen}");
+    assert!(screen.contains(" zirc · #"), "{screen}");
     assert!(
         screen.contains(&format!("globex 1 ({}), Alt-O", mentions_label(1))),
         "{screen}"
@@ -108,7 +108,7 @@ async fn hears_each_organisation_and_switches_between_them() {
         .collect();
     assert!(
         said.iter()
-            .any(|line| line.contains("not signed in to initech: there's acme, globex")),
+            .any(|line| line.contains("not signed in to initech: there's zirc, globex")),
         "{said:?}"
     );
 }

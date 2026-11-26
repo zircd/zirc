@@ -224,7 +224,7 @@ fn server(ergo: &Ergo) -> String {
 
 // What the machine tests listen for and ask with, shared by the files by topic.
 
-pub const REMOTE: &str = "git@github.com:acme/api.git";
+pub const REMOTE: &str = "git@github.com:zirc/api.git";
 
 pub fn clone() -> TempDir {
     zirc_test_ergo::git::clone(REMOTE)

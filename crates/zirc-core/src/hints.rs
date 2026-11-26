@@ -1322,7 +1322,7 @@ mod tests {
             path: repo.path().to_owned(),
             scope: "#API".into(),
             sessions: Vec::new(),
-            org: Some("acme".into()),
+            org: Some("zirc".into()),
             shared: Vec::new(),
         };
         // Nothing on the server, and no file: nothing.
@@ -1349,7 +1349,7 @@ mod tests {
             version: 1,
             hints: vec![stored("#api", "ask first"), stored(ORG, "be brief")],
         };
-        crate::team_hints::keep(home.path(), "acme", &listing).unwrap();
+        crate::team_hints::keep(home.path(), "zirc", &listing).unwrap();
         let (got, problem) = team(home.path(), &watched);
         assert_eq!(problem, None);
         assert!(!got.from_file);

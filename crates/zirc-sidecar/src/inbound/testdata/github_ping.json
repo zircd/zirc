@@ -2,6 +2,6 @@
   "zen": "Keep it logically awesome.",
   "hook_id": 500001,
   "hook": {"type": "Repository", "id": 500001, "events": ["issues"], "active": true},
-  "repository": {"id": 2000001, "name": "server", "full_name": "acme/server"},
+  "repository": {"id": 2000001, "name": "server", "full_name": "zirc/server"},
   "sender": {"login": "example-admin", "id": 1000002, "type": "User"}
 }

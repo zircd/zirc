@@ -269,8 +269,8 @@ mod tests {
 
     fn server() -> Server<'static> {
         Server {
-            network: "acme",
-            name: "irc.acme.test",
+            network: "zirc",
+            name: "irc.zirc.test",
             listeners: "{}".into(),
             proxy_allowed_from: vec!["localhost".into()],
             require_sasl: true,

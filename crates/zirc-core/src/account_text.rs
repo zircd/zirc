@@ -33,7 +33,7 @@ pub fn too_many(max: usize) -> String {
 pub enum SwitchHint {
     /// A rail, with the key that opens the new one's place, such as `⌘2`.
     Rail(Option<String>),
-    /// A phone's menu under the organisation shown, such as `Acme`.
+    /// A phone's menu under the organisation shown, such as `Zirc`.
     Menu(String),
 }
 
@@ -94,7 +94,7 @@ impl crate::account_keys::Joinable {
             .map_or_else(|| display_name(&self.org()), str::to_owned)
     }
 
-    /// What its row or tile says: `Join Acme`.
+    /// What its row or tile says: `Join Zirc`.
     #[must_use]
     pub fn label(&self) -> String {
         join_label(&self.display())
@@ -111,7 +111,7 @@ impl crate::account_keys::Joinable {
         }
     }
 
-    /// What a screen reader says of it: `Join Acme, as @sam`, or `Join Acme, getting ready`.
+    /// What a screen reader says of it: `Join Zirc, as @sam`, or `Join Zirc, getting ready`.
     #[must_use]
     pub fn a11y_label(&self) -> String {
         if self.ready {
@@ -144,7 +144,7 @@ impl crate::account_keys::Joinable {
 /// A joinable organisation's server still being set up, as its line says.
 pub const NOT_READY: &str = "Getting ready";
 
-/// What a row or tile offering to join `name` says: `Join Acme`.
+/// What a row or tile offering to join `name` says: `Join Zirc`.
 #[must_use]
 pub fn join_label(name: &str) -> String {
     format!("Join {name}")
@@ -175,7 +175,7 @@ pub fn card(state: OrgState, org: &str) -> Option<Card> {
 }
 
 /// What notifications from `conversation` in the organisation `org` are grouped by, so two
-/// `#general` never merge (section 6): `acme/#general`.
+/// `#general` never merge (section 6): `zirc/#general`.
 #[must_use]
 pub fn thread_id(org: &str, conversation: &str) -> String {
     format!("{org}/{conversation}")
@@ -194,7 +194,7 @@ impl OrgSummary {
     }
 
     /// What a screen reader says of its tile, zirc-chat's ([`tile_a11y`]):
-    /// `Acme, 3 mentions, connecting`.
+    /// `Zirc, 3 mentions, connecting`.
     #[must_use]
     pub fn a11y_label(&self) -> String {
         tile_a11y(&self.name(), self.unread, self.state)

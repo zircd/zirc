@@ -314,7 +314,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn delivery(event: Event) -> Delivery {
-        Delivery::new("#acme/api", "alpha", Message::new("watcher", event))
+        Delivery::new("#zirc/api", "alpha", Message::new("watcher", event))
     }
 
     #[test]
@@ -335,17 +335,17 @@ pub(crate) mod tests {
         });
         assert_eq!(
             line(&commit),
-            "#acme/api alpha/watcher: committed on login: Add login"
+            "#zirc/api alpha/watcher: committed on login: Add login"
         );
         let overlap = Overlap {
-            channel: "#acme/api".into(),
+            channel: "#zirc/api".into(),
             nick: "beta".into(),
             paths: vec!["src/auth.rs".into()],
             ..Overlap::default()
         };
         assert_eq!(
             overlap_line(&overlap),
-            "#acme/api overlap: beta is also changing src/auth.rs"
+            "#zirc/api overlap: beta is also changing src/auth.rs"
         );
         let many = Overlap {
             paths: (1..=8).map(|i| format!("{i}.rs")).collect(),
@@ -353,11 +353,11 @@ pub(crate) mod tests {
         };
         assert_eq!(
             overlap_line(&many),
-            "#acme/api overlap: beta is also changing 1.rs, 2.rs, 3.rs, 4.rs, 5.rs, 6.rs and 2 \
+            "#zirc/api overlap: beta is also changing 1.rs, 2.rs, 3.rs, 4.rs, 5.rs, 6.rs and 2 \
              more"
         );
         let local = LocalOverlap {
-            channel: "#acme/api".into(),
+            channel: "#zirc/api".into(),
             worktrees: [
                 Worktree {
                     path: "/src/api".into(),
@@ -375,12 +375,12 @@ pub(crate) mod tests {
         };
         assert_eq!(
             local_overlap_line(&local),
-            "#acme/api overlap: worktrees /src/api [main] and \
+            "#zirc/api overlap: worktrees /src/api [main] and \
              /src/api/.claude/worktrees/login [login] are both changing src/auth.rs \
              (same lines: 40-58), new.rs, src/login.rs (different parts)"
         );
         let pushed = Overlap {
-            channel: "#acme/api".into(),
+            channel: "#zirc/api".into(),
             nick: "alpha".into(),
             paths: vec!["src/auth.rs".into()],
             pushed: Some("main".into()),
@@ -390,7 +390,7 @@ pub(crate) mod tests {
         };
         assert_eq!(
             overlap_line(&pushed),
-            "#acme/api overlap: alpha pushed main, which changes what worktree \
+            "#zirc/api overlap: alpha pushed main, which changes what worktree \
              /src/api/.claude/worktrees/login [login] does: src/auth.rs (same lines: 3-4, 9)"
         );
     }
@@ -398,7 +398,7 @@ pub(crate) mod tests {
     #[test]
     fn says_a_lockfile_overlap_needs_regenerating_not_agreeing() {
         let mut local = LocalOverlap {
-            channel: "#acme/api".into(),
+            channel: "#zirc/api".into(),
             worktrees: [
                 Worktree {
                     path: "/src/api".into(),

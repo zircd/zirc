@@ -310,7 +310,7 @@ pub enum Request {
         repo: PathBuf,
         /// Who's sending it: an agent session, a person, or a script.
         session: String,
-        /// Its kind, such as `x-acme/deploy`: see [`zirc_proto::check_kind`].
+        /// Its kind, such as `x-fjord/deploy`: see [`zirc_proto::check_kind`].
         kind: String,
         /// What it carries, if anything.
         #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
@@ -1714,16 +1714,16 @@ mod tests {
             read(Request::Who)
         );
         // For one organisation of several.
-        let sent = serde_json::to_string(&Versioned::new(&Request::Who, Some("acme"))).unwrap();
+        let sent = serde_json::to_string(&Versioned::new(&Request::Who, Some("zirc"))).unwrap();
         assert_eq!(
             sent,
-            format!(r#"{{"v":{PROTOCOL},"organisation":"acme","op":"who"}}"#)
+            format!(r#"{{"v":{PROTOCOL},"organisation":"zirc","op":"who"}}"#)
         );
         assert_eq!(
             receive_request(&mut line(&sent)).await.unwrap(),
             Some(Addressed {
                 request: Request::Who,
-                org: Some("acme".into()),
+                org: Some("zirc".into()),
             })
         );
         // Beside a request with an `org` of its own.
@@ -1732,12 +1732,12 @@ mod tests {
             topic: "auth".into(),
             session: None,
         };
-        let sent = serde_json::to_string(&Versioned::new(&join, Some("acme"))).unwrap();
+        let sent = serde_json::to_string(&Versioned::new(&join, Some("zirc"))).unwrap();
         assert_eq!(
             receive_request(&mut line(&sent)).await.unwrap(),
             Some(Addressed {
                 request: join,
-                org: Some("acme".into()),
+                org: Some("zirc".into()),
             })
         );
         let newer = format!(r#"{{"v":{},"op":"who"}}"#, PROTOCOL + 1);

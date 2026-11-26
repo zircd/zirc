@@ -221,14 +221,14 @@ mod tests {
             device_key: false,
         };
         for foreign in [
-            "https://evil.example/m/acme/1".to_owned(),
-            format!("{web}.evil.example/m/acme/1"),
-            format!("{web}@evil.example/m/acme/1"),
+            "https://evil.example/m/zirc/1".to_owned(),
+            format!("{web}.evil.example/m/zirc/1"),
+            format!("{web}@evil.example/m/zirc/1"),
         ] {
             let err = client.download(&account, &foreign).await.unwrap_err();
             assert!(matches!(err, Error::Foreign { .. }), "{foreign}: {err}");
         }
-        let bytes = client.download(&account, &format!("{web}/m/acme/1")).await;
+        let bytes = client.download(&account, &format!("{web}/m/zirc/1")).await;
         assert_eq!(bytes.unwrap(), Download::Got(b"bytes".to_vec()));
         assert_eq!(served.join().unwrap().len(), 1);
     }
@@ -249,7 +249,7 @@ mod tests {
             password: "secret".into(),
             device_key: false,
         };
-        let url = format!("{web}/m/acme/1?w=640");
+        let url = format!("{web}/m/zirc/1?w=640");
         assert_eq!(
             client.download(&account, &url).await.unwrap(),
             Download::Making

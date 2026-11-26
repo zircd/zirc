@@ -43,7 +43,7 @@ pub const POINT_LEN: usize = 65;
 pub struct Claims {
     /// The account signing in.
     pub sub: String,
-    /// The server's host name, such as `acme.irc.zirc.dev`, so a token made for one server
+    /// The server's host name, such as `zirc.irc.zirc.dev`, so a token made for one server
     /// opens no other.
     pub aud: String,
     /// When it was made, in seconds since the epoch.
@@ -224,7 +224,7 @@ mod tests {
     use super::*;
 
     fn claims(now: u64) -> Claims {
-        Claims::new("ada", "acme.irc.zirc.dev", now, "j1".into())
+        Claims::new("ada", "zirc.irc.zirc.dev", now, "j1".into())
     }
 
     #[test]
@@ -257,26 +257,26 @@ mod tests {
     #[test]
     fn claims_are_for_one_server_and_a_short_while() {
         let c = claims(1000);
-        assert_eq!(c.check("acme.irc.zirc.dev", 1000), Ok(()));
-        assert_eq!(c.check("ACME.irc.zirc.dev", 1100), Ok(()));
+        assert_eq!(c.check("zirc.irc.zirc.dev", 1000), Ok(()));
+        assert_eq!(c.check("ZIRC.irc.zirc.dev", 1100), Ok(()));
         assert_eq!(
             c.check("other.irc.zirc.dev", 1000),
             Err("for another server")
         );
         assert_eq!(
-            c.check("acme.irc.zirc.dev", 1000 + MAX_LIFETIME),
+            c.check("zirc.irc.zirc.dev", 1000 + MAX_LIFETIME),
             Err("expired")
         );
         // Made in the device's future, beyond the skew.
         assert_eq!(
-            c.check("acme.irc.zirc.dev", 1000 - CLOCK_SKEW - 1),
+            c.check("zirc.irc.zirc.dev", 1000 - CLOCK_SKEW - 1),
             Err("not in date")
         );
         let long = Claims {
             exp: 1000 + MAX_LIFETIME + 1,
             ..claims(1000)
         };
-        assert_eq!(long.check("acme.irc.zirc.dev", 1000), Err("not in date"));
+        assert_eq!(long.check("zirc.irc.zirc.dev", 1000), Err("not in date"));
     }
 
     #[test]

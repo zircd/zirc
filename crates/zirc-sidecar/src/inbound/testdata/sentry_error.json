@@ -11,7 +11,7 @@
       "culprit": "zircd::history::replay",
       "location": "oss/crates/zircd/src/history.rs",
       "metadata": {"title": "zircd panicked in history::replay"},
-      "web_url": "https://acme.sentry.io/organizations/acme/issues/4821011/events/2a3b4c5d6e7f40818293a4b5c6d7e8f9/",
+      "web_url": "https://zirc.sentry.io/organizations/zirc/issues/4821011/events/2a3b4c5d6e7f40818293a4b5c6d7e8f9/",
       "issue_url": "https://sentry.io/api/0/issues/4821011/"
     }
   },

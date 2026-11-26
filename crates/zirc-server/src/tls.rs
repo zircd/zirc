@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn a_self_signed_certificate_lasts_and_isn_t_due() {
         let data = tempfile::tempdir().unwrap();
-        super::self_signed("irc.acme.test", data.path()).unwrap();
+        super::self_signed("irc.zirc.test", data.path()).unwrap();
         assert!(super::days_left(data.path()).is_some_and(|days| days > 30));
         assert!(!super::due(data.path()));
     }

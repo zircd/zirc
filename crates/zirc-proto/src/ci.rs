@@ -487,7 +487,7 @@ mod tests {
     #[test]
     fn only_an_integrations_account_speaks_for_ci() {
         assert!(only_cis(LANDING_KIND) && only_cis(DEPLOY_KIND) && only_cis(CHECK_KIND));
-        assert!(!only_cis(crate::state::KIND) && !only_cis("acme/build"));
+        assert!(!only_cis(crate::state::KIND) && !only_cis("zirc/build"));
         assert!(speaks_for_ci(Some(NICK)) && speaks_for_ci(Some("Zirc-Alerts")));
         // A member, their machine, a nick with no account, or `zirc` itself.
         for other in ["ada", "ada-mbp", "ci-3", "zirc", "zirc-"] {
@@ -513,7 +513,7 @@ mod tests {
             DEPLOY_KIND,
             CHECK_KIND,
             crate::state::KIND,
-            "x-acme/deploy",
+            "x-fjord/deploy",
         ] {
             assert!(may_say(kind), "{kind}");
         }

@@ -867,7 +867,7 @@ jobs:
     #[test]
     fn names_a_token_for_the_repository() {
         assert_eq!(token_name("zirc/server"), "github-server");
-        assert_eq!(token_name("Acme/My.Repo_2"), "github-my-repo-2");
+        assert_eq!(token_name("Zirc/My.Repo_2"), "github-my-repo-2");
         assert!(token_name("a/a-very-long-repository-name-that-goes-on").len() <= 32);
     }
 

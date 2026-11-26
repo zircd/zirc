@@ -5,7 +5,7 @@
   "organizationId": "7a1b2c3d-0000-4000-8000-000000000001",
   "webhookTimestamp": 1795615500000,
   "webhookId": "7a1b2c3d-0000-4000-8000-000000000002",
-  "url": "https://linear.app/acme/issue/ENG-12/invites-to-a-deleted-organisation-500",
+  "url": "https://linear.app/zirc/issue/ENG-12/invites-to-a-deleted-organisation-500",
   "actor": {"id": "7a1b2c3d-0000-4000-8000-000000000003", "type": "user", "name": "A. Person"},
   "data": {
     "id": "7a1b2c3d-0000-4000-8000-000000000012",
@@ -13,7 +13,7 @@
     "number": 12,
     "title": "Invites to a deleted organisation answer 500",
     "priorityLabel": "High",
-    "url": "https://linear.app/acme/issue/ENG-12/invites-to-a-deleted-organisation-500",
+    "url": "https://linear.app/zirc/issue/ENG-12/invites-to-a-deleted-organisation-500",
     "team": {"id": "7a1b2c3d-0000-4000-8000-000000000004", "key": "ENG", "name": "Engineering"},
     "state": {"id": "7a1b2c3d-0000-4000-8000-000000000005", "name": "Triage", "type": "triage"},
     "completedAt": null,

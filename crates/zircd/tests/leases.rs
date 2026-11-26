@@ -28,7 +28,7 @@ impl std::ops::Deref for Member {
 impl Member {
     async fn start(ergo: &Ergo, nick: &str) -> Self {
         let machine = Machine::connect(ergo, nick).await;
-        let clone = zirc_test_ergo::git::clone("git@github.com:acme/app.git");
+        let clone = zirc_test_ergo::git::clone("git@github.com:zirc/app.git");
         machine.add_repo(None, clone.path()).await.unwrap();
         machine
             .eventually(

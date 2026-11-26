@@ -226,13 +226,13 @@ const EXAMPLES: &[(&str, &[&str])] = &[
     (
         "file",
         &[
-            "zirc file https://zirc.dev/m/acme/7Hq2xV9k",
-            "zirc file https://zirc.dev/m/acme/7Hq2xV9k --width 1280",
+            "zirc file https://zirc.dev/m/zirc/7Hq2xV9k",
+            "zirc file https://zirc.dev/m/zirc/7Hq2xV9k --width 1280",
         ],
     ),
     ("decisions", &["zirc decisions --about deploys"]),
     ("sessions", &["zirc sessions"]),
-    ("logout", &["zirc logout", "zirc logout acme"]),
+    ("logout", &["zirc logout", "zirc logout zirc"]),
     (
         "agents",
         &["zirc agents queries", "zirc agents queries mine"],
@@ -459,7 +459,7 @@ enum Command {
     ///
     /// Asks first (`--yes` doesn't), tells zirc.dev this machine's key is gone, forgets the
     /// sign-in in ~/.zirc/config.toml and stops zircd. Offline it signs out here all the same
-    /// and says the key wasn't revoked. Given an organisation, such as acme, it takes that
+    /// and says the key wasn't revoked. Given an organisation, such as zirc, it takes that
     /// one off this machine and leaves the others.
     #[command(after_long_help = examples("logout", ""))]
     Logout(logout::Logout),
@@ -648,7 +648,7 @@ enum Command {
     Agents(AgentsCommand),
     /// Send an event of a kind your team made up, such as a deploy or who's on call.
     ///
-    /// Its kind is x-<team>/<name>, such as x-acme/deploy, and it carries the JSON given
+    /// Its kind is x-<team>/<name>, such as x-fjord/deploy, and it carries the JSON given
     /// with --json. Plain IRC clients and Zirc's apps show its text; scripts and agents pick
     /// it out with `zirc watch --filter`. It has to fit on one IRC message, a few hundred
     /// bytes in all. See `zirc reference`.
@@ -1253,7 +1253,7 @@ mod tests {
             &["zirc", "clashes", "src"][..],
             &["zirc", "leases"],
             &["zirc", "gotchas"],
-            &["zirc", "orgs", "remove", "acme"],
+            &["zirc", "orgs", "remove", "zirc"],
             &["zirc", "who", "--owns", "src"],
             &["zirc", "wait-for", "1299"],
         ] {
@@ -1381,7 +1381,7 @@ mod tests {
             &["zirc", "hints", "remove", "0123abcd", "--session", "cc-1"],
             &["zirc", "hints", "import"],
             &["zirc", "who", "src/login", "--session", "cc-1"],
-            &["zirc", "logout", "acme"],
+            &["zirc", "logout", "zirc"],
         ] {
             Cli::try_parse_from(args).unwrap_or_else(|err| panic!("{args:?}: {err}"));
         }

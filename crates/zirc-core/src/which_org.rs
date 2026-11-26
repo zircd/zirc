@@ -54,7 +54,7 @@ impl fmt::Display for Unpicked {
 
 impl std::error::Error for Unpicked {}
 
-/// "acme", "acme and globex", "acme, globex and initech".
+/// "zirc", "zirc and globex", "zirc, globex and initech".
 fn and(names: &[String]) -> String {
     match names {
         [] => String::new(),
@@ -109,8 +109,8 @@ pub fn pick(
 mod tests {
     use super::*;
 
-    const ACME: Choice<'static> = Choice {
-        name: "acme",
+    const ZIRC: Choice<'static> = Choice {
+        name: "zirc",
         own: true,
     };
     const GLOBEX: Choice<'static> = Choice {
@@ -125,47 +125,47 @@ mod tests {
     /// What [`pick`] answers.
     type Picked = Result<usize, Unpicked>;
 
-    /// What `pick` makes of each machine, with no --org and no repository, with acme's
+    /// What `pick` makes of each machine, with no --org and no repository, with zirc's
     /// repository.
     #[test]
     fn every_kind_of_machine_picks_as_the_rule_says() {
-        let both = Unpicked::Several(vec!["acme".into(), "globex".into()]);
+        let both = Unpicked::Several(vec!["zirc".into(), "globex".into()]);
         let several: Picked = Err(both.clone());
         let cases: [(&[Choice<'_>], Picked, Picked); 6] = [
             // One organisation: needn't say.
-            (&[ACME], Ok(0), Ok(0)),
+            (&[ZIRC], Ok(0), Ok(0)),
             // Two: the repository says, or --org must.
-            (&[ACME, GLOBEX], several.clone(), Ok(0)),
+            (&[ZIRC, GLOBEX], several.clone(), Ok(0)),
             (
-                &[GLOBEX, ACME],
-                Err(Unpicked::Several(vec!["globex".into(), "acme".into()])),
+                &[GLOBEX, ZIRC],
+                Err(Unpicked::Several(vec!["globex".into(), "zirc".into()])),
                 Ok(1),
             ),
             // The public server alone: that one.
             (&[PUBLIC], Ok(0), Ok(0)),
             // An own organisation beside the public server: the own.
-            (&[PUBLIC, ACME], Ok(1), Ok(1)),
-            (&[ACME, PUBLIC], Ok(0), Ok(0)),
+            (&[PUBLIC, ZIRC], Ok(1), Ok(1)),
+            (&[ZIRC, PUBLIC], Ok(0), Ok(0)),
         ];
         for (orgs, alone, in_repo) in cases {
             assert_eq!(pick(orgs, None, None), alone, "{orgs:?}");
             assert_eq!(
-                pick(orgs, None, Some("acme")),
+                pick(orgs, None, Some("zirc")),
                 in_repo,
-                "{orgs:?} in acme's repository"
+                "{orgs:?} in zirc's repository"
             );
         }
         // --org wins over the repository, and names the public server as well as any.
-        assert_eq!(pick(&[ACME, PUBLIC], Some("public"), Some("acme")), Ok(1));
+        assert_eq!(pick(&[ZIRC, PUBLIC], Some("public"), Some("zirc")), Ok(1));
         assert_eq!(
-            pick(&[ACME, GLOBEX], Some("initech"), None)
+            pick(&[ZIRC, GLOBEX], Some("initech"), None)
                 .unwrap_err()
                 .to_string(),
-            "this machine isn't signed in to initech, only to acme and globex"
+            "this machine isn't signed in to initech, only to zirc and globex"
         );
         assert_eq!(
             both.to_string(),
-            "this machine is in acme and globex: say which with --org"
+            "this machine is in zirc and globex: say which with --org"
         );
         assert_eq!(pick(&[], None, None), Err(Unpicked::None));
         // Two not its own and nothing of its own: both are implied, so it asks.

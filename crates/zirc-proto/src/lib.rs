@@ -305,7 +305,7 @@ pub enum Event {
     /// IRC clients and zirc's apps show its text.
     Custom {
         /// What kind of event it is, in the team's namespace: `x-<team>/<name>`, such as
-        /// `x-acme/deploy`. See [`check_kind`].
+        /// `x-fjord/deploy`. See [`check_kind`].
         kind: String,
         /// Whatever the team wants it to carry.
         #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
@@ -342,7 +342,7 @@ pub struct File {
 
 /// Why a custom event's kind isn't one: `None` when it's fine. A kind is `x-`, a namespace
 /// and a name joined by `/`, each of lowercase letters, digits and dashes, such as
-/// `x-acme/deploy`: zirc's own events never start with `x-`, so a team's never clash with
+/// `x-fjord/deploy`: zirc's own events never start with `x-`, so a team's never clash with
 /// them, and teams keep apart by their namespaces.
 #[must_use]
 pub fn check_kind(kind: &str) -> Option<&'static str> {
@@ -353,13 +353,13 @@ pub fn check_kind(kind: &str) -> Option<&'static str> {
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     };
     let Some(rest) = kind.strip_prefix("x-") else {
-        return Some("a custom kind starts with x-, as in x-acme/deploy");
+        return Some("a custom kind starts with x-, as in x-fjord/deploy");
     };
     match rest.split_once('/') {
         Some((team, name)) if word(team) && word(name) => None,
         _ => Some(
             "a custom kind is x-<team>/<name>, each of lowercase letters, digits and dashes, \
-             as in x-acme/deploy",
+             as in x-fjord/deploy",
         ),
     }
 }
@@ -2040,7 +2040,7 @@ mod tests {
             .is_live()
         );
         // Another team's kind says nothing, and shows as info.
-        let theirs = Message::new("cc-1", custom("x-acme/deploy"));
+        let theirs = Message::new("cc-1", custom("x-fjord/deploy"));
         assert_eq!(theirs.level(), None);
         assert_eq!(theirs.level_or_info(), Level::Info);
         // One without a level is written without one, as before levels.
@@ -2165,7 +2165,7 @@ mod tests {
         assert_eq!(unknown_zirc_kind(push), Some("x-zirc/push"));
         let landing = r#"select(.message.event.kind == "x-zirc/landing" and (.x | test("a")))"#;
         assert_eq!(unknown_zirc_kind(landing), None);
-        assert_eq!(unknown_zirc_kind(r#".kind == "x-acme/deploy""#), None);
+        assert_eq!(unknown_zirc_kind(r#".kind == "x-fjord/deploy""#), None);
         // Every kind is told apart, none twice.
         let kinds: std::collections::BTreeSet<_> = ZIRC_KINDS.iter().collect();
         assert_eq!(kinds.len(), ZIRC_KINDS.len());
@@ -2412,7 +2412,7 @@ mod tests {
         let message = Message::new(
             "deploy-bot",
             Event::Custom {
-                kind: "x-acme/deploy".into(),
+                kind: "x-fjord/deploy".into(),
                 data: serde_json::json!({"env": "prod", "version": "1.4.2"}),
                 text: "deployed 1.4.2 to prod".into(),
             },
@@ -2420,7 +2420,7 @@ mod tests {
         let body = encode(&message).unwrap();
         assert!(body.ends_with(" :deployed 1.4.2 to prod\x01"), "{body}");
         assert_eq!(decode(&body).unwrap(), Some(message));
-        let json = r#"{"type":"custom","kind":"x-acme/ping","text":"ping"}"#;
+        let json = r#"{"type":"custom","kind":"x-fjord/ping","text":"ping"}"#;
         let event: Event = serde_json::from_str(json).unwrap();
         assert_eq!(serde_json::to_string(&event).unwrap(), json);
     }
@@ -2430,7 +2430,7 @@ mod tests {
         let message = Message::new(
             "mattias",
             Event::File(File {
-                url: "https://zirc.dev/m/acme/7Hq2xV9kLmN3pR8sT4wZbc".into(),
+                url: "https://zirc.dev/m/zirc/7Hq2xV9kLmN3pR8sT4wZbc".into(),
                 name: "IMG_2041.jpeg".into(),
                 mime: "image/jpeg".into(),
                 size: 2_345_678,
@@ -2442,7 +2442,7 @@ mod tests {
         let body = encode(&message).unwrap();
         assert!(
             body.ends_with(
-                " :shared IMG_2041.jpeg: https://zirc.dev/m/acme/7Hq2xV9kLmN3pR8sT4wZbc\x01"
+                " :shared IMG_2041.jpeg: https://zirc.dev/m/zirc/7Hq2xV9kLmN3pR8sT4wZbc\x01"
             ),
             "{body}"
         );
@@ -2454,15 +2454,15 @@ mod tests {
 
     #[test]
     fn custom_kinds_are_namespaced() {
-        assert_eq!(check_kind("x-acme/deploy"), None);
-        assert_eq!(check_kind("x-acme-2/on-call"), None);
+        assert_eq!(check_kind("x-fjord/deploy"), None);
+        assert_eq!(check_kind("x-fjord-2/on-call"), None);
         for kind in [
             "deploy",
-            "x-acme",
+            "x-fjord",
             "x-/deploy",
-            "x-acme/",
-            "x-Acme/deploy",
-            "x-acme/a/b",
+            "x-fjord/",
+            "x-Zirc/deploy",
+            "x-fjord/a/b",
         ] {
             assert!(check_kind(kind).is_some(), "{kind}");
         }

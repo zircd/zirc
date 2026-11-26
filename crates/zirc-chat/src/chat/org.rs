@@ -8,8 +8,8 @@ use super::{Chat, SenderKind, fold};
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub struct OrgHeader {
-    /// The organisation's name, `Acme`: as the app signed in to it says
-    /// ([`Chat::set_org_name`]), or else as the server calls its network, `acme`.
+    /// The organisation's name, `Zirc`: as the app signed in to it says
+    /// ([`Chat::set_org_name`]), or else as the server calls its network, `zirc`.
     pub name: String,
     /// What its mark shows without a picture: `A`, `ZL` ([`crate::orgs::org_initials`]).
     pub initials: String,
@@ -99,7 +99,7 @@ impl Chat {
             .collect()
     }
 
-    /// Names the organisation as zirc.dev does, `Acme`, for [`Chat::org_header`].
+    /// Names the organisation as zirc.dev does, `Zirc`, for [`Chat::org_header`].
     pub fn set_org_name(&mut self, name: Option<&str>) {
         self.org_name = name.map(str::to_owned);
     }

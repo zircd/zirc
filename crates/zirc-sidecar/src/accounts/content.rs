@@ -652,7 +652,7 @@ mod tests {
         format!("{data}.{}", URL_SAFE_NO_PAD.encode(signature.as_ref()))
     }
 
-    const SERVER: &str = "acme.irc.zirc.dev";
+    const SERVER: &str = "zirc.irc.zirc.dev";
 
     #[test]
     fn a_browser_login_for_this_server_names_its_account() {
@@ -664,7 +664,7 @@ mod tests {
             Ok("ada".into())
         );
         assert_eq!(
-            browser_account(&token(&new, &good), &keys, "ACME.irc.zirc.dev", 100),
+            browser_account(&token(&new, &good), &keys, "ZIRC.irc.zirc.dev", 100),
             Ok("ada".into())
         );
     }

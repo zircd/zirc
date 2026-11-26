@@ -87,14 +87,14 @@ async fn a_working_set_reaches_people_as_a_tagmsg_and_is_said_again_when_an_app_
     );
 }
 
-/// A machine on `clock`, watching a clone of acme/app, in `#general`.
+/// A machine on `clock`, watching a clone of zirc/app, in `#general`.
 async fn member(ergo: &Ergo, nick: &str, clock: &zircd::Clock) -> (Machine, TempDir) {
     let hooks = zircd::Hooks {
         clock: clock.clone(),
         ..zircd::Hooks::default()
     };
     let machine = Machine::hooked(ergo, nick, hooks).await;
-    let clone = zirc_test_ergo::git::clone("git@github.com:acme/app.git");
+    let clone = zirc_test_ergo::git::clone("git@github.com:zirc/app.git");
     machine.add_repo(None, clone.path()).await.unwrap();
     machine
         .eventually(

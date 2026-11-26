@@ -133,8 +133,8 @@ pub fn valid_org_name(name: &str) -> bool {
     !name.is_empty() && !name.starts_with('.') && !name.contains(['/', '\\'])
 }
 
-/// What zirc calls the organisation whose server is `server`, unless told otherwise: `acme`
-/// for `acme.irc.zirc.dev`, or the server's host. Every client names organisations by it,
+/// What zirc calls the organisation whose server is `server`, unless told otherwise: `zirc`
+/// for `zirc.irc.zirc.dev`, or the server's host. Every client names organisations by it,
 /// so `config.toml`'s and the apps' sign-ins agree.
 #[must_use]
 pub fn org_name(server: &Server) -> String {
@@ -450,7 +450,7 @@ mod tests {
     #[test]
     fn connects_with_tls_on_the_default_port_unless_told_otherwise() {
         let mut server = Server {
-            host: "acme.irc.zirc.dev".into(),
+            host: "zirc.irc.zirc.dev".into(),
             port: None,
             tls: None,
             password: Some("gate".into()),
@@ -463,7 +463,7 @@ mod tests {
                 config.tls,
                 config.nick.as_str()
             ),
-            ("acme.irc.zirc.dev", DEFAULT_PORT, true, "mattias")
+            ("zirc.irc.zirc.dev", DEFAULT_PORT, true, "mattias")
         );
         assert_eq!(config.server_password.as_deref(), Some("gate"));
         server.port = Some(6667);
@@ -474,11 +474,11 @@ mod tests {
 
     #[test]
     fn one_organisation_is_the_config_as_it_was() {
-        let text = "nick = \"mattias-mbp\"\n\n[server]\nhost = \"acme.irc.zirc.dev\"\n";
+        let text = "nick = \"mattias-mbp\"\n\n[server]\nhost = \"zirc.irc.zirc.dev\"\n";
         let settings = Settings::from_toml(text).unwrap();
         let orgs = settings.organisations();
         assert_eq!(orgs.len(), 1);
-        assert_eq!(orgs[0].name(), "acme");
+        assert_eq!(orgs[0].name(), "zirc");
         assert_eq!(orgs[0].nick.as_deref(), Some("mattias-mbp"));
         // Written back unchanged, so releases from before several organisations read it.
         assert_eq!(settings.to_toml(), text);
@@ -487,11 +487,11 @@ mod tests {
     #[test]
     fn an_app_skips_the_settings_it_doesnt_know() {
         let text = "nick = \"m\"\naccept_recommended = true\nfrom_next_year = 3\n\
-                    [server]\nhost = \"acme.irc.zirc.dev\"\n[newer]\nthan = \"this\"\n";
+                    [server]\nhost = \"zirc.irc.zirc.dev\"\n[newer]\nthan = \"this\"\n";
         let (read, skipped) = Settings::from_toml_skipping_unknown(text).unwrap();
         assert_eq!(skipped, ["from_next_year", "newer"]);
         assert_eq!(read.accept_recommended, Some(true));
-        assert_eq!(read.server.host, "acme.irc.zirc.dev");
+        assert_eq!(read.server.host, "zirc.irc.zirc.dev");
         // zircd and zirc still refuse them, as a mistyped setting is theirs to catch.
         assert!(Settings::from_toml(text).is_err());
         // What it knows must still read, and a known table's own settings too.
@@ -510,7 +510,7 @@ mod tests {
     #[test]
     fn reads_and_writes_several_organisations() {
         let mut settings =
-            Settings::from_toml("nick = \"m\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n").unwrap();
+            Settings::from_toml("nick = \"m\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n").unwrap();
         let globex = Organisation {
             name: None,
             nick: Some("m".into()),
@@ -538,13 +538,13 @@ mod tests {
             .iter()
             .map(Organisation::name)
             .collect();
-        assert_eq!(names, ["acme", "globex"]);
+        assert_eq!(names, ["zirc", "globex"]);
         assert_eq!(read.organisation("globex"), Some(globex));
 
         // Setting the first changes the settings at the top.
-        let mut acme = read.organisation("acme").unwrap();
-        acme.nick = Some("n".into());
-        settings.set_organisation("acme", acme);
+        let mut zirc = read.organisation("zirc").unwrap();
+        zirc.nick = Some("n".into());
+        settings.set_organisation("zirc", zirc);
         assert_eq!(settings.nick.as_deref(), Some("n"));
         assert_eq!(settings.orgs.len(), 1);
         assert_eq!(settings.duplicate_organisation(), None);
@@ -555,13 +555,13 @@ mod tests {
         let mut out = read.clone();
         assert!(out.remove_organisation("globex"));
         assert!(!out.remove_organisation("globex"));
-        assert!(!out.remove_organisation("acme"), "the first stays");
+        assert!(!out.remove_organisation("zirc"), "the first stays");
         assert_eq!(out.organisations().len(), 1);
     }
 
     #[test]
     fn a_guests_terminal_from_before_is_left_out() {
-        let text = "[server]\nhost = \"acme.irc.zirc.dev\"\n[guest]\ngrant = \"g\"\n\
+        let text = "[server]\nhost = \"zirc.irc.zirc.dev\"\n[guest]\ngrant = \"g\"\n\
                     [[org]]\nname = \"globex\"\n[org.server]\nhost = \"globex.irc.zirc.dev\"\n\
                     [org.guest]\ngrant = \"g\"\n";
         let read = Settings::from_toml(text).unwrap();
@@ -570,7 +570,7 @@ mod tests {
             .iter()
             .map(Organisation::name)
             .collect();
-        assert_eq!(names, ["acme", "globex"]);
+        assert_eq!(names, ["zirc", "globex"]);
         assert!(!read.to_toml().contains("guest"), "{}", read.to_toml());
         assert!(
             Settings::from_toml_skipping_unknown(text)
@@ -595,7 +595,7 @@ mod tests {
             owner: None,
             web: None,
         };
-        assert_eq!(org("acme.irc.zirc.dev", None).name(), "acme");
+        assert_eq!(org("zirc.irc.zirc.dev", None).name(), "zirc");
         assert_eq!(org("irc.example.com", None).name(), "irc.example.com");
         assert_eq!(org("irc.zirc.dev", None).name(), "public");
         assert_eq!(org("127.0.0.1", Some("beta")).name(), "beta");
@@ -603,7 +603,7 @@ mod tests {
 
     #[test]
     fn refuses_names_that_arent_a_directory_of_their_own() {
-        assert!(valid_org_name("acme") && valid_org_name("127.0.0.1"));
+        assert!(valid_org_name("zirc") && valid_org_name("127.0.0.1"));
         for name in ["", ".", "..", "../x", "a/b", "a\\b", ".hidden"] {
             assert!(!valid_org_name(name), "{name}");
         }

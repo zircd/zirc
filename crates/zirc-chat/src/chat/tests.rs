@@ -1331,7 +1331,7 @@ fn shows_shared_files_as_files() {
     let photo = Message::new(
         "desktop",
         Event::File(zirc_proto::File {
-            url: "https://zirc.dev/m/acme/7Hq2xV9k".into(),
+            url: "https://zirc.dev/m/zirc/7Hq2xV9k".into(),
             name: "IMG_2041.jpeg".into(),
             mime: "image/jpeg".into(),
             size: 2_345_678,
@@ -1355,7 +1355,7 @@ fn shows_shared_files_as_files() {
         shown,
         [
             "--- 2026-10-30",
-            "[file] alice: IMG_2041.jpeg https://zirc.dev/m/acme/7Hq2xV9k"
+            "[file] alice: IMG_2041.jpeg https://zirc.dev/m/zirc/7Hq2xV9k"
         ]
     );
     assert_eq!(
@@ -3619,7 +3619,7 @@ fn a_motd_that_says_messages_are_logged_shows_until_the_connection_ends() {
         &mut chat,
         &[
             ":s 375 me :- s Message of the day - ",
-            ":s 372 me :- zirc · acme's private server · zirc.dev",
+            ":s 372 me :- zirc · zirc's private server · zirc.dev",
             &channels,
             ":s 376 me :End of /MOTD command",
         ],
@@ -3631,7 +3631,7 @@ fn a_motd_that_says_messages_are_logged_shows_until_the_connection_ends() {
     // Turned off, the server says nothing of it on connecting again.
     feed(
         &mut chat,
-        &[":s 372 me :- zirc · acme's private server · zirc.dev"],
+        &[":s 372 me :- zirc · zirc's private server · zirc.dev"],
     );
     connected(&mut chat);
     assert_eq!(chat.status().logged, None);
@@ -4328,7 +4328,7 @@ fn heads_the_channel_list_with_the_organisation_and_its_people() {
     feed(
         &mut chat,
         &[
-            ":s 005 me NETWORK=acme CHANTYPES=# :are supported by this server",
+            ":s 005 me NETWORK=zirc CHANTYPES=# :are supported by this server",
             ":me!u@h JOIN #api",
             ":s 353 me = #api :me bob me-mbp zirc-ci",
             ":s 354 me 42 machine/me me-mbp H me-mbp :me",
@@ -4340,8 +4340,8 @@ fn heads_the_channel_list_with_the_organisation_and_its_people() {
     assert_eq!(
         chat.org_header(),
         OrgHeader {
-            name: "acme".into(),
-            initials: "A".into(),
+            name: "zirc".into(),
+            initials: "Z".into(),
             members: 3,
             members_label: "3 members".into(),
             stale: false,
@@ -4356,9 +4356,9 @@ fn heads_the_channel_list_with_the_organisation_and_its_people() {
     );
     let _ = chat.mark_all_read();
     assert_eq!(chat.org_header().mark_all_read, None);
-    chat.set_org_name(Some("Acme Inc"));
-    assert_eq!(chat.org_header().name, "Acme Inc");
-    assert_eq!(chat.org_header().initials, "AI");
+    chat.set_org_name(Some("Zirc Inc"));
+    assert_eq!(chat.org_header().name, "Zirc Inc");
+    assert_eq!(chat.org_header().initials, "ZI");
     // Offline, the people stay as last known, flagged stale, until NAMES says them afresh.
     chat.disconnected("lost");
     let header = chat.org_header();
@@ -6682,7 +6682,7 @@ fn a_commits_branch_and_commit_link_into_its_repository() {
             branch: "fix-login".into(),
             sha: "abc1234def".into(),
             subject: "Fix".into(),
-            repo: Some("https://github.com/acme/api".into()),
+            repo: Some("https://github.com/zirc/api".into()),
         },
     );
     let mut chat = chat();
@@ -6716,11 +6716,11 @@ fn a_commits_branch_and_commit_link_into_its_repository() {
         vec![
             (
                 "fix-login",
-                &SpanKind::Link("https://github.com/acme/api/tree/fix-login".into())
+                &SpanKind::Link("https://github.com/zirc/api/tree/fix-login".into())
             ),
             (
                 "abc1234",
-                &SpanKind::Link("https://github.com/acme/api/commit/abc1234def".into())
+                &SpanKind::Link("https://github.com/zirc/api/commit/abc1234def".into())
             ),
         ]
     );
@@ -6906,9 +6906,9 @@ fn a_failed_landings_targets_link_to_their_test_results() {
     );
 }
 
-/// An `x-acme/deploy` event carrying `card`.
+/// An `x-fjord/deploy` event carrying `card`.
 fn carded(card: &serde_json::Value, text: &str) -> Message {
-    ci_post("x-acme/deploy", serde_json::json!({ "card": card }), text)
+    ci_post("x-fjord/deploy", serde_json::json!({ "card": card }), text)
 }
 
 #[test]
@@ -7723,7 +7723,7 @@ fn previews_a_conversations_last_words_as_discord_does() {
         Message::new(
             "",
             Event::File(zirc_proto::File {
-                url: format!("https://zirc.dev/m/acme/{name}"),
+                url: format!("https://zirc.dev/m/zirc/{name}"),
                 name: name.into(),
                 mime: "image/png".into(),
                 size: 10,
@@ -8249,7 +8249,7 @@ fn the_card_the_note_and_the_header_are_the_wire_records() {
     );
     assert_eq!(
         serde_json::to_value(OrgHeader {
-            name: "Acme".into(),
+            name: "Zirc".into(),
             initials: "A".into(),
             members: 3,
             members_label: "3 members".into(),
@@ -8257,7 +8257,7 @@ fn the_card_the_note_and_the_header_are_the_wire_records() {
             mark_all_read: None,
         })
         .unwrap(),
-        json!({"name": "Acme", "initials": "A", "members": 3, "membersLabel": "3 members", "stale": false, "markAllRead": null})
+        json!({"name": "Zirc", "initials": "A", "members": 3, "membersLabel": "3 members", "stale": false, "markAllRead": null})
     );
 }
 

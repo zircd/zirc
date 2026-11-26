@@ -17,7 +17,7 @@
           {"type": "TypeError", "value": "Object [object Object] has no method 'updateFrom'"}
         ]
       },
-      "web_url": "https://acme.sentry.io/organizations/acme/issues/4821099/events/5e0a7c1d2b3f4a5e9d8c7b6a5f4e3d2c/"
+      "web_url": "https://zirc.sentry.io/organizations/zirc/issues/4821099/events/5e0a7c1d2b3f4a5e9d8c7b6a5f4e3d2c/"
     },
     "triggered_rule": "Notify via Zirc"
   },

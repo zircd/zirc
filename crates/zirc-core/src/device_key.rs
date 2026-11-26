@@ -201,9 +201,9 @@ mod tests {
             assert_eq!(mode & 0o777, 0o600);
         }
 
-        let one = token(&key, "ada-laptop", "acme.irc.zirc.dev").unwrap();
-        let two = token(&key, "ada-laptop", "acme.irc.zirc.dev").unwrap();
-        assert!(verifies(&one, "ada-laptop", "acme.irc.zirc.dev"));
+        let one = token(&key, "ada-laptop", "zirc.irc.zirc.dev").unwrap();
+        let two = token(&key, "ada-laptop", "zirc.irc.zirc.dev").unwrap();
+        assert!(verifies(&one, "ada-laptop", "zirc.irc.zirc.dev"));
         assert_ne!(
             device_key::parse(&one).unwrap().claims.jti,
             device_key::parse(&two).unwrap().claims.jti
@@ -214,9 +214,9 @@ mod tests {
     fn a_bearer_makes_a_fresh_token_each_time() {
         let dir = tempfile::tempdir().unwrap();
         let key: Arc<dyn DeviceKey> = Arc::new(Software::in_file(dir.path().join("k")));
-        let make = bearer(key, "ada".into(), "acme.irc.zirc.dev".into());
+        let make = bearer(key, "ada".into(), "zirc.irc.zirc.dev".into());
         let (one, two) = (make().unwrap(), make().unwrap());
         assert_ne!(one, two);
-        assert!(verifies(&two, "ada", "acme.irc.zirc.dev"));
+        assert!(verifies(&two, "ada", "zirc.irc.zirc.dev"));
     }
 }

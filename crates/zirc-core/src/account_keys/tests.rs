@@ -87,7 +87,7 @@ fn listing(orgs: &[(&str, bool)]) -> String {
 }
 
 fn zirc_credentials() -> String {
-    r#"{"name":"zirc","server":{"host":"zirc.irc.zirc.dev"},"account":{"name":"ali","password":"zirc-fresh"},"nick":"ali"}"#.into()
+    r#"{"name":"fjord","server":{"host":"fjord.irc.zirc.dev"},"account":{"name":"ali","password":"zirc-fresh"},"nick":"ali"}"#.into()
 }
 
 /// The token a request carried.
@@ -129,7 +129,7 @@ async fn asks_with_a_short_token_for_zirc_dev_signed_by_the_device_key() {
 #[tokio::test]
 async fn refresh_offers_new_memberships_to_join_and_ends_removed_ones_leaving_the_others() {
     let (web, served) = zirc_test_ergo::web::serve(vec![
-        (200, listing(&[("zirc", true), ("later", false)])),
+        (200, listing(&[("fjord", true), ("later", false)])),
         (200, zirc_credentials()),
     ]);
     let env = env(&web);
@@ -137,27 +137,27 @@ async fn refresh_offers_new_memberships_to_join_and_ends_removed_ones_leaving_th
     let mut account = account(
         &env,
         on(),
-        vec![signin("alice", "acme.irc.zirc.dev", &web), own],
+        vec![signin("alice", "zirc.irc.zirc.dev", &web), own],
     );
     let sealed = |org: &str| crate::sealed::Keys::name(org);
-    env.secrets.set(&sealed("acme"), "kept").unwrap();
+    env.secrets.set(&sealed("zirc"), "kept").unwrap();
     env.secrets
         .set(&sealed("chat.example.org"), "kept")
         .unwrap();
     let refreshed = account.refresh_organisations(&env.key, &web).await.unwrap();
-    // Acme's sealing keys go as its access does; the others' stay.
-    assert_eq!(env.secrets.get(&sealed("acme")), None);
+    // Zirc's sealing keys go as its access does; the others' stay.
+    assert_eq!(env.secrets.get(&sealed("zirc")), None);
     assert!(env.secrets.get(&sealed("chat.example.org")).is_some());
     assert!(refreshed.asked);
-    assert_eq!(refreshed.ended, ["acme"]);
+    assert_eq!(refreshed.ended, ["zirc"]);
     assert_eq!(refreshed.invites.len(), 1);
     // Neither new membership is added by itself (the user's choice, 20 Nov 2026): both are
     // offered to join, the one being set up too.
-    assert!(account.get("zirc").is_none() && account.get("later").is_none());
+    assert!(account.get("fjord").is_none() && account.get("later").is_none());
     let slugs = |account: &Account| -> Vec<String> {
         account.joinable().into_iter().map(|j| j.slug).collect()
     };
-    assert_eq!(slugs(&account), ["zirc", "later"]);
+    assert_eq!(slugs(&account), ["fjord", "later"]);
     assert_eq!(refreshed.joinable.len(), 2);
     assert!(matches!(
         account.to_join("later"),
@@ -165,32 +165,32 @@ async fn refresh_offers_new_memberships_to_join_and_ends_removed_ones_leaving_th
     ));
     // Joining one asks for its credentials and adds it, and it's joinable no more.
     let joined = account
-        .join_organisation(&env.key, "zirc", |s| session(s.clone()))
+        .join_organisation(&env.key, "fjord", |s| session(s.clone()))
         .await
         .unwrap();
-    assert_eq!(joined, "zirc");
+    assert_eq!(joined, "fjord");
     assert_eq!(slugs(&account), ["later"]);
-    assert_eq!(account.get("acme").unwrap().state(), OrgState::AccessEnded);
+    assert_eq!(account.get("zirc").unwrap().state(), OrgState::AccessEnded);
     // The self-hosted one is none of zirc.dev's business.
     assert_ne!(
         account.get("chat.example.org").unwrap().state(),
         OrgState::AccessEnded
     );
-    assert_eq!(account.get("zirc").unwrap().signin().handle, "ali");
+    assert_eq!(account.get("fjord").unwrap().signin().handle, "ali");
     assert_eq!(
-        env.secrets.get("ali@zirc.irc.zirc.dev").as_deref(),
+        env.secrets.get("ali@fjord.irc.zirc.dev").as_deref(),
         Some("zirc-fresh")
     );
     let requests = served.join().unwrap();
     assert_eq!(requests.len(), 2, "only the listing, then the one joined");
     assert!(requests[1].starts_with("POST /api/me/credentials "));
-    assert!(body_of(&requests[1]).contains(r#""org":"zirc""#));
+    assert!(body_of(&requests[1]).contains(r#""org":"fjord""#));
 }
 
 #[tokio::test]
 async fn joining_one_over_the_limit_says_so_and_keeps_nothing() {
     let (web, served) = zirc_test_ergo::web::serve(vec![
-        (200, listing(&[("acme", true), ("zirc", true)])),
+        (200, listing(&[("zirc", true), ("fjord", true)])),
         (200, zirc_credentials()),
     ]);
     let env = env(&web);
@@ -200,7 +200,7 @@ async fn joining_one_over_the_limit_says_so_and_keeps_nothing() {
     let mut account = account(
         &env,
         policy,
-        vec![signin("alice", "acme.irc.zirc.dev", &web), own],
+        vec![signin("alice", "zirc.irc.zirc.dev", &web), own],
     );
     let secrets = env.secrets.clone();
     let fetched = fetch_listing(&env.key, secrets.as_ref(), &web)
@@ -211,7 +211,7 @@ async fn joining_one_over_the_limit_says_so_and_keeps_nothing() {
     // At the most, nothing is offered, as "Add organisation" isn't.
     assert!(account.joinable().is_empty());
     // Asked all the same (it was offered a moment ago), the most are said.
-    let renewed = fetch_credentials(&env.key, secrets.as_ref(), &web, "zirc")
+    let renewed = fetch_credentials(&env.key, secrets.as_ref(), &web, "fjord")
         .await
         .unwrap()
         .unwrap();
@@ -222,8 +222,8 @@ async fn joining_one_over_the_limit_says_so_and_keeps_nothing() {
         err,
         Error::Add(crate::account::AddError::TooMany(2))
     ));
-    assert!(account.get("zirc").is_none());
-    assert_eq!(env.secrets.get("ali@zirc.irc.zirc.dev"), None);
+    assert!(account.get("fjord").is_none());
+    assert_eq!(env.secrets.get("ali@fjord.irc.zirc.dev"), None);
     served.join().unwrap();
 }
 
@@ -234,12 +234,12 @@ async fn with_account_keys_off_nothing_is_sent() {
     let mut account = account(
         &env,
         Policy::default().with_several(true),
-        vec![signin("alice", "acme.irc.zirc.dev", &web)],
+        vec![signin("alice", "zirc.irc.zirc.dev", &web)],
     );
     let refreshed = account.refresh_organisations(&env.key, &web).await.unwrap();
     assert!(!refreshed.asked);
-    assert_ne!(account.get("acme").unwrap().state(), OrgState::AccessEnded);
-    assert!(!account.renew_organisation(&env.key, "acme").await.unwrap());
+    assert_ne!(account.get("zirc").unwrap().state(), OrgState::AccessEnded);
+    assert!(!account.renew_organisation(&env.key, "zirc").await.unwrap());
     assert!(served.join().unwrap().is_empty());
 }
 
@@ -247,10 +247,10 @@ async fn with_account_keys_off_nothing_is_sent() {
 async fn zirc_dev_with_the_switch_off_changes_nothing() {
     let (web, served) = zirc_test_ergo::web::serve(vec![(404, String::new())]);
     let env = env(&web);
-    let mut account = account(&env, on(), vec![signin("alice", "acme.irc.zirc.dev", &web)]);
+    let mut account = account(&env, on(), vec![signin("alice", "zirc.irc.zirc.dev", &web)]);
     let refreshed = account.refresh_organisations(&env.key, &web).await.unwrap();
     assert!(!refreshed.asked);
-    assert_ne!(account.get("acme").unwrap().state(), OrgState::AccessEnded);
+    assert_ne!(account.get("zirc").unwrap().state(), OrgState::AccessEnded);
     served.join().unwrap();
 }
 
@@ -334,24 +334,24 @@ async fn too_many_calls_ask_for_a_pause_and_do_not_sign_out() {
 
 #[tokio::test]
 async fn a_renamed_handle_gets_fresh_credentials_without_a_browser() {
-    let fresh = r#"{"name":"acme","server":{"host":"acme.irc.zirc.dev"},"account":{"name":"alicia","password":"new-pass"},"nick":"alicia"}"#;
+    let fresh = r#"{"name":"zirc","server":{"host":"zirc.irc.zirc.dev"},"account":{"name":"alicia","password":"new-pass"},"nick":"alicia"}"#;
     let (web, served) = zirc_test_ergo::web::serve(vec![(200, fresh.into())]);
     let env = env(&web);
-    let mut account = account(&env, on(), vec![signin("alice", "acme.irc.zirc.dev", &web)]);
-    account.get_mut("acme").unwrap().badge = 4;
+    let mut account = account(&env, on(), vec![signin("alice", "zirc.irc.zirc.dev", &web)]);
+    account.get_mut("zirc").unwrap().badge = 4;
     let store = account.store().clone();
-    account.get("acme").unwrap().save(&store).unwrap();
-    assert!(account.renew_organisation(&env.key, "acme").await.unwrap());
-    let session = account.get("acme").unwrap();
+    account.get("zirc").unwrap().save(&store).unwrap();
+    assert!(account.renew_organisation(&env.key, "zirc").await.unwrap());
+    let session = account.get("zirc").unwrap();
     assert_eq!(session.signin().handle, "alicia");
     assert_eq!(session.badge, 4);
     assert_eq!(
-        env.secrets.get("alicia@acme.irc.zirc.dev").as_deref(),
+        env.secrets.get("alicia@zirc.irc.zirc.dev").as_deref(),
         Some("new-pass")
     );
-    assert_eq!(env.secrets.get("alice@acme.irc.zirc.dev"), None);
+    assert_eq!(env.secrets.get("alice@zirc.irc.zirc.dev"), None);
     let requests = served.join().unwrap();
-    assert!(body_of(&requests[0]).contains(r#""org":"acme""#));
+    assert!(body_of(&requests[0]).contains(r#""org":"zirc""#));
 }
 
 #[tokio::test]
@@ -362,12 +362,12 @@ async fn signing_out_of_one_tells_zirc_dev_and_a_failure_does_not_keep_the_perso
         &env,
         on(),
         vec![
-            signin("alice", "acme.irc.zirc.dev", &web),
-            signin("ali", "zirc.irc.zirc.dev", &web),
+            signin("alice", "zirc.irc.zirc.dev", &web),
+            signin("ali", "fjord.irc.zirc.dev", &web),
         ],
     );
     let (removal, revoked) = account
-        .remove_organisation_online(&env.key, "acme", None)
+        .remove_organisation_online(&env.key, "zirc", None)
         .await
         .unwrap()
         .unwrap();
@@ -375,21 +375,21 @@ async fn signing_out_of_one_tells_zirc_dev_and_a_failure_does_not_keep_the_perso
     let requests = served.join().unwrap();
     assert!(requests[0].starts_with("DELETE /api/me/credentials "));
     assert_eq!(token_of(&requests[0]).claims.sub, "acc-1");
-    assert!(body_of(&requests[0]).contains(r#""org":"acme""#));
-    // zirc.dev being down is no reason to stay signed in to Zirc: the last organisation's key
+    assert!(body_of(&requests[0]).contains(r#""org":"zirc""#));
+    // zirc.dev being down is no reason to stay signed in to Fjord: the last organisation's key
     // and the device's sign-out from zirc.dev both fail, and it's signed out regardless.
     let (web, served) =
         zirc_test_ergo::web::serve(vec![(500, "down".into()), (500, "down".into())]);
     let env = self::env(&web);
-    let mut account = self::account(&env, on(), vec![signin("ali", "zirc.irc.zirc.dev", &web)]);
+    let mut account = self::account(&env, on(), vec![signin("ali", "fjord.irc.zirc.dev", &web)]);
     let (_, revoked) = account
-        .remove_organisation_online(&env.key, "zirc", None)
+        .remove_organisation_online(&env.key, "fjord", None)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(revoked.failed.len(), 2);
     assert!(account.is_empty());
-    assert_eq!(env.secrets.get("ali@zirc.irc.zirc.dev"), None);
+    assert_eq!(env.secrets.get("ali@fjord.irc.zirc.dev"), None);
     served.join().unwrap();
 }
 
@@ -400,10 +400,10 @@ async fn without_account_keys_the_key_registration_is_removed_with_the_organisat
     let mut account = account(
         &env,
         Policy::default(),
-        vec![signin("alice", "acme.irc.zirc.dev", &web)],
+        vec![signin("alice", "zirc.irc.zirc.dev", &web)],
     );
     let (_, revoked) = account
-        .remove_organisation_online(&env.key, "acme", None)
+        .remove_organisation_online(&env.key, "zirc", None)
         .await
         .unwrap()
         .unwrap();
@@ -429,8 +429,8 @@ async fn signing_out_of_the_last_ends_zirc_dev_and_its_browser_session_and_of_on
         &env,
         on(),
         vec![
-            signin("alice", "acme.irc.zirc.dev", &web),
-            signin("ali", "zirc.irc.zirc.dev", &web),
+            signin("alice", "zirc.irc.zirc.dev", &web),
+            signin("ali", "fjord.irc.zirc.dev", &web),
         ],
     );
     let person = Credential {
@@ -439,15 +439,15 @@ async fn signing_out_of_the_last_ends_zirc_dev_and_its_browser_session_and_of_on
         device_key: false,
     };
     // One of two: its key alone, and zirc.dev stays.
-    assert!(!account.leaving(&env.key, Some("acme")).ends_zirc_dev());
+    assert!(!account.leaving(&env.key, Some("zirc")).ends_zirc_dev());
     account
-        .remove_organisation_online(&env.key, "acme", Some((&person, "hash")))
+        .remove_organisation_online(&env.key, "zirc", Some((&person, "hash")))
         .await
         .unwrap();
     // The last: its key, the device's sign-out from zirc.dev, and the browser session.
-    assert!(account.leaving(&env.key, Some("zirc")).ends_zirc_dev());
+    assert!(account.leaving(&env.key, Some("fjord")).ends_zirc_dev());
     let (removal, revoked) = account
-        .remove_organisation_online(&env.key, "zirc", Some((&person, "hash")))
+        .remove_organisation_online(&env.key, "fjord", Some((&person, "hash")))
         .await
         .unwrap()
         .unwrap();
@@ -472,8 +472,8 @@ async fn signing_out_of_everything_also_signs_the_device_out_of_zirc_dev() {
         &env,
         on(),
         vec![
-            signin("alice", "acme.irc.zirc.dev", &web),
-            signin("ali", "zirc.irc.zirc.dev", &web),
+            signin("alice", "zirc.irc.zirc.dev", &web),
+            signin("ali", "fjord.irc.zirc.dev", &web),
         ],
     );
     let (out, revoked) = account
@@ -492,16 +492,16 @@ async fn signing_out_of_everything_also_signs_the_device_out_of_zirc_dev() {
 #[tokio::test]
 async fn a_phone_fetches_outside_its_lock_and_applies_under_it() {
     let (web, served) = zirc_test_ergo::web::serve(vec![
-        (200, listing(&[("acme", true), ("zirc", true)])),
+        (200, listing(&[("zirc", true), ("fjord", true)])),
         (200, zirc_credentials()),
         (
             200,
-            r#"{"name":"acme","server":{"host":"acme.irc.zirc.dev"},"account":{"name":"alicia","password":"new-pass"},"nick":"alicia"}"#
+            r#"{"name":"zirc","server":{"host":"zirc.irc.zirc.dev"},"account":{"name":"alicia","password":"new-pass"},"nick":"alicia"}"#
                 .into(),
         ),
     ]);
     let env = env(&web);
-    let mut account = account(&env, on(), vec![signin("alice", "acme.irc.zirc.dev", &web)]);
+    let mut account = account(&env, on(), vec![signin("alice", "zirc.irc.zirc.dev", &web)]);
     // The fetch needs no account: only the key, the secrets and what's already known.
     let secrets = env.secrets.clone();
     let fetched = fetch_listing(&env.key, secrets.as_ref(), &web)
@@ -510,9 +510,9 @@ async fn a_phone_fetches_outside_its_lock_and_applies_under_it() {
         .unwrap();
     let refreshed = account.apply_listing(&fetched);
     assert!(refreshed.ended.is_empty());
-    assert_eq!(account.to_join("zirc").unwrap().web, web);
+    assert_eq!(account.to_join("fjord").unwrap().web, web);
     // Joining is the same: fetched outside, applied under it.
-    let joining = fetch_credentials(&env.key, secrets.as_ref(), &web, "zirc")
+    let joining = fetch_credentials(&env.key, secrets.as_ref(), &web, "fjord")
         .await
         .unwrap()
         .unwrap();
@@ -520,16 +520,16 @@ async fn a_phone_fetches_outside_its_lock_and_applies_under_it() {
         account
             .apply_joined(&joining, |s| session(s.clone()))
             .unwrap(),
-        "zirc"
+        "fjord"
     );
     assert!(account.joinable().is_empty());
     // The same for credentials after a rename.
-    let renewed = fetch_credentials(&env.key, secrets.as_ref(), &web, "acme")
+    let renewed = fetch_credentials(&env.key, secrets.as_ref(), &web, "zirc")
         .await
         .unwrap()
         .unwrap();
-    assert!(account.apply_credentials("acme", &renewed).unwrap());
-    assert_eq!(account.get("acme").unwrap().signin().handle, "alicia");
+    assert!(account.apply_credentials("zirc", &renewed).unwrap());
+    assert_eq!(account.get("zirc").unwrap().signin().handle, "alicia");
     assert!(!account.apply_credentials("gone", &renewed).unwrap());
     assert_eq!(served.join().unwrap().len(), 3);
     // Without an account credential nothing is asked.

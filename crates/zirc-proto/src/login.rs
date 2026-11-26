@@ -123,7 +123,7 @@ pub const CONTENT_CONVERSATIONS_PATH: &str = "/conversations";
 /// never passes through zirc.dev.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct ContentAccess {
-    /// The content API's address, such as `https://acme.irc.zirc.dev/api/v1`.
+    /// The content API's address, such as `https://zirc.irc.zirc.dev/api/v1`.
     pub base: String,
     /// The token, for `Authorization: Bearer`: for this server alone, and short-lived.
     pub token: String,
@@ -172,7 +172,7 @@ pub struct LoginRequest {
     #[ts(optional)]
     pub device_key: Option<String>,
     /// For a person's app that takes several organisations ([`Self::orgs`]): the servers it
-    /// is signed in to already, by host, such as `acme.irc.zirc.dev` (empty for the first
+    /// is signed in to already, by host, such as `zirc.irc.zirc.dev` (empty for the first
     /// sign-in). Sending the field, even empty, says the app takes several: the web app then
     /// lets the person choose some organisations, shows those on these hosts as connected on
     /// this device and not to choose again, and answers with [`Credentials::orgs`]. Together
@@ -274,7 +274,7 @@ pub struct Credentials {
     #[ts(optional)]
     pub web_session: Option<String>,
     /// Where files are shared, when it isn't the web app: a self-hosted organisation's own
-    /// server, such as `https://irc.acme.com`, which keeps them (`zirc_proto::media`'s API at
+    /// server, such as `https://irc.zirc.com`, which keeps them (`zirc_proto::media`'s API at
     /// that address). People's pictures stay at the web app.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -323,7 +323,7 @@ pub struct OrgCredentials {
     #[ts(optional)]
     pub organisation_id: Option<String>,
     /// Where files are shared, when it isn't the web app, as [`Credentials::media`]: a self-hosted organisation's own
-    /// server, such as `https://irc.acme.com`, which keeps them (`zirc_proto::media`'s API at
+    /// server, such as `https://irc.zirc.com`, which keeps them (`zirc_proto::media`'s API at
     /// that address). People's pictures stay at the web app.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -588,14 +588,14 @@ mod tests {
     #[test]
     fn statuses_are_tagged_as_the_web_app_writes_them() {
         let done: LoginStatus = serde_json::from_str(
-            r#"{"status":"done","server":{"host":"acme.irc.zirc.dev","password":"gate"}}"#,
+            r#"{"status":"done","server":{"host":"zirc.irc.zirc.dev","password":"gate"}}"#,
         )
         .unwrap();
         assert_eq!(
             done,
             LoginStatus::Done(Credentials {
                 server: Server {
-                    host: "acme.irc.zirc.dev".into(),
+                    host: "zirc.irc.zirc.dev".into(),
                     port: None,
                     tls: None,
                     password: Some("gate".into()),
@@ -641,8 +641,8 @@ mod tests {
     #[test]
     fn a_login_for_several_organisations_lists_each() {
         let done: LoginStatus = serde_json::from_str(
-            r#"{"status":"done","server":{"host":"acme.irc.zirc.dev"},"nick":"m-mbp",
-                "orgs":[{"name":"acme","server":{"host":"acme.irc.zirc.dev"},"nick":"m-mbp"},
+            r#"{"status":"done","server":{"host":"zirc.irc.zirc.dev"},"nick":"m-mbp",
+                "orgs":[{"name":"zirc","server":{"host":"zirc.irc.zirc.dev"},"nick":"m-mbp"},
                         {"name":"globex","server":{"host":"globex.irc.zirc.dev"},
                          "account":{"name":"matt-mbp","password":"pw"},"owner":"matt"}]}"#,
         )
@@ -655,7 +655,7 @@ mod tests {
             .iter()
             .map(|org| org.name.as_str())
             .collect();
-        assert_eq!(names, ["acme", "globex"]);
+        assert_eq!(names, ["zirc", "globex"]);
         assert_eq!(credentials.orgs[1].owner.as_deref(), Some("matt"));
         // A client that takes several says so, and one that doesn't sends what it did.
         let several = LoginRequest {
@@ -701,7 +701,7 @@ mod tests {
     fn keeps_passwords_out_of_debug_output() {
         let credentials = Credentials {
             server: Server {
-                host: "acme.irc.zirc.dev".into(),
+                host: "zirc.irc.zirc.dev".into(),
                 port: None,
                 tls: None,
                 password: Some("gate-secret".into()),
@@ -721,7 +721,7 @@ mod tests {
             media: None,
         };
         let shown = format!("{credentials:?}");
-        assert!(shown.contains("acme.irc.zirc.dev"), "{shown}");
+        assert!(shown.contains("zirc.irc.zirc.dev"), "{shown}");
         assert!(!shown.contains("secret"), "{shown}");
     }
 }

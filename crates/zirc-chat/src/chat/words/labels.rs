@@ -118,7 +118,7 @@ pub fn open_in_label(place: &str) -> String {
     format!("Open in {place}")
 }
 
-/// What signs in to `place`: `Sign in to Acme`, `Sign in to zirc.dev`.
+/// What signs in to `place`: `Sign in to Zirc`, `Sign in to zirc.dev`.
 #[must_use]
 pub fn sign_in_to(place: &str) -> String {
     format!("{SIGN_IN} to {place}")

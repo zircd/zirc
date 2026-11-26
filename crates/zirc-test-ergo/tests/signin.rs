@@ -155,18 +155,18 @@ fn a_video_is_made_once_then_plays_from_its_copy() {
     let web = signin::start(options(Some(dir.path())), 0).expect("the stand-in");
 
     // Only an app's account is served a file.
-    assert_eq!(ask(&web, "GET", "/m/acme/demo?w=640", "", false).0, 401);
+    assert_eq!(ask(&web, "GET", "/m/zirc/demo?w=640", "", false).0, 401);
     // Its picture: the poster, or the file itself when it's a GIF.
-    let (_, head, body) = ask(&web, "GET", "/m/acme/demo?w=640", "", true);
+    let (_, head, body) = ask(&web, "GET", "/m/zirc/demo?w=640", "", true);
     assert!(head.contains("image/png") && body == b"poster", "{head}");
-    let (_, head, body) = ask(&web, "GET", "/m/acme/party?w=640", "", true);
+    let (_, head, body) = ask(&web, "GET", "/m/zirc/party?w=640", "", true);
     assert!(head.contains("image/gif") && body == b"gif", "{head}");
     // To play: being made at first, then where the copy is, which needs no account.
-    let (status, _, body) = ask(&web, "GET", "/m/acme/demo?r=720", "", true);
+    let (status, _, body) = ask(&web, "GET", "/m/zirc/demo?r=720", "", true);
     assert_eq!(status, 202);
     let making: Value = serde_json::from_slice(&body).expect("JSON");
     assert_eq!(making, json!({ "processing": true }));
-    let (status, head, _) = ask(&web, "GET", "/m/acme/demo?r=720", "", true);
+    let (status, head, _) = ask(&web, "GET", "/m/zirc/demo?r=720", "", true);
     assert_eq!(status, 302);
     let copy = head
         .lines()
@@ -176,5 +176,5 @@ fn a_video_is_made_once_then_plays_from_its_copy() {
     let (status, head, body) = ask(&web, "GET", "/v/demo.mp4", "", false);
     assert!(status == 200 && head.contains("video/mp4") && body == b"video");
     // Nothing above the directory is read.
-    assert_eq!(ask(&web, "GET", "/m/acme/..?w=1", "", true).0, 404);
+    assert_eq!(ask(&web, "GET", "/m/zirc/..?w=1", "", true).0, 404);
 }

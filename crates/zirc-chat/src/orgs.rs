@@ -5,7 +5,7 @@
 //! badges. It's generic over what an app keeps per organisation, such as a session that
 //! wraps the chat, so long as that gives its [`Chat`].
 //!
-//! Organisations are named as every client names them, `acme` for `acme.irc.zirc.dev`
+//! Organisations are named as every client names them, `zirc` for `zirc.irc.zirc.dev`
 //! (zirc-core's `settings::org_name`), so an app's keys agree with `config.toml`'s and its
 //! sign-ins'. With one organisation an app shows no switcher: someone in one organisation
 //! sees no change.
@@ -221,8 +221,8 @@ pub fn org_colour(org: &str) -> u8 {
 }
 
 /// What an organisation's tile shows without a picture: the first letter of its name, or of
-/// its first two words, `Acme` → `A`, `Zirc Labs` → `ZL`, as an avatar's [`initials`] are,
-/// so a name known only by its slug, `acme-labs` → `AL`, isn't another `A`.
+/// its first two words, `Zirc` → `Z`, `Zirc Labs` → `ZL`, as an avatar's [`initials`] are,
+/// so a name known only by its slug, `zirc-labs` → `AL`, isn't another `A`.
 #[must_use]
 pub fn org_initials(name: &str) -> String {
     initials(name)
@@ -245,7 +245,7 @@ pub fn org_dot(state: OrgState, unread: Unread) -> bool {
 }
 
 /// What the composer says while empty, in the conversation shown as `short`: `Message #api`,
-/// and with several organisations the one it goes to, `Message #api in Acme`, so nothing is
+/// and with several organisations the one it goes to, `Message #api in Zirc`, so nothing is
 /// said in the wrong one.
 #[must_use]
 pub fn composer_placeholder(short: &str, org: Option<&str>) -> String {
@@ -331,7 +331,7 @@ pub struct SignOutSheet {
     pub confirm: String,
 }
 
-/// An organisation as people read its name: `acme` is Acme, `zirc-labs` Zirc Labs, a host as it is. The core
+/// An organisation as people read its name: `zirc` is Zirc, `zirc-labs` Zirc Labs, a host as it is. The core
 /// has the slug only, so this is how every app names it until organisations carry a name.
 #[must_use]
 pub fn display_name(org: &str) -> String {
@@ -354,7 +354,7 @@ pub fn display_name(org: &str) -> String {
 /// What signs out, where the sheet before it or the row has said of what.
 pub const SIGN_OUT: &str = "Sign out";
 
-/// An organisation's menu item that signs out of it on this device: "Sign out of Acme", by
+/// An organisation's menu item that signs out of it on this device: "Sign out of Zirc", by
 /// the name it shows as.
 #[must_use]
 pub fn sign_out_label(name: &str) -> String {
@@ -374,7 +374,7 @@ pub enum CardAction {
 /// same in every app ([`org_card`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Card {
-    /// `Setting up Acme`.
+    /// `Setting up Zirc`.
     pub title: String,
     /// What it means.
     pub body: String,
@@ -385,7 +385,7 @@ pub struct Card {
 }
 
 impl Card {
-    /// What `action`'s button says: "Sign in again", or "Sign out of Acme", as the
+    /// What `action`'s button says: "Sign in again", or "Sign out of Zirc", as the
     /// organisation's own sign-out item says it in every app, since that's what it does.
     #[must_use]
     pub fn label(&self, action: CardAction) -> String {
@@ -435,7 +435,7 @@ pub fn org_card(state: OrgState, name: &str) -> Option<Card> {
 }
 
 /// What every app says once it has signed out of `org` (the organisation's slug, or a
-/// self-hosted server's host): `Signed out of Acme.`, as decided ("The org's name").
+/// self-hosted server's host): `Signed out of Zirc.`, as decided ("The org's name").
 #[must_use]
 pub fn signed_out(org: &str) -> String {
     format!("Signed out of {}.", display_name(org))
@@ -528,8 +528,8 @@ pub fn sign_out_everything_sheet(
 }
 
 /// What a screen reader says of an organisation's tile, the organisation people read as
-/// `name`, with `unread` there, standing as `state`: `Acme, 3 mentions, connecting`, or
-/// `Acme, unread messages` when nothing mentions the person.
+/// `name`, with `unread` there, standing as `state`: `Zirc, 3 mentions, connecting`, or
+/// `Zirc, unread messages` when nothing mentions the person.
 #[must_use]
 pub fn tile_a11y(name: &str, unread: Unread, state: OrgState) -> String {
     let mut said = vec![name.to_owned()];
@@ -571,11 +571,11 @@ mod tests {
     fn signing_out_of_everything_names_three_then_how_many_more_then_zirc_dev() {
         let names = |list: &[&str]| list.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
         let sheet =
-            sign_out_everything_sheet(&names(&["Acme", "Zirc"]), true, SignOutPlace::Browser);
+            sign_out_everything_sheet(&names(&["Zirc", "Fjord"]), true, SignOutPlace::Browser);
         assert_eq!(sheet.title, "Sign out of everything?");
         assert_eq!(
             sheet.body,
-            "Signs you out of Acme, Zirc and zirc.dev in this browser."
+            "Signs you out of Zirc, Fjord and zirc.dev in this browser."
         );
         assert_eq!(sheet.confirm, "Sign out of everything");
         assert_eq!(
@@ -602,18 +602,18 @@ mod tests {
     fn a_tile_says_its_mentions_or_unread_and_how_it_stands() {
         let unread = |unread, mentions| Unread { unread, mentions };
         assert_eq!(
-            tile_a11y("Acme", unread(5, 3), OrgState::Connecting),
-            "Acme, 3 mentions, connecting"
+            tile_a11y("Zirc", unread(5, 3), OrgState::Connecting),
+            "Zirc, 3 mentions, connecting"
         );
         assert_eq!(
-            tile_a11y("Acme", unread(2, 0), OrgState::Connected),
-            "Acme, unread messages"
+            tile_a11y("Zirc", unread(2, 0), OrgState::Connected),
+            "Zirc, unread messages"
         );
         assert_eq!(
-            tile_a11y("Acme", unread(0, 1), OrgState::SignInAgain),
-            "Acme, 1 mention, sign in again"
+            tile_a11y("Zirc", unread(0, 1), OrgState::SignInAgain),
+            "Zirc, 1 mention, sign in again"
         );
-        assert_eq!(tile_a11y("Acme", unread(0, 0), OrgState::Connected), "Acme");
+        assert_eq!(tile_a11y("Zirc", unread(0, 0), OrgState::Connected), "Zirc");
     }
     use crate::chat::Options;
 
@@ -625,28 +625,28 @@ mod tests {
     fn keeps_one_per_organisation_with_one_selected() {
         let mut orgs = Orgs::new();
         assert!(orgs.selected().is_none());
-        orgs.insert("acme", 1);
+        orgs.insert("zirc", 1);
         orgs.insert("globex", 2);
         orgs.insert("initech", 3);
-        assert_eq!(orgs.selected(), Some(("acme", &1)));
+        assert_eq!(orgs.selected(), Some(("zirc", &1)));
         assert!(orgs.select("globex"));
         assert!(!orgs.select("umbrella"));
         // Inserting again keeps its place and the selection.
         orgs.insert("globex", 20);
-        assert_eq!(names(&orgs), ["acme", "globex", "initech"]);
+        assert_eq!(names(&orgs), ["zirc", "globex", "initech"]);
         assert_eq!(orgs.selected(), Some(("globex", &20)));
-        *orgs.get_mut("acme").unwrap() = 10;
-        assert_eq!(orgs.get("acme"), Some(&10));
+        *orgs.get_mut("zirc").unwrap() = 10;
+        assert_eq!(orgs.get("zirc"), Some(&10));
 
         // Removing the selected one selects the next, or else the one before.
         assert_eq!(orgs.remove("globex"), Some(20));
         assert_eq!(orgs.selected(), Some(("initech", &3)));
         assert_eq!(orgs.remove("initech"), Some(3));
-        assert_eq!(orgs.selected(), Some(("acme", &10)));
+        assert_eq!(orgs.selected(), Some(("zirc", &10)));
         // Removing one before the selected one keeps the selection.
         orgs.insert("globex", 2);
         orgs.select("globex");
-        orgs.remove("acme");
+        orgs.remove("zirc");
         assert_eq!(orgs.selected(), Some(("globex", &2)));
         orgs.remove("globex");
         assert!(orgs.selected().is_none() && orgs.is_empty());
@@ -675,7 +675,7 @@ mod tests {
     #[test]
     fn says_whats_unread_in_each_organisation_and_elsewhere() {
         let mut orgs = Orgs::new();
-        orgs.insert("acme", chat(3, 1));
+        orgs.insert("zirc", chat(3, 1));
         orgs.insert("globex", chat(2, 0));
         let all = |_: &str, _: &Conversation| true;
         let unread = orgs.unread(all);
@@ -683,7 +683,7 @@ mod tests {
             unread,
             [
                 (
-                    "acme",
+                    "zirc",
                     Unread {
                         unread: 6,
                         mentions: 2
@@ -705,7 +705,7 @@ mod tests {
                 mentions: 0
             }
         );
-        // Mutes are each organisation's: globex's #noise is muted, acme's isn't.
+        // Mutes are each organisation's: globex's #noise is muted, zirc's isn't.
         let unmuted = |org: &str, conversation: &Conversation| {
             !(org == "globex" && conversation.name == "#noise")
         };
@@ -750,16 +750,16 @@ mod tests {
 
     #[test]
     fn an_organisation_s_tile_and_composer_name_it_alike_everywhere() {
-        assert_eq!(org_initials("Acme"), "A");
+        assert_eq!(org_initials("Zirc"), "Z");
         assert_eq!(org_initials("zirc labs"), "ZL");
         assert_eq!(org_initials("  Big  Fat Co "), "BF");
-        // Known by its slug alone, as before zirc.dev names it: never the same as Acme's.
-        assert_eq!(org_initials("acme-labs"), "AL");
+        // Known by its slug alone, as before zirc.dev names it: never the same as Zirc's.
+        assert_eq!(org_initials("zirc-labs"), "ZL");
         assert_eq!(org_initials(""), "");
         // The same name, any case, the same colour, always one of the set.
-        assert_eq!(org_colour("acme"), org_colour("Acme"));
+        assert_eq!(org_colour("zirc"), org_colour("Zirc"));
         let colours: std::collections::HashSet<u8> =
-            ["acme", "zirc", "beta", "globex", "initech", "umbrella"]
+            ["zirc", "fjord", "beta", "globex", "initech", "umbrella"]
                 .into_iter()
                 .map(org_colour)
                 .collect();
@@ -768,20 +768,15 @@ mod tests {
         // Pinned: a name's place in the palette is what every app on every device draws, so
         // changing the hash or the palette's order is a deliberate break, and these say so.
         // The rule is FNV-1a (32 bit) of the lowercased name, mod 8; initials are the first
-        // letters of the first two words (the design's examples: Acme, Zirc Labs).
-        for (name, place) in [
-            ("acme", 7),
-            ("Zirc", 3),
-            ("globex", 6),
-            ("chat.example.org", 7),
-        ] {
+        // letters of the first two words (the design's examples: Zirc, Zirc Labs).
+        for (name, place) in [("Zirc", 3), ("globex", 6), ("chat.example.org", 7)] {
             assert_eq!(org_colour(name), place, "{name}");
         }
         assert_eq!(org_initials("Zirc Labs"), "ZL");
         assert_eq!(composer_placeholder("#api", None), "Message #api");
         assert_eq!(
-            composer_placeholder("Rajesh Iyer", Some("Acme")),
-            "Message Rajesh Iyer in Acme"
+            composer_placeholder("Rajesh Iyer", Some("Zirc")),
+            "Message Rajesh Iyer in Zirc"
         );
     }
 

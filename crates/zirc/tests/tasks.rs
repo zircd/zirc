@@ -65,7 +65,7 @@ async fn a_watch_registers_intend_takes_the_task_and_its_landing_says_done() {
     run(home.path(), &init).await.unwrap();
     tokio::spawn(zircd::run(home.path().to_owned(), std::future::pending()));
     let home = home.path();
-    let clone = zirc_test_ergo::git::clone("https://github.com/acme/web.git");
+    let clone = zirc_test_ergo::git::clone("https://github.com/zirc/web.git");
     let repo = clone.path();
     until(repo, home, &["repo", "add"], "as web in #agents").await;
     until(repo, home, &["status"], " #agents").await;
@@ -158,7 +158,7 @@ async fn a_wait_for_a_siblings_landing_ends_on_its_push_where_no_ci_speaks(home:
     let remote = tempfile::tempdir().unwrap();
     let bare = ["init", "--quiet", "--bare", "--initial-branch=main"];
     git(remote.path(), &bare);
-    let checkout = zirc_test_ergo::git::clone("https://github.com/acme/shop.git");
+    let checkout = zirc_test_ergo::git::clone("https://github.com/zirc/shop.git");
     let root = checkout.path();
     let origin = remote.path().to_str().unwrap();
     git(root, &["remote", "set-url", "origin", origin]);
@@ -192,7 +192,7 @@ async fn a_wait_for_a_siblings_landing_ends_on_its_push_where_no_ci_speaks(home:
 /// In a Git repository this machine doesn't watch, a session's watch ends at once saying so,
 /// for the session to decide whether to use zirc at all.
 async fn an_unwatched_repository_ends_a_watch_at_once(home: &Path) {
-    let stranger = zirc_test_ergo::git::clone("https://github.com/acme/api.git");
+    let stranger = zirc_test_ergo::git::clone("https://github.com/zirc/api.git");
     let said = tokio::time::timeout(
         WAIT,
         zirc_in(

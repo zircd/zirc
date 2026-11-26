@@ -181,8 +181,8 @@ impl Options {
         let [irc, https, oper, api, metrics, accounts, content] = ports;
         let at = |port: u16| SocketAddr::from(([127, 0, 0, 1], port));
         Self {
-            host: "irc.acme.test".into(),
-            name: Some("acme".into()),
+            host: "irc.zirc.test".into(),
+            name: Some("zirc".into()),
             data: data.to_owned(),
             tls: Tls::Off,
             acme_email: None,
@@ -649,7 +649,7 @@ mod tests {
     }
 
     fn options(args: &[&str]) -> Options {
-        let mut all = vec!["zirc-server", "--host", "irc.acme.test"];
+        let mut all = vec!["zirc-server", "--host", "irc.zirc.test"];
         all.extend(args);
         Cli::try_parse_from(all).unwrap().options
     }
@@ -657,7 +657,7 @@ mod tests {
     #[test]
     fn the_network_is_the_host_s_first_label_unless_named() {
         assert_eq!(options(&[]).network(), "irc");
-        assert_eq!(options(&["--name", "acme"]).network(), "acme");
+        assert_eq!(options(&["--name", "zirc"]).network(), "zirc");
     }
 
     #[test]

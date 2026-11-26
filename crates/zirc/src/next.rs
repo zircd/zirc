@@ -116,7 +116,7 @@ mod tests {
     fn signed_in(web: &str) -> tempfile::TempDir {
         let home = tempfile::tempdir().unwrap();
         let config = format!(
-            "web = \"{web}\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n[account]\nname = \"ada-mbp\"\npassword = \"pw\"\n"
+            "web = \"{web}\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n[account]\nname = \"ada-mbp\"\npassword = \"pw\"\n"
         );
         std::fs::write(paths::config(home.path()), config).unwrap();
         home
@@ -159,7 +159,7 @@ mod tests {
         let out = String::from_utf8(out).unwrap();
         assert!(
             out.ends_with(&format!(
-                "  Your Get started page has ticked this step off: {web}/orgs/acme\n"
+                "  Your Get started page has ticked this step off: {web}/orgs/zirc\n"
             )),
             "{out}"
         );

@@ -17,7 +17,7 @@ pub struct Project {
     /// The repository's name, in lowercase with only what channel names allow, as each
     /// line about it says it ([`zirc_proto::Message::repo`]).
     pub repo: String,
-    /// Its web address on a forge, such as `https://github.com/acme/api`, from its remote
+    /// Its web address on a forge, such as `https://github.com/zirc/api`, from its remote
     /// ([`web_address`]), so apps can link its commits, branches and files.
     pub web: Option<String>,
 }
@@ -69,8 +69,8 @@ const FORGES: [&str; 5] = [
     "git.sr.ht",
 ];
 
-/// The web address of the repository with remote `url`, such as `https://github.com/acme/api`
-/// for `git@github.com:acme/api.git`: on a forge it knows ([`FORGES`]), over https, without a
+/// The web address of the repository with remote `url`, such as `https://github.com/zirc/api`
+/// for `git@github.com:zirc/api.git`: on a forge it knows ([`FORGES`]), over https, without a
 /// user, password, token, port or `.git`. `None` for anything else, such as a path or a
 /// server it can't tell has web pages. `ops/say.sh` (the monorepo's) makes the same address
 /// for CI's events, in shell; change both.
@@ -142,17 +142,17 @@ mod tests {
     use zirc_chat::names::MAX_CHANNEL_BYTES;
 
     fn api() -> Project {
-        Project::new(Some("git@github.com:Acme/API.git"), "checkout")
+        Project::new(Some("git@github.com:Zirc/API.git"), "checkout")
     }
 
     #[test]
     fn names_projects_after_the_remote() {
         for url in [
-            "git@github.com:Acme/API.git",
-            "https://github.com/acme/api",
-            "https://github.com/acme/api.git/",
-            "ssh://git@github.com:22/acme/api.git",
-            "/srv/git/acme/api.git",
+            "git@github.com:Zirc/API.git",
+            "https://github.com/zirc/api",
+            "https://github.com/zirc/api.git/",
+            "ssh://git@github.com:22/zirc/api.git",
+            "/srv/git/zirc/api.git",
         ] {
             assert_eq!(
                 Project::new(Some(url), "checkout").repo,
@@ -165,16 +165,16 @@ mod tests {
     #[test]
     fn knows_a_repositorys_web_address_without_its_credentials() {
         for url in [
-            "git@github.com:Acme/API.git",
-            "ssh://git@github.com:22/Acme/API.git",
-            "https://github.com/Acme/API",
-            "https://github.com/Acme/API.git/",
-            "http://github.com/Acme/API.git",
-            "https://x-access-token:ghs_secret@github.com/Acme/API.git",
-            "https://mattias:hunter2@GitHub.com/Acme/API",
+            "git@github.com:Zirc/API.git",
+            "ssh://git@github.com:22/Zirc/API.git",
+            "https://github.com/Zirc/API",
+            "https://github.com/Zirc/API.git/",
+            "http://github.com/Zirc/API.git",
+            "https://x-access-token:ghs_secret@github.com/Zirc/API.git",
+            "https://mattias:hunter2@GitHub.com/Zirc/API",
         ] {
             let web = web_address(url);
-            assert_eq!(web.as_deref(), Some("https://github.com/Acme/API"), "{url}");
+            assert_eq!(web.as_deref(), Some("https://github.com/Zirc/API"), "{url}");
             assert!(!web.unwrap().contains("secret"));
         }
         assert_eq!(
@@ -182,17 +182,17 @@ mod tests {
             Some("https://gitlab.com/group/sub/project")
         );
         for url in [
-            "/srv/git/acme/api.git",
+            "/srv/git/zirc/api.git",
             "file:///srv/git/api.git",
             "C:/repos/api",
-            "git@git.internal.example:acme/api.git",
-            "https://github.com/acme",
-            "https://github.com/acme/api?token=secret",
+            "git@git.internal.example:zirc/api.git",
+            "https://github.com/zirc",
+            "https://github.com/zirc/api?token=secret",
             "",
         ] {
             assert_eq!(web_address(url), None, "{url}");
         }
-        assert_eq!(api().web.as_deref(), Some("https://github.com/Acme/API"));
+        assert_eq!(api().web.as_deref(), Some("https://github.com/Zirc/API"));
     }
 
     #[test]
@@ -218,27 +218,27 @@ mod tests {
 
     #[test]
     fn a_teams_own_forge_has_web_pages_only_when_named() {
-        let url = "ssh://git@git.example.com:2222/acme/api.git";
+        let url = "ssh://git@git.example.com:2222/zirc/api.git";
         assert_eq!(web_address_on(url, []), None);
         assert_eq!(
             web_address_on(url, ["git.example.com"]).as_deref(),
-            Some("https://git.example.com/acme/api")
+            Some("https://git.example.com/zirc/api")
         );
         assert_eq!(
-            web_address_on("https://GIT.example.com/acme/api", ["git.example.com"]).as_deref(),
-            Some("https://git.example.com/acme/api")
+            web_address_on("https://GIT.example.com/zirc/api", ["git.example.com"]).as_deref(),
+            Some("https://git.example.com/zirc/api")
         );
         // A host that only contains the name, or a path that does, is not it.
         for url in [
-            "https://git.example.com.evil.test/acme/api",
-            "https://evil.test/git.example.com/acme/api",
+            "https://git.example.com.evil.test/zirc/api",
+            "https://evil.test/git.example.com/zirc/api",
         ] {
             assert_eq!(web_address_on(url, ["git.example.com"]), None, "{url}");
         }
         // The known forges stay known.
         assert_eq!(
-            web_address_on("git@github.com:acme/api.git", ["git.example.com"]).as_deref(),
-            Some("https://github.com/acme/api")
+            web_address_on("git@github.com:zirc/api.git", ["git.example.com"]).as_deref(),
+            Some("https://github.com/zirc/api")
         );
     }
 }

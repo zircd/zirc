@@ -476,7 +476,7 @@ mod tests {
     fn credentials(account: bool, nick: Option<&str>) -> Credentials {
         Credentials {
             server: Server {
-                host: "acme.irc.zirc.dev".into(),
+                host: "zirc.irc.zirc.dev".into(),
                 port: None,
                 tls: None,
                 password: Some("gate".into()),
@@ -581,7 +581,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = File(dir.path().join("secrets.toml"));
         let mut several = credentials(true, None);
-        several.orgs = vec![org("acme", "mattias"), org("globex", "matt")];
+        several.orgs = vec![org("zirc", "mattias"), org("globex", "matt")];
         let signins = SignIns::from_credentials(&several, "https://zirc.dev", &secrets).unwrap();
         let orgs: Vec<(String, &str)> = signins
             .iter()
@@ -590,7 +590,7 @@ mod tests {
         assert_eq!(
             orgs,
             [
-                ("acme".to_owned(), "mattias-mbp"),
+                ("zirc".to_owned(), "mattias-mbp"),
                 ("globex".to_owned(), "matt-mbp")
             ]
         );
@@ -605,7 +605,7 @@ mod tests {
         // A login that names none is its top level alone, as before.
         let one = SignIns::from_credentials(&credentials(true, None), "https://zirc.dev", &secrets)
             .unwrap();
-        assert_eq!(one.iter().map(SignIn::org).collect::<Vec<_>>(), ["acme"]);
+        assert_eq!(one.iter().map(SignIn::org).collect::<Vec<_>>(), ["zirc"]);
     }
 
     #[test]
@@ -613,12 +613,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = File(dir.path().join("secrets.toml"));
         let mut several = credentials(true, None);
-        several.orgs = vec![org("acme", "mattias"), org("../etc", "matt")];
+        several.orgs = vec![org("zirc", "mattias"), org("../etc", "matt")];
         assert!(matches!(
             SignIns::from_credentials(&several, "https://zirc.dev", &secrets),
             Err(Error::Login(login::Error::OrgName { .. }))
         ));
-        assert_eq!(secrets.get("mattias@acme.irc.zirc.dev"), None);
+        assert_eq!(secrets.get("mattias@zirc.irc.zirc.dev"), None);
     }
 
     #[test]
@@ -638,7 +638,7 @@ mod tests {
         let config = signin.connection(&secrets).unwrap();
         assert_eq!(
             (config.host.as_str(), config.port),
-            ("acme.irc.zirc.dev", 6697)
+            ("zirc.irc.zirc.dev", 6697)
         );
         let sasl = config.sasl.unwrap();
         assert_eq!(
@@ -684,7 +684,7 @@ mod tests {
     #[test]
     fn signs_in_through_the_browser() {
         let started = r#"{"id":"L1","code":"WDJB-MJHT","url":"https://zirc.test/l","interval":1,"expires_in":60}"#;
-        let done = r#"{"status":"done","server":{"host":"acme.irc.zirc.dev"},"nick":"mattias"}"#;
+        let done = r#"{"status":"done","server":{"host":"zirc.irc.zirc.dev"},"nick":"mattias"}"#;
         let (web, served) =
             zirc_test_ergo::web::serve(vec![(200, started.into()), (200, done.into())]);
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -736,11 +736,11 @@ mod tests {
         struct Settings {
             signin: SignIns,
         }
-        let acme = signin("acme.irc.zirc.dev");
-        assert_eq!(acme.org(), "acme");
+        let zirc = signin("zirc.irc.zirc.dev");
+        assert_eq!(zirc.org(), "zirc");
         // In an app's own settings, as the desktop keeps them: one is the old table.
         let one = Settings {
-            signin: acme.clone().into(),
+            signin: zirc.clone().into(),
         };
         let text = toml::to_string(&one).unwrap();
         assert!(text.starts_with("[signin]\n"), "{text}");
@@ -751,16 +751,16 @@ mod tests {
         assert!(text.contains("[[signin]]"), "{text}");
         let read: Settings = toml::from_str(&text).unwrap();
         let orgs: Vec<String> = read.signin.iter().map(SignIn::org).collect();
-        assert_eq!(orgs, ["acme", "globex"]);
+        assert_eq!(orgs, ["zirc", "globex"]);
 
         // In a file of their own, as the terminal client keeps them.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("tui.toml");
         assert!(SignIns::load(&path).unwrap().is_empty());
-        SignIns::from(acme.clone()).save(&path).unwrap();
+        SignIns::from(zirc.clone()).save(&path).unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            toml::to_string(&acme).unwrap()
+            toml::to_string(&zirc).unwrap()
         );
         read.signin.save(&path).unwrap();
         assert_eq!(SignIns::load(&path).unwrap(), read.signin);
@@ -771,16 +771,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let secrets = File(dir.path().join("secrets.toml"));
         let mut signins = SignIns::default();
-        signins.insert(signin("acme.irc.zirc.dev"));
+        signins.insert(signin("zirc.irc.zirc.dev"));
         signins.insert(signin("globex.irc.zirc.dev"));
         // Signing in again replaces that organisation's, where it was.
-        let mut again = signin("acme.irc.zirc.dev");
+        let mut again = signin("zirc.irc.zirc.dev");
         again.nick = "matt".into();
         signins.insert(again);
         assert_eq!(signins.len(), 2);
-        assert_eq!(signins.get("acme").unwrap().nick, "matt");
-        assert!(signins.remove("acme", &secrets).unwrap());
-        assert!(!signins.remove("acme", &secrets).unwrap());
+        assert_eq!(signins.get("zirc").unwrap().nick, "matt");
+        assert!(signins.remove("zirc", &secrets).unwrap());
+        assert!(!signins.remove("zirc", &secrets).unwrap());
         let orgs: Vec<String> = signins.iter().map(SignIn::org).collect();
         assert_eq!(orgs, ["globex"]);
     }

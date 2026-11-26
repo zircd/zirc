@@ -16,9 +16,9 @@ mod common;
 use common::{Machine, WAIT};
 
 /// The first organisation's name: its server's host, as a server not on zirc.dev is named.
-const ACME: &str = "127.0.0.1";
+const ZIRC: &str = "127.0.0.1";
 const GLOBEX: &str = "globex";
-const ACME_REPO: &str = "git@github.com:acme/rockets.git";
+const ZIRC_REPO: &str = "git@github.com:zirc/rockets.git";
 const GLOBEX_REPO: &str = "git@github.com:globex/magnets.git";
 
 /// The messages heard from `nick`, until one about `channel`, a repository's scope or a
@@ -55,7 +55,7 @@ async fn heard_until(
 /// would pass on what reached its server about either, and its watch.
 async fn observer(ergo: &Ergo, nick: &str) -> (Machine, [TempDir; 2], Watching) {
     let observer = Machine::connect(ergo, nick).await;
-    let clones = [ACME_REPO, GLOBEX_REPO].map(zirc_test_ergo::git::clone);
+    let clones = [ZIRC_REPO, GLOBEX_REPO].map(zirc_test_ergo::git::clone);
     for clone in &clones {
         observer.add_repo(None, clone.path()).await.unwrap();
     }
@@ -69,13 +69,13 @@ async fn observer(ergo: &Ergo, nick: &str) -> (Machine, [TempDir; 2], Watching) 
     (observer, clones, watching)
 }
 
-/// Adds `rockets` to acme and `magnets` and another clone of it to globex, checking how a
+/// Adds `rockets` to zirc and `magnets` and another clone of it to globex, checking how a
 /// repository's organisation is decided. Answers the other clone.
 async fn bind(machine: &Machine, rockets: &TempDir, magnets: &TempDir) -> TempDir {
     // With two organisations, a repository's organisation is asked for...
     let unsaid = machine.add_repo(None, rockets.path()).await.unwrap_err();
     assert!(unsaid.to_string().contains("--org"), "{unsaid}");
-    machine.add_repo(Some(ACME), rockets.path()).await.unwrap();
+    machine.add_repo(Some(ZIRC), rockets.path()).await.unwrap();
     machine
         .add_repo(Some(GLOBEX), magnets.path())
         .await
@@ -102,7 +102,7 @@ async fn bind(machine: &Machine, rockets: &TempDir, magnets: &TempDir) -> TempDi
             .find(|repo| repo.path == root)
             .and_then(|repo| repo.org.clone())
     };
-    assert_eq!(orgs(rockets.path()).as_deref(), Some(ACME));
+    assert_eq!(orgs(rockets.path()).as_deref(), Some(ZIRC));
     assert_eq!(orgs(magnets.path()).as_deref(), Some(GLOBEX));
     assert_eq!(orgs(another.path()).as_deref(), Some(GLOBEX));
     machine
@@ -119,23 +119,23 @@ async fn bind(machine: &Machine, rockets: &TempDir, magnets: &TempDir) -> TempDi
 
 /// The observer's nick in `org`.
 fn org_nick(org: &str) -> &'static str {
-    if org == ACME { "acme" } else { "globex" }
+    if org == ZIRC { "zirc" } else { "globex" }
 }
 
 #[tokio::test]
 async fn repositories_never_cross_organisations() {
-    let (Some(acme), Some(globex)) = (Ergo::start(), Ergo::start()) else {
+    let (Some(zirc), Some(globex)) = (Ergo::start(), Ergo::start()) else {
         return;
     };
     let mut observers = [
-        observer(&acme, "acme-eve").await,
+        observer(&zirc, "zirc-eve").await,
         observer(&globex, "globex-eve").await,
     ];
     let machine = Machine::with_config(&format!(
         "nick = \"m\"\n[server]\nhost = \"127.0.0.1\"\nport = {}\ntls = false\n\n\
          [[org]]\nname = \"{GLOBEX}\"\nnick = \"m\"\n\
          [org.server]\nhost = \"127.0.0.1\"\nport = {}\ntls = false\n",
-        acme.port(),
+        zirc.port(),
         globex.port()
     ))
     .await;
@@ -145,7 +145,7 @@ async fn repositories_never_cross_organisations() {
             "connecting to both",
         )
         .await;
-    let rockets = zirc_test_ergo::git::clone(ACME_REPO);
+    let rockets = zirc_test_ergo::git::clone(ZIRC_REPO);
     let magnets = zirc_test_ergo::git::clone(GLOBEX_REPO);
 
     let _another = bind(&machine, &rockets, &magnets).await;
@@ -168,19 +168,19 @@ async fn repositories_never_cross_organisations() {
     let (_, _, globex_hears) = &mut observers[1];
     let heard = heard_until(globex_hears, "m", "#magnets", "magnets news").await;
     assert!(heard.iter().all(|delivery| delivery.scope() == "#magnets"));
-    // ...then in acme's.
+    // ...then in zirc's.
     machine
         .request_in(None, post(&rockets, "rockets news"))
         .await
         .unwrap();
-    let (_, _, acme_hears) = &mut observers[0];
-    let heard = heard_until(acme_hears, "m", "#rockets", "rockets news").await;
-    // Acme's server heard nothing about globex's repository, which went first.
+    let (_, _, zirc_hears) = &mut observers[0];
+    let heard = heard_until(zirc_hears, "m", "#rockets", "rockets news").await;
+    // Zirc's server heard nothing about globex's repository, which went first.
     assert!(
         heard.iter().all(|delivery| delivery.scope() == "#rockets"),
         "{heard:?}"
     );
-    // And globex's heard nothing about acme's.
+    // And globex's heard nothing about zirc's.
     machine
         .request_in(None, post(&magnets, "magnets again"))
         .await
@@ -194,7 +194,7 @@ async fn repositories_never_cross_organisations() {
 
     // One watch hears both organisations, each line saying whose it is.
     let mut watching = machine.watch(None).await;
-    for (at, org, channel) in [(0, ACME, "#rockets"), (1, GLOBEX, "#magnets")] {
+    for (at, org, channel) in [(0, ZIRC, "#rockets"), (1, GLOBEX, "#magnets")] {
         let (observer, clones, _) = &observers[at];
         let text = format!("hello from {org}");
         observer
@@ -218,11 +218,11 @@ async fn repositories_never_cross_organisations() {
     };
     assert!(
         refused.to_string().contains(&format!(
-            "this machine is in {ACME} and {GLOBEX}: say which with --org"
+            "this machine is in {ZIRC} and {GLOBEX}: say which with --org"
         )),
         "{refused}"
     );
-    for (org, channel) in [(ACME, "#rockets"), (GLOBEX, "#magnets")] {
+    for (org, channel) in [(ZIRC, "#rockets"), (GLOBEX, "#magnets")] {
         let Ok(Response::Who { channels }) = machine.request_in(Some(org), Request::Who).await
         else {
             panic!("not a who")
@@ -232,18 +232,18 @@ async fn repositories_never_cross_organisations() {
     }
 }
 
-/// A machine in two organisations, `acme` on `acme` and `globex` on `globex`, each with an
+/// A machine in two organisations, `zirc` on `zirc` and `globex` on `globex`, each with an
 /// account of its own whose passphrase there is `old-horse`, and `webs` as their web apps.
-fn two_organisations(acme: &Ergo, globex: &Ergo, webs: [&str; 2]) -> String {
-    let [acme_web, globex_web] = webs;
+fn two_organisations(zirc: &Ergo, globex: &Ergo, webs: [&str; 2]) -> String {
+    let [zirc_web, globex_web] = webs;
     format!(
-        "nick = \"m-acme\"\nweb = \"{acme_web}\"\n\
+        "nick = \"m-zirc\"\nweb = \"{zirc_web}\"\n\
          [server]\nhost = \"127.0.0.1\"\nport = {}\ntls = false\n\
-         [account]\nname = \"m-acme\"\npassword = \"old-horse\"\n\n\
+         [account]\nname = \"m-zirc\"\npassword = \"old-horse\"\n\n\
          [[org]]\nname = \"globex\"\nnick = \"m-globex\"\nweb = \"{globex_web}\"\n\
          [org.server]\nhost = \"127.0.0.1\"\nport = {}\ntls = false\n\
          [org.account]\nname = \"m-globex\"\npassword = \"old-horse\"\n",
-        acme.port(),
+        zirc.port(),
         globex.port()
     )
 }
@@ -258,15 +258,15 @@ fn current(ergo: &Ergo, account: &str) -> String {
 
 #[tokio::test]
 async fn in_several_organisations_a_refresh_for_another_server_is_refused() {
-    let (Some(acme), Some(globex)) = (Ergo::start(), Ergo::start()) else {
+    let (Some(zirc), Some(globex)) = (Ergo::start(), Ergo::start()) else {
         return;
     };
-    register(&acme, "m-acme", "old-horse").await;
+    register(&zirc, "m-zirc", "old-horse").await;
     register(&globex, "m-globex", "new-horse").await;
-    // Globex refuses the machine's passphrase, and the web app answers with acme's server:
-    // taking it would announce globex's repositories on acme's server.
-    let (web, asked) = zirc_test_ergo::web::serve(vec![(200, current(&acme, "m-globex"))]);
-    let machine = Machine::with_config(&two_organisations(&acme, &globex, [&web, &web])).await;
+    // Globex refuses the machine's passphrase, and the web app answers with zirc's server:
+    // taking it would announce globex's repositories on zirc's server.
+    let (web, asked) = zirc_test_ergo::web::serve(vec![(200, current(&zirc, "m-globex"))]);
+    let machine = Machine::with_config(&two_organisations(&zirc, &globex, [&web, &web])).await;
     let home = &machine.home;
     // Waited for off the test's thread, which zircd's refresh runs on too.
     let asked = tokio::task::spawn_blocking(move || asked.join().unwrap());
@@ -295,16 +295,16 @@ async fn in_several_organisations_a_refresh_for_another_server_is_refused() {
 
 #[tokio::test]
 async fn two_organisations_refused_at_once_both_keep_their_new_passphrase() {
-    let (Some(acme), Some(globex)) = (Ergo::start(), Ergo::start()) else {
+    let (Some(zirc), Some(globex)) = (Ergo::start(), Ergo::start()) else {
         return;
     };
-    register(&acme, "m-acme", "new-horse").await;
+    register(&zirc, "m-zirc", "new-horse").await;
     register(&globex, "m-globex", "new-horse").await;
     // Both refuse at once; each organisation's answer is saved without losing the other's.
-    let (acme_web, _) = zirc_test_ergo::web::serve(vec![(200, current(&acme, "m-acme"))]);
+    let (zirc_web, _) = zirc_test_ergo::web::serve(vec![(200, current(&zirc, "m-zirc"))]);
     let (globex_web, _) = zirc_test_ergo::web::serve(vec![(200, current(&globex, "m-globex"))]);
     let machine =
-        Machine::with_config(&two_organisations(&acme, &globex, [&acme_web, &globex_web])).await;
+        Machine::with_config(&two_organisations(&zirc, &globex, [&zirc_web, &globex_web])).await;
     let home = &machine.home;
     tokio::time::timeout(WAIT, async {
         loop {
@@ -328,23 +328,23 @@ async fn two_organisations_refused_at_once_both_keep_their_new_passphrase() {
 
 #[tokio::test]
 async fn watches_no_repository_on_zirc_devs_public_server() {
-    let (Some(acme), Some(public)) = (Ergo::start(), Ergo::start()) else {
+    let (Some(zirc), Some(public)) = (Ergo::start(), Ergo::start()) else {
         return;
     };
     let machine = Machine::with_config(&format!(
         "nick = \"m\"\n[server]\nhost = \"127.0.0.1\"\nport = {}\ntls = false\n\n\
          [[org]]\nname = \"public\"\nnick = \"m\"\n\
          [org.server]\nhost = \"127.0.0.1\"\nport = {}\ntls = false\n",
-        acme.port(),
+        zirc.port(),
         public.port()
     ))
     .await;
-    let repo = zirc_test_ergo::git::clone(ACME_REPO);
+    let repo = zirc_test_ergo::git::clone(ZIRC_REPO);
     let refused = machine
         .add_repo(Some("public"), repo.path())
         .await
         .unwrap_err();
     assert!(refused.to_string().contains("public server"), "{refused}");
     // Its own organisation's repositories are watched as ever.
-    machine.add_repo(Some(ACME), repo.path()).await.unwrap();
+    machine.add_repo(Some(ZIRC), repo.path()).await.unwrap();
 }

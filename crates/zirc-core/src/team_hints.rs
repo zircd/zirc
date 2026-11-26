@@ -283,12 +283,12 @@ mod tests {
             version: 2,
             hints: vec![stored("#api", "ask first"), stored(ORG, "be brief")],
         };
-        keep(home, "acme", &newer).unwrap();
+        keep(home, "zirc", &newer).unwrap();
         // An older answer, as from a read that crossed a change, doesn't undo it.
-        keep(home, "acme", &Listing::default()).unwrap();
-        assert_eq!(kept(home, "acme"), newer);
+        keep(home, "zirc", &Listing::default()).unwrap();
+        assert_eq!(kept(home, "zirc"), newer);
         let texts = |hints: Vec<Hint>| hints.into_iter().map(|h| h.text).collect::<Vec<_>>();
-        let (repo, org) = for_repo(home, Some("acme"), "#api");
+        let (repo, org) = for_repo(home, Some("zirc"), "#api");
         assert_eq!(
             (texts(repo), texts(org)),
             (vec!["ask first".to_owned()], vec!["be brief".to_owned()])
@@ -338,7 +338,7 @@ mod tests {
         let key = Arc::new(device_key::Software::in_file(dir.path().join("device-key")));
         let client = Server::with_key(
             &format!("http://127.0.0.1:{port}/api/v1/"),
-            "acme.irc.zirc.dev",
+            "zirc.irc.zirc.dev",
             "ada-mbp",
             key,
         )
@@ -381,8 +381,8 @@ mod tests {
     #[test]
     fn a_servers_content_api_is_at_its_host() {
         assert_eq!(
-            base("acme.irc.zirc.dev"),
-            "https://acme.irc.zirc.dev/api/v1"
+            base("zirc.irc.zirc.dev"),
+            "https://zirc.irc.zirc.dev/api/v1"
         );
     }
 }

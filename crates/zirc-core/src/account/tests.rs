@@ -21,12 +21,12 @@ fn signin_at(handle: &str, host: &str, web: &str, device_key: bool) -> SignIn {
     }
 }
 
-fn acme() -> SignIn {
-    signin_at("alice", "acme.irc.zirc.dev", "https://zirc.dev", true)
+fn zirc() -> SignIn {
+    signin_at("alice", "zirc.irc.zirc.dev", "https://zirc.dev", true)
 }
 
-fn zirc() -> SignIn {
-    signin_at("ali", "zirc.irc.zirc.dev", "https://zirc.dev", false)
+fn fjord() -> SignIn {
+    signin_at("ali", "fjord.irc.zirc.dev", "https://zirc.dev", false)
 }
 
 fn session(signin: SignIn) -> OrgSession {
@@ -80,30 +80,30 @@ fn migrates_the_unkeyed_data_of_a_single_organisation_without_signing_in_again()
     }
     // The old file: the lone sign-in, as older releases wrote it.
     let file = home.dir.path().join("signin.toml");
-    SignIns::from(acme()).save(&file).unwrap();
+    SignIns::from(zirc()).save(&file).unwrap();
     let signins = SignIns::load(&file).unwrap();
     let account = account_with(
         &home,
         Policy::default(),
         &signins.iter().cloned().collect::<Vec<_>>(),
     );
-    let (org, acme) = account.selected().unwrap();
-    assert_eq!(org, "acme");
-    assert_eq!(acme.badge, 7);
-    assert_eq!(acme.chat().level("#api"), Level::All);
+    let (org, zirc) = account.selected().unwrap();
+    assert_eq!(org, "zirc");
+    assert_eq!(zirc.badge, 7);
+    assert_eq!(zirc.chat().level("#api"), Level::All);
     // Under the organisation, never the handle.
-    assert_eq!(home.secrets.get("zirc-badge:acme").as_deref(), Some("7"));
+    assert_eq!(home.secrets.get("zirc-badge:zirc").as_deref(), Some("7"));
     assert_eq!(home.secrets.get("zirc-badge:alice"), None);
     // The passphrase stays where it was.
-    assert!(home.secrets.get("alice@acme.irc.zirc.dev").is_some());
+    assert!(home.secrets.get("alice@zirc.irc.zirc.dev").is_some());
     // The iOS extension's unkeyed names are still there while the switch is off.
     assert_eq!(home.secrets.get("zirc-badge").as_deref(), Some("7"));
 }
 
 #[test]
 fn migrates_from_each_older_shape_of_the_sign_in_file() {
-    let json_list = serde_json::to_string(&[acme(), zirc()]).unwrap();
-    let json_one = serde_json::to_string(&acme()).unwrap();
+    let json_list = serde_json::to_string(&[zirc(), fjord()]).unwrap();
+    let json_one = serde_json::to_string(&zirc()).unwrap();
     let shapes: [(&str, usize); 2] = [(&json_one, 1), (&json_list, 2)];
     for (json, count) in shapes {
         let signins: SignIns = serde_json::from_str(json).unwrap();
@@ -117,9 +117,9 @@ fn migrates_from_each_older_shape_of_the_sign_in_file() {
         );
         // The data moves under the first organisation and no other, and the unkeyed name goes
         // once the switch is on.
-        assert_eq!(account.get("acme").unwrap().badge, 3);
+        assert_eq!(account.get("zirc").unwrap().badge, 3);
         if count == 2 {
-            assert_eq!(account.get("zirc").unwrap().badge, 0);
+            assert_eq!(account.get("fjord").unwrap().badge, 0);
         }
         assert_eq!(home.secrets.get("zirc-badge"), None);
     }
@@ -135,36 +135,36 @@ fn migrates_from_each_older_shape_of_the_sign_in_file() {
 fn migrating_twice_changes_nothing() {
     let home = home();
     home.secrets.set(keys::BADGE, "3").unwrap();
-    let account = account_with(&home, Policy::default(), &[acme()]);
+    let account = account_with(&home, Policy::default(), &[zirc()]);
     drop(account);
     home.secrets.set(keys::BADGE, "9").unwrap();
-    let account = account_with(&home, Policy::default(), &[acme()]);
+    let account = account_with(&home, Policy::default(), &[zirc()]);
     // The organisation's own value wins over a stale unkeyed one.
-    assert_eq!(account.get("acme").unwrap().badge, 3);
+    assert_eq!(account.get("zirc").unwrap().badge, 3);
 }
 
 #[test]
 fn the_rollout_switch_off_keeps_one_organisation() {
     let home = home();
-    let mut account = account_with(&home, Policy::default(), &[acme()]);
+    let mut account = account_with(&home, Policy::default(), &[zirc()]);
     assert!(!account.can_add());
     assert_eq!(
-        account.add_organisation(session(zirc())),
+        account.add_organisation(session(fjord())),
         Err(AddError::NotEnabled)
     );
     assert_eq!(account.len(), 1);
     // Signing in to the same organisation again is not adding.
-    assert_eq!(account.add_organisation(session(acme())), Ok(()));
+    assert_eq!(account.add_organisation(session(zirc())), Ok(()));
     account.set_several(true);
     assert!(account.can_add());
-    assert_eq!(account.add_organisation(session(zirc())), Ok(()));
+    assert_eq!(account.add_organisation(session(fjord())), Ok(()));
     assert_eq!(
         account
             .organisations()
             .iter()
             .map(|o| o.org.as_str())
             .collect::<Vec<_>>(),
-        ["acme", "zirc"]
+        ["zirc", "fjord"]
     );
 }
 
@@ -185,7 +185,7 @@ fn holds_at_most_eight_organisations() {
         );
     }
     assert_eq!(
-        account.add_organisation(session(zirc())),
+        account.add_organisation(session(fjord())),
         Err(AddError::TooMany(8))
     );
     assert!(!account.can_add());
@@ -194,27 +194,27 @@ fn holds_at_most_eight_organisations() {
 #[test]
 fn a_handshake_with_several_organisations_merges_and_replaces_none() {
     let home = home();
-    let mut account = account_with(&home, several(), &[acme()]);
-    account.get_mut("acme").unwrap().badge = 4;
+    let mut account = account_with(&home, several(), &[zirc()]);
+    account.get_mut("zirc").unwrap().badge = 4;
     let merged: SignIns =
-        serde_json::from_str(&serde_json::to_string(&[acme(), zirc()]).unwrap()).unwrap();
+        serde_json::from_str(&serde_json::to_string(&[zirc(), fjord()]).unwrap()).unwrap();
     let refused = account.add_signins(&merged, |s| session(s.clone()));
     assert!(refused.is_empty());
     assert_eq!(account.len(), 2);
-    assert_eq!(account.selected().unwrap().0, "acme");
+    assert_eq!(account.selected().unwrap().0, "zirc");
     assert_eq!(account.signins().len(), 2);
     assert_eq!(
         account.connected_hosts(),
-        ["acme.irc.zirc.dev", "zirc.irc.zirc.dev"]
+        ["zirc.irc.zirc.dev", "fjord.irc.zirc.dev"]
     );
 }
 
 #[test]
 fn signing_out_of_one_leaves_the_others_and_keeps_zirc_dev() {
     let home = home();
-    let mut account = account_with(&home, several(), &[acme(), zirc()]);
+    let mut account = account_with(&home, several(), &[zirc(), fjord()]);
     let store = account.store().clone();
-    for org in ["acme", "zirc"] {
+    for org in ["zirc", "fjord"] {
         let s = account.get_mut(org).unwrap();
         s.badge = 2;
         s.blocked.blocked.clear();
@@ -226,41 +226,41 @@ fn signing_out_of_one_leaves_the_others_and_keeps_zirc_dev() {
         };
         s.save(&store).unwrap();
     }
-    assert_eq!(account.org_for_endpoint("ep1"), Some("acme"));
+    assert_eq!(account.org_for_endpoint("ep1"), Some("zirc"));
     assert_eq!(account.org_for_endpoint("nope"), None);
     let key = |org: &str| crate::sealed::Keys::name(org);
     for name in [
-        key("acme"),
         key("zirc"),
+        key("fjord"),
         crate::sealed::DEVICE_SECRET.to_owned(),
     ] {
         home.secrets.set(&name, "kept").unwrap();
     }
-    let removal = account.remove_organisation("acme").unwrap().unwrap();
+    let removal = account.remove_organisation("zirc").unwrap().unwrap();
     assert_eq!(removal.signin.handle, "alice");
     assert!(removal.push.registered && removal.unregister_device_key);
     assert_eq!(removal.push.endpoint_id.as_deref(), Some("ep1"));
     assert!(!removal.last && !removal.ends_zirc_dev());
-    // Acme's passphrase and data are gone, Zirc's are not.
-    assert_eq!(home.secrets.get("alice@acme.irc.zirc.dev"), None);
-    assert_eq!(home.secrets.get("zirc-badge:acme"), None);
-    assert_eq!(home.secrets.get("zirc-push-nick:acme"), None);
-    assert!(home.secrets.get("ali@zirc.irc.zirc.dev").is_some());
-    assert_eq!(home.secrets.get("zirc-badge:zirc").as_deref(), Some("2"));
-    // Acme's sealing keys went with it; Zirc's, and the device's own, stay.
-    assert_eq!(home.secrets.get(&key("acme")), None);
-    assert!(home.secrets.get(&key("zirc")).is_some());
+    // Zirc's passphrase and data are gone, Fjord's are not.
+    assert_eq!(home.secrets.get("alice@zirc.irc.zirc.dev"), None);
+    assert_eq!(home.secrets.get("zirc-badge:zirc"), None);
+    assert_eq!(home.secrets.get("zirc-push-nick:zirc"), None);
+    assert!(home.secrets.get("ali@fjord.irc.zirc.dev").is_some());
+    assert_eq!(home.secrets.get("zirc-badge:fjord").as_deref(), Some("2"));
+    // Zirc's sealing keys went with it; Fjord's, and the device's own, stay.
+    assert_eq!(home.secrets.get(&key("zirc")), None);
+    assert!(home.secrets.get(&key("fjord")).is_some());
     assert!(home.secrets.get(crate::sealed::DEVICE_SECRET).is_some());
-    // Zirc is shown now.
-    assert_eq!(account.selected().unwrap().0, "zirc");
-    assert_eq!(account.remove_organisation("acme").unwrap(), None);
-    // Zirc's registration of the device key was never made.
-    let last = account.remove_organisation("zirc").unwrap().unwrap();
+    // Fjord is shown now.
+    assert_eq!(account.selected().unwrap().0, "fjord");
+    assert_eq!(account.remove_organisation("zirc").unwrap(), None);
+    // Fjord's registration of the device key was never made.
+    let last = account.remove_organisation("fjord").unwrap().unwrap();
     assert!(!last.unregister_device_key);
     assert!(last.last && last.ends_zirc_dev());
     assert!(account.is_empty());
     // The last one takes the device's key pair with it.
-    assert_eq!(home.secrets.get(&key("zirc")), None);
+    assert_eq!(home.secrets.get(&key("fjord")), None);
     assert_eq!(home.secrets.get(crate::sealed::DEVICE_SECRET), None);
 }
 
@@ -285,47 +285,47 @@ fn the_last_self_hosted_organisation_has_no_zirc_dev_to_sign_out_of() {
 #[test]
 fn signing_out_of_everything_says_what_else_goes() {
     let home = home();
-    let mut account = account_with(&home, several(), &[acme(), zirc()]);
+    let mut account = account_with(&home, several(), &[zirc(), fjord()]);
     let out = account.sign_out_everything().unwrap();
     assert_eq!(out.removed.len(), 2);
     assert!(out.delete_push_keys && out.delete_device_key && out.ends_zirc_dev());
     assert!(account.is_empty());
-    assert_eq!(home.secrets.get("alice@acme.irc.zirc.dev"), None);
-    assert_eq!(home.secrets.get("ali@zirc.irc.zirc.dev"), None);
+    assert_eq!(home.secrets.get("alice@zirc.irc.zirc.dev"), None);
+    assert_eq!(home.secrets.get("ali@fjord.irc.zirc.dev"), None);
 }
 
 #[test]
 fn data_follows_the_organisation_through_a_rename() {
     let home = home();
-    let mut account = account_with(&home, several(), &[acme()]);
-    account.get_mut("acme").unwrap().badge = 5;
+    let mut account = account_with(&home, several(), &[zirc()]);
+    account.get_mut("zirc").unwrap().badge = 5;
     let store = account.store().clone();
-    account.get("acme").unwrap().save(&store).unwrap();
-    let renamed = acme().renamed("alicia", home.secrets.as_ref()).unwrap();
+    account.get("zirc").unwrap().save(&store).unwrap();
+    let renamed = zirc().renamed("alicia", home.secrets.as_ref()).unwrap();
     account.add_organisation(session(renamed)).unwrap();
     // The same organisation, so the same data and nothing lost.
     assert_eq!(account.len(), 1);
-    assert_eq!(account.get("acme").unwrap().badge, 5);
-    assert_eq!(account.get("acme").unwrap().signin().handle, "alicia");
+    assert_eq!(account.get("zirc").unwrap().badge, 5);
+    assert_eq!(account.get("zirc").unwrap().signin().handle, "alicia");
 }
 
 #[test]
 fn a_muted_organisation_counts_on_its_tile_but_not_on_the_icon() {
     let home = home();
-    let mut account = account_with(&home, several(), &[acme(), zirc()]);
+    let mut account = account_with(&home, several(), &[zirc(), fjord()]);
     assert_eq!(account.badges().total, Unread::default());
     assert_eq!(account.badges().orgs.len(), 2);
     // Pushes brought news to both while the app was closed.
-    account.get_mut("acme").unwrap().pushed = 2;
-    account.get_mut("zirc").unwrap().pushed = 3;
+    account.get_mut("zirc").unwrap().pushed = 2;
+    account.get_mut("fjord").unwrap().pushed = 3;
     assert_eq!(account.icon_badge(None), 5);
     // Muted: its tile still counts, in grey; the icon leaves it out.
-    account.get_mut("zirc").unwrap().muted = true;
+    account.get_mut("fjord").unwrap().muted = true;
     assert_eq!(account.badges().orgs[1].1.mentions, 3);
     assert_eq!(account.icon_badge(None), 2);
-    assert_eq!(account.title("acme", "#api"), "acme · #api");
-    let one = account_with(&self::home(), Policy::default(), &[acme()]);
-    assert_eq!(one.title("acme", "#api"), "#api");
+    assert_eq!(account.title("zirc", "#api"), "zirc · #api");
+    let one = account_with(&self::home(), Policy::default(), &[zirc()]);
+    assert_eq!(one.title("zirc", "#api"), "#api");
 }
 
 #[test]
@@ -384,8 +384,12 @@ fn an_organisations_push_registration_is_kept_with_when() {
 #[test]
 fn an_unconnected_organisations_unread_is_the_pushes_not_yet_read() {
     let home = home();
-    let mut account = account_with(&home, Policy::phone().with_several(true), &[acme(), zirc()]);
-    let org = account.get_mut("zirc").unwrap();
+    let mut account = account_with(
+        &home,
+        Policy::phone().with_several(true),
+        &[zirc(), fjord()],
+    );
+    let org = account.get_mut("fjord").unwrap();
     for read in [false, false, true, true, true] {
         org.pushed_one(read);
     }
@@ -394,17 +398,21 @@ fn an_unconnected_organisations_unread_is_the_pushes_not_yet_read() {
     assert_eq!(account.badges().total.mentions, 1);
     // Kept across starts; opening it recounts from the server's chat (nothing unread here).
     let store = account.store().clone();
-    account.get("zirc").unwrap().save(&store).unwrap();
-    let account = account_with(&home, Policy::phone().with_several(true), &[acme(), zirc()]);
-    assert_eq!(account.get("zirc").unwrap().pushed, 1);
+    account.get("fjord").unwrap().save(&store).unwrap();
+    let account = account_with(
+        &home,
+        Policy::phone().with_several(true),
+        &[zirc(), fjord()],
+    );
+    assert_eq!(account.get("fjord").unwrap().pushed, 1);
     let mut account = account;
-    account.get_mut("zirc").unwrap().recounted();
-    assert_eq!(account.get("zirc").unwrap().pushed, 0);
+    account.get_mut("fjord").unwrap().recounted();
+    assert_eq!(account.get("fjord").unwrap().pushed, 0);
 }
 
 #[test]
 fn an_old_connections_word_is_ignored() {
-    let mut s = session(acme());
+    let mut s = session(zirc());
     let old = s.reconnect();
     let new = s.reconnect();
     s.set_state(old, OrgState::Connected);
@@ -432,15 +440,15 @@ async fn each_organisations_request_carries_its_own_passphrase_to_its_own_web() 
     let (web_a, served_a) = zirc_test_ergo::web::serve(vec![(401, String::new())]);
     let (web_b, served_b) = zirc_test_ergo::web::serve(vec![(401, String::new())]);
     // Two organisations on different hostnames, the same handle, different passphrases.
-    let a = signin_at("alice", "acme.irc.zirc.dev", &web_a, false);
+    let a = signin_at("alice", "zirc.irc.zirc.dev", &web_a, false);
     let b = signin_at("alice", "chat.example.org", &web_b, false);
     let home = home();
-    home.secrets.set(&a.key(), "passphrase-for-acme").unwrap();
+    home.secrets.set(&a.key(), "passphrase-for-zirc").unwrap();
     home.secrets
         .set(&b.key(), "passphrase-for-example")
         .unwrap();
     let account = Account::open(home.secrets.clone(), several(), [session(a), session(b)]).unwrap();
-    for org in ["acme", "chat.example.org"] {
+    for org in ["zirc", "chat.example.org"] {
         let call = account
             .get(org)
             .unwrap()
@@ -457,7 +465,7 @@ async fn each_organisations_request_carries_its_own_passphrase_to_its_own_web() 
     let (got_a, got_b) = (served_a.join().unwrap(), served_b.join().unwrap());
     let header = |secret: &str| format!("Basic {}", base64(format!("alice:{secret}").as_bytes()));
     assert!(
-        got_a[0].contains(&header("passphrase-for-acme")),
+        got_a[0].contains(&header("passphrase-for-zirc")),
         "{}",
         got_a[0]
     );
@@ -467,24 +475,24 @@ async fn each_organisations_request_carries_its_own_passphrase_to_its_own_web() 
         "{}",
         got_b[0]
     );
-    assert!(!got_b[0].contains(&header("passphrase-for-acme")));
+    assert!(!got_b[0].contains(&header("passphrase-for-zirc")));
 }
 
 #[tokio::test]
 async fn one_failing_organisation_does_not_block_the_other() {
     let (web_a, served_a) = zirc_test_ergo::web::serve(vec![(500, "down".into())]);
     let (web_b, served_b) = zirc_test_ergo::web::serve(vec![(401, String::new())]);
-    let a = signin_at("alice", "acme.irc.zirc.dev", &web_a, false);
-    let b = signin_at("ali", "zirc.irc.zirc.dev", &web_b, false);
+    let a = signin_at("alice", "zirc.irc.zirc.dev", &web_a, false);
+    let b = signin_at("ali", "fjord.irc.zirc.dev", &web_b, false);
     let home = home();
     let account = account_with(&home, several(), &[a, b]);
     let call_a = account
-        .get("acme")
+        .get("zirc")
         .unwrap()
         .call(home.secrets.as_ref())
         .unwrap();
     let call_b = account
-        .get("zirc")
+        .get("fjord")
         .unwrap()
         .call(home.secrets.as_ref())
         .unwrap();
@@ -502,24 +510,24 @@ async fn one_failing_organisation_does_not_block_the_other() {
 fn a_credential_is_only_read_with_its_own_host() {
     // The same handle at two hosts: each reads its own key, and a missing one isn't borrowed.
     let home = home();
-    let a = signin_at("alice", "acme.irc.zirc.dev", "https://zirc.dev", false);
+    let a = signin_at("alice", "zirc.irc.zirc.dev", "https://zirc.dev", false);
     let b = signin_at(
         "alice",
         "chat.example.org",
         "https://chat.example.org",
         false,
     );
-    home.secrets.set(&a.key(), "only-for-acme").unwrap();
+    home.secrets.set(&a.key(), "only-for-zirc").unwrap();
     let account = Account::open(home.secrets.clone(), several(), [session(a), session(b)]).unwrap();
     assert_eq!(
         account
-            .get("acme")
+            .get("zirc")
             .unwrap()
             .call(home.secrets.as_ref())
             .unwrap()
             .credential
             .password,
-        "only-for-acme"
+        "only-for-zirc"
     );
     assert!(matches!(
         account

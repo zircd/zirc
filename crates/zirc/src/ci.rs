@@ -191,7 +191,7 @@ mod tests {
     async fn zirc_ci(web: &str, args: &[&str]) -> Result<String, String> {
         let home = tempfile::tempdir().unwrap();
         let config = format!(
-            "web = \"{web}\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n[account]\nname = \"ada-mbp\"\npassword = \"pw\"\n"
+            "web = \"{web}\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n[account]\nname = \"ada-mbp\"\npassword = \"pw\"\n"
         );
         std::fs::write(paths::config(home.path()), config).unwrap();
         let cli = Cli::try_parse_from([&["zirc", "ci"], args].concat()).unwrap();
@@ -208,11 +208,11 @@ mod tests {
 
     #[tokio::test]
     async fn makes_a_token_with_the_machines_account_and_says_how_ci_uses_it() {
-        let made = r#"{"name":"github","token":"zirc_ci_abc","organisation":"acme"}"#;
+        let made = r#"{"name":"github","token":"zirc_ci_abc","organisation":"zirc"}"#;
         let (web, served) = zirc_test_ergo::web::serve(vec![(200, made.to_owned())]);
         let out = zirc_ci(&web, &["token", "--name", "github"]).await.unwrap();
         assert!(out.starts_with("zirc_ci_abc\n"), "{out}");
-        assert!(out.contains("acme's CI token github"), "{out}");
+        assert!(out.contains("zirc's CI token github"), "{out}");
         assert!(
             out.contains(&format!(
                 "curl -fsS {web}/ci -H \"Authorization: Bearer $ZIRC_CI_TOKEN\""
@@ -228,7 +228,7 @@ mod tests {
 
     #[tokio::test]
     async fn prints_only_the_token_when_asked_quietly() {
-        let made = r#"{"name":"ci","token":"zirc_ci_abc","organisation":"acme"}"#;
+        let made = r#"{"name":"ci","token":"zirc_ci_abc","organisation":"zirc"}"#;
         let (web, _served) = zirc_test_ergo::web::serve(vec![(200, made.to_owned())]);
         assert_eq!(
             zirc_ci(&web, &["token", "--quiet"]).await.unwrap(),
@@ -247,7 +247,7 @@ mod tests {
         );
         assert_eq!(
             zirc_ci(&web, &["revoke", "github"]).await.unwrap(),
-            "revoked acme's CI token github\n"
+            "revoked zirc's CI token github\n"
         );
         let requests = served.join().unwrap();
         assert!(

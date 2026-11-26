@@ -296,7 +296,7 @@ mod tests {
     fn says_loudly_when_connected_but_in_no_channels() {
         let status = |channels: &[&str]| ipc::Status {
             connected: true,
-            server: "acme.irc.zirc.dev:6697".into(),
+            server: "zirc.irc.zirc.dev:6697".into(),
             nick: Some("m".into()),
             channels: channels.iter().map(|&it| it.into()).collect(),
             problem: None,

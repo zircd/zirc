@@ -763,7 +763,7 @@ const PREVIEW_MIN: usize = 6;
 const INDENT: usize = 2;
 
 /// The list's first row, as Discord heads a server's: the organisation's name, and how many
-/// people are in it, `Acme · 5 members`.
+/// people are in it, `Zirc · 5 members`.
 fn org_line(app: &App, org: &OrgHeader, width: usize) -> Line<'static> {
     let theme = app.theme;
     let count = format!(" · {}", org.members_label);
@@ -2176,7 +2176,7 @@ const LEAVE_KEYS: &str = "y leaves · any other key keeps it";
 /// [`LEAVE_KEYS`] where they don't fit.
 const LEAVE_KEY: &str = "y leaves";
 
-/// The status line's left: where the person is, `Acme · #web`, then what's going on
+/// The status line's left: where the person is, `Zirc · #web`, then what's going on
 /// here, its keys dim.
 fn status_left(app: &App) -> Line<'static> {
     let theme = app.theme;
@@ -2945,7 +2945,7 @@ mod tests {
             let message = zirc_proto::Message::new(
                 "ci",
                 zirc_proto::Event::Custom {
-                    kind: "x-acme/deploy".into(),
+                    kind: "x-fjord/deploy".into(),
                     data: format!(
                         r#"{{"card":{{"id":"d/42","title":"web · deploy 42","state":"failed","fields":[{{"label":"failed in","value":"smoke"}}],"actions":[{{"id":"retry","label":"Redeploy"}},{{"id":"cancel","label":"Abort","who":"admins"}}],"note":"{note}"}}}}"#
                     )
@@ -3690,7 +3690,7 @@ mod tests {
     #[test]
     fn shows_a_sealed_part_locked_until_s_reveals_it() {
         use zirc_core::sealed::{Context, KEY_LEN, Key, seal_message};
-        let key = Key::new("acme", [7; KEY_LEN]);
+        let key = Key::new("zirc", [7; KEY_LEN]);
         let sealed = seal_message(
             &key,
             &Context { target: "#api" },
@@ -3700,7 +3700,7 @@ mod tests {
         .unwrap();
         let mut app = app();
         let _ = app.select(1);
-        app.chat.set_keys("acme", vec![key]);
+        app.chat.set_keys("zirc", vec![key]);
         app.handle(
             format!(
                 "@msgid=m8;time=2026-10-30T11:04:00.000Z;+zirc.dev/sealed={sealed} \
@@ -4221,7 +4221,7 @@ mod tests {
     #[test]
     fn heads_the_list_with_the_org_and_leaves_agents_that_never_wrote_to_us_out() {
         let mut app = app();
-        app.chat.set_org_name(Some("Acme"));
+        app.chat.set_org_name(Some("Zirc"));
         let taking = |session: &str, task: &str| {
             zirc_proto::encode(&zirc_proto::Message::new(
                 session,
@@ -4254,7 +4254,7 @@ mod tests {
             .collect();
         // The organisation and its people on top, as zirc-chat says them.
         let people = app.chat.org_header().members;
-        assert_eq!(side[1], format!(" Acme · {people} members"));
+        assert_eq!(side[1], format!(" Zirc · {people} members"));
         // Agents at work that only posted in a channel aren't direct messages (the user's
         // choice, 15 Nov 2026): no row of theirs, and no Machines.
         assert!(
@@ -5028,10 +5028,10 @@ mod tests {
             "{}",
             rows.join("\n")
         );
-        app.org = Some("acme".into());
+        app.org = Some("zirc".into());
         app.orgs = vec![
             (
-                "acme".into(),
+                "zirc".into(),
                 zirc_core::orgs::Unread {
                     unread: 2,
                     mentions: 1,
@@ -5047,7 +5047,7 @@ mod tests {
             ("public".into(), zirc_core::orgs::Unread::default()),
         ];
         let (rows, _) = draw(&app, 160, 20);
-        let status = row_with(&rows, "acme · ");
+        let status = row_with(&rows, "zirc · ");
         assert!(
             status.contains(&format!("globex 3 ({}), Alt-O", mentions_label(1))),
             "{status}"

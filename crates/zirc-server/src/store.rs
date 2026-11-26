@@ -594,7 +594,7 @@ mod tests {
         let store = Store::new(
             data.path(),
             &s3,
-            "https://irc.acme.test".into(),
+            "https://irc.zirc.test".into(),
             "http://zirc:8090".into(),
         )
         .unwrap();
@@ -627,7 +627,7 @@ mod tests {
         };
         let link = store.link("files/abc", 60, For::People, &served);
         assert!(
-            link.starts_with("https://irc.acme.test/s/files/abc?e="),
+            link.starts_with("https://irc.zirc.test/s/files/abc?e="),
             "{link}"
         );
         let beside = store.link("files/abc", 60, For::Beside, &served);
@@ -660,7 +660,7 @@ mod tests {
         let bucket = Bucket::new(
             "https://s3.eu-west-2.amazonaws.com".parse().unwrap(),
             UrlStyle::VirtualHost,
-            "acme-files",
+            "zirc-files",
             "eu-west-2",
         )
         .unwrap();
@@ -670,7 +670,7 @@ mod tests {
                 credentials: Credentials::new("AKIDEXAMPLE", "secret"),
             },
             key: hmac::Key::new(hmac::HMAC_SHA256, &links_key(data.path()).unwrap()),
-            public: "https://irc.acme.test".into(),
+            public: "https://irc.zirc.test".into(),
             beside: "http://zirc:8090".into(),
             http: zirc_sidecar::http(),
         };
@@ -680,7 +680,7 @@ mod tests {
         };
         let link = store.link("files/abc", 60, For::People, &served);
         assert!(
-            link.starts_with("https://acme-files.s3.eu-west-2.amazonaws.com/files/abc?"),
+            link.starts_with("https://zirc-files.s3.eu-west-2.amazonaws.com/files/abc?"),
             "{link}"
         );
         assert!(

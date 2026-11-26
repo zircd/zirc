@@ -867,7 +867,7 @@ mod tests {
 
     #[tokio::test]
     async fn waits_through_the_web_app_restarting_until_the_login_is_done() {
-        let done = r#"{"status":"done","server":{"host":"acme.irc.zirc.dev"},"nick":"mattias"}"#;
+        let done = r#"{"status":"done","server":{"host":"zirc.irc.zirc.dev"},"nick":"mattias"}"#;
         let (web, served) = zirc_test_ergo::web::serve(vec![
             (503, "starting".into()),
             (200, PENDING.into()),
@@ -896,7 +896,7 @@ mod tests {
     #[tokio::test]
     async fn the_last_poll_is_at_the_deadline_and_ends_the_wait() {
         // Let in in its last second: collected by the poll at the deadline.
-        let done = r#"{"status":"done","server":{"host":"acme.irc.zirc.dev"},"nick":"mattias"}"#;
+        let done = r#"{"status":"done","server":{"host":"zirc.irc.zirc.dev"},"nick":"mattias"}"#;
         let (web, served) =
             zirc_test_ergo::web::serve(vec![(200, PENDING.into()), (200, done.into())]);
         let client = Client::new(&web).unwrap();

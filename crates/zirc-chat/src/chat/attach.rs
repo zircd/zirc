@@ -319,7 +319,7 @@ mod tests {
 
     fn uploaded(name: &str) -> File {
         File {
-            url: format!("https://zirc.dev/m/acme/{name}"),
+            url: format!("https://zirc.dev/m/zirc/{name}"),
             name: name.to_owned(),
             mime: "image/png".into(),
             size: 2048,
@@ -421,7 +421,7 @@ mod tests {
         };
         assert_eq!(
             lines[0].params[1],
-            "before and after https://zirc.dev/m/acme/shot.png"
+            "before and after https://zirc.dev/m/zirc/shot.png"
         );
         assert!(lines[0].tag(zirc_proto::attached::TAG).is_some());
         assert!(chat.attached("#api").is_empty());

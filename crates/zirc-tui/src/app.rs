@@ -2664,7 +2664,7 @@ mod tests {
         assert!(sent(typed(&mut app, "/profile")).is_empty());
         app.site = Some(Site {
             web: "https://zirc.dev/".into(),
-            slug: "acme".into(),
+            slug: "zirc".into(),
             home: None,
         });
         assert_eq!(
@@ -2702,7 +2702,7 @@ mod tests {
         assert_eq!(sent(typed(&mut app, "/nick bob")), ["NICK bob"]);
         app.site = Some(Site {
             web: "https://zirc.dev".into(),
-            slug: "acme".into(),
+            slug: "zirc".into(),
             home: None,
         });
         // Signed in there, it's the account's, changed on its page, which opens.
@@ -3541,10 +3541,10 @@ mod tests {
         );
 
         app.orgs = vec![
-            ("acme".into(), Unread::default()),
+            ("zirc".into(), Unread::default()),
             ("globex".into(), Unread::default()),
         ];
-        app.org = Some("acme".into());
+        app.org = Some("zirc".into());
         assert_eq!(
             app.key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::ALT)),
             Action::Org(None)

@@ -95,7 +95,7 @@ async fn logs_in_as_its_account_and_hears_messages_to_it() {
 
     // A session works in a repository here; messages to the machine reach its watchers,
     // naming that session when they start with its name.
-    let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+    let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
     let socket = paths::socket(home.path());
     ipc::request(
         &socket,
@@ -648,7 +648,7 @@ async fn an_organisation_that_says_no_keeps_colleagues_agents_out_of_any_machine
     let ergo = require_ergo!();
     let machines = three_machines(&ergo).await;
     let [mbp, bob] = [0, 2].map(|at| machines[at].0.path().to_owned());
-    let _repo = working_in(&mbp, "cc-a", "https://github.com/acme/api.git").await;
+    let _repo = working_in(&mbp, "cc-a", "https://github.com/zirc/api.git").await;
     let_query(&mbp, Queries::Anyone).await;
     let mut asking = watching(&bob, "cc-c").await;
 
@@ -672,7 +672,7 @@ async fn a_colleague_an_agent_wrote_to_answers_it_while_the_organisation_lets_th
     let ergo = require_ergo!();
     let machines = three_machines(&ergo).await;
     let mbp = machines[0].0.path().to_owned();
-    let _repo = working_in(&mbp, "cc-a", "https://github.com/acme/api.git").await;
+    let _repo = working_in(&mbp, "cc-a", "https://github.com/zirc/api.git").await;
     let mut agent = watching(&mbp, "cc-a").await;
     let (bob, carol, mattias) = (
         signed_in(&ergo, "bob").await,
@@ -966,7 +966,7 @@ async fn a_note_to_a_session_that_never_watched_waits_for_it() {
     let ergo = require_ergo!();
     let machines = three_machines(&ergo).await;
     let [mbp, mini] = [0, 1].map(|at| machines[at].0.path().to_owned());
-    let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+    let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
     let add = Request::RepoAdd {
         path: repo.path().to_owned(),
         session: Some("cc-new".to_owned()),
@@ -1025,7 +1025,7 @@ async fn trims_its_own_message_from_the_servers_history() {
     register(&ergo, "mattias-mbp", "right-horse").await;
     let (home, _daemon) = machine(&config(&ergo, "mattias-mbp", "right-horse", ""));
     connected(home.path()).await;
-    let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+    let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
     let Ok(Response::Repos { repos }) = ask(
         home.path(),
         Request::RepoAdd {
@@ -1280,7 +1280,7 @@ async fn its_own_posts_coming_back_are_not_another_machines_work() {
     register(&ergo, "mattias-mbp", "right-horse").await;
     let (home, _daemon) = machine(&config(&ergo, "mattias-mbp", "right-horse", ""));
     connected(home.path()).await;
-    let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+    let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
     let socket = paths::socket(home.path());
     ipc::request(
         &socket,
@@ -1471,8 +1471,8 @@ async fn states_go_to_ops_name_their_repository_and_wake_their_owner() {
     let ergo = require_ergo!();
     let machines = three_machines(&ergo).await;
     let [mbp, mini] = [0, 1].map(|at| machines[at].0.path().to_owned());
-    let api = working_in(&mbp, "cc-a", "git@github.com:acme/api.git").await;
-    let _web = working_in(&mini, "cc-b", "git@github.com:acme/web.git").await;
+    let api = working_in(&mbp, "cc-a", "git@github.com:zirc/api.git").await;
+    let _web = working_in(&mini, "cc-b", "git@github.com:zirc/web.git").await;
     let mut owner = watching(&mini, "cc-b").await;
     let mut other = watching(&mini, "cc-c").await;
 
@@ -1546,8 +1546,8 @@ async fn a_session_waiting_on_a_state_is_woken_once_when_it_changes_level() {
     let ergo = require_ergo!();
     let machines = three_machines(&ergo).await;
     let [mbp, mini] = [0, 1].map(|at| machines[at].0.path().to_owned());
-    let api = working_in(&mbp, "cc-a", "git@github.com:acme/api.git").await;
-    let _web = working_in(&mini, "cc-b", "git@github.com:acme/web.git").await;
+    let api = working_in(&mbp, "cc-a", "git@github.com:zirc/api.git").await;
+    let _web = working_in(&mini, "cc-b", "git@github.com:zirc/web.git").await;
     let mut waiting = watching(&mini, "cc-b").await;
     // CI says how api's master stands.
     let say = |level| {
@@ -1624,7 +1624,7 @@ async fn a_decision_the_server_hasnt_confirmed_isnt_said_as_decided() {
     let mbp = Machine::spawn_with(&config, hooks);
     let home = mbp.home.path();
     connected(home).await;
-    let api = working_in(home, "cc-a", "git@github.com:acme/api.git").await;
+    let api = working_in(home, "cc-a", "git@github.com:zirc/api.git").await;
 
     let decide = Request::Decide {
         repo: api.path().to_owned(),
@@ -1649,8 +1649,8 @@ async fn decisions_reach_the_sessions_theyre_for_and_say_whose_account_sent_them
     let machines = three_machines(&ergo).await;
     let [mbp, mini] = [0, 1].map(|at| machines[at].0.path().to_owned());
     // Sessions on two machines, in two repositories.
-    let api = working_in(&mbp, "cc-a", "git@github.com:acme/api.git").await;
-    let web = working_in(&mini, "cc-b", "git@github.com:acme/web.git").await;
+    let api = working_in(&mbp, "cc-a", "git@github.com:zirc/api.git").await;
+    let web = working_in(&mini, "cc-b", "git@github.com:zirc/web.git").await;
     let mut hearing = watching(&mini, "cc-b").await;
     let mut elsewhere = watching(&mini, "cc-c").await;
 
@@ -1797,7 +1797,7 @@ async fn said_and_heard(
     line.tag("msgid").expect("a msgid").to_owned()
 }
 
-/// A machine of mattias's watching `acme/api` for cc-1, which waits for 👀, with mattias and
+/// A machine of mattias's watching `zirc/api` for cc-1, which waits for 👀, with mattias and
 /// bob in `#api`, signed in: all of it, and what each hears.
 struct Reacting {
     _ergo: Ergo,
@@ -1816,7 +1816,7 @@ impl Reacting {
         register(&ergo, "mattias-mbp", "right-horse").await;
         let (home, daemon) = machine(&config(&ergo, "mattias-mbp", "right-horse", ""));
         connected(home.path()).await;
-        let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+        let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
         let add = Request::RepoAdd {
             path: repo.path().to_owned(),
             session: Some("cc-1".to_owned()),
@@ -2156,7 +2156,7 @@ async fn a_request_is_answered_only_by_its_owners_own_reaction() {
     register(&ergo, "mattias-mbp", "right-horse").await;
     let (home, _daemon) = machine(&config(&ergo, "mattias-mbp", "right-horse", ""));
     connected(home.path()).await;
-    let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+    let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
     let socket = paths::socket(home.path());
     let add = Request::RepoAdd {
         path: repo.path().to_owned(),
@@ -2281,7 +2281,7 @@ impl Asking {
         let rest = format!("request_hold = {hold}");
         let (home, daemon) = machine(&config(ergo, "mattias-mbp", "right-horse", &rest));
         connected(home.path()).await;
-        let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+        let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
         let socket = paths::socket(home.path());
         for session in ["cc-1", "cc-2"] {
             let add = Request::RepoAdd {
@@ -2421,7 +2421,7 @@ async fn a_request_the_server_hasnt_confirmed_isnt_said_as_asked() {
     let mbp = Machine::spawn_with(&config(&ergo, "mattias-mbp", "right-horse", ""), hooks);
     let home = mbp.home.path();
     connected(home).await;
-    let _repo = working_in(home, "cc-1", "git@github.com:acme/api.git").await;
+    let _repo = working_in(home, "cc-1", "git@github.com:zirc/api.git").await;
 
     let request = Request::AskOwner {
         session: "cc-1".into(),
@@ -2641,7 +2641,7 @@ async fn a_request_answered_while_zircd_was_stopped_is_heard_once_it_is_back() {
     let (home, daemon) = machine(&config(&ergo, "mattias-mbp", "right-horse", ""));
     let machine = Machine { home, daemon };
     connected(machine.home.path()).await;
-    let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+    let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
     let add = Request::RepoAdd {
         path: repo.path().to_owned(),
         session: Some("cc-1".to_owned()),
@@ -2711,7 +2711,7 @@ async fn machine_with_a_session(
     );
     let machine = Machine::spawn(&config);
     connected(machine.home.path()).await;
-    let repo = zirc_test_ergo::git::clone("git@github.com:acme/api.git");
+    let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
     ipc::request(
         &paths::socket(machine.home.path()),
         &Request::RepoAdd {

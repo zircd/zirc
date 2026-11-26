@@ -7,7 +7,7 @@
     "data": {
       "id": "Q0EXAMPLE0001",
       "type": "incident",
-      "html_url": "https://acme.pagerduty.com/incidents/Q0EXAMPLE0001",
+      "html_url": "https://zirc.pagerduty.com/incidents/Q0EXAMPLE0001",
       "number": 3,
       "status": "resolved",
       "title": "API latency p99 over 2 s",

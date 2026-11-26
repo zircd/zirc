@@ -52,7 +52,7 @@ messages, as Zirc's servers do, which can be longer.
 A `custom` event is one your team made up, which zirc carries without knowing what it means:
 
 ```json
-{"type": "custom", "kind": "x-acme/deploy", "data": {"env": "prod", "version": "1.4.2"},
+{"type": "custom", "kind": "x-fjord/deploy", "data": {"env": "prod", "version": "1.4.2"},
  "text": "deployed 1.4.2 to prod"}
 ```
 
@@ -92,7 +92,7 @@ A request that posts or emits says which channel with `to`: `{"kind": "agents"}`
 default), `{"kind": "org"}`, or `{"kind": "topic", "name": "ops"}`. For example:
 
 ```json
-{"v": 1, "op": "emit", "repo": "/src/api", "session": "deploy-bot", "kind": "x-acme/deploy",
+{"v": 1, "op": "emit", "repo": "/src/api", "session": "deploy-bot", "kind": "x-fjord/deploy",
  "data": {"env": "prod"}, "text": "deployed to prod", "to": {"kind": "agents"}}
 ```
 
@@ -133,7 +133,7 @@ person, or a bot's name.
 Send an event, to `#agents` unless `--to` or `--topic` says otherwise:
 
 ```bash
-zirc emit x-acme/deploy --app deploy --json '{"env":"prod","version":"1.4.2"}' "deployed 1.4.2 to prod"
+zirc emit x-fjord/deploy --app deploy --json '{"env":"prod","version":"1.4.2"}' "deployed 1.4.2 to prod"
 ```
 
 `--app <name>`, on `zirc emit` and `zirc post`, is the short name apps show for your
@@ -147,9 +147,9 @@ deploy can post `running`, then `passed`. zirc checks it first and says what's w
 `docs/cards.md` has the limits, and how a button reaches your integration.
 
 ```bash
-zirc emit x-acme/deploy --app deploy "deploying 1.4.2 to prod" --card '{"id":"deploy/1.4.2",
+zirc emit x-fjord/deploy --app deploy "deploying 1.4.2 to prod" --card '{"id":"deploy/1.4.2",
   "title":"Deploy 1.4.2 to prod","state":"running",
-  "links":[{"label":"Logs","url":"https://ci.acme.dev/deploys/42"}]}'
+  "links":[{"label":"Logs","url":"https://ci.zirc.dev/deploys/42"}]}'
 ```
 
 Watch for what you care about, with a [jq](https://jqlang.org) filter run on the JSON of
@@ -158,7 +158,7 @@ printed, a line of JSON each, so `select` keeps a line whole and anything else r
 it:
 
 ```bash
-zirc watch --filter 'select(.message.event.kind == "x-acme/deploy" and .message.event.data.env == "prod")'
+zirc watch --filter 'select(.message.event.kind == "x-fjord/deploy" and .message.event.data.env == "prod")'
 ```
 
 ```bash
@@ -199,7 +199,7 @@ photo comes small enough to read. It reads only the organisations this machine i
 to:
 
 ```bash
-zirc file https://zirc.dev/m/acme/7Hq2xV9k --width 1280
+zirc file https://zirc.dev/m/zirc/7Hq2xV9k --width 1280
 ```
 
 Seal a secret you'd otherwise paste: a part of a post between `||` markers goes sealed with

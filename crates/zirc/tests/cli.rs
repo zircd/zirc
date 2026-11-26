@@ -259,7 +259,7 @@ async fn catchup_with(
 }
 
 fn clone() -> TempDir {
-    zirc_test_ergo::git::clone("https://github.com/acme/web.git")
+    zirc_test_ergo::git::clone("https://github.com/zirc/web.git")
 }
 
 /// What a writer is handed, a line at a time, as `zirc watch` prints.
@@ -553,7 +553,7 @@ async fn a_team_emits_its_own_events_and_a_filter_picks_them_out() {
             beta_home.to_str().unwrap(),
             "watch",
             "--filter",
-            r#".message.event | select(.kind == "x-acme/deploy" and .data.env == "prod") | .data.version"#,
+            r#".message.event | select(.kind == "x-fjord/deploy" and .data.env == "prod") | .data.version"#,
         ]);
         let _ = zirc::run(cli.unwrap(), &mut Lines(lines, Vec::new())).await;
     });
@@ -565,7 +565,7 @@ async fn a_team_emits_its_own_events_and_a_filter_picks_them_out() {
             alpha.path(),
             &[
                 "emit",
-                "x-acme/deploy",
+                "x-fjord/deploy",
                 "--repo",
                 alpha_repo,
                 "--json",

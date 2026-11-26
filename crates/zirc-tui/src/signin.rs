@@ -211,7 +211,7 @@ mod tests {
         let secrets = File(dir.path().join("secrets.toml"));
         let credentials = Credentials {
             server: Server {
-                host: "acme.irc.zirc.dev".into(),
+                host: "zirc.irc.zirc.dev".into(),
                 port: None,
                 tls: None,
                 password: Some("gate".into()),
@@ -289,7 +289,7 @@ mod tests {
         let secrets = Refusing(File(dir.path().join("secrets.toml")));
         let credentials = Credentials {
             server: Server {
-                host: "acme.irc.zirc.dev".into(),
+                host: "zirc.irc.zirc.dev".into(),
                 port: None,
                 tls: None,
                 password: None,
@@ -316,8 +316,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             String::from_utf8(out).unwrap(),
-            "Signed out of Acme.\nIts passphrase is still kept, as \
-             mattias@acme.irc.zirc.dev, where the system's secret store wouldn't remove it: \
+            "Signed out of Zirc.\nIts passphrase is still kept, as \
+             mattias@zirc.irc.zirc.dev, where the system's secret store wouldn't remove it: \
              login.keychain: no keychain.\n"
         );
         assert_eq!(load(&path(dir.path())).unwrap(), None);
@@ -348,19 +348,19 @@ mod tests {
             SignIn::from_credentials(&credentials, "https://zirc.dev", &secrets).unwrap()
         };
         let path = path(dir.path());
-        save(&signin("acme.irc.zirc.dev"), &path).unwrap();
+        save(&signin("zirc.irc.zirc.dev"), &path).unwrap();
         save(&signin("irc.zirc.dev"), &path).unwrap();
         let orgs = |path: &Path| -> Vec<String> {
             load_all(path).unwrap().iter().map(SignIn::org).collect()
         };
-        assert_eq!(orgs(&path), ["acme", "public"]);
+        assert_eq!(orgs(&path), ["zirc", "public"]);
 
         let mut out = Vec::new();
         sign_out(dir.path(), &secrets, &key(&dir), Some("public"), &mut out)
             .await
             .unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), "Signed out of Public.\n");
-        assert_eq!(orgs(&path), ["acme"]);
+        assert_eq!(orgs(&path), ["zirc"]);
         let mut out = Vec::new();
         sign_out(dir.path(), &secrets, &key(&dir), Some("public"), &mut out)
             .await
@@ -372,7 +372,7 @@ mod tests {
         // One organisation's file is the one sign-in it always was.
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            toml::to_string(&signin("acme.irc.zirc.dev")).unwrap()
+            toml::to_string(&signin("zirc.irc.zirc.dev")).unwrap()
         );
     }
 }

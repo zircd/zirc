@@ -454,7 +454,7 @@ mod tests {
             tool: Some(Tool::Sentry),
             summary: "TypeError in web, reading 'slug' of undefined".into(),
             details: Some("web/src/app/orgs/[slug]/page.tsx:41".into()),
-            link: Some("https://acme.sentry.io/issues/7/".into()),
+            link: Some("https://zirc.sentry.io/issues/7/".into()),
             ..RoleReport::new("oncall", Subject::Error, "sentry:7")
         }
     }

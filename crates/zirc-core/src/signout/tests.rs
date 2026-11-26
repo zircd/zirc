@@ -9,7 +9,7 @@ const TWO: &str = r#"
 nick = "m"
 web = "https://zirc.dev"
 [server]
-host = "acme.irc.zirc.dev"
+host = "zirc.irc.zirc.dev"
 [account]
 name = "m"
 password = "p"
@@ -33,11 +33,11 @@ password = "p"
 
 #[test]
 fn one_of_two_keeps_the_other_and_zirc_dev() {
-    let plan = Plan::new(&settings(TWO), &Scope::One("acme".into())).unwrap();
+    let plan = Plan::new(&settings(TWO), &Scope::One("zirc".into())).unwrap();
     assert!(!plan.ends_zirc_dev());
     assert!(!plan.leaves_nothing());
     let sheet = plan.sheet();
-    assert_eq!(sheet.title, "Sign out of Acme?");
+    assert_eq!(sheet.title, "Sign out of Zirc?");
     assert!(
         sheet.body.contains("You stay signed in to Globex."),
         "{sheet:?}"
@@ -47,7 +47,7 @@ fn one_of_two_keeps_the_other_and_zirc_dev() {
 #[test]
 fn the_last_one_signs_out_of_zirc_dev_too() {
     let mut s = settings(TWO);
-    assert!(s.take_organisation("acme"));
+    assert!(s.take_organisation("zirc"));
     let plan = Plan::new(&s, &Scope::One("globex".into())).unwrap();
     assert!(plan.ends_zirc_dev());
     assert!(plan.leaves_nothing());
@@ -62,7 +62,7 @@ fn everything_names_them_and_zirc_dev() {
     assert_eq!(sheet.title, "Sign out of everything?");
     assert_eq!(
         sheet.body,
-        "Signs you out of Acme, Globex and zirc.dev on this device."
+        "Signs you out of Zirc, Globex and zirc.dev on this device."
     );
 }
 
@@ -86,7 +86,7 @@ fn an_unknown_organisation_is_refused() {
 #[test]
 fn taking_the_first_moves_the_next_up() {
     let mut s = settings(TWO);
-    assert!(s.take_organisation("acme"));
+    assert!(s.take_organisation("zirc"));
     assert_eq!(s.server.host, "globex.irc.zirc.dev");
     assert!(s.orgs.is_empty());
     assert!(!s.take_organisation("globex"), "the only one stays");

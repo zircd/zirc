@@ -1801,7 +1801,7 @@ pub(in crate::chat) mod tests {
                 paths: Vec::new(),
                 base: None,
                 lines: std::collections::BTreeMap::new(),
-                repo: Some("https://github.com/acme/api".into()),
+                repo: Some("https://github.com/zirc/api".into()),
                 on: None,
             },
         );
@@ -2144,7 +2144,7 @@ pub(in crate::chat) mod tests {
         let profiles: zirc_proto::profile::Profiles =
             serde_json::from_str(r#"{"alice": {"name": "Alice Liddell", "avatar": "3"}}"#).unwrap();
         chat.take_profiles(&profiles, "https://zirc.dev/");
-        chat.set_picture_site(Some("https://zirc.dev".into()), Some("acme".into()));
+        chat.set_picture_site(Some("https://zirc.dev".into()), Some("zirc".into()));
         feed(
             &mut chat,
             &[
@@ -2172,7 +2172,7 @@ pub(in crate::chat) mod tests {
                     nick: "alice".into(),
                     initials: "AL".into(),
                     hue: crate::chat::nick_degrees("alice"),
-                    photo: Some("https://zirc.dev/m/acme/@alice?v=3".into()),
+                    photo: Some("https://zirc.dev/m/zirc/@alice?v=3".into()),
                 }),
             })
         );
@@ -2255,7 +2255,7 @@ pub(in crate::chat) mod tests {
     fn an_event_comes_in_parts() {
         let mut chat = chat();
         chat.set_threshold("#api", crate::chat::COMMITS_AND_PUSHES_SHOW_AT);
-        let repo = "https://github.com/acme/api";
+        let repo = "https://github.com/zirc/api";
         let sha = "abc1234def5678abc1234def5678abc1234def56";
         let commit = named(
             "cc-1",
@@ -2691,7 +2691,7 @@ pub(in crate::chat) mod tests {
             let posted = Message::new(
                 "deploy",
                 Event::Custom {
-                    kind: "x-acme/deploy".into(),
+                    kind: "x-fjord/deploy".into(),
                     data: card.as_data(),
                     text: format!("{} {state}", card.title),
                 },
@@ -2990,7 +2990,7 @@ pub(in crate::chat) mod tests {
     #[test]
     fn a_hosted_file_is_drawn_and_another_only_said() {
         let mut chat = chat();
-        let hosted = "https://zirc.dev/m/acme/7Hq2xV9k";
+        let hosted = "https://zirc.dev/m/zirc/7Hq2xV9k";
         feed(
             &mut chat,
             &[
@@ -3026,7 +3026,7 @@ pub(in crate::chat) mod tests {
         );
         // With no web app said, nothing is loaded.
         assert!(api(&chat).iter().all(|line| line.kind == LineKind::Note));
-        chat.set_picture_site(Some("https://zirc.dev".into()), Some("acme".into()));
+        chat.set_picture_site(Some("https://zirc.dev".into()), Some("zirc".into()));
         let lines = api(&chat);
         let image = &lines[0];
         assert_eq!(image.kind, LineKind::File);
@@ -3063,8 +3063,8 @@ pub(in crate::chat) mod tests {
     #[test]
     fn a_self_hosted_organisations_files_are_drawn_from_its_own_server() {
         let mut chat = chat();
-        let own = "https://irc.acme.com/m/7Hq2xV9k";
-        let web = "https://zirc.dev/m/acme/7Hq2xV9k";
+        let own = "https://irc.zirc.com/m/7Hq2xV9k";
+        let web = "https://zirc.dev/m/zirc/7Hq2xV9k";
         feed(
             &mut chat,
             &[
@@ -3084,8 +3084,8 @@ pub(in crate::chat) mod tests {
                 ),
             ],
         );
-        chat.set_picture_site(Some("https://zirc.dev".into()), Some("acme".into()));
-        chat.set_files_site(Some("https://irc.acme.com".into()));
+        chat.set_picture_site(Some("https://zirc.dev".into()), Some("zirc".into()));
+        chat.set_files_site(Some("https://irc.zirc.com".into()));
         let lines = api(&chat);
         assert_eq!(lines[0].kind, LineKind::File);
         assert_eq!(lines[0].file.as_ref().unwrap().url.as_deref(), Some(own));
@@ -3229,7 +3229,7 @@ pub(in crate::chat) mod tests {
     #[test]
     fn a_message_with_files_attached_is_one_row_of_words_and_files() {
         let file = |id: &str| zirc_proto::File {
-            url: format!("https://zirc.dev/m/acme/{id}"),
+            url: format!("https://zirc.dev/m/zirc/{id}"),
             name: format!("{id}.png"),
             mime: "image/png".into(),
             size: 2048,
@@ -3240,7 +3240,7 @@ pub(in crate::chat) mod tests {
         let files = [file("before"), file("after")];
         let tag = zirc_proto::attached::value(&files);
         let mut chat = chat();
-        chat.set_picture_site(Some("https://zirc.dev".into()), Some("acme".into()));
+        chat.set_picture_site(Some("https://zirc.dev".into()), Some("zirc".into()));
         let heard = format!(
             "@time=2026-10-30T09:00:00.000Z;msgid=m1;+zirc/files={tag} :alice!u@h PRIVMSG #api :me: before and after {} {}",
             files[0].url, files[1].url
@@ -3264,7 +3264,7 @@ pub(in crate::chat) mod tests {
         else {
             panic!("it's a reply");
         };
-        assert_eq!(sent[0].params[1], "the fix https://zirc.dev/m/acme/before");
+        assert_eq!(sent[0].params[1], "the fix https://zirc.dev/m/zirc/before");
         assert_eq!(
             sent[0].tag("+zirc/files"),
             Some(zirc_proto::attached::value(&files[..1]).as_str())

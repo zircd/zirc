@@ -99,7 +99,7 @@ pub(crate) fn watched_in(repo: &zirc_core::ipc::Repo, org: Option<&str>) -> Stri
     )
 }
 
-/// `#api`, or `acme #api` when it's one organisation's of several: or any line said in one.
+/// `#api`, or `zirc #api` when it's one organisation's of several: or any line said in one.
 pub(crate) fn channel_in(channel: &str, org: Option<&str>) -> String {
     match org {
         Some(org) => format!("{org} {channel}"),

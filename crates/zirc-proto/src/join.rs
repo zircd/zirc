@@ -41,7 +41,7 @@ pub struct JoinRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct Joined {
-    /// The organisation's short name, such as `acme`.
+    /// The organisation's short name, such as `zirc`.
     pub organisation: String,
     /// The token zirc.dev presents at the sidecar's endpoint, as to a hosted server's.
     pub accounts_token: String,

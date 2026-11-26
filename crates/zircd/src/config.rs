@@ -274,35 +274,35 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let text = r#"
             [server]
-            host = "acme.irc.zirc.dev"
+            host = "zirc.irc.zirc.dev"
             [account]
             name = "mattias-mbp"
             password = "pw"
             device_key = true
             "#;
         let settings = Settings::from_toml(text).unwrap();
-        let org = find(&settings, "acme", true).unwrap();
+        let org = find(&settings, "zirc", true).unwrap();
         let config = connection(&settings, org, &dir.path().join("device-key"));
         let token = (config.bearer.unwrap())().unwrap();
         let claims = zirc_proto::device_key::parse(&token).unwrap().claims;
         assert_eq!(
             (claims.sub.as_str(), claims.aud.as_str()),
-            ("mattias-mbp", "acme.irc.zirc.dev")
+            ("mattias-mbp", "zirc.irc.zirc.dev")
         );
         // The passphrase stays, for a server that refuses the key.
         assert_eq!(config.sasl.unwrap().password, "pw");
 
-        let without = parse(&text.replace("device_key = true", ""), "acme").unwrap();
+        let without = parse(&text.replace("device_key = true", ""), "zirc").unwrap();
         assert!(without.bearer.is_none());
     }
 
     #[test]
     fn reads_each_organisations_connection() {
         let text = r#"
-            nick = "m-acme"
+            nick = "m-zirc"
             owner = "mattias"
             [server]
-            host = "acme.irc.zirc.dev"
+            host = "zirc.irc.zirc.dev"
             [[org]]
             nick = "m-globex"
             owner = "matt"
@@ -312,16 +312,16 @@ mod tests {
             name = "m-globex"
             password = "pw"
             "#;
-        let acme = parse(text, "acme").unwrap();
+        let zirc = parse(text, "zirc").unwrap();
         assert_eq!(
             (
-                acme.host.as_str(),
-                acme.nick.as_str(),
-                acme.realname.as_str()
+                zirc.host.as_str(),
+                zirc.nick.as_str(),
+                zirc.realname.as_str()
             ),
-            ("acme.irc.zirc.dev", "m-acme", "mattias")
+            ("zirc.irc.zirc.dev", "m-zirc", "mattias")
         );
-        assert!(acme.sasl.is_none());
+        assert!(zirc.sasl.is_none());
         let globex = parse(text, "globex").unwrap();
         assert_eq!(
             (
@@ -348,7 +348,7 @@ mod tests {
         let path = dir.path().join("config.toml");
         std::fs::write(
             &path,
-            "[server]\nhost = \"acme.irc.zirc.dev\"\n[[org]]\nname = \"../x\"\n[org.server]\nhost = \"x\"\n",
+            "[server]\nhost = \"zirc.irc.zirc.dev\"\n[[org]]\nname = \"../x\"\n[org.server]\nhost = \"x\"\n",
         )
         .unwrap();
         let refused = organisations(&read(&path).unwrap(), &path)

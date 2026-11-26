@@ -224,7 +224,7 @@ pub(crate) fn the_tests_machines() {
     let accounts = [
         "ada-mbp",
         "ada-ci",
-        "acme-ci",
+        "zirc-ci",
         "alice-mbp",
         "bob-mbp",
         "mattias-mbp",

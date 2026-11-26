@@ -8,7 +8,7 @@
       "title": "TypeError: Cannot read properties of undefined (reading 'slug')",
       "status": "resolved",
       "project": {"id": "11", "name": "web", "slug": "web"},
-      "web_url": "https://acme.sentry.io/organizations/acme/issues/4821007/"
+      "web_url": "https://zirc.sentry.io/organizations/zirc/issues/4821007/"
     }
   },
   "actor": {"type": "user", "id": "1", "name": "A. Person"}

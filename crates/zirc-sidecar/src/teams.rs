@@ -95,7 +95,7 @@ pub struct Public {
 /// teams: whom people's tokens must be for, and who the organisation's admins are.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Content {
-    /// The server's host name, such as `acme.irc.zirc.dev`: a token's audience.
+    /// The server's host name, such as `zirc.irc.zirc.dev`: a token's audience.
     pub server: String,
     /// The organisation's admins, by their handles.
     #[serde(default)]

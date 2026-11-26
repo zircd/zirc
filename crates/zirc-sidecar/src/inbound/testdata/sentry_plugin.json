@@ -7,7 +7,7 @@
   "level": "error",
   "culprit": "web/src/app/orgs/[slug]/page.tsx in OrgPage",
   "message": "TypeError: Cannot read properties of undefined (reading 'slug')",
-  "url": "https://acme.sentry.io/organizations/acme/issues/4821007/?referrer=webhooks_plugin",
+  "url": "https://zirc.sentry.io/organizations/zirc/issues/4821007/?referrer=webhooks_plugin",
   "triggering_rules": ["Send a notification for new issues"],
   "event": {
     "event_id": "9f1c0d7a4b2e4c3d8a6b5c4d3e2f1a0b",

@@ -78,7 +78,7 @@ mod tests {
 
     fn file(name: &str) -> File {
         File {
-            url: format!("https://zirc.dev/m/acme/{name}"),
+            url: format!("https://zirc.dev/m/zirc/{name}"),
             name: format!("{name}.png"),
             mime: "image/png".into(),
             size: 2048,
@@ -103,13 +103,13 @@ mod tests {
         let sent = text("the before and after ", &files);
         assert_eq!(
             sent,
-            "the before and after https://zirc.dev/m/acme/a https://zirc.dev/m/acme/b"
+            "the before and after https://zirc.dev/m/zirc/a https://zirc.dev/m/zirc/b"
         );
         assert_eq!(words(&sent, &files), "the before and after");
         // Files alone: their links, and no words.
         assert_eq!(
             text("", &files),
-            "https://zirc.dev/m/acme/a https://zirc.dev/m/acme/b"
+            "https://zirc.dev/m/zirc/a https://zirc.dev/m/zirc/b"
         );
         assert_eq!(words(&text("", &files), &files), "");
     }
@@ -119,8 +119,8 @@ mod tests {
         let files = [file("a")];
         assert_eq!(words("edited elsewhere", &files), "edited elsewhere");
         assert_eq!(
-            words("https://zirc.dev/m/acme/a and more", &files),
-            "https://zirc.dev/m/acme/a and more"
+            words("https://zirc.dev/m/zirc/a and more", &files),
+            "https://zirc.dev/m/zirc/a and more"
         );
     }
 

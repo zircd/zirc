@@ -555,10 +555,10 @@ mod tests {
 
     use super::*;
 
-    const ACME: Context = Context { target: "#api" };
+    const ZIRC: Context = Context { target: "#api" };
 
     fn key(byte: u8) -> Key {
-        Key::new("acme", [byte; KEY_LEN])
+        Key::new("zirc", [byte; KEY_LEN])
     }
 
     /// Nonces that differ, as random ones would.
@@ -572,7 +572,7 @@ mod tests {
 
     fn sealed(parts: &[&str]) -> String {
         let parts: Vec<String> = parts.iter().map(|&part| part.to_owned()).collect();
-        seal_message(&key(7), &ACME, &parts, nonces(), CLIENT_TAGS_MAX).unwrap()
+        seal_message(&key(7), &ZIRC, &parts, nonces(), CLIENT_TAGS_MAX).unwrap()
     }
 
     #[test]
@@ -615,7 +615,7 @@ mod tests {
     fn opens_what_it_sealed() {
         let value = sealed(&["sk_test_123", "ünïcødé 🔑"]);
         assert_eq!(
-            open_message(&[key(1), key(7)], &ACME, &value),
+            open_message(&[key(1), key(7)], &ZIRC, &value),
             Some(vec![
                 Opened::Value("sk_test_123".into()),
                 Opened::Value("ünïcødé 🔑".into()),
@@ -633,10 +633,10 @@ mod tests {
     fn needs_the_key_it_names() {
         let value = sealed(&["sk_test_123"]);
         assert_eq!(
-            open_message(&[key(1)], &ACME, &value),
+            open_message(&[key(1)], &ZIRC, &value),
             Some(vec![Opened::NoKey])
         );
-        assert_eq!(open_message(&[key(7)], &ACME, "not sealed parts"), None);
+        assert_eq!(open_message(&[key(7)], &ZIRC, "not sealed parts"), None);
     }
 
     #[test]
@@ -651,7 +651,7 @@ mod tests {
         // The same bytes as another organisation's key.
         let globex = Key::new("globex", [7; KEY_LEN]);
         assert_eq!(
-            open_message(&[globex], &ACME, &value),
+            open_message(&[globex], &ZIRC, &value),
             Some(vec![Opened::Failed, Opened::Failed])
         );
 
@@ -659,7 +659,7 @@ mod tests {
         // Swapped places.
         parts.parts.swap(0, 1);
         assert_eq!(
-            opened(&ACME, &parts.to_tag()),
+            opened(&ZIRC, &parts.to_tag()),
             Some(vec![Opened::Failed, Opened::Failed])
         );
         // A byte of the ciphertext flipped.
@@ -668,7 +668,7 @@ mod tests {
         ciphertext[0] ^= 1;
         parts.parts[0].c = URL_SAFE_NO_PAD.encode(ciphertext);
         assert_eq!(
-            opened(&ACME, &parts.to_tag()),
+            opened(&ZIRC, &parts.to_tag()),
             Some(vec![Opened::Failed, Opened::Value("second".into())])
         );
     }
@@ -680,13 +680,13 @@ mod tests {
         assert!(sealed(&[&fits]).len() < CLIENT_TAGS_MAX);
         let too_long = vec!["x".repeat(3050)];
         assert_eq!(
-            seal_message(&key(7), &ACME, &too_long, nonces(), CLIENT_TAGS_MAX),
+            seal_message(&key(7), &ZIRC, &too_long, nonces(), CLIENT_TAGS_MAX),
             Err(SealError::TooLong)
         );
         // Room taken by the message's other tags counts.
         let small = vec!["sk_test_123".to_owned()];
         assert_eq!(
-            seal_message(&key(7), &ACME, &small, nonces(), 50),
+            seal_message(&key(7), &ZIRC, &small, nonces(), 50),
             Err(SealError::TooLong)
         );
     }
@@ -731,9 +731,9 @@ mod tests {
 
     #[test]
     fn hands_its_key_on_as_a_string() {
-        let key = Key::new("acme-eu", [0xfb; KEY_LEN]);
+        let key = Key::new("zirc-eu", [0xfb; KEY_LEN]);
         let text = key.export();
-        assert!(text.starts_with("zirc-key1-acme-eu-"), "{text}");
+        assert!(text.starts_with("zirc-key1-zirc-eu-"), "{text}");
         assert_eq!(Key::parse(&format!("  {text}\n")), Ok(key.clone()));
         // Its bytes never show in a log.
         assert!(!format!("{key:?}").contains(&text[18..30]), "{key:?}");

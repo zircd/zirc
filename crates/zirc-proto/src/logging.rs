@@ -61,7 +61,7 @@ mod tests {
             );
         }
         assert_eq!(
-            Logged::from_motd("zirc · acme's private server · zirc.dev"),
+            Logged::from_motd("zirc · zirc's private server · zirc.dev"),
             None
         );
         assert_eq!(Logged::from_motd("Debug logging is on"), None);

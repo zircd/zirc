@@ -71,7 +71,7 @@ mod tests {
             std::fs::create_dir_all(paths::org(home.path(), org)).unwrap();
             std::fs::write(paths::leases(&paths::org(home.path(), org)), "{}").unwrap();
         }
-        for org in ["acme", "globex", "initech"] {
+        for org in ["zirc", "globex", "initech"] {
             std::fs::write(zirc_core::team_hints::path(home.path(), org), "{}").unwrap();
         }
         home
@@ -79,9 +79,9 @@ mod tests {
 
     #[test]
     fn forgets_the_leases_and_hints_of_organisations_left() {
-        let home = home(Some("acme"));
+        let home = home(Some("zirc"));
 
-        forget(home.path(), &orgs(&["acme", "globex"]));
+        forget(home.path(), &orgs(&["zirc", "globex"]));
 
         assert!(paths::leases(home.path()).exists());
         assert!(paths::leases(&paths::org(home.path(), "globex")).exists());
@@ -92,13 +92,13 @@ mod tests {
 
     #[test]
     fn another_first_organisation_forgets_the_leases_kept_in_home() {
-        // Logged in to globex alone, with --force, after acme.
-        let home = home(Some("acme"));
+        // Logged in to globex alone, with --force, after zirc.
+        let home = home(Some("zirc"));
 
         forget(home.path(), &orgs(&["globex"]));
 
         assert!(!paths::leases(home.path()).exists());
-        assert!(!zirc_core::team_hints::path(home.path(), "acme").exists());
+        assert!(!zirc_core::team_hints::path(home.path(), "zirc").exists());
         assert_eq!(
             std::fs::read_to_string(home.path().join(FIRST)).unwrap(),
             "globex"
@@ -109,12 +109,12 @@ mod tests {
     fn a_home_that_named_no_organisation_keeps_its_leases_as_the_firsts() {
         let home = home(None);
 
-        forget(home.path(), &orgs(&["acme"]));
+        forget(home.path(), &orgs(&["zirc"]));
 
         assert!(paths::leases(home.path()).exists());
         assert_eq!(
             std::fs::read_to_string(home.path().join(FIRST)).unwrap(),
-            "acme"
+            "zirc"
         );
     }
 }

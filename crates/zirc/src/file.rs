@@ -117,21 +117,21 @@ mod tests {
     #[test]
     fn a_shared_files_link_names_its_organisation_and_id() {
         assert_eq!(
-            named("https://zirc.dev/m/acme/7Hq2xV9k"),
-            Some(("acme", "7Hq2xV9k"))
+            named("https://zirc.dev/m/zirc/7Hq2xV9k"),
+            Some(("zirc", "7Hq2xV9k"))
         );
         assert_eq!(
-            named("https://zirc.dev/m/acme/7Hq2xV9k?w=640"),
-            Some(("acme", "7Hq2xV9k"))
+            named("https://zirc.dev/m/zirc/7Hq2xV9k?w=640"),
+            Some(("zirc", "7Hq2xV9k"))
         );
         assert_eq!(
-            named("https://files.acme.example/m/acme/a-b_c"),
-            Some(("acme", "a-b_c"))
+            named("https://files.zirc.example/m/zirc/a-b_c"),
+            Some(("zirc", "a-b_c"))
         );
         // Not a file's link: a page, a link with more after the id, or one with neither.
         assert_eq!(named("https://zirc.dev/install"), None);
-        assert_eq!(named("https://zirc.dev/m/acme/7Hq2xV9k/extra"), None);
-        assert_eq!(named("https://zirc.dev/m/acme/"), None);
+        assert_eq!(named("https://zirc.dev/m/zirc/7Hq2xV9k/extra"), None);
+        assert_eq!(named("https://zirc.dev/m/zirc/"), None);
     }
 
     #[test]

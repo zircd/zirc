@@ -533,7 +533,7 @@ pub(crate) struct WatchArgs {
     pub(crate) session: Option<String>,
     /// A jq filter, run on the JSON of everything heard, whether it concerns you or
     /// not, working-set updates only with --all: what it outputs is printed, a line of
-    /// JSON each. Such as: --filter 'select(.message.event.kind == "x-acme/deploy")'.
+    /// JSON each. Such as: --filter 'select(.message.event.kind == "x-fjord/deploy")'.
     #[arg(long, value_name = "JQ", conflicts_with = "json")]
     pub(crate) filter: Option<String>,
     /// Stop after this long, such as 30m or 2h, quietly: start it again then.

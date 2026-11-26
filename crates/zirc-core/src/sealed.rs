@@ -229,7 +229,7 @@ mod tests {
 
     use super::*;
 
-    const ACME: Context = Context { target: "#api" };
+    const ZIRC: Context = Context { target: "#api" };
 
     #[test]
     fn keeps_each_organisations_keys_newest_first() {
@@ -237,47 +237,47 @@ mod tests {
         let file = crate::secrets::File(dir.path().join("secrets.toml"));
         let keys = Keys::new(&file);
         let (old, new, other) = (
-            new_key("acme").unwrap(),
-            new_key("acme").unwrap(),
+            new_key("zirc").unwrap(),
+            new_key("zirc").unwrap(),
             new_key("globex").unwrap(),
         );
-        assert_eq!(keys.sealing("acme"), None);
+        assert_eq!(keys.sealing("zirc"), None);
         assert!(keys.add(&old).unwrap());
         assert!(keys.add(&new).unwrap());
         assert!(!keys.add(&new).unwrap());
         keys.add(&other).unwrap();
-        assert_eq!(keys.of("acme"), [new.clone(), old.clone()]);
-        assert_eq!(keys.sealing("acme"), Some(new.clone()));
+        assert_eq!(keys.of("zirc"), [new.clone(), old.clone()]);
+        assert_eq!(keys.sealing("zirc"), Some(new.clone()));
         assert_eq!(keys.of("globex"), [other]);
 
         // Added again, an older key seals once more.
         keys.add(&old).unwrap();
-        assert_eq!(keys.of("acme"), [old.clone(), new.clone()]);
+        assert_eq!(keys.of("zirc"), [old.clone(), new.clone()]);
 
-        assert!(keys.forget("acme", &old.id()).unwrap());
-        assert!(!keys.forget("acme", &old.id()).unwrap());
-        assert_eq!(keys.of("acme"), std::slice::from_ref(&new));
-        keys.forget("acme", &new.id()).unwrap();
-        assert_eq!(file.get(&Keys::name("acme")), None);
+        assert!(keys.forget("zirc", &old.id()).unwrap());
+        assert!(!keys.forget("zirc", &old.id()).unwrap());
+        assert_eq!(keys.of("zirc"), std::slice::from_ref(&new));
+        keys.forget("zirc", &new.id()).unwrap();
+        assert_eq!(file.get(&Keys::name("zirc")), None);
     }
 
     #[test]
     fn makes_a_different_key_each_time() {
-        let key = new_key("acme").unwrap();
-        assert_ne!(key, new_key("acme").unwrap());
-        assert_eq!(key.org(), "acme");
+        let key = new_key("zirc").unwrap();
+        assert_ne!(key, new_key("zirc").unwrap());
+        assert_eq!(key.org(), "zirc");
         assert_eq!(Key::parse(&key.export()), Ok(key));
     }
 
     #[test]
     fn seals_each_part_with_its_own_nonce() {
-        let key = new_key("acme").unwrap();
+        let key = new_key("zirc").unwrap();
         let parts = vec!["same".to_owned(), "same".to_owned()];
-        let value = seal_message(&key, &ACME, &parts, CLIENT_TAGS_MAX).unwrap();
+        let value = seal_message(&key, &ZIRC, &parts, CLIENT_TAGS_MAX).unwrap();
         let sealed = Sealed::from_tag(&value).unwrap();
         assert_ne!(sealed.parts[0].n, sealed.parts[1].n);
         assert_eq!(
-            open_message(&[key], &ACME, &value),
+            open_message(&[key], &ZIRC, &value),
             Some(vec![
                 Opened::Value("same".into()),
                 Opened::Value("same".into())

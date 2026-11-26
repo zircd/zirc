@@ -183,8 +183,8 @@ mod tests {
             "\x1b[32mconnected\x1b[0m to irc.example:6697"
         );
         assert_eq!(
-            status("acme: connecting to irc.example:6697"),
-            "\x1b[33macme: connecting to irc.example:6697\x1b[0m"
+            status("zirc: connecting to irc.example:6697"),
+            "\x1b[33mzirc: connecting to irc.example:6697\x1b[0m"
         );
         assert_eq!(status("nick mbp"), "nick mbp");
         assert_eq!(

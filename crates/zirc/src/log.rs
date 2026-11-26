@@ -115,7 +115,7 @@ mod tests {
     async fn zirc_log(web: &str, args: &[&str]) -> Result<String, String> {
         let home = tempfile::tempdir().unwrap();
         let config = format!(
-            "web = \"{web}\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n[account]\nname = \"ada-mbp\"\npassword = \"pw\"\n"
+            "web = \"{web}\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n[account]\nname = \"ada-mbp\"\npassword = \"pw\"\n"
         );
         std::fs::write(paths::config(home.path()), config).unwrap();
         let cli = Cli::try_parse_from([&["zirc", "log"], args].concat()).unwrap();

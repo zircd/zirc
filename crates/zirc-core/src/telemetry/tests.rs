@@ -6,7 +6,7 @@ use super::*;
 
 fn settings(extra: &str, host: &str) -> Settings {
     Settings::from_toml(&format!(
-        "{extra}\nposthog_key = \"phc_test\"\nposthog_host = \"{host}\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n"
+        "{extra}\nposthog_key = \"phc_test\"\nposthog_host = \"{host}\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n"
     ))
     .unwrap()
 }
@@ -104,7 +104,7 @@ fn is_on_unless_the_setting_or_the_environment_turns_it_off() {
 fn does_nothing_when_turned_off_or_with_no_key() {
     let home = tempfile::tempdir().unwrap();
     let no_key =
-        Settings::from_toml("posthog_key = \"\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n")
+        Settings::from_toml("posthog_key = \"\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n")
             .unwrap();
     let off = settings("telemetry = false", DEFAULT_HOST);
     let not_tracked = |name: &str| (name == "DO_NOT_TRACK").then(|| "1".to_owned());
@@ -126,7 +126,7 @@ fn does_nothing_when_turned_off_or_with_no_key() {
 #[test]
 fn sends_to_zircs_project_unless_told_otherwise() {
     let home = tempfile::tempdir().unwrap();
-    let bare = Settings::from_toml("[server]\nhost = \"acme.irc.zirc.dev\"\n").unwrap();
+    let bare = Settings::from_toml("[server]\nhost = \"zirc.irc.zirc.dev\"\n").unwrap();
     for settings in [None, Some(&bare)] {
         let telemetry = Telemetry::with(home.path(), Client::Cli, settings, none);
         let on = telemetry.0.as_ref().expect("on by default");
@@ -361,7 +361,7 @@ async fn stops_sending_once_config_toml_turns_it_off() {
     telemetry.record(&command("watch"));
     std::fs::write(
         crate::paths::config(home.path()),
-        "telemetry = false\n[server]\nhost = \"acme.irc.zirc.dev\"\n",
+        "telemetry = false\n[server]\nhost = \"zirc.irc.zirc.dev\"\n",
     )
     .unwrap();
     telemetry.send(&http().unwrap()).await;
@@ -374,7 +374,7 @@ fn an_install_marked_internal_stays_so() {
     let home = tempfile::tempdir().unwrap();
     let marked = |name: &str| (name == "ZIRC_TELEMETRY_INTERNAL").then(|| "1".to_owned());
     let unmarked = |name: &str| (name == "ZIRC_TELEMETRY_INTERNAL").then(|| "0".to_owned());
-    let bare = Settings::from_toml("[server]\nhost = \"acme.irc.zirc.dev\"\n").unwrap();
+    let bare = Settings::from_toml("[server]\nhost = \"zirc.irc.zirc.dev\"\n").unwrap();
     let context = |env: &dyn Fn(&str) -> Option<String>| {
         let telemetry = Telemetry::with(home.path(), Client::Zircd, Some(&bare), env);
         telemetry.0.as_ref().unwrap().context.internal
@@ -392,15 +392,15 @@ fn an_install_marked_internal_stays_so() {
 #[test]
 fn an_organisations_events_are_its_group() {
     let home = tempfile::tempdir().unwrap();
-    let bare = Settings::from_toml("[server]\nhost = \"acme.irc.zirc.dev\"\n").unwrap();
+    let bare = Settings::from_toml("[server]\nhost = \"zirc.irc.zirc.dev\"\n").unwrap();
     let telemetry = Telemetry::with(home.path(), Client::Zircd, Some(&bare), none);
-    link_organisation(home.path(), "acme", "0c19b348-e62d-48ec-961b-b3426a7c532d");
+    link_organisation(home.path(), "zirc", "0c19b348-e62d-48ec-961b-b3426a7c532d");
     // A name zirc couldn't keep is never a path.
-    link_organisation(home.path(), "../acme", "elsewhere");
+    link_organisation(home.path(), "../zirc", "elsewhere");
     let intent = Event::IntentPosted(zirc_proto::telemetry::IntentPosted {});
-    telemetry.record_in(&intent, Some("acme"));
+    telemetry.record_in(&intent, Some("zirc"));
     telemetry.record_in(&intent, Some("globex"));
-    telemetry.record_in(&intent, Some("../acme"));
+    telemetry.record_in(&intent, Some("../zirc"));
     telemetry.record(&intent);
     let recorded = queued(home.path());
     assert_eq!(
@@ -413,18 +413,18 @@ fn an_organisations_events_are_its_group() {
             "{unlinked:?}"
         );
     }
-    assert!(!home.path().join("telemetry/acme").exists());
+    assert!(!home.path().join("telemetry/zirc").exists());
 }
 
 #[test]
 fn a_sign_in_links_the_account_and_each_organisation() {
     let home = tempfile::tempdir().unwrap();
     let credentials: zirc_proto::login::Credentials = serde_json::from_value(serde_json::json!({
-        "server": {"host": "acme.irc.zirc.dev"},
+        "server": {"host": "zirc.irc.zirc.dev"},
         "account_id": "acct_7f3a",
-        "organisation_id": "org-acme",
+        "organisation_id": "org-zirc",
         "orgs": [
-            {"name": "acme", "server": {"host": "acme.irc.zirc.dev"}, "organisation_id": "org-acme"},
+            {"name": "zirc", "server": {"host": "zirc.irc.zirc.dev"}, "organisation_id": "org-zirc"},
             {"name": "globex", "server": {"host": "globex.irc.zirc.dev"}, "organisation_id": "org-globex"},
             {"name": "initech", "server": {"host": "initech.irc.zirc.dev"}},
         ],
@@ -433,7 +433,7 @@ fn a_sign_in_links_the_account_and_each_organisation() {
     link_login(home.path(), &credentials, "https://zirc.dev");
     let dir = dir(home.path());
     assert_eq!(read(&dir.join("account")).as_deref(), Some("acct_7f3a"));
-    assert_eq!(organisation(&dir, "acme").as_deref(), Some("org-acme"));
+    assert_eq!(organisation(&dir, "zirc").as_deref(), Some("org-zirc"));
     assert_eq!(organisation(&dir, "globex").as_deref(), Some("org-globex"));
     assert_eq!(
         organisation(&dir, "initech"),

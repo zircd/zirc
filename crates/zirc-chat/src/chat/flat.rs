@@ -681,7 +681,7 @@ mod tests {
     #[test]
     fn marks_mentions_of_us_and_hosted_files() {
         let mut chat = chat();
-        chat.set_picture_site(Some("https://zirc.dev/".into()), Some("acme".into()));
+        chat.set_picture_site(Some("https://zirc.dev/".into()), Some("zirc".into()));
         let upload = format!("https://zirc.dev{}/abc", zirc_proto::media::UPLOAD_PATH);
         let text = format!("@me and @bob see {upload} and https://example.com/x");
         let blocks = chat.flat(rich(&text));

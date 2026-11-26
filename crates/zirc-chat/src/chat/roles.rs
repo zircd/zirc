@@ -442,7 +442,7 @@ mod tests {
         let report = RoleReport {
             tool: Some(Tool::Sentry),
             summary: "TypeError in web: Cannot read properties of undefined".into(),
-            link: Some("https://acme.sentry.io/issues/7/".into()),
+            link: Some("https://zirc.sentry.io/issues/7/".into()),
             ..RoleReport::new("fixer", Subject::Error, "sentry:7")
         };
         let item = OpenItem::opened(report, 0);

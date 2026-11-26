@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn reads_what_zirc_dev_answers() {
         let token: IrcToken = serde_json::from_str(
-            r#"{"server":"wss://acme.irc.zirc.dev","nick":"ada","token":"t"}"#,
+            r#"{"server":"wss://zirc.irc.zirc.dev","nick":"ada","token":"t"}"#,
         )
         .unwrap();
         assert!(!token.admin && token.realname.is_none());
@@ -126,10 +126,10 @@ mod tests {
 
     #[test]
     fn makes_the_organisation_apis_paths() {
-        assert_eq!(handle_path("acme"), "/api/organisations/acme/handle");
+        assert_eq!(handle_path("zirc"), "/api/organisations/zirc/handle");
         assert_eq!(
-            member_path("acme", "ada"),
-            "/api/organisations/acme/members/ada"
+            member_path("zirc", "ada"),
+            "/api/organisations/zirc/members/ada"
         );
     }
 }

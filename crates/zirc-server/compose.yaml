@@ -31,7 +31,7 @@ services:
       # Files are kept in the data volume. To keep them in an S3 bucket of your own instead
       # (any S3-compatible service), set these, with a key that may read, write, list and
       # delete in that bucket alone:
-      # ZIRC_S3_BUCKET: acme-zirc-files
+      # ZIRC_S3_BUCKET: zirc-files
       # ZIRC_S3_ENDPOINT: https://s3.eu-west-2.amazonaws.com
       # ZIRC_S3_REGION: eu-west-2
       # AWS_ACCESS_KEY_ID: ...

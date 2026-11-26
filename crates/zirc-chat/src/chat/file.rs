@@ -187,7 +187,7 @@ mod tests {
 
     fn file(mime: &str) -> File {
         File {
-            url: "https://zirc.dev/m/acme/abc".into(),
+            url: "https://zirc.dev/m/zirc/abc".into(),
             name: "a".into(),
             mime: mime.into(),
             size: 1,
@@ -222,16 +222,16 @@ mod tests {
     #[test]
     fn a_links_shape_comes_from_its_name() {
         assert_eq!(
-            link_shape("https://zirc.dev/m/acme/demo.MP4?w=640"),
+            link_shape("https://zirc.dev/m/zirc/demo.MP4?w=640"),
             Shape::Video
         );
         assert_eq!(
             link_shape("https://example.com/clip.webm#t=3"),
             Shape::Video
         );
-        assert_eq!(link_shape("https://zirc.dev/m/acme/cat.gif"), Shape::Image);
+        assert_eq!(link_shape("https://zirc.dev/m/zirc/cat.gif"), Shape::Image);
         // A hosted file's own link says nothing of what it is.
-        assert_eq!(link_shape("https://zirc.dev/m/acme/abc123"), Shape::Other);
+        assert_eq!(link_shape("https://zirc.dev/m/zirc/abc123"), Shape::Other);
     }
 
     #[test]
@@ -256,7 +256,7 @@ mod tests {
         assert_eq!(width_for(5000), 2048);
         assert_eq!(
             image_url(&file("image/png"), 600),
-            "https://zirc.dev/m/acme/abc?w=640"
+            "https://zirc.dev/m/zirc/abc?w=640"
         );
     }
 
@@ -274,22 +274,22 @@ mod tests {
         let mut hosted = file("image/png");
         assert!(is_hosted(&hosted, "https://zirc.dev"));
         assert!(is_hosted(&hosted, "https://zirc.dev/"));
-        hosted.url = "https://zirc.dev.evil.example/m/acme/abc".into();
+        hosted.url = "https://zirc.dev.evil.example/m/zirc/abc".into();
         assert!(!is_hosted(&hosted, "https://zirc.dev"));
-        hosted.url = "https://evil.example/m/acme/abc".into();
+        hosted.url = "https://evil.example/m/zirc/abc".into();
         assert!(!is_hosted(&hosted, "https://zirc.dev"));
         // The site's other pages aren't files, nor is a file's link with more said after it.
         for other in [
             "https://zirc.dev/api/me",
-            "https://zirc.dev/m/acme/abc?original&x=",
-            "https://zirc.dev/m/acme/abc/../../orgs",
-            "https://zirc.dev/m/acme/abc#x",
+            "https://zirc.dev/m/zirc/abc?original&x=",
+            "https://zirc.dev/m/zirc/abc/../../orgs",
+            "https://zirc.dev/m/zirc/abc#x",
             "https://zirc.dev/m/",
         ] {
             hosted.url = other.into();
             assert!(!is_hosted(&hosted, "https://zirc.dev"), "{other}");
         }
-        hosted.url = "https://chat.acme.example/m/7Hq2xV9k".into();
-        assert!(is_hosted(&hosted, "https://chat.acme.example"));
+        hosted.url = "https://chat.zirc.example/m/7Hq2xV9k".into();
+        assert!(is_hosted(&hosted, "https://chat.zirc.example"));
     }
 }

@@ -39,7 +39,7 @@ fn account(hosts: &[&str]) -> (tempfile::TempDir, Account) {
 
 #[test]
 fn names() {
-    assert_eq!(display_name("acme"), "Acme");
+    assert_eq!(display_name("zirc"), "Zirc");
     assert_eq!(display_name("zirc-labs"), "Zirc Labs");
     assert_eq!(display_name("chat.example.org"), "chat.example.org");
 }
@@ -51,43 +51,43 @@ fn the_words_of_the_design() {
         "You can have up to 8 organisations on this device. Sign out of one to add another."
     );
     assert_eq!(
-        added_toast("zirc", &SwitchHint::Rail(Some("⌘2".into()))),
-        "Added Zirc. Switch with the rail or ⌘2."
+        added_toast("fjord", &SwitchHint::Rail(Some("⌘2".into()))),
+        "Added Fjord. Switch with the rail or ⌘2."
     );
     assert_eq!(
-        added_toast("zirc", &SwitchHint::Menu("acme".into())),
-        "Added Zirc. Switch from the Acme ▾ menu."
+        added_toast("fjord", &SwitchHint::Menu("zirc".into())),
+        "Added Fjord. Switch from the Zirc ▾ menu."
     );
     assert_eq!(
-        renamed_toast("acme", "sam.k"),
-        "Your name in Acme is now @sam.k"
+        renamed_toast("zirc", "sam.k"),
+        "Your name in Zirc is now @sam.k"
     );
 }
 
 #[test]
 fn the_sign_out_sheets() {
-    let (_dir, account) = account(&["acme.irc.zirc.dev", "zirc.irc.zirc.dev"]);
-    let one = account.sign_out_text("acme").unwrap();
-    assert_eq!(one.title, "Sign out of Acme?");
+    let (_dir, account) = account(&["zirc.irc.zirc.dev", "fjord.irc.zirc.dev"]);
+    let one = account.sign_out_text("zirc").unwrap();
+    assert_eq!(one.title, "Sign out of Zirc?");
     assert_eq!(
         one.body,
-        "Acme's messages, notifications and settings leave this device. You stay signed in to Zirc."
+        "Zirc's messages, notifications and settings leave this device. You stay signed in to Fjord."
     );
-    assert_eq!(one.confirm, "Sign out of Acme");
+    assert_eq!(one.confirm, "Sign out of Zirc");
     assert_eq!(account.sign_out_text("nope"), None);
     let all = account.sign_out_everything_text();
     assert_eq!(all.title, "Sign out of everything?");
     assert_eq!(
         all.body,
-        "Signs you out of Acme, Zirc and zirc.dev on this device."
+        "Signs you out of Zirc, Fjord and zirc.dev on this device."
     );
     assert_eq!(all.confirm, "Sign out of everything");
 
-    let (_dir, last) = account_one("acme.irc.zirc.dev");
-    let sheet = last.sign_out_text("acme").unwrap();
+    let (_dir, last) = account_one("zirc.irc.zirc.dev");
+    let sheet = last.sign_out_text("zirc").unwrap();
     assert_eq!(
         sheet.body,
-        "Acme is the only organisation on this device, so this also signs you out of zirc.dev here."
+        "Zirc is the only organisation on this device, so this also signs you out of zirc.dev here."
     );
     assert_eq!(sheet.confirm, "Sign out");
     // A self-hosted last organisation has no zirc.dev to sign out of.
@@ -115,12 +115,12 @@ fn everything_lists_three_names_then_how_many_more() {
 
 #[test]
 fn the_toast_after_adding_is_for_the_second_organisation_on() {
-    let (_dir, one) = account_one("acme.irc.zirc.dev");
-    assert_eq!(one.added_text("acme", &SwitchHint::Rail(None)), None);
-    let (_dir, two) = account(&["acme.irc.zirc.dev", "zirc.irc.zirc.dev"]);
+    let (_dir, one) = account_one("zirc.irc.zirc.dev");
+    assert_eq!(one.added_text("zirc", &SwitchHint::Rail(None)), None);
+    let (_dir, two) = account(&["zirc.irc.zirc.dev", "fjord.irc.zirc.dev"]);
     assert_eq!(
-        two.added_text("zirc", &SwitchHint::Rail(None)).as_deref(),
-        Some("Added Zirc. Switch with the rail.")
+        two.added_text("fjord", &SwitchHint::Rail(None)).as_deref(),
+        Some("Added Fjord. Switch with the rail.")
     );
 }
 
@@ -135,18 +135,18 @@ fn a_summary_has_its_tile() {
 
 #[test]
 fn says_each_state_its_card_and_its_tile() {
-    assert_eq!(card(OrgState::Offline, "acme"), None);
-    let ended = card(OrgState::AccessEnded, "acme").unwrap();
-    assert_eq!(ended.title, "You're no longer in Acme");
+    assert_eq!(card(OrgState::Offline, "zirc"), None);
+    let ended = card(OrgState::AccessEnded, "zirc").unwrap();
+    assert_eq!(ended.title, "You're no longer in Zirc");
     assert_eq!(ended.actions, [CardAction::Remove]);
     // Its button says what it does, as the organisation's own sign-out item does.
-    assert_eq!(ended.label(CardAction::Remove), "Sign out of Acme");
-    let again = card(OrgState::SignInAgain, "acme").unwrap();
+    assert_eq!(ended.label(CardAction::Remove), "Sign out of Zirc");
+    let again = card(OrgState::SignInAgain, "zirc").unwrap();
     assert_eq!(again.label(again.actions[0]), "Sign in again");
-    assert_eq!(thread_id("acme", "#general"), "acme/#general");
+    assert_eq!(thread_id("zirc", "#general"), "zirc/#general");
     let summary = OrgSummary {
-        org: "acme".into(),
-        host: "acme.irc.zirc.dev".into(),
+        org: "zirc".into(),
+        host: "zirc.irc.zirc.dev".into(),
         handle: "sam".into(),
         state: OrgState::Connecting,
         unread: zirc_chat::orgs::Unread {
@@ -157,24 +157,24 @@ fn says_each_state_its_card_and_its_tile() {
         selected: false,
         title: None,
     };
-    assert_eq!(summary.a11y_label(), "Acme, 3 mentions, connecting");
+    assert_eq!(summary.a11y_label(), "Zirc, 3 mentions, connecting");
     assert_eq!(summary.line(), "@sam · Connecting…");
     // On a server known only by its address, the name its header shows: "A", never "1".
     let numeric = OrgSummary {
         org: "127.0.0.1".into(),
         host: "127.0.0.1".into(),
         self_hosted: true,
-        title: Some("Acme".into()),
+        title: Some("Zirc".into()),
         ..summary.clone()
     };
-    assert_eq!(numeric.name(), "Acme");
-    assert_eq!(numeric.initials(), "A");
+    assert_eq!(numeric.name(), "Zirc");
+    assert_eq!(numeric.initials(), "Z");
     assert_eq!(numeric.card(), None);
     let ended = OrgSummary {
         state: OrgState::AccessEnded,
         ..numeric.clone()
     };
-    assert_eq!(ended.card().unwrap().title, "You're no longer in Acme");
+    assert_eq!(ended.card().unwrap().title, "You're no longer in Zirc");
     // Before its header is known, the address is the last resort.
     let untitled = OrgSummary {
         title: None,
@@ -185,7 +185,7 @@ fn says_each_state_its_card_and_its_tile() {
 
 #[test]
 fn says_what_was_signed_out_of_by_its_name() {
-    assert_eq!(signed_out("acme"), "Signed out of Acme.");
+    assert_eq!(signed_out("zirc"), "Signed out of Zirc.");
     assert_eq!(signed_out("zirc-labs"), "Signed out of Zirc Labs.");
     assert_eq!(
         signed_out("irc.example.com"),
@@ -197,28 +197,28 @@ fn says_what_was_signed_out_of_by_its_name() {
 fn a_joinable_organisation_says_join_and_whether_it_is_ready() {
     use crate::account::AddError;
     use crate::account_keys::{Error, Joinable};
-    let mut acme = Joinable {
-        slug: "acme".into(),
-        name: "Acme Inc".into(),
-        host: "acme.irc.zirc.dev".into(),
+    let mut zirc = Joinable {
+        slug: "zirc".into(),
+        name: "Zirc Inc".into(),
+        host: "zirc.irc.zirc.dev".into(),
         handle: "sam".into(),
         ready: true,
         web: "https://zirc.dev".into(),
     };
-    assert_eq!(acme.label(), "Join Acme Inc");
-    assert_eq!(acme.line(), "@sam");
-    assert_eq!(acme.a11y_label(), "Join Acme Inc, as @sam");
-    assert_eq!(acme.initials(), org_initials("Acme Inc"));
+    assert_eq!(zirc.label(), "Join Zirc Inc");
+    assert_eq!(zirc.line(), "@sam");
+    assert_eq!(zirc.a11y_label(), "Join Zirc Inc, as @sam");
+    assert_eq!(zirc.initials(), org_initials("Zirc Inc"));
     // The same colour as once joined, when it is named by its host.
-    assert_eq!(acme.colour(), org_colour("acme"));
-    assert_eq!(acme.failed(&Error::Add(AddError::TooMany(8))), too_many(8));
-    acme.ready = false;
-    acme.name = String::new();
-    assert_eq!(acme.label(), "Join Acme");
-    assert_eq!(acme.line(), "@sam · Getting ready");
-    assert_eq!(acme.a11y_label(), "Join Acme, getting ready");
+    assert_eq!(zirc.colour(), org_colour("zirc"));
+    assert_eq!(zirc.failed(&Error::Add(AddError::TooMany(8))), too_many(8));
+    zirc.ready = false;
+    zirc.name = String::new();
+    assert_eq!(zirc.label(), "Join Zirc");
+    assert_eq!(zirc.line(), "@sam · Getting ready");
+    assert_eq!(zirc.a11y_label(), "Join Zirc, getting ready");
     assert!(
-        acme.failed(&Error::NotJoinable("acme".into()))
+        zirc.failed(&Error::NotJoinable("zirc".into()))
             .contains("isn't ready")
     );
 }

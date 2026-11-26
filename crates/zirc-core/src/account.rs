@@ -1,6 +1,6 @@
 //! The account an app holds: one [`OrgSession`] per organisation the person is signed in to,
 //! one of them selected, as Slack holds several workspaces. It is the one container desktop,
-//! phones and the TUI share, so what "sign out of Acme" or "which organisation does this push
+//! phones and the TUI share, so what "sign out of Zirc" or "which organisation does this push
 //! belong to" means exists once and the apps stay thin.
 //!
 //! Each organisation is a world of its own:
@@ -499,7 +499,7 @@ pub struct Notification<N> {
 }
 
 /// A notification's title with its organisation first, so lock-screen groups sort by it and
-/// two `#general` never merge: `Acme · #api`. With one organisation there is nothing to tell
+/// two `#general` never merge: `Zirc · #api`. With one organisation there is nothing to tell
 /// apart and the title is the conversation alone.
 #[must_use]
 pub fn notification_title(org: &str, conversation: &str, several: bool) -> String {

@@ -369,13 +369,13 @@ mod tests {
         let mut as_hook = ci("x-zirc/landing", "x", json!({}));
         as_hook.nick = "zirc-github".into();
         assert!(as_hook.message().is_err());
-        let mut unmarked = ci("x-acme/deploy", "x", json!({}));
+        let mut unmarked = ci("x-fjord/deploy", "x", json!({}));
         unmarked.ci = false;
         assert!(unmarked.message().is_err(), "zirc-ci is reserved");
         // zirc's other kinds stay zirc's.
         assert!(ci("x-zirc/session", "x", json!({})).message().is_err());
         assert!(ci("x-zirc/decision", "x", json!({})).message().is_err());
-        assert!(ci("x-acme/deploy", "x", json!({})).message().is_ok());
+        assert!(ci("x-fjord/deploy", "x", json!({})).message().is_ok());
     }
 
     #[test]

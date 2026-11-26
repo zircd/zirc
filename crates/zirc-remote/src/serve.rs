@@ -602,7 +602,7 @@ mod tests {
             host.standing(sender(Some("mattias"), None)),
             Standing::Owner
         );
-        assert!(agents::is_zirc_dev("https://acme.irc.zirc.dev"));
+        assert!(agents::is_zirc_dev("https://zirc.irc.zirc.dev"));
     }
 
     #[test]

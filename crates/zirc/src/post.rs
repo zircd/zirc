@@ -466,7 +466,7 @@ pub(crate) struct DmArgs {
 // `zirc emit`'s arguments: their doc comments are its --help.
 #[derive(Debug, Args)]
 pub(crate) struct EmitArgs {
-    /// Its kind, such as x-acme/deploy.
+    /// Its kind, such as x-fjord/deploy.
     pub(crate) kind: String,
     /// What it says, for people, or - to read it from stdin.
     #[arg(required = true, num_args = 1..)]

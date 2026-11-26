@@ -6,7 +6,7 @@ use crate::command::Command;
 use crate::sealed::{DeviceKey, KEY_LEN};
 
 fn key() -> Key {
-    Key::new("acme", [7; KEY_LEN])
+    Key::new("zirc", [7; KEY_LEN])
 }
 
 /// Bytes that differ from call to call, as random ones would: xorshift's, from a seed the
@@ -24,9 +24,9 @@ fn counting(bytes: &mut [u8]) -> bool {
     true
 }
 
-/// `nick` in #api on acme's server, holding `keys`, on a server that echoes.
+/// `nick` in #api on zirc's server, holding `keys`, on a server that echoes.
 fn chat(nick: &str, keys: Vec<Key>) -> Chat {
-    chat_on(nick, Some("acme"), keys)
+    chat_on(nick, Some("zirc"), keys)
 }
 
 /// `nick` on `org`'s server (none told for `None`), holding `keys`.
@@ -288,7 +288,7 @@ fn a_new_device_is_handed_the_key_by_one_holding_it() {
     let answer =
         tagged(alice.receive(from(ask, "bob!u@h", Some("bob"))), GRANT_TAG).expect("an answer");
     assert_eq!(answer.params, ["bob"]);
-    // The key itself, the 43 characters after `zirc-key1-acme-`: longer than any nonce, whose
+    // The key itself, the 43 characters after `zirc-key1-zirc-`: longer than any nonce, whose
     // test bytes can say the same as a stretch of it.
     assert!(!answer.to_string().contains(&key().export()[15..58]));
 
@@ -327,7 +327,7 @@ fn hands_the_key_only_to_a_members_device_that_asked() {
     let mut older: Line = ask_of("eve");
     let mut ask: zirc_proto::sealed::Ask =
         serde_json::from_str(older.tag(ASK_TAG).unwrap()).unwrap();
-    ask.k = Some(Key::new("acme", [9; KEY_LEN]).id());
+    ask.k = Some(Key::new("zirc", [9; KEY_LEN]).id());
     older.tags = vec![(ASK_TAG.into(), Some(serde_json::to_string(&ask).unwrap()))];
     assert!(
         tagged(
@@ -354,7 +354,7 @@ fn takes_a_key_only_from_a_members_device_and_only_the_one_it_asked_for() {
     use zirc_proto::sealed::{ASK_TAG, GRANT_TAG};
     // Carol holds an older key, so joining asks for nothing; a part sealed with one she lacks
     // makes her ask for that one, in #general.
-    let mut carol = chat("carol", vec![Key::new("acme", [8; KEY_LEN])]);
+    let mut carol = chat("carol", vec![Key::new("zirc", [8; KEY_LEN])]);
     let device = DeviceKey::from_bytes([4; 32]).unwrap();
     carol.set_device(device.clone());
     let mut alice = chat("alice", vec![key()]);
@@ -372,12 +372,12 @@ fn takes_a_key_only_from_a_members_device_and_only_the_one_it_asked_for() {
         ("ada-mbp!u@machine/ada", Some("ada-mbp")),
         ("dan!u@h", None),
     ] {
-        carol.receive(granted(&Key::new("acme", [9; KEY_LEN]), source, account));
+        carol.receive(granted(&Key::new("zirc", [9; KEY_LEN]), source, account));
         assert!(carol.take_received_keys().is_empty(), "{source}");
     }
     // A member's, but not the key she asked for: passed over too.
     carol.receive(granted(
-        &Key::new("acme", [9; KEY_LEN]),
+        &Key::new("zirc", [9; KEY_LEN]),
         "bob!u@h",
         Some("bob"),
     ));
@@ -413,7 +413,7 @@ fn asks_for_the_key_a_part_was_sealed_with() {
 #[test]
 fn holds_hands_out_and_takes_only_its_own_organisations_keys() {
     use zirc_proto::sealed::{ASK_TAG, GRANT_TAG};
-    // On globex's server, holding acme's key among globex's: it seals with globex's alone.
+    // On globex's server, holding zirc's key among globex's: it seals with globex's alone.
     let globex = Key::new("globex", [2; KEY_LEN]);
     let mut there = chat_on("alice", Some("globex"), vec![key(), globex.clone()]);
     in_general(&mut there);

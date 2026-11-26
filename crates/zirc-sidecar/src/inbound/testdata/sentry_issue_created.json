@@ -11,8 +11,8 @@
       "status": "unresolved",
       "count": "1",
       "userCount": 1,
-      "permalink": "https://acme.sentry.io/issues/4821007/",
-      "web_url": "https://acme.sentry.io/organizations/acme/issues/4821007/",
+      "permalink": "https://zirc.sentry.io/issues/4821007/",
+      "web_url": "https://zirc.sentry.io/organizations/zirc/issues/4821007/",
       "project": {"id": "11", "name": "web", "slug": "web", "platform": "javascript-nextjs"},
       "metadata": {
         "type": "TypeError",

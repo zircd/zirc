@@ -580,7 +580,7 @@ mod tests {
     use ring::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _};
     use serde_json::json;
 
-    const SERVER: &str = "acme.irc.zirc.dev";
+    const SERVER: &str = "zirc.irc.zirc.dev";
     const NOW: u64 = 1_800_000_000;
 
     struct Device(EcdsaKeyPair);

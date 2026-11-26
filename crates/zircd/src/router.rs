@@ -533,8 +533,8 @@ mod tests {
     #[tokio::test]
     async fn a_request_waiting_on_a_busy_daemon_holds_up_no_other() {
         let mut router = Router::new();
+        router.add("fjord".into(), false, busy_daemon());
         router.add("zirc".into(), false, busy_daemon());
-        router.add("acme".into(), false, busy_daemon());
         // Asked of every organisation, and held by both.
         let mut who = ask(
             &mut router,

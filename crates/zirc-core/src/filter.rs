@@ -119,7 +119,7 @@ mod tests {
             "channel": "#api",
             "from": "deploy-bot",
             "message": {"v": 1, "session": "ci", "event": {
-                "type": "custom", "kind": "x-acme/deploy",
+                "type": "custom", "kind": "x-fjord/deploy",
                 "data": {"env": env}, "text": format!("deployed to {env}"),
             }},
             "why": null,
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn selects_what_it_asks_for() {
         let filter = Filter::new(
-            r#"select(.message.event.kind == "x-acme/deploy" and .message.event.data.env == "prod")"#,
+            r#"select(.message.event.kind == "x-fjord/deploy" and .message.event.data.env == "prod")"#,
         )
         .unwrap();
         assert_eq!(filter.run(&deploy("prod")).unwrap().len(), 1);

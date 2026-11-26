@@ -99,16 +99,16 @@ pub struct LineSpeaker {
 pub(crate) struct PictureSite {
     /// The web app, such as `https://zirc.dev`.
     pub(crate) web: Option<String>,
-    /// The organisation's slug, such as `acme`.
+    /// The organisation's slug, such as `zirc`.
     pub(crate) org: Option<String>,
     /// Where the organisation's files are, when it isn't the web app: a self-hosted
-    /// organisation's own server, such as `https://irc.acme.com`.
+    /// organisation's own server, such as `https://irc.zirc.com`.
     pub(crate) files: Option<String>,
 }
 
 impl Chat {
     /// Sets where pictures and files load from: the web app `web`, such as
-    /// `https://zirc.dev`, and the organisation `org` signed in to, such as `acme`. Until
+    /// `https://zirc.dev`, and the organisation `org` signed in to, such as `zirc`. Until
     /// both are set, faces show initials; until `web` is, shared files show as notes, as
     /// nothing may be loaded from an address no one checked.
     pub fn set_picture_site(&mut self, web: Option<String>, org: Option<String>) {
@@ -117,7 +117,7 @@ impl Chat {
     }
 
     /// Sets where the organisation's shared files are when it isn't the web app: a
-    /// self-hosted organisation's own server, such as `https://irc.acme.com`
+    /// self-hosted organisation's own server, such as `https://irc.zirc.com`
     /// (`zirc_core::signin::SignIn::media`). Its files are drawn, and the web app's no
     /// longer are; people's pictures still load from the web app.
     pub fn set_files_site(&mut self, files: Option<String>) {
@@ -289,10 +289,10 @@ mod tests {
         let mut chat = chat();
         chat.set_picture_site(Some("https://zirc.dev/".into()), None);
         assert_eq!(chat.photo("ada"), None, "no organisation, no photo");
-        chat.set_picture_site(Some("https://zirc.dev/".into()), Some("acme".into()));
+        chat.set_picture_site(Some("https://zirc.dev/".into()), Some("zirc".into()));
         assert_eq!(
             chat.photo("ada").as_deref(),
-            Some("https://zirc.dev/m/acme/@ada?v=7")
+            Some("https://zirc.dev/m/zirc/@ada?v=7")
         );
         assert_eq!(chat.picture_web(), Some("https://zirc.dev/"));
         // Someone without a picture shows their initials.
@@ -301,13 +301,13 @@ mod tests {
         let Face::Person { photo, .. } = chat.face(&person("ada")) else {
             panic!("a person's face");
         };
-        assert_eq!(photo.as_deref(), Some("https://zirc.dev/m/acme/@ada?v=7"));
+        assert_eq!(photo.as_deref(), Some("https://zirc.dev/m/zirc/@ada?v=7"));
     }
 
     #[test]
     fn an_agents_face_carries_its_owners() {
         let mut chat = chat();
-        chat.set_picture_site(Some("https://zirc.dev".into()), Some("acme".into()));
+        chat.set_picture_site(Some("https://zirc.dev".into()), Some("zirc".into()));
         let face = chat.face(&Avatar::Agent {
             tool: Some(zirc_proto::CLAUDE_CODE.into()),
             hue: 42,
@@ -323,7 +323,7 @@ mod tests {
                 owner: "ada".into(),
                 owner_initials: "AL".into(),
                 owner_hue: nick_degrees("ada"),
-                owner_photo: Some("https://zirc.dev/m/acme/@ada?v=7".into()),
+                owner_photo: Some("https://zirc.dev/m/zirc/@ada?v=7".into()),
                 session: Some("cc-598aa1".into()),
                 picture: Some("reviewer".into()),
                 ground: Some(42),

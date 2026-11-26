@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn each_organisation_keeps_its_own_and_forgets_sessions_no_longer_known() {
         let home = tempfile::tempdir().unwrap();
-        let (first, other) = (home.path().to_owned(), home.path().join("orgs/acme"));
+        let (first, other) = (home.path().to_owned(), home.path().join("orgs/zirc"));
         let mut ours = Tasks::load(&first);
         let mut theirs = Tasks::load(&other);
         ours.start("cc-a", false);

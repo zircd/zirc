@@ -80,7 +80,7 @@ fn innermost(err: &keyring::Error) -> String {
 }
 
 /// The name a sign-in's passphrase is kept under: the account and the server it's for, as
-/// `mattias@acme.irc.zirc.dev`, so accounts on several organisations' servers don't collide.
+/// `mattias@zirc.irc.zirc.dev`, so accounts on several organisations' servers don't collide.
 #[must_use]
 pub fn key(account: &str, host: &str) -> String {
     format!("{account}@{host}")
@@ -287,8 +287,8 @@ mod tests {
         use std::os::unix::fs::PermissionsExt as _;
         let dir = tempfile::tempdir().unwrap();
         let file = File(dir.path().join("zirc/secrets.toml"));
-        let key = key("mattias", "acme.irc.zirc.dev");
-        assert_eq!(key, "mattias@acme.irc.zirc.dev");
+        let key = key("mattias", "zirc.irc.zirc.dev");
+        assert_eq!(key, "mattias@zirc.irc.zirc.dev");
         assert_eq!(file.get(&key), None);
         file.set(&key, "pass phrase").unwrap();
         assert_eq!(file.get(&key).as_deref(), Some("pass phrase"));

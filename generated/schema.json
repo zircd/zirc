@@ -1584,7 +1584,7 @@
             },
             "kind": {
               "type": "string",
-              "description": "What kind of event it is, in the team's namespace: `x-<team>/<name>`, such as\n`x-acme/deploy`. See [`check_kind`]."
+              "description": "What kind of event it is, in the team's namespace: `x-<team>/<name>`, such as\n`x-fjord/deploy`. See [`check_kind`]."
             },
             "data": {
               "description": "Whatever the team wants it to carry."
@@ -4200,7 +4200,7 @@
             },
             "kind": {
               "type": "string",
-              "description": "Its kind, such as `x-acme/deploy`: see [`zirc_proto::check_kind`]."
+              "description": "Its kind, such as `x-fjord/deploy`: see [`zirc_proto::check_kind`]."
             },
             "data": {
               "description": "What it carries, if anything."

@@ -202,7 +202,7 @@ mod tests {
         ));
         assert!(says.contains("web/e2e, web/src/app"));
         assert!(says.ends_with(&format!("[suggestion {}]", crate::short_id(&asked.id))));
-        assert_eq!(Suggestion::of(&Event::custom("x-acme/deploy", "hi")), None);
+        assert_eq!(Suggestion::of(&Event::custom("x-fjord/deploy", "hi")), None);
     }
 
     #[test]

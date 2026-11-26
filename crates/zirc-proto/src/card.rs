@@ -676,8 +676,8 @@ fn hex(text: &str) -> Option<Vec<u8>> {
 pub const SIGNATURE_EXAMPLE: [&str; 4] = [
     "zirc-example-secret",
     "1793750400",
-    r##"{"id":"p1","org":"acme","channel":"#monorepo","card":"monorepo/889","action":"retry","by":{"handle":"ada","nick":"ada","role":"owner","machines":["ada-mbp"]}}"##,
-    "t=1793750400,v1=a7edebe4c63e1fdd39d957c618a3835937ca6739d86237f8828e4e0930748426",
+    r##"{"id":"p1","org":"zirc","channel":"#monorepo","card":"monorepo/889","action":"retry","by":{"handle":"ada","nick":"ada","role":"owner","machines":["ada-mbp"]}}"##,
+    "t=1793750400,v1=766e67f0a3d85663f53995298ae44498fd210ee718d034a151c17155c1a56789",
 ];
 
 /// The card relay's types and constants as TypeScript, for the web app's generated file:
@@ -945,7 +945,7 @@ mod tests {
     #[test]
     fn an_image_is_a_hosted_image_with_words_for_it() {
         let file = |mime: &str| crate::File {
-            url: "https://zirc.dev/m/acme/abc".into(),
+            url: "https://zirc.dev/m/zirc/abc".into(),
             name: "preview.png".into(),
             mime: mime.into(),
             size: 2048,

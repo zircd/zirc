@@ -137,8 +137,8 @@ mod tests {
             "https://github.com/zircapp/monorepo/commit/abc1234"
         );
         assert_eq!(
-            branch_link("https://gitlab.com/acme/api/", "fix-login"),
-            "https://gitlab.com/acme/api/-/tree/fix-login"
+            branch_link("https://gitlab.com/zirc/api/", "fix-login"),
+            "https://gitlab.com/zirc/api/-/tree/fix-login"
         );
     }
 

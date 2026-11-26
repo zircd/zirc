@@ -103,11 +103,11 @@ mod tests {
             note: None,
         };
         assert_eq!(
-            client.report(&account(), "acme", &report).await.unwrap(),
+            client.report(&account(), "zirc", &report).await.unwrap(),
             "r1"
         );
         let refused = client
-            .report(&account(), "acme", &report)
+            .report(&account(), "zirc", &report)
             .await
             .unwrap_err();
         assert!(
@@ -116,7 +116,7 @@ mod tests {
         );
         let asked = served.join().unwrap();
         assert!(
-            asked[0].starts_with("POST /api/organisations/acme/reports "),
+            asked[0].starts_with("POST /api/organisations/zirc/reports "),
             "{}",
             asked[0]
         );
@@ -136,20 +136,20 @@ mod tests {
             (200, "{}".into()),
         ]);
         let client = Client::new(&web).unwrap();
-        let list = client.blocks(&account(), "acme").await.unwrap();
+        let list = client.blocks(&account(), "zirc").await.unwrap();
         assert_eq!(list.blocked[0].account, "mallory");
         assert_eq!(list.blocked[0].name.as_deref(), Some("Mal"));
         client
-            .set_blocked(&account(), "acme", "eve", true)
+            .set_blocked(&account(), "zirc", "eve", true)
             .await
             .unwrap();
         client
-            .set_blocked(&account(), "acme", "eve", false)
+            .set_blocked(&account(), "zirc", "eve", false)
             .await
             .unwrap();
         let asked = served.join().unwrap();
-        assert!(asked[0].starts_with("GET /api/organisations/acme/blocks "));
-        assert!(asked[1].starts_with("PUT /api/organisations/acme/blocks/eve "));
-        assert!(asked[2].starts_with("DELETE /api/organisations/acme/blocks/eve "));
+        assert!(asked[0].starts_with("GET /api/organisations/zirc/blocks "));
+        assert!(asked[1].starts_with("PUT /api/organisations/zirc/blocks/eve "));
+        assert!(asked[2].starts_with("DELETE /api/organisations/zirc/blocks/eve "));
     }
 }

@@ -12,22 +12,22 @@ use zirc_test_ergo::{Ergo, require_ergo};
 const WAIT: Duration = Duration::from_secs(15);
 
 /// The first organisation's name: its server's host, as a server not on zirc.dev is named.
-const ACME: &str = "127.0.0.1";
+const ZIRC: &str = "127.0.0.1";
 const GLOBEX: &str = "globex";
 
-/// A machine in acme and globex, with a clone of acme's web repository added to acme.
+/// A machine in zirc and globex, with a clone of zirc's web repository added to zirc.
 struct Machine {
     home: TempDir,
     repo: TempDir,
 }
 
 impl Machine {
-    async fn new(acme: &Ergo, globex: &Ergo) -> Self {
+    async fn new(zirc: &Ergo, globex: &Ergo) -> Self {
         let home = tempfile::Builder::new()
             .prefix("zirc")
             .tempdir_in("/tmp")
             .unwrap();
-        let port = acme.port().to_string();
+        let port = zirc.port().to_string();
         let init = [
             "init",
             "--server",
@@ -48,10 +48,10 @@ impl Machine {
         );
         std::fs::write(&config, format!("owner = \"henrik\"\n{text}{globex}")).unwrap();
         tokio::spawn(zircd::run(home.path().to_owned(), std::future::pending()));
-        let repo = zirc_test_ergo::git::clone("https://github.com/acme/web.git");
+        let repo = zirc_test_ergo::git::clone("https://github.com/zirc/web.git");
         let machine = Self { home, repo };
         let added = machine
-            .until(&["repo", "add", "--org", ACME], "as web in #agents")
+            .until(&["repo", "add", "--org", ZIRC], "as web in #agents")
             .await;
         assert!(added.contains("as web in"), "{added}");
         machine
@@ -100,11 +100,11 @@ fn id_about(decisions: &str, about: &str) -> String {
 
 #[tokio::test]
 async fn a_decision_replaces_one_in_its_repositorys_organisation() {
-    let acme = require_ergo!();
+    let zirc = require_ergo!();
     let Some(globex) = Ergo::start() else {
         return;
     };
-    let machine = Machine::new(&acme, &globex).await;
+    let machine = Machine::new(&zirc, &globex).await;
     let decide = ["decide", "--session", "cc-1"];
     let first = [
         &decide[..],

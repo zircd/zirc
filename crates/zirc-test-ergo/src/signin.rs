@@ -146,12 +146,12 @@ pub fn answer(ask: &str, irc_port: u16) -> Option<String> {
 /// The person's profile in the one organisation the app signs in to.
 fn profile(options: &Options) -> Me {
     Me {
-        email: format!("{}@acme.example", options.handle),
+        email: format!("{}@zirc.example", options.handle),
         name: Some("Dana Reyes".to_owned()),
         avatar: None,
         orgs: vec![MeOrg {
             slug: options.host.clone(),
-            name: "Acme".to_owned(),
+            name: "Zirc".to_owned(),
             handle: options.handle.clone(),
             role: zirc_proto::role::Role::Owner,
         }],

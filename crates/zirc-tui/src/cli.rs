@@ -372,7 +372,7 @@ mod tests {
 
     fn settings() -> Settings {
         Settings::from_toml(
-            "nick = \"mattias-mbp\"\nowner = \"mattias\"\n[server]\nhost = \"acme.irc.zirc.dev\"\npassword = \"gate\"\n[account]\nname = \"mattias-mbp\"\npassword = \"machine\"\n",
+            "nick = \"mattias-mbp\"\nowner = \"mattias\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\npassword = \"gate\"\n[account]\nname = \"mattias-mbp\"\npassword = \"machine\"\n",
         )
         .unwrap()
     }
@@ -382,7 +382,7 @@ mod tests {
         let config = cli(&[]).config_from(Some(&settings())).unwrap();
         assert_eq!(
             (config.host.as_str(), config.port, config.tls),
-            ("acme.irc.zirc.dev", 6697, true)
+            ("zirc.irc.zirc.dev", 6697, true)
         );
         assert_eq!(config.nick, "mattias");
         assert_eq!(config.server_password.as_deref(), Some("gate"));
@@ -425,7 +425,7 @@ mod tests {
             account: false,
             web: login::WEB.into(),
             server: zirc_core::settings::Server {
-                host: "acme.irc.zirc.dev".into(),
+                host: "zirc.irc.zirc.dev".into(),
                 port: None,
                 tls: None,
                 password: Some("gate".into()),
@@ -442,7 +442,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             (config.host.as_str(), config.nick.as_str()),
-            ("acme.irc.zirc.dev", "matt")
+            ("zirc.irc.zirc.dev", "matt")
         );
         assert_eq!(config.server_password.as_deref(), Some("gate"));
         assert!(out.is_empty(), "no sign-in needed");

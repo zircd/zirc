@@ -77,7 +77,7 @@ bazel run //crates/zirc-server:image_load_arm64
 ```
 
 ```bash
-docker run -d --name zirc -e ZIRC_HOST=irc.acme.test -e ZIRC_TLS=self-signed -p 6697:6697 -v zirc-data:/data zirc-server:dev
+docker run -d --name zirc -e ZIRC_HOST=irc.zirc.test -e ZIRC_TLS=self-signed -p 6697:6697 -v zirc-data:/data zirc-server:dev
 ```
 
 It isn't published yet: `compose.yaml`'s image is where it will be.

@@ -474,7 +474,7 @@ mod tests {
     #[tokio::test]
     async fn logs_in_and_writes_the_teams_server() {
         let started = r#"{"id":"l1","code":"WDJB-MJHT","url":"https://zirc.dev/login/WDJB-MJHT","interval":1,"expires_in":30}"#;
-        let done = r#"{"status":"done","server":{"host":"acme.irc.zirc.dev","password":"gate"},"account":{"name":"mattias","password":"pw"}}"#;
+        let done = r#"{"status":"done","server":{"host":"zirc.irc.zirc.dev","password":"gate"},"account":{"name":"mattias","password":"pw"}}"#;
         let (web, served) = fake_web(vec![
             (201, started.into()),
             (200, r#"{"status":"pending"}"#.into()),
@@ -511,7 +511,7 @@ mod tests {
         assert!(out.contains("It shows the code WDJB-MJHT;"), "{out}");
         assert!(out.contains("The link works for 1 minute;"), "{out}");
         assert!(
-            out.contains("this machine connects to acme.irc.zirc.dev"),
+            out.contains("this machine connects to zirc.irc.zirc.dev"),
             "{out}"
         );
 
@@ -535,7 +535,7 @@ mod tests {
         let settings = Settings::from_toml(&std::fs::read_to_string(&path).unwrap()).unwrap();
         // The account's name is its nick, whatever nick the machine had.
         assert_eq!(settings.nick.as_deref(), Some("mattias"));
-        assert_eq!(settings.server.host, "acme.irc.zirc.dev");
+        assert_eq!(settings.server.host, "zirc.irc.zirc.dev");
         assert_eq!(settings.server.password.as_deref(), Some("gate"));
         assert_eq!(settings.account.unwrap().name, "mattias");
         let mode = std::os::unix::fs::PermissionsExt::mode(
@@ -547,7 +547,7 @@ mod tests {
     #[tokio::test]
     async fn repo_add_signs_in_first_on_a_machine_that_isnt_set_up() {
         let started = r#"{"id":"l1","code":"C","url":"u","interval":1,"expires_in":30}"#;
-        let done = r#"{"status":"done","server":{"host":"acme.irc.zirc.dev","password":"gate"},"nick":"mattias-mbp","owner":"mattias"}"#;
+        let done = r#"{"status":"done","server":{"host":"zirc.irc.zirc.dev","password":"gate"},"nick":"mattias-mbp","owner":"mattias"}"#;
         let (web, served) = fake_web(vec![(201, started.into()), (200, done.into())]);
         let home = tempfile::tempdir().unwrap();
         let skills = tempfile::tempdir().unwrap();
@@ -574,7 +574,7 @@ mod tests {
             "{out}"
         );
         assert!(
-            out.contains("this machine connects to acme.irc.zirc.dev"),
+            out.contains("this machine connects to zirc.irc.zirc.dev"),
             "{out}"
         );
         assert!(!out.contains("Next, in each repository"), "{out}");
@@ -636,9 +636,9 @@ mod tests {
 
     #[tokio::test]
     async fn names_the_machine_as_the_web_app_says_then_its_account_then_as_before() {
-        let earlier = "nick = \"old-nick\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n";
+        let earlier = "nick = \"old-nick\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n";
         let nick_of = |config: &str| Settings::from_toml(config).unwrap().nick;
-        let server = r#""server":{"host":"acme.irc.zirc.dev","password":"gate"}"#;
+        let server = r#""server":{"host":"zirc.irc.zirc.dev","password":"gate"}"#;
         let account = r#""account":{"name":"mattias-mbp","password":"pass"}"#;
         for (done, nick) in [
             (
@@ -673,16 +673,16 @@ mod tests {
 
     #[tokio::test]
     async fn adds_the_organisations_a_login_chose_and_keeps_the_others() {
-        let earlier = "nick = \"mattias-mbp\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n\n\
+        let earlier = "nick = \"mattias-mbp\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n\n\
                        [[org]]\nname = \"initech\"\n[org.server]\nhost = \"initech.irc.zirc.dev\"\n";
         let globex = r#"{"name":"globex","server":{"host":"globex.irc.zirc.dev"},"account":{"name":"matt-mbp","password":"pw"},"owner":"matt"}"#;
-        let acme = r#"{"name":"acme","server":{"host":"acme.irc.zirc.dev"},"owner":"mattias"}"#;
+        let zirc = r#"{"name":"zirc","server":{"host":"zirc.irc.zirc.dev"},"owner":"mattias"}"#;
         let done = format!(
-            r#"{{"status":"done","server":{{"host":"acme.irc.zirc.dev"}},"owner":"mattias","orgs":[{acme},{globex}]}}"#
+            r#"{{"status":"done","server":{{"host":"zirc.irc.zirc.dev"}},"owner":"mattias","orgs":[{zirc},{globex}]}}"#
         );
         let (said, config) = login_with(earlier, done).await;
         let said = said.unwrap();
-        assert!(said.contains("connects to acme.irc.zirc.dev"), "{said}");
+        assert!(said.contains("connects to zirc.irc.zirc.dev"), "{said}");
         assert!(
             said.contains("connects to globex.irc.zirc.dev as matt-mbp"),
             "{said}"
@@ -693,8 +693,8 @@ mod tests {
             .iter()
             .map(Organisation::name)
             .collect();
-        assert_eq!(names, ["acme", "initech", "globex"]);
-        // Each organisation keeps its own handle and nick; acme's nick chosen earlier stays.
+        assert_eq!(names, ["zirc", "initech", "globex"]);
+        // Each organisation keeps its own handle and nick; zirc's nick chosen earlier stays.
         assert_eq!(settings.nick.as_deref(), Some("mattias-mbp"));
         let globex = settings.organisation("globex").unwrap();
         assert_eq!(
@@ -716,10 +716,10 @@ mod tests {
     #[tokio::test]
     async fn keeps_a_machines_setup_unless_asked_to_replace_it() {
         let earlier = "[server]\nhost = \"zircapp.irc.zirc.dev\"\npassword = \"gate\"\n";
-        let (refused, config) = login_again(earlier, "acme.irc.zirc.dev").await;
+        let (refused, config) = login_again(earlier, "zirc.irc.zirc.dev").await;
         let refused = refused.unwrap_err();
         assert!(
-            refused.contains("for acme.irc.zirc.dev, but this machine is set up for zircapp"),
+            refused.contains("for zirc.irc.zirc.dev, but this machine is set up for zircapp"),
             "{refused}"
         );
         assert!(refused.contains("`zirc login --force`"), "{refused}");

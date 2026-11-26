@@ -456,7 +456,7 @@ mod tests {
         assert_eq!(report.reference.as_deref(), Some("WEB-7"));
         assert_eq!(
             report.link.as_deref(),
-            Some("https://acme.sentry.io/organizations/acme/issues/4821007/")
+            Some("https://zirc.sentry.io/organizations/zirc/issues/4821007/")
         );
         assert_eq!(
             report.words(),
@@ -608,19 +608,19 @@ mod tests {
             &none,
         ));
         assert_eq!(report.kind, Subject::Issue);
-        assert_eq!(report.key, "github:acme/server#412");
+        assert_eq!(report.key, "github:zirc/server#412");
         assert_eq!(
             report.summary,
             "Reconnect drops history on iPad after sleep"
         );
         assert_eq!(
             report.details.as_deref(),
-            Some("opened by example-customer in acme/server")
+            Some("opened by example-customer in zirc/server")
         );
         assert_eq!(report.reference.as_deref(), Some("#412"));
         assert_eq!(
             report.link.as_deref(),
-            Some("https://github.com/acme/server/issues/412")
+            Some("https://github.com/zirc/server/issues/412")
         );
         // Signed with another secret: refused. Unsigned: the address's secret admits it.
         let wrong = format!("sha256={}", sign("guess", GITHUB_ISSUE));
@@ -660,7 +660,7 @@ mod tests {
                 Tool::Github,
                 Read::Resolved {
                     kind: Subject::Issue,
-                    key: "github:acme/server#412".into()
+                    key: "github:zirc/server#412".into()
                 }
             ))
         );
@@ -726,7 +726,7 @@ mod tests {
         assert_eq!(report.reference.as_deref(), Some("#3"));
         assert_eq!(
             report.link.as_deref(),
-            Some("https://acme.pagerduty.com/incidents/Q0EXAMPLE0001")
+            Some("https://zirc.pagerduty.com/incidents/Q0EXAMPLE0001")
         );
         assert_eq!(
             post(&[("x-pagerduty-signature", "v1=00ff")], body, &tools),

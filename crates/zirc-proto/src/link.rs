@@ -158,15 +158,15 @@ mod tests {
     #[test]
     fn a_channel_alone_and_odd_characters() {
         assert_eq!(
-            conversation_link("https://zirc.example.com", "acme", "#web", None).as_deref(),
-            Some("https://zirc.example.com/app/c/acme/web")
+            conversation_link("https://zirc.example.com", "zirc", "#web", None).as_deref(),
+            Some("https://zirc.example.com/app/c/zirc/web")
         );
-        let odd = conversation_link("https://zirc.dev", "acme", "#q&a?ü", Some("a+b")).unwrap();
-        assert_eq!(odd, "https://zirc.dev/app/c/acme/q%26a%3F%C3%BC?m=a%2Bb");
+        let odd = conversation_link("https://zirc.dev", "zirc", "#q&a?ü", Some("a+b")).unwrap();
+        assert_eq!(odd, "https://zirc.dev/app/c/zirc/q%26a%3F%C3%BC?m=a%2Bb");
         assert_eq!(
             parse(&odd),
             Some(Conversation {
-                org: "acme".into(),
+                org: "zirc".into(),
                 channel: "#q&a?ü".into(),
                 message: Some("a+b".into())
             })
@@ -176,11 +176,11 @@ mod tests {
     #[test]
     fn nothing_for_what_isnt_a_channel_link() {
         assert_eq!(
-            conversation_link("https://zirc.dev", "acme", "bob", None),
+            conversation_link("https://zirc.dev", "zirc", "bob", None),
             None
         );
         assert_eq!(
-            conversation_link("https://zirc.dev", "acme", "#a//b", None),
+            conversation_link("https://zirc.dev", "zirc", "#a//b", None),
             None
         );
         for url in [

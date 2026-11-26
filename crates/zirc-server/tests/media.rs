@@ -51,7 +51,7 @@ fn at(
     path: &str,
     person: &Person,
 ) -> reqwest::RequestBuilder {
-    let path = path.replace("https://irc.acme.test", "");
+    let path = path.replace("https://irc.zirc.test", "");
     reqwest::Client::new()
         .request(method, format!("{}{path}", server.https))
         .basic_auth(person.name, Some(person.password))
@@ -75,7 +75,7 @@ async fn put(
     bytes: &[u8],
 ) -> reqwest::StatusCode {
     let mut put =
-        reqwest::Client::new().put(started.url.replace("https://irc.acme.test", &server.https));
+        reqwest::Client::new().put(started.url.replace("https://irc.zirc.test", &server.https));
     for (name, value) in &started.headers {
         put = put.header(name, value);
     }
@@ -119,7 +119,7 @@ async fn fetch(server: &common::Running, url: &str, person: &Person) -> reqwest:
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .unwrap();
-    let path = url.replace("https://irc.acme.test", "");
+    let path = url.replace("https://irc.zirc.test", "");
     let answer = http
         .get(format!("{}{path}", server.https))
         .basic_auth(person.name, Some(person.password))
@@ -130,8 +130,8 @@ async fn fetch(server: &common::Running, url: &str, person: &Person) -> reqwest:
         return answer;
     }
     let link = answer.headers()["location"].to_str().unwrap();
-    assert!(link.starts_with("https://irc.acme.test/s/"), "{link}");
-    http.get(link.replace("https://irc.acme.test", &server.https))
+    assert!(link.starts_with("https://irc.zirc.test/s/"), "{link}");
+    http.get(link.replace("https://irc.zirc.test", &server.https))
         .send()
         .await
         .unwrap()
@@ -162,7 +162,7 @@ async fn an_image_is_what_its_bytes_say_and_anyone_signed_in_gets_it() {
     };
     let image = upload(&server, &ALICE, "cat.png", "image/png", GIF).await;
     assert!(
-        image.url.starts_with("https://irc.acme.test/m/"),
+        image.url.starts_with("https://irc.zirc.test/m/"),
         "{}",
         image.url
     );
@@ -293,7 +293,7 @@ async fn bytes_go_only_to_their_upload_s_address_and_no_more_than_it_said() {
     let request = json!({"purpose": "share", "name": "a.txt", "mime": "text/plain", "size": 2});
     let started = at(&server, reqwest::Method::POST, "/api/media", &ALICE).json(&request);
     let started: UploadStarted = started.send().await.unwrap().json().await.unwrap();
-    let url = started.url.replace("https://irc.acme.test", &server.https);
+    let url = started.url.replace("https://irc.zirc.test", &server.https);
     let http = reqwest::Client::new();
     let long = http.put(&url).body("too long").send().await.unwrap();
     assert_eq!(long.status(), 413);

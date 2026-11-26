@@ -93,7 +93,7 @@ mod tests {
             answers: true,
         };
         assert_eq!(Colleagues::of(&off.event()), Some(off));
-        assert_eq!(Colleagues::of(&Event::custom("x-acme/deploy", "hi")), None);
+        assert_eq!(Colleagues::of(&Event::custom("x-fjord/deploy", "hi")), None);
     }
 
     #[test]

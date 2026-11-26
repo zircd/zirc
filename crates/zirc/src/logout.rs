@@ -1,5 +1,5 @@
 //! `zirc logout`: signing this machine out, of everything or of one organisation (`zirc
-//! logout acme`, which `zirc orgs remove acme` still does too). What is asked, and what leaves, is zirc-core's ([`zirc_core::signout`]), in the apps' words
+//! logout zirc`, which `zirc orgs remove zirc` still does too). What is asked, and what leaves, is zirc-core's ([`zirc_core::signout`]), in the apps' words
 //! ([`zirc_core::account_text`]), so every app and the CLI mean the same by it.
 
 use std::io::{BufRead, Write};
@@ -22,7 +22,7 @@ use crate::setup::earlier_setup;
 #[derive(Debug, Args)]
 pub struct Logout {
     /// The one organisation to take off this machine, as `zirc orgs` names it, such as
-    /// acme. Without one, signs this machine out of everything.
+    /// zirc. Without one, signs this machine out of everything.
     #[arg(conflicts_with = "all", value_name = "ORG")]
     target: Option<String>,
     /// Sign out of everything: what plain `zirc logout` does.

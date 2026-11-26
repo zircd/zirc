@@ -1,8 +1,8 @@
 {
   "action": "opened",
   "issue": {
-    "url": "https://api.github.com/repos/acme/server/issues/412",
-    "html_url": "https://github.com/acme/server/issues/412",
+    "url": "https://api.github.com/repos/zirc/server/issues/412",
+    "html_url": "https://github.com/zirc/server/issues/412",
     "id": 3000000412,
     "number": 412,
     "title": "Reconnect drops history on iPad after sleep",
@@ -15,8 +15,8 @@
   "repository": {
     "id": 2000001,
     "name": "server",
-    "full_name": "acme/server",
-    "html_url": "https://github.com/acme/server",
+    "full_name": "zirc/server",
+    "html_url": "https://github.com/zirc/server",
     "private": true
   },
   "sender": {"login": "example-customer", "id": 1000001, "type": "User"}

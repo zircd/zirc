@@ -68,7 +68,7 @@ fn leaves_prose_versions_and_addresses_alone() {
         "zirc.dev",
         "zirc.dev/app.js",
         "github.com/zircapp/zirc/blob/main/x.rs",
-        "https://github.com/acme/api/blob/main/src/a.rs",
+        "https://github.com/zirc/api/blob/main/src/a.rs",
         "1/2",
         "50/50",
         "km/h",
@@ -159,7 +159,7 @@ fn links(chat: &Chat, channel: &str, text: &str) -> Vec<(String, Option<String>,
 #[test]
 fn links_files_and_commits_to_the_forge_where_there_is_no_checkout() {
     let chat = chat_in(
-        Some("https://github.com/acme/api"),
+        Some("https://github.com/zirc/api"),
         None,
         Some(Editor::VsCode),
     );
@@ -169,7 +169,7 @@ fn links_files_and_commits_to_the_forge_where_there_is_no_checkout() {
     assert_eq!(text, "src/a.rs:4");
     assert_eq!(
         url.as_deref(),
-        Some("https://github.com/acme/api/blob/HEAD/src/a.rs#L4")
+        Some("https://github.com/zirc/api/blob/HEAD/src/a.rs#L4")
     );
     let code = code.as_ref().unwrap();
     assert_eq!(code.path.as_deref(), Some("src/a.rs"));
@@ -177,13 +177,13 @@ fn links_files_and_commits_to_the_forge_where_there_is_no_checkout() {
     assert_eq!(code.local, None);
     assert_eq!(
         code.raw.as_deref(),
-        Some("https://raw.githubusercontent.com/acme/api/HEAD/src/a.rs")
+        Some("https://raw.githubusercontent.com/zirc/api/HEAD/src/a.rs")
     );
     let (text, url, code) = &found[1];
     assert_eq!(text, "3f2a1c0");
     assert_eq!(
         url.as_deref(),
-        Some("https://github.com/acme/api/commit/3f2a1c0")
+        Some("https://github.com/zirc/api/commit/3f2a1c0")
     );
     assert_eq!(code.as_ref().unwrap().commit.as_deref(), Some("3f2a1c0"));
 }
@@ -191,7 +191,7 @@ fn links_files_and_commits_to_the_forge_where_there_is_no_checkout() {
 #[test]
 fn links_files_into_the_editor_where_the_repository_is_checked_out() {
     let chat = chat_in(
-        Some("https://gitlab.com/acme/api"),
+        Some("https://gitlab.com/zirc/api"),
         Some("/Users/me/src/api/"),
         Some(Editor::Zed),
     );
@@ -213,11 +213,11 @@ fn links_files_into_the_editor_where_the_repository_is_checked_out() {
     assert_eq!(code.local.as_deref(), Some("/Users/me/src/api/web/x.ts"));
     assert_eq!(
         code.page.as_deref(),
-        Some("https://gitlab.com/acme/api/-/blob/HEAD/web/x.ts#L9")
+        Some("https://gitlab.com/zirc/api/-/blob/HEAD/web/x.ts#L9")
     );
     assert_eq!(
         code.raw.as_deref(),
-        Some("https://gitlab.com/acme/api/-/raw/HEAD/web/x.ts")
+        Some("https://gitlab.com/zirc/api/-/raw/HEAD/web/x.ts")
     );
     // A checkout with no forge known still opens files, but can't link a commit.
     let chat = chat_in(None, Some("/src/api"), Some(Editor::VsCode));
@@ -231,7 +231,7 @@ fn links_files_into_the_editor_where_the_repository_is_checked_out() {
 
 #[test]
 fn links_nothing_in_a_channel_of_no_known_repository() {
-    let chat = chat_in(Some("https://github.com/acme/api"), None, None);
+    let chat = chat_in(Some("https://github.com/zirc/api"), None, None);
     assert!(links(&chat, "#general", "src/a.rs:4 and 3f2a1c0").is_empty());
     assert!(links(&chat, "bob", "src/a.rs:4 and 3f2a1c0").is_empty());
     // Nor in links, mentions or code blocks, nor inline code that's more than one.
@@ -246,7 +246,7 @@ fn links_nothing_in_a_channel_of_no_known_repository() {
 
 #[test]
 fn keeps_styles_and_the_words_around_code() {
-    let chat = chat_in(Some("https://github.com/acme/api"), None, None);
+    let chat = chat_in(Some("https://github.com/zirc/api"), None, None);
     let blocks = chat.flat_in("#api", rich("**fixed in src/a.rs:4 today**"));
     let [RichBlock::Paragraph { spans }] = blocks.as_slice() else {
         panic!("{blocks:?}");
@@ -266,18 +266,18 @@ fn learns_each_repositorys_forge_from_what_is_said() {
         subject: "x".into(),
         repo: Some(repo.into()),
     };
-    let github = commit("https://github.com/acme/api");
+    let github = commit("https://github.com/zirc/api");
     chat.learn_forge("#api/agents", "ada-mbp", &github);
     assert_eq!(links(&chat, "#api", "3f2a1c0").len(), 1);
     assert!(links(&chat, "#web", "3f2a1c0").is_empty());
     // Known, it isn't moved to another host by whoever says so: only by an integration.
     let forge = |chat: &Chat| chat.code.links("#api").forge.map(str::to_owned);
     chat.learn_forge("#api", "bob-mbp", &commit("https://evil.example/x"));
-    assert_eq!(forge(&chat).unwrap(), "https://github.com/acme/api");
-    chat.learn_forge("#api", "bob-mbp", &commit("https://github.com/acme/api2"));
-    assert_eq!(forge(&chat).unwrap(), "https://github.com/acme/api2");
-    chat.learn_forge("#api", "zirc-ci", &commit("https://git.acme.example/api"));
-    assert_eq!(forge(&chat).unwrap(), "https://git.acme.example/api");
+    assert_eq!(forge(&chat).unwrap(), "https://github.com/zirc/api");
+    chat.learn_forge("#api", "bob-mbp", &commit("https://github.com/zirc/api2"));
+    assert_eq!(forge(&chat).unwrap(), "https://github.com/zirc/api2");
+    chat.learn_forge("#api", "zirc-ci", &commit("https://git.zirc.example/api"));
+    assert_eq!(forge(&chat).unwrap(), "https://git.zirc.example/api");
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn fences_pasted_traces() {
     assert_eq!(fence_pasted(js), format!("```\n{js}\n```"));
     let rust = "stack backtrace:\n   0: std::panicking::begin_panic\n             at /rustc/abc/library/std/src/panicking.rs:5:5\n   1: app::main\n             at ./src/main.rs:5:5";
     assert_eq!(fence_pasted(rust), format!("```\n{rust}\n```"));
-    let java = "Exception in thread \"main\" java.lang.IllegalStateException: no\n\tat com.acme.A.run(A.java:12)\n\tat com.acme.Main.main(Main.java:4)";
+    let java = "Exception in thread \"main\" java.lang.IllegalStateException: no\n\tat com.zirc.A.run(A.java:12)\n\tat com.zirc.Main.main(Main.java:4)";
     assert_eq!(fence_pasted(java), format!("```\n{java}\n```"));
     let go = "goroutine 1 [running]:\nmain.main()\n\t/src/main.go:42 +0x1d\nexit status 2";
     // Go's function lines aren't indented: only the frame and what follows is a trace here,
@@ -446,7 +446,7 @@ fn leaves_a_previews_colour_to_an_app_without_a_highlighter() {
 fn offers_the_editor_then_the_forge() {
     let file = CodeRef {
         local: Some("/src/api/a.rs".into()),
-        page: Some("https://github.com/acme/api/blob/HEAD/a.rs#L4".into()),
+        page: Some("https://github.com/zirc/api/blob/HEAD/a.rs#L4".into()),
         ..code("a.rs", Some(4))
     };
     let labels: Vec<(String, String)> = code_actions(&file, Some(Editor::Cursor))
@@ -462,7 +462,7 @@ fn offers_the_editor_then_the_forge() {
             ),
             (
                 "Open on github.com".to_owned(),
-                "https://github.com/acme/api/blob/HEAD/a.rs#L4".to_owned()
+                "https://github.com/zirc/api/blob/HEAD/a.rs#L4".to_owned()
             ),
         ]
     );

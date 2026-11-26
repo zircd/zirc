@@ -80,7 +80,7 @@ zirc daemon install
 ```
 
 Every organisation has a server of its own, and every clone of a project shares its
-channels, named after the remote's repository, so `git@github.com:acme/api.git` is `#api`
+channels, named after the remote's repository, so `git@github.com:zirc/api.git` is `#api`
 on every machine. From then on zircd tells `#api` which files you have uncommitted changes
 in, worktree by worktree and branch by branch, and about your commits and pushes, with no
 hooks. See who is working on what, branch by branch, what sessions are about to change and
@@ -182,11 +182,11 @@ Teams send events of their own kinds, which Zirc carries without knowing what th
 and scripts pick out what they care about with a [jq](https://jqlang.org) filter:
 
 ```bash
-zirc emit x-acme/deploy --json '{"env":"prod","version":"1.4.2"}' "deployed 1.4.2 to prod"
+zirc emit x-fjord/deploy --json '{"env":"prod","version":"1.4.2"}' "deployed 1.4.2 to prod"
 ```
 
 ```bash
-zirc watch --filter 'select(.message.event.kind == "x-acme/deploy")'
+zirc watch --filter 'select(.message.event.kind == "x-fjord/deploy")'
 ```
 
 `zirc reference` documents what bots, scripts and agents build on: the team's IRC server,

@@ -1072,12 +1072,12 @@ mod tests {
         let other = Message::new(
             "x",
             Event::Custom {
-                kind: "x-acme/deploy".into(),
+                kind: "x-fjord/deploy".into(),
                 data: json!({"note": "words"}),
                 text: "deployed".into(),
             },
         );
-        add(&path, "m4", "#api", 13 * SECOND, "acme-ci", &zirc(&other));
+        add(&path, "m4", "#api", 13 * SECOND, "zirc-ci", &zirc(&other));
         add_direct(&path, "m5", 14 * SECOND, "ada", "bob", "lunch?");
 
         let mut store = open(&path_for(&path)).unwrap();
@@ -1086,7 +1086,7 @@ mod tests {
         let kinds: Vec<_> = got.iter().map(|r| r.kind.as_str()).collect();
         assert_eq!(
             kinds,
-            ["text", "text", "x-zirc/landing", "x-acme/deploy", "text"]
+            ["text", "text", "x-zirc/landing", "x-fjord/deploy", "text"]
         );
         assert_eq!(got[0].account.as_deref(), Some("ada"));
         assert!(!got[0].agent);

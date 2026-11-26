@@ -405,7 +405,7 @@ mod tests {
     async fn zirc(web: &str, args: &[&str]) -> Result<String, String> {
         let home = tempfile::tempdir().unwrap();
         let config = format!(
-            "web = \"{web}\"\nowner = \"ada\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n[account]\nname = \"ada-mbp\"\npassword = \"pw\"\n"
+            "web = \"{web}\"\nowner = \"ada\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n[account]\nname = \"ada-mbp\"\npassword = \"pw\"\n"
         );
         std::fs::write(paths::config(home.path()), config).unwrap();
         let cli = Cli::try_parse_from([&["zirc"], args].concat()).unwrap();
@@ -503,7 +503,7 @@ mod tests {
 
     #[tokio::test]
     async fn on_a_machine_in_two_organisations_it_reads_the_one_org_names() {
-        let (acme, _a) = zirc_test_ergo::web::serve(vec![
+        let (zirc, _a) = zirc_test_ergo::web::serve(vec![
             through_zirc_dev(),
             (
                 200,
@@ -517,7 +517,7 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         // beta's zirc.dev answers nothing: reading it would fail the search.
         let config = format!(
-            "web = \"{acme}\"\nowner = \"ada\"\n[server]\nhost = \"acme.irc.zirc.dev\"\n\
+            "web = \"{zirc}\"\nowner = \"ada\"\n[server]\nhost = \"zirc.irc.zirc.dev\"\n\
              [account]\nname = \"ada-mbp\"\npassword = \"pw\"\n\
              [[org]]\nname = \"beta\"\nweb = \"http://127.0.0.1:9\"\nowner = \"ada\"\n\
              [org.server]\nhost = \"beta.irc.zirc.dev\"\n\
@@ -535,10 +535,10 @@ mod tests {
         let err = run(search(&[]), &mut Vec::new()).await.unwrap_err();
         assert_eq!(
             format!("{err:#}"),
-            "this machine is in acme and beta: say which with --org"
+            "this machine is in zirc and beta: say which with --org"
         );
         let mut out = Vec::new();
-        run(search(&["--org", "acme"]), &mut out).await.unwrap();
+        run(search(&["--org", "zirc"]), &mut out).await.unwrap();
         let out = String::from_utf8(out).unwrap();
         assert!(out.contains("it's in"), "{out}");
     }

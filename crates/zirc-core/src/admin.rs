@@ -188,7 +188,7 @@ mod tests {
     #[tokio::test]
     async fn reads_each_organisations_role() {
         let me = r#"{"email":"a@b.c","name":null,"avatar":null,"orgs":[
-            {"slug":"acme","name":"Acme","handle":"mattias","role":"owner"},
+            {"slug":"zirc","name":"Zirc","handle":"mattias","role":"owner"},
             {"slug":"other","name":"Other","handle":"mattias"}]}"#;
         let (web, served) = zirc_test_ergo::web::serve(vec![(200, me.into())]);
         let roles = Client::new(&web)
@@ -201,7 +201,7 @@ mod tests {
             roles,
             [
                 OrgRole {
-                    slug: "acme".into(),
+                    slug: "zirc".into(),
                     role: zirc_proto::role::Role::Owner
                 },
                 OrgRole {
@@ -234,16 +234,16 @@ mod tests {
             card: "monorepo/889".into(),
             action: "retry".into(),
         };
-        let said = client.press(&account(), "acme", &press).await.unwrap();
+        let said = client.press(&account(), "zirc", &press).await.unwrap();
         assert_eq!(said.as_deref(), Some("Retrying the failed step"));
-        let refused = client.press(&account(), "acme", &press).await.unwrap_err();
+        let refused = client.press(&account(), "zirc", &press).await.unwrap_err();
         assert!(
             refused.to_string().contains("only bob may retry it"),
             "{refused}"
         );
         let asked = served.join().unwrap();
         assert!(
-            asked[0].starts_with("POST /api/organisations/acme/cards/actions "),
+            asked[0].starts_with("POST /api/organisations/zirc/cards/actions "),
             "{}",
             asked[0]
         );

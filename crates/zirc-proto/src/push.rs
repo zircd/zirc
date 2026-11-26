@@ -128,7 +128,7 @@ pub struct FanOut {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(rename = "PushFanOutOrg")]
 pub struct FanOutOrg {
-    /// Its server's host, as `acme.irc.zirc.dev`.
+    /// Its server's host, as `zirc.irc.zirc.dev`.
     pub server: String,
     /// How much each conversation there notifies on the phone: zirc-chat's `NotifySettings`.
     #[serde(default)]
