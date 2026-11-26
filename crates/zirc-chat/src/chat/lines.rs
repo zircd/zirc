@@ -585,7 +585,9 @@ pub struct SessionName {
     pub id: String,
     /// Its name, `zirc-chat`, as [`Chat::session_label`] says, or else its id.
     pub label: String,
-    /// It as a card's words are followed by it, dim, in every app: `· zirc-chat`.
+    /// It as a card's words are followed by it, dim, in every app: `· zirc-chat`. Beside the
+    /// words while both fit on one line, else on its own line under them, never a column
+    /// beside words that wrap (the user's choice, 26 Nov 2026).
     pub aside: String,
 }
 
