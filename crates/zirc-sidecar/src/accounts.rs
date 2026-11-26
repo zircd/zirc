@@ -82,7 +82,7 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -473,6 +473,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
         .route("/v1/server", get(describe))
         .route(zirc_proto::role_report::ITEMS_PATH, get(role_items))
         .route(zirc_proto::inbound::HEARD_PATH, get(role_heard))
+        .route("/v1/roles/{role}/heard/{tool}", delete(forget_heard))
         .route("/v1/channels", get(list_channels))
         .route("/v1/channels/purge", get(old_channels).post(purge_channels))
         .route("/v1/history", get(read_history))
@@ -598,6 +599,21 @@ fn spawn_roles(ergo: &Arc<Ergo>) {
 /// ([`zirc_proto::inbound::Heard`]).
 async fn role_heard(State(ergo): State<Arc<Ergo>>, Path(role): Path<String>) -> Response {
     Json(ergo.inbound.of(&role)).into_response()
+}
+
+/// `DELETE /v1/roles/<role>/heard/<tool>`: forgets when the role's address heard the tool, for
+/// an operator to drop what a test post left, through the account endpoint; `{"forgot": false}` where
+/// it hadn't heard it.
+async fn forget_heard(
+    State(ergo): State<Arc<Ergo>>,
+    Path((role, tool)): Path<(String, zirc_proto::inbound::Tool)>,
+) -> Response {
+    let forgot = ergo.inbound.forget(&role, tool);
+    info!(
+        tool = tool.as_str(),
+        forgot, "forgot when a role heard a tool"
+    );
+    Json(json!({"forgot": forgot})).into_response()
 }
 
 /// `PUT /v1/roles`: the organisation's roles, whole ([`zirc_proto::roles::Listing`]), as

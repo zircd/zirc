@@ -99,6 +99,15 @@ impl Tool {
         }
     }
 
+    /// Whether its being heard is the organisation's, whichever role's address it posted
+    /// to, so every role shows it heard once one did, a new role too (the user's choice, 26 Nov
+    /// 2026: "if github is working, i want it green even for a new role"): each known tool.
+    /// Any tool's post is only ever its role's, so it stays per role.
+    #[must_use]
+    pub const fn org_wide(self) -> bool {
+        !matches!(self, Self::Other)
+    }
+
     /// Its name, as people read it: `Sentry`, `GitHub`, `Any tool`.
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -214,7 +223,8 @@ pub struct HeardTool {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub said: Option<HeardSaid>,
     /// Whether it was heard lately, as the server answers ([`HeardTool::as_of`]), by a post or
-    /// a test. None from a server older than it.
+    /// a test: at any role's address for a tool heard org-wide ([`Tool::org_wide`]), else at
+    /// this role's. None from a server older than it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub heard: Option<HeardState>,
 }
@@ -393,7 +403,9 @@ impl HeardTool {
 }
 
 /// Which tools a role has heard from and when, as the server answers at [`HEARD_PATH`]: one
-/// for each tool heard, in [`Tool::ALL`]'s order. A tool never heard isn't listed.
+/// for each tool heard, at its address or, for one heard org-wide ([`Tool::org_wide`]), at any
+/// role's (then with no times of its own, nor [`HeardTool::said`]), in [`Tool::ALL`]'s order.
+/// A tool never heard isn't listed.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(rename = "InboundHeard")]
 pub struct Heard {

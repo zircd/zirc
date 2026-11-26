@@ -12,7 +12,7 @@
 //! the same Sentry issue firing 40 times wakes the holder once. A tool saying it's resolved
 //! closes the item. An unknown tool's post wakes the holder as it was sent, or waits for the
 //! next, as a direct message does. When each role last heard each tool is kept beside the
-//! history ([`Store`]) and read by zirc.dev ([`zirc_proto::inbound::HEARD_PATH`]).
+//! history ([`Store`]), each known tool heard org-wide ([`Tool::org_wide`]), and read by zirc.dev ([`zirc_proto::inbound::HEARD_PATH`]).
 //!
 //! Only counts and outcomes are logged: which tool, and what came of it; never a word it
 //! sent, nor which role.
@@ -31,7 +31,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-use zirc_proto::inbound::{A_MINUTE, Heard, HeardTool, MAX_BODY, Tool};
+use zirc_proto::inbound::{A_MINUTE, Heard, HeardState, HeardTool, MAX_BODY, Tool};
 use zirc_proto::role_report::{Closing, End, item_id};
 use zirc_proto::woke::Woke;
 
@@ -101,21 +101,55 @@ impl Store {
         }
     }
 
-    /// What `role` heard, as zirc.dev reads it now ([`HeardTool::as_of`]).
+    /// Forgets when `role` heard `tool`, and keeps that: whether it had.
+    pub fn forget(&self, role: &str, tool: Tool) -> bool {
+        let kept = {
+            let mut kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner);
+            let Some(tools) = kept.roles.get_mut(role) else {
+                return false;
+            };
+            if tools.remove(&tool).is_none() {
+                return false;
+            }
+            if tools.is_empty() {
+                kept.roles.remove(role);
+            }
+            kept.clone()
+        };
+        if let Err(error) = crate::save_json(&self.path, &kept) {
+            tracing::warn!(%error, "couldn't keep when tools were heard");
+        }
+        true
+    }
+
+    /// What `role` heard, as zirc.dev reads it now ([`HeardTool::as_of`]): each known tool as
+    /// the organisation heard it, at any role's address ([`Tool::org_wide`]), with this role's
+    /// own times and words where it heard it too; any tool as this role heard it.
     #[must_use]
     pub fn of(&self, role: &str) -> Heard {
         let now = crate::now();
         let kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner);
-        let tools = kept
-            .roles
-            .get(role)
-            .map(|tools| {
-                Tool::ALL
-                    .iter()
-                    .filter_map(|tool| tools.get(tool).map(|heard| heard.as_of(role, now)))
-                    .collect()
+        let own = kept.roles.get(role);
+        let tools = Tool::ALL
+            .iter()
+            .filter_map(|&tool| {
+                let mine = own
+                    .and_then(|tools| tools.get(&tool))
+                    .map(|heard| heard.as_of(role, now));
+                if !tool.org_wide() {
+                    return mine;
+                }
+                let last = kept
+                    .roles
+                    .values()
+                    .filter_map(|tools| tools.get(&tool))
+                    .filter_map(|heard| heard.last.max(heard.last_test))
+                    .max()?;
+                let mut shown = mine.unwrap_or_else(|| HeardTool::new(tool));
+                shown.heard = Some(HeardState::of(Some(last), now));
+                Some(shown)
             })
-            .unwrap_or_default();
+            .collect();
         Heard {
             role: role.to_owned(),
             tools,
@@ -274,6 +308,7 @@ pub fn take(
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
+    use zirc_proto::inbound::HEARD_FOR;
     use zirc_proto::roles::{Address, Listing};
 
     const SECRET: &str = "k7Qp2vXe9LmR0aBcDeFgHiJk";
@@ -434,6 +469,60 @@ mod tests {
         // Kept across a restart.
         let again = Store::beside(&dir.path().join("history.db"));
         assert_eq!(again.of("oncall"), heard);
+    }
+
+    #[test]
+    fn a_known_tool_is_heard_on_every_role_once_one_heard_it_and_any_tool_only_on_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::beside(&dir.path().join("history.db"));
+        let now = crate::now();
+        store.heard("oncall", Tool::Github, now - 60, false);
+        store.heard("oncall", Tool::Other, now - 60, false);
+        store.heard("oncall", Tool::Sentry, now - HEARD_FOR - 60, false);
+        store.heard("fixer", Tool::Sentry, now - 30, true);
+        // A role that heard nothing at its own address, made after.
+        let shown = |role: &str| -> Vec<(Tool, Option<HeardState>, bool)> {
+            store
+                .of(role)
+                .tools
+                .iter()
+                .map(|t| (t.tool, t.heard, t.said.is_some()))
+                .collect()
+        };
+        assert_eq!(
+            shown("triage"),
+            vec![
+                (Tool::Sentry, Some(HeardState::Heard), false),
+                (Tool::Github, Some(HeardState::Heard), false),
+            ]
+        );
+        // Its own words stay its own: oncall's last Sentry post was days ago, fixer's a test.
+        assert_eq!(
+            shown("oncall"),
+            vec![
+                (Tool::Sentry, Some(HeardState::Heard), true),
+                (Tool::Github, Some(HeardState::Heard), true),
+                (Tool::Other, Some(HeardState::Heard), true),
+            ]
+        );
+        let oncall = store.of("oncall");
+        let said = oncall.tools[0].said.as_ref().unwrap();
+        assert!(said.lead.starts_with("Last heard from Sentry"), "{said:?}");
+        let triage = store.of("triage");
+        assert_eq!((triage.tools[1].last, triage.tools[1].today), (None, 0));
+
+        // Forgotten, as an operator drops a test post's, and kept so.
+        assert!(store.forget("oncall", Tool::Github));
+        assert!(!store.forget("oncall", Tool::Github));
+        assert!(!store.forget("triage", Tool::Github));
+        let again = Store::beside(&dir.path().join("history.db"));
+        assert!(
+            again
+                .of("triage")
+                .tools
+                .iter()
+                .all(|t| t.tool != Tool::Github)
+        );
     }
 
     #[test]
