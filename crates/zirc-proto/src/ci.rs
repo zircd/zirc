@@ -53,12 +53,15 @@ pub fn may_say(kind: &str) -> bool {
     KINDS.iter().any(|(_, own)| *own == kind) || !kind.starts_with("x-zirc/")
 }
 
-/// Whether an event of `kind` is one only CI says: how a landing, a deploy or a check of the
-/// repository went. Sessions act on these without asking (a landing ends their task, a broken
-/// default branch names who fixes it), so whose word one is matters: see [`speaks_for_ci`].
+/// The kinds only CI says: how a landing, a deploy or a check of the repository went.
+pub const ONLY_CI_KINDS: [&str; 3] = [LANDING_KIND, DEPLOY_KIND, CHECK_KIND];
+
+/// Whether an event of `kind` is one only CI says ([`ONLY_CI_KINDS`]). Sessions act on these
+/// without asking (a landing ends their task, a broken default branch names who fixes it), so
+/// whose word one is matters: see [`speaks_for_ci`].
 #[must_use]
 pub fn only_cis(kind: &str) -> bool {
-    matches!(kind, LANDING_KIND | DEPLOY_KIND | CHECK_KIND)
+    ONLY_CI_KINDS.contains(&kind)
 }
 
 /// Whether `account`, the account the server says sent something, is one CI's word comes

@@ -279,11 +279,7 @@ pub fn reporters_heard(
     // One by one, as each is the index's last of its kind.
     let mut last_of =
         connection.prepare_cached("SELECT max(nanotime) FROM rows WHERE kind = ?1")?;
-    for kind in [
-        zirc_proto::ci::LANDING_KIND,
-        zirc_proto::ci::DEPLOY_KIND,
-        zirc_proto::ci::CHECK_KIND,
-    ] {
+    for kind in zirc_proto::ci::ONLY_CI_KINDS {
         if let Some(nanotime) = last_of.query_row([kind], |row| row.get::<_, Option<i64>>(0))? {
             note(CI_REPORTER, nanotime);
         }
@@ -297,9 +293,9 @@ pub fn reporters_heard(
     })?;
     for each in found {
         let (kind, nanotime) = each?;
-        if let Some(reporter) = Subject::ALL
-            .into_iter()
-            .find(|subject| kind.as_deref() == Some(subject.as_str()))
+        if let Some(reporter) = kind
+            .as_deref()
+            .and_then(Subject::named)
             .and_then(Subject::reporter)
         {
             note(reporter, nanotime);
