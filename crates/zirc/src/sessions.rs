@@ -397,7 +397,7 @@ pub(crate) fn avatar_named(id: &str) -> (&'static str, Option<String>) {
     (role, Some(note))
 }
 
-/// "fixer       a gem with a wrench, for fixing what's broken": each role and its gem, a
+/// "fixer       a bot with a wrench, for fixing what's broken": each role and its bot, a
 /// line each.
 pub(crate) fn avatars_text() -> String {
     use std::fmt::Write as _;
@@ -875,7 +875,7 @@ mod tests {
     fn lists_the_roles_and_takes_older_pictures_and_other_words() {
         let list = avatars_text();
         assert_eq!(list.lines().count(), 17);
-        assert!(list.starts_with("agent        a plain gem"), "{list}");
+        assert!(list.starts_with("agent        a plain bot"), "{list}");
         assert_eq!(avatar_named("Fixer"), ("fixer", None));
         assert_eq!(avatar_named("Rocket"), ("rocket", None));
         let (role, note) = avatar_named("developer");
