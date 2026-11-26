@@ -222,25 +222,20 @@ impl Chat {
         members
     }
 
-    /// The role `nick`'s face: its bot ([`zirc_proto::agent_picture`]) on its colour, with
-    /// its holder's owner small, as an agent's is; none while it's vacant.
+    /// The role `nick`'s face: its bot ([`zirc_proto::agent_picture`]) on its colour, its
+    /// holder's tool's. A role is nobody's, held or vacant, so it has no owner and every app
+    /// draws no owner's face on it (the user's choice, 26 Nov 2026: a vacant role's was a
+    /// blank disc).
     #[must_use]
     pub fn role_face(&self, nick: &str) -> Face {
         let holder = self.role_seat(nick).and_then(|seat| seat.holder);
-        let owner = holder
-            .as_ref()
-            .and_then(|holder| self.whose(&holder.machine))
-            .map(|(owner, _)| owner)
-            .unwrap_or_default();
         Face::Agent {
-            tool: holder
-                .as_ref()
-                .and_then(|holder| holder.session.tool.clone()),
+            tool: holder.and_then(|holder| holder.session.tool),
             hue: nick_degrees(nick),
-            owner_initials: self.avatar_initials(&owner),
-            owner_hue: nick_degrees(&owner),
-            owner_photo: self.photo(&owner),
-            owner,
+            owner: String::new(),
+            owner_initials: String::new(),
+            owner_hue: 0,
+            owner_photo: None,
             session: None,
             picture: Some(zirc_proto::agent_picture(Some(&fold(nick)), Some(nick)).to_owned()),
             ground: Some(nick_degrees(nick)),

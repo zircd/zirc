@@ -38,7 +38,8 @@ pub enum Face {
         tool: Option<String>,
         /// Its colour, a hue in degrees, the same every time for the same session.
         hue: u16,
-        /// Whose agent it is, by nick.
+        /// Whose agent it is, by nick; empty for one that's nobody's, a role, which every app
+        /// draws without its owner's small face.
         owner: String,
         /// The owner's initials, for the small face, as a person's.
         owner_initials: String,
