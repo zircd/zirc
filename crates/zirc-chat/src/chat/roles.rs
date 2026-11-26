@@ -131,6 +131,22 @@ impl Chat {
             .map(|(_, seat)| seat.clone())
     }
 
+    /// The role `nick`'s standing, as its dot shows it: its holder's, here while its watch is
+    /// open and away once it closes, as an agent's row says; away while nobody holds it (the
+    /// user's choice, 26 Nov 2026: a vacant role was drawn here, as its nick always is).
+    #[must_use]
+    pub fn role_standing(&self, nick: &str) -> super::Standing {
+        let Some(holder) = self.role_seat(nick).and_then(|seat| seat.holder) else {
+            return super::Standing::Away(String::new());
+        };
+        match self.listening(&holder.machine, &holder.session.session) {
+            Some(super::Listening::Online) => super::Standing::Here,
+            Some(super::Listening::Away { .. }) => super::Standing::Away(String::new()),
+            // Its watch unknown: as its machine stands.
+            Some(super::Listening::Ended { .. }) | None => self.standing(&holder.machine),
+        }
+    }
+
     /// The machine `holder` works on, as people read it: `Henrik's mbp`, `your mbp`.
     fn holder_machine(&self, holder: &Holder) -> String {
         self.machine_said(&holder.machine)
@@ -355,6 +371,11 @@ mod tests {
             ("vacant", true)
         );
         assert!(matches!(&members[0].face, Face::Agent { picture: Some(p), .. } if p == "fixer"));
+        // Vacant, its dot is away's ring, though its nick is always there.
+        assert_eq!(
+            chat.standing("fixer").presence(),
+            super::super::Presence::Away
+        );
 
         let took = SeatChange {
             role: "fixer".into(),
@@ -366,6 +387,16 @@ mod tests {
         let members = chat.role_members("#api");
         assert_eq!(members[0].line, "main-fix · henrik-mbp");
         assert!(!members[0].vacant);
+        // Held, its holder's: away while henrik-mbp is nowhere we are, here once it is.
+        assert_ne!(
+            chat.standing("fixer").presence(),
+            super::super::Presence::Here
+        );
+        feed(&mut chat, &[":henrik-mbp!u@h JOIN #api"]);
+        assert_eq!(
+            chat.standing("fixer").presence(),
+            super::super::Presence::Here
+        );
     }
 
     #[test]

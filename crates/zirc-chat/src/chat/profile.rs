@@ -539,9 +539,13 @@ impl Chat {
     }
 
     /// `nick`'s standing: here while they're in a channel we share, away as the server
-    /// says ([`Chat::away`]). Their profile's, and their direct-message row's dot.
+    /// says ([`Chat::away`]). Their profile's, and their direct-message row's dot. A role's
+    /// is its holder's ([`Chat::role_standing`]), not its own nick's, which is always there.
     #[must_use]
     pub fn standing(&self, nick: &str) -> Standing {
+        if self.is_role(nick) {
+            return self.role_standing(nick);
+        }
         let here = self
             .conversations
             .iter()
