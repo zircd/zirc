@@ -33,6 +33,9 @@ use crate::state::Level;
 /// landed = ["server", "MODULE.bazel"]   # files, or everything under a directory
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+// A field it doesn't know is refused, not ignored: a newer kind of trigger read without it
+// would wake on more than it says. A listing leaves such a trigger out instead
+// (`Definition::triggers`, read by `crate::lenient`), and so one with a level it doesn't know.
 #[serde(deny_unknown_fields)]
 #[ts(optional_fields)]
 pub struct Trigger {

@@ -2268,7 +2268,7 @@
               "type": "null"
             }
           ],
-          "description": "For a report: the item it opened ([`crate::role_report::OpenItem::id`]) and what was\nreported, which its line says, as CI's build is."
+          "description": "For a report: the item it opened ([`crate::role_report::OpenItem::id`]) and what was\nreported, which its line says, as CI's build is. One of a kind this reader doesn't\nknow is none, and the wake still wakes."
         },
         "closed": {
           "type": "integer",
@@ -3064,7 +3064,7 @@
           "items": {
             "$ref": "#/$defs/Trigger"
           },
-          "description": "What wakes its holder, besides a direct message, which always does."
+          "description": "What wakes its holder, besides a direct message, which always does. A trigger this\nreader can't read, as a newer zirc.dev may say, is left out ([`crate::lenient`])."
         },
         "seats": {
           "type": "integer",
@@ -3079,7 +3079,7 @@
           "items": {
             "$ref": "#/$defs/Subject"
           },
-          "description": "The kinds of report it takes ([`crate::role_report::Subject`]), as its admins chose\nthem on zirc.dev's Roles tab."
+          "description": "The kinds of report it takes ([`crate::role_report::Subject`]), as its admins chose\nthem on zirc.dev's Roles tab. A kind this reader doesn't know is left out\n([`crate::lenient`]), as it couldn't take one."
         }
       },
       "required": [
@@ -3305,7 +3305,7 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "The secret each tool of [`SIGNED_BY_OWN`] signs its posts with, as the tool gave it to\nthe role's admins: the server checks those posts' signatures with it, and takes no\nunsigned or wrongly signed post from that tool. Never said back\n([`Listing::without_addresses`])."
+          "description": "The secret each tool of [`SIGNED_BY_OWN`] signs its posts with, as the tool gave it to\nthe role's admins: the server checks those posts' signatures with it, and takes no\nunsigned or wrongly signed post from that tool. Never said back\n([`Listing::without_addresses`]). A tool this reader doesn't know is left out."
         }
       },
       "required": [

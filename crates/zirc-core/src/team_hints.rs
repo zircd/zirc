@@ -228,10 +228,14 @@ async fn answer<T: serde::de::DeserializeOwned>(
 ) -> Result<T, String> {
     let status = response.status();
     if status.is_success() {
-        return response
-            .json()
+        // Read whole, then decoded, so what didn't read is named (serde's "missing field
+        // `title`"), where reqwest's json() says only that the body didn't decode.
+        let body = response
+            .bytes()
             .await
-            .map_err(|err| format!("the server's answer didn't read: {err}"));
+            .map_err(|err| format!("couldn't read the server's answer: {err}"))?;
+        return serde_json::from_slice(&body)
+            .map_err(|err| format!("the server's answer about {what} didn't read: {err}"));
     }
     let said = response
         .json::<serde_json::Value>()

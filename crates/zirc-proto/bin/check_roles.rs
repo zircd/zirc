@@ -19,9 +19,9 @@ fn main() {
         serde_json::from_str(&input).expect("a JSON array of definitions");
     let found: Vec<Value> = definitions
         .into_iter()
-        .map(|value| match serde_json::from_value::<Definition>(value) {
+        .map(|value| match serde_json::from_value::<Definition>(value.clone()) {
             Ok(definition) => json!({
-                "problem": definition.check().err(),
+                "problem": unread(&value, &definition).or_else(|| definition.check().err()),
                 "picture": zirc_proto::agent_picture(Some(&definition.name), Some(&definition.name)),
                 "wakes": definition.wakes_on(),
             }),
@@ -29,4 +29,20 @@ fn main() {
         })
         .collect();
     print!("{}", Value::Array(found));
+}
+
+/// What a server would leave out of `value` as it reads it ([`zirc_proto::lenient`]): a trigger
+/// or a kind of report it can't read, which a definition zirc.dev offers never has.
+fn unread(value: &Value, definition: &Definition) -> Option<String> {
+    let said = |field: &str| {
+        value
+            .get(field)
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len)
+    };
+    if said("triggers") != definition.triggers.len() {
+        return Some("a trigger a server can't read".to_owned());
+    }
+    (said("reports") != definition.reports.len())
+        .then(|| "a kind of report a server doesn't know".to_owned())
 }

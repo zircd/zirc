@@ -39,17 +39,6 @@ pub fn is_woke(event: &Event) -> bool {
     matches!(event, Event::Custom { kind, .. } if kind == KIND)
 }
 
-/// What says so, read leniently: one a newer zircd says that this reader doesn't know is
-/// none, rather than a wake that can't be read.
-fn known<'de, D, T>(from: D) -> Result<Option<T>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: serde::de::DeserializeOwned,
-{
-    let said = serde_json::Value::deserialize(from)?;
-    Ok(serde_json::from_value(said).ok())
-}
-
 /// Whether `kind` is one of these: neither wakes any session's watch.
 #[must_use]
 pub fn is_kind(kind: &str) -> bool {
@@ -188,14 +177,14 @@ pub struct Woke {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "known"
+        deserialize_with = "crate::lenient::known::deserialize"
     )]
     pub state: Option<State>,
     /// For how something the team shares stands, its level.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "known"
+        deserialize_with = "crate::lenient::known::deserialize"
     )]
     pub level: Option<Level>,
     /// The branch it's about: the one CI built or that landed, or the state's name.
@@ -213,8 +202,13 @@ pub struct Woke {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     /// For a report: the item it opened ([`crate::role_report::OpenItem::id`]) and what was
-    /// reported, which its line says, as CI's build is.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// reported, which its line says, as CI's build is. One of a kind this reader doesn't
+    /// know is none, and the wake still wakes.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::lenient::known::deserialize"
+    )]
     pub report: Option<Box<Reported>>,
     /// For a landing that closed items of the role it was woken as (`Fixes: report <id>`):
     /// how many, which its line says after the landing, `· the item is closed`.

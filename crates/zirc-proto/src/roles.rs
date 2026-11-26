@@ -87,15 +87,29 @@ pub struct Definition {
     pub repository: String,
     /// What it does, given to whoever takes it, as zirc.dev's "What it does" says.
     pub brief: String,
-    /// What wakes its holder, besides a direct message, which always does.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// What wakes its holder, besides a direct message, which always does. A trigger this
+    /// reader can't read, as a newer zirc.dev may say, is left out ([`crate::lenient`]).
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        with = "crate::lenient::known_ones"
+    )]
+    #[ts(as = "Vec<Trigger>")]
+    #[schemars(with = "Vec<Trigger>")]
     pub triggers: Vec<Trigger>,
     /// How many seats it has: [`SEATS`].
     #[serde(default = "one_seat")]
     pub seats: u8,
     /// The kinds of report it takes ([`crate::role_report::Subject`]), as its admins chose
-    /// them on zirc.dev's Roles tab.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// them on zirc.dev's Roles tab. A kind this reader doesn't know is left out
+    /// ([`crate::lenient`]), as it couldn't take one.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        with = "crate::lenient::known_ones"
+    )]
+    #[ts(as = "Vec<crate::role_report::Subject>")]
+    #[schemars(with = "Vec<crate::role_report::Subject>")]
     pub reports: Vec<crate::role_report::Subject>,
 }
 
@@ -140,9 +154,14 @@ pub struct Address {
     /// The secret each tool of [`SIGNED_BY_OWN`] signs its posts with, as the tool gave it to
     /// the role's admins: the server checks those posts' signatures with it, and takes no
     /// unsigned or wrongly signed post from that tool. Never said back
-    /// ([`Listing::without_addresses`]).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    /// ([`Listing::without_addresses`]). A tool this reader doesn't know is left out.
+    #[serde(
+        default,
+        skip_serializing_if = "BTreeMap::is_empty",
+        with = "crate::lenient::known_keys"
+    )]
     #[ts(type = "Partial<Record<InboundTool, string>>")]
+    #[schemars(with = "BTreeMap<Tool, String>")]
     pub signing: BTreeMap<Tool, String>,
 }
 
@@ -985,5 +1004,126 @@ mod tests {
         );
         assert_eq!(change.words_yours(), "your main-fix took the role");
         assert_eq!(SeatChange::of(&change.event()), Some(change));
+    }
+
+    /// The roles as a server answered `zirc roles` on 26 Nov 2026 (GET /api/v1/roles, its
+    /// seats as the Roles tab draws them), which zirc 0.1.67 couldn't read: its holder's card
+    /// had no title, which 40d9584 made optional.
+    fn answered_today() -> serde_json::Value {
+        serde_json::json!({
+            "listing": {
+                "roles": [{
+                    "name": "fixer",
+                    "repository": "monorepo",
+                    "brief": "Owns a broken master and flaky tests.",
+                    "triggers": [
+                        {"state": "master", "level": "broken"},
+                        {"landed": ["MODULE.bazel"]},
+                        {"every": "7d", "day": "mon", "at": "09:00"},
+                    ],
+                    "seats": 1,
+                    "reports": ["warning", "flaky", "container"],
+                }, {
+                    "name": "oncall",
+                    "repository": "server",
+                    "brief": "Owns errors in production.",
+                    "reports": ["error", "issue", "incident"],
+                }],
+                "version": "v7",
+            },
+            "seats": [{
+                "role": "fixer",
+                "repository": "monorepo",
+                "holder": {"machine": "mattias-mbp", "since": 1_764_000_000_000_u64,
+                           "session": "cc-8acfe2", "name": "fixer", "tool": "claude-code"},
+                "last": {"machine": "mattias-mbp", "since": 1, "session": "cc-1",
+                         "title": "Fix master"},
+                "waiting": 2,
+                "wakes_on": ["master is broken", "a direct message"],
+                "woke_today": 3,
+                "picture": "fixer",
+                "hue": 210,
+                "holder_machine": "Mattias's mbp",
+                "day": "Woke 3 times today · 2 messages waiting",
+            }, {
+                "role": "oncall",
+                "repository": "server",
+                "wakes_on": ["a direct message"],
+                "picture": "oncall",
+                "hue": 30,
+                "day": "Not woken today",
+            }],
+        })
+    }
+
+    #[test]
+    fn todays_listing_reads() {
+        let standing: Standing = serde_json::from_value(answered_today()).unwrap();
+        let (fixer, seat) = standing.role("fixer").unwrap();
+        assert_eq!(fixer.triggers.len(), 3);
+        let holder = seat.unwrap().holder.as_ref().unwrap();
+        assert_eq!(
+            (holder.session.title.as_deref(), holder.machine.as_str()),
+            (None, "mattias-mbp")
+        );
+        let last = seat.unwrap().last.as_ref().unwrap();
+        assert_eq!(last.session.title.as_deref(), Some("Fix master"));
+        let (oncall, _) = standing.role("oncall").unwrap();
+        assert_eq!(oncall.reports, crate::role_report::Subject::ALL[3..]);
+        // And what zirc.dev is answered, the same.
+        let shown: StandingShown = serde_json::from_value(answered_today()).unwrap();
+        assert_eq!(
+            shown.seats[0].holder_machine.as_deref(),
+            Some("Mattias's mbp")
+        );
+    }
+
+    #[test]
+    fn a_newer_servers_listing_still_reads() {
+        let mut said = answered_today();
+        let fixer = &mut said["listing"]["roles"][0];
+        // A kind of report, a kind of trigger and a level this reader doesn't know, and
+        // fields it doesn't know, all over.
+        fixer["reports"] = serde_json::json!(["warning", "deploy", "flaky"]);
+        fixer["triggers"] = serde_json::json!([
+            {"state": "master", "level": "broken"},
+            {"state": "master", "level": "on-fire"},
+            {"cron": "0 9 * * 1"},
+            {"landed": ["web"], "only_on": "master"},
+        ]);
+        fixer["colour"] = serde_json::json!("teal");
+        said["listing"]["addresses"] = serde_json::json!([{
+            "role": "fixer", "digest": "ab", "signing": {"sentry": "s", "bugsnag": "b"},
+            "rotated": 3,
+        }]);
+        said["seats"][0]["holder"]["avatar"] = serde_json::json!("gem");
+        said["seats"][0]["mood"] = serde_json::json!({"calm": true});
+        said["generation"] = serde_json::json!(2);
+        let standing: Standing = serde_json::from_value(said).unwrap();
+        let (fixer, seat) = standing.role("fixer").unwrap();
+        assert_eq!(
+            fixer.reports,
+            [
+                crate::role_report::Subject::Warning,
+                crate::role_report::Subject::Flaky
+            ]
+        );
+        assert_eq!(fixer.wakes_on(), ["master is broken", WAKES_ON_MESSAGE]);
+        assert_eq!(
+            standing.listing.addresses[0]
+                .signing
+                .keys()
+                .collect::<Vec<_>>(),
+            [&Tool::Sentry]
+        );
+        // What it wakes on is the server's words, which name what this reader can't.
+        assert_eq!(
+            seat.unwrap().wakes_on,
+            ["master is broken", "a direct message"]
+        );
+        assert_eq!(
+            seat.unwrap().holder.as_ref().unwrap().session.session,
+            "cc-8acfe2"
+        );
     }
 }

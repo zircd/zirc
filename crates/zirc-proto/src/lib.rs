@@ -26,6 +26,7 @@ pub mod inbound;
 pub mod irc;
 pub mod join;
 pub mod leases;
+pub mod lenient;
 pub mod lines;
 pub mod link;
 pub mod logging;
