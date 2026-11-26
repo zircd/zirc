@@ -18,7 +18,7 @@ use zirc_proto::onboarding::Note;
 use zirc_proto::woke::{self, By, Settled, Side, What, Woke};
 use zirc_proto::{Event, ci};
 
-use super::conversation::{Entry, EntryKind, agent};
+use super::conversation::{Entry, EntryKind};
 use super::flat::RichSpan;
 use super::rich::{Span, SpanKind};
 use super::{Chat, strip_formatting};
@@ -208,24 +208,33 @@ impl Chat {
         }
     }
 
-    /// A wake's words after its heading, as we read them: `Rajesh Iyer replied in #agents: the
-    /// old listener lingers 200 ms`.
+    /// A wake's words after its heading, as we read them in the conversation called
+    /// `here`: `Rajesh Iyer replied in #agents: the old listener lingers 200 ms`. In the chat
+    /// it was caused in, which it needn't name: `Rajesh Iyer replied: …`.
     #[must_use]
-    pub fn woke_words(&self, woke: &Woke) -> String {
-        let words = woke.words(self.woke_who(woke).as_deref());
+    pub fn woke_words(&self, woke: &Woke, here: &str) -> String {
+        let named = if woke.in_its_chat(here) {
+            &Woke {
+                channel: None,
+                ..woke.clone()
+            }
+        } else {
+            woke
+        };
+        let words = named.words(self.woke_who(woke).as_deref());
         match self.woke_detail(woke) {
             Some(detail) => format!("{words}: {detail}"),
             None => words,
         }
     }
 
-    /// What a wake's line draws, said by the agent `session` on the machine `nick`: who
-    /// woke, and why, in bold ([`Woke::heading`]), then what.
+    /// What a wake's line draws, said by the agent `session` on the machine `nick`, in the
+    /// conversation called `here`: who woke, and why, in bold ([`Woke::heading`]), then what.
     #[must_use]
-    pub fn woke_callout(&self, woke: &Woke, nick: &str, session: &str) -> Callout {
+    pub fn woke_callout(&self, woke: &Woke, nick: &str, session: &str, here: &str) -> Callout {
         Callout {
             label: woke.heading(&self.side_name(nick, Some(session))),
-            spans: vec![text(self.woke_words(woke))],
+            spans: vec![text(self.woke_words(woke, here))],
             tone: woke.tone().role().to_owned(),
             button: None,
             action: None,
@@ -340,11 +349,11 @@ impl Chat {
             .is_some_and(|seen| !seen.contains(&note))
     }
 
-    /// The first-wake note under `woke`, the newest wake's line in the conversation called
-    /// `name`, when that's with one of our own agents and we haven't seen the note.
+    /// The first-wake note under `woke`, the newest wake's line in a conversation, said by
+    /// the agent `session` on the machine `nick`, when that's one of our own agents and we
+    /// haven't seen the note.
     #[must_use]
-    pub fn first_wake_note(&self, name: &str, woke: &Woke) -> Option<Callout> {
-        let (nick, session) = agent(name)?;
+    pub fn first_wake_note(&self, nick: &str, session: &str, woke: &Woke) -> Option<Callout> {
         if !self.ours(nick) || !self.note_unseen(Note::FirstWake) {
             return None;
         }
@@ -391,39 +400,55 @@ mod tests {
     const AGENTS: &str = zirc_proto::AGENTS_CHANNEL;
     const OURS: &str = "me-mbp/cc-1";
 
-    /// What woke our agent in [`woken`]: alice's reply in the agents' room.
-    fn reply() -> Woke {
+    /// What woke our agent in [`woken_in`]: alice's reply in `room`.
+    fn reply_in(room: &str) -> Woke {
         Woke {
             from: Some("alice".into()),
-            channel: Some(AGENTS.into()),
+            channel: Some(room.into()),
             line: Some("p1".into()),
             ..Woke::new(What::Replied, By::Person)
         }
     }
 
+    /// What woke our agent in [`woken`]: alice's reply in the agents' room.
+    fn reply() -> Woke {
+        reply_in(AGENTS)
+    }
+
     /// `chat()`, in the agents' room with our machine, where alice said something to our
-    /// agent `checkout` (`cc-1`), which woke it, and it answered.
-    fn woken() -> Chat {
+    /// agent `checkout` (`cc-1`) in `room`, which woke it, said in `said_in` (where its chat
+    /// is, as zircd says it now, or the agents' room, as an older zircd says every wake),
+    /// and it answered in the agents' room.
+    fn woken_in(room: &str, said_in: &str) -> Chat {
         let mut chat = chat();
         feed(&mut chat, &[":me!u@h JOIN #agents"]);
-        let said = ":alice!u@h PRIVMSG #agents :the old listener lingers 200 ms";
+        let said = format!(":alice!u@h PRIVMSG {room} :the old listener lingers 200 ms");
         let answer = Event::Text {
             body: "binding port 0 instead".into(),
         };
         feed(
             &mut chat,
             &[
-                &at("10:00:00", Some("p1"), said),
-                &at("10:00:01", Some("w1"), &ours(&reply().event())),
-                &at("10:00:30", Some("a1"), &ours(&answer)),
+                &at("10:00:00", Some("p1"), &said),
+                &at(
+                    "10:00:01",
+                    Some("w1"),
+                    &ours(said_in, &reply_in(room).event()),
+                ),
+                &at("10:00:30", Some("a1"), &ours(AGENTS, &answer)),
             ],
         );
         chat
     }
 
-    /// `event` from our agent `checkout` in the agents' room, as a line to feed.
-    fn ours(event: &Event) -> String {
-        zirc("me-mbp", AGENTS, &named("cc-1", "checkout", event.clone()))
+    /// Alice's reply in the agents' room woke our agent, said there.
+    fn woken() -> Chat {
+        woken_in(AGENTS, AGENTS)
+    }
+
+    /// `event` from our agent `checkout` in `room`, as a line to feed.
+    fn ours(room: &str, event: &Event) -> String {
+        zirc("me-mbp", room, &named("cc-1", "checkout", event.clone()))
     }
 
     /// Adds `settled`, said by `session` on `nick`, to the agents' room: straight in, as
@@ -438,20 +463,42 @@ mod tests {
         chat.conversations[at].entries.push(entry);
     }
 
+    /// The wakes `lines` draw, as they say them.
+    fn wakes(lines: &[Line]) -> Vec<&str> {
+        shaped(lines, RowShape::Woke)
+            .into_iter()
+            .map(|line| line.text.as_str())
+            .collect()
+    }
+
     #[test]
-    fn a_wake_is_in_the_agents_own_conversation_and_says_what_its_reader_can_read() {
+    fn a_wake_a_chats_message_caused_is_drawn_in_that_chat_alone() {
+        // The user's choices, 26 Nov 2026: where the conversation happened, not the agent's
+        // own conversation, and saying the line it names, though not the chat it's in.
         let chat = woken();
+        let said = "checkout woke: alice replied: the old listener lingers 200 ms";
+        assert_eq!(wakes(&chat.lines(AGENTS, utc(), false)), [said]);
+        assert!(wakes(&chat.agent_lines(OURS, utc())).is_empty());
+        let api = woken_in("#api", "#api");
+        assert_eq!(wakes(&api.lines("#api", utc(), false)), [said]);
+        assert!(wakes(&api.lines(AGENTS, utc(), false)).is_empty());
+        assert!(wakes(&api.agent_lines(OURS, utc())).is_empty());
+    }
+
+    #[test]
+    fn an_older_zircds_wake_for_another_rooms_line_is_the_agents_own() {
+        let chat = woken_in("#api", AGENTS);
         let woke: Vec<Woke> = chat
             .agent_activity(OURS)
             .iter()
             .filter_map(|line| woke_of(&line.entry))
             .collect();
-        assert_eq!(woke, [reply()]);
-        let callout = chat.woke_callout(&woke[0], "me-mbp", "cc-1");
+        assert_eq!(woke, [reply_in("#api")]);
+        let callout = chat.woke_callout(&woke[0], "me-mbp", "cc-1", OURS);
         // Who woke first, then what (the user's choice, 25 Nov 2026).
         assert_eq!(
             callout.said(),
-            "checkout woke: alice replied in #agents: the old listener lingers 200 ms"
+            "checkout woke: alice replied in #api: the old listener lingers 200 ms"
         );
         assert_eq!(callout.tone, "warning");
         // A line said where we aren't is named, never quoted.
@@ -459,29 +506,60 @@ mod tests {
             channel: Some("#secret".into()),
             ..reply()
         };
-        assert_eq!(chat.woke_words(&elsewhere), "alice replied in #secret");
+        assert_eq!(
+            chat.woke_words(&elsewhere, OURS),
+            "alice replied in #secret"
+        );
+        // The room it was said in keeps it to Everything.
+        assert!(wakes(&chat.lines(AGENTS, utc(), false)).is_empty());
+        assert!(wakes(&chat.lines("#api", utc(), false)).is_empty());
     }
 
     #[test]
-    fn a_room_keeps_a_wake_to_everything_and_counts_none_unread() {
+    fn a_wake_counts_nothing_unread_and_is_no_lists_preview_wherever_it_shows() {
         let mut chat = woken();
-        let shown = |chat: &Chat| {
-            let agents = chat.conversation(AGENTS).unwrap();
-            let entries = agents.entries.iter();
+        let shown = |chat: &Chat, room: &str| {
+            let room = chat.conversation(room).unwrap();
+            let entries = room.entries.iter();
             entries
-                .map(|entry| (agents.shows(entry), agents.counts(entry, "me")))
+                .map(|entry| (room.shows(entry), room.counts(entry, "me")))
                 .collect::<Vec<_>>()
         };
-        // Alice's line and the agent's answer, never the wake.
-        assert_eq!(shown(&chat), [(true, true), (false, false), (true, true)]);
-        let agents = chat.conversation(AGENTS).unwrap();
         assert_eq!(
-            agents.last_said(),
-            agents.entries.last().map(|entry| entry.time)
+            shown(&chat, AGENTS),
+            [(true, true), (true, false), (true, true)]
         );
+        let agents = chat.conversation(AGENTS).unwrap();
         assert!(!agents.entries[1].is_shown_in_list());
-        chat.set_threshold(AGENTS, zirc_proto::Level::Debug);
-        assert_eq!(shown(&chat)[1], (true, true));
+        // One said in the agents' room for what another room caused shows only under
+        // Everything, and counts nothing there either.
+        let older = woken_in("#api", AGENTS);
+        assert_eq!(shown(&older, AGENTS), [(false, false), (true, true)]);
+        let mut older = older;
+        older.set_threshold(AGENTS, zirc_proto::Level::Debug);
+        assert_eq!(shown(&older, AGENTS)[0], (true, false));
+        // A person's word to the agent: said to them, in their conversation with it.
+        let wrote = Woke {
+            from: Some("me".into()),
+            line: Some("d1".into()),
+            ..Woke::new(What::Wrote, By::Person)
+        };
+        feed(
+            &mut chat,
+            &[&at("10:01:00", Some("w2"), &ours("me", &wrote.event()))],
+        );
+        assert_eq!(
+            wakes(&chat.agent_lines(OURS, utc())),
+            ["checkout woke: you wrote to it"]
+        );
+        let direct = chat.conversation(OURS).expect("our agent's conversation");
+        assert!(
+            direct
+                .entries
+                .iter()
+                .all(|entry| !direct.counts(entry, "me"))
+        );
+        assert_eq!(wakes(&chat.lines(AGENTS, utc(), false)).len(), 1);
     }
 
     #[test]
@@ -492,7 +570,7 @@ mod tests {
             state: Some(zirc_proto::card::State::Failed),
             ..Woke::new(What::Build, By::Ci)
         };
-        let ours = |woke: &Woke| chat.woke_callout(woke, "me-mbp", "cc-1");
+        let ours = |woke: &Woke| chat.woke_callout(woke, "me-mbp", "cc-1", OURS);
         assert_eq!(ours(&failed).tone, "error");
         assert_eq!(ours(&failed).said(), "checkout woke: build 612 failed");
         let as_fixer = Woke {
@@ -508,13 +586,13 @@ mod tests {
             session: Some("cc-1".into()),
             ..Woke::new(What::Asked, By::Agent)
         };
-        assert_eq!(chat.woke_words(&asked), "checkout asked it");
+        assert_eq!(chat.woke_words(&asked, OURS), "checkout asked it");
         assert_eq!(ours(&asked).tone, "agent");
         let wrote = Woke {
             from: Some("me".into()),
             ..Woke::new(What::Wrote, By::Person)
         };
-        assert_eq!(chat.woke_words(&wrote), "you wrote to it");
+        assert_eq!(chat.woke_words(&wrote, OURS), "you wrote to it");
     }
 
     fn settled() -> Settled {
@@ -563,11 +641,13 @@ mod tests {
     #[test]
     fn the_first_wakes_note_shows_once_an_app_says_its_unseen_and_goes_with_got_it() {
         let mut chat = woken();
-        assert_eq!(chat.first_wake_note(OURS, &reply()), None);
+        assert_eq!(chat.first_wake_note("me-mbp", "cc-1", &reply()), None);
         assert!(chat.set_notes_seen([Note::FirstOverlap]));
         // A teammate's agent's wake isn't our first.
-        assert_eq!(chat.first_wake_note("bob-mbp/cc-2", &reply()), None);
-        let note = chat.first_wake_note(OURS, &reply()).expect("the note");
+        assert_eq!(chat.first_wake_note("bob-mbp", "cc-2", &reply()), None);
+        let note = chat
+            .first_wake_note("me-mbp", "cc-1", &reply())
+            .expect("the note");
         assert!(
             note.said().starts_with(
                 "This is a wake. Alice replied in #agents, so Zirc woke checkout: no polling"
@@ -580,7 +660,7 @@ mod tests {
             chat.see_note(note.action.as_deref().unwrap()),
             Some(Note::FirstWake)
         );
-        assert_eq!(chat.first_wake_note(OURS, &reply()), None);
+        assert_eq!(chat.first_wake_note("me-mbp", "cc-1", &reply()), None);
         assert_eq!(chat.see_note("first_wake"), None);
     }
 
@@ -613,14 +693,14 @@ mod tests {
 
     #[test]
     fn a_wake_is_a_row_of_its_own_and_its_answer_heads_a_new_run() {
-        let chat = woken();
+        let chat = woken_in("#api", AGENTS);
         let lines = chat.agent_lines(OURS, utc());
         let [woke] = shaped(&lines, RowShape::Woke)[..] else {
             panic!("one wake: {lines:#?}");
         };
         assert_eq!(
             woke.text,
-            "checkout woke: alice replied in #agents: the old listener lingers 200 ms"
+            "checkout woke: alice replied in #api: the old listener lingers 200 ms"
         );
         assert_eq!(
             woke.callout.as_ref().map(|callout| callout.tone.as_str()),
@@ -635,8 +715,18 @@ mod tests {
             (answer.text.as_str(), answer.continues),
             ("checkout: binding port 0 instead", false)
         );
-        // The room keeps it to Everything.
-        assert!(shaped(&chat.lines(AGENTS, utc(), false), RowShape::Woke).is_empty());
+        // In the chat it was caused in, it's a row there, headed by no one.
+        let chat = woken();
+        let room = chat.lines(AGENTS, utc(), false);
+        let [woke] = shaped(&room, RowShape::Woke)[..] else {
+            panic!("one wake: {room:#?}");
+        };
+        assert_eq!(
+            (woke.speaker.as_ref(), woke.actions),
+            (None, LineActions::default())
+        );
+        let answer = room.last().unwrap();
+        assert!(!answer.continues, "{answer:#?}");
     }
 
     #[test]
@@ -658,29 +748,43 @@ mod tests {
         }
     }
 
-    /// The one-time note among `lines`, and the shape of the row it's under.
-    fn once(lines: &[Line]) -> Option<(RowShape, &Line)> {
-        let at = lines.iter().position(|line| line.shape == RowShape::Once)?;
-        Some((lines[at - 1].shape, &lines[at]))
+    /// The one-time notes among `lines`, and the shape of the row each is under.
+    fn once(lines: &[Line]) -> Vec<(RowShape, &Line)> {
+        (1..lines.len())
+            .filter(|at| lines[*at].shape == RowShape::Once)
+            .map(|at| (lines[at - 1].shape, &lines[at]))
+            .collect()
     }
 
     #[test]
     fn each_one_time_note_is_a_row_under_the_newest_line_its_about() {
-        let mut chat = woken();
+        let mut chat = woken_in("#api", AGENTS);
         settle(&mut chat, "10:05:00", ("me-mbp", "cc-1"), &settled());
-        assert_eq!(once(&chat.agent_lines(OURS, utc())), None);
+        assert!(once(&chat.agent_lines(OURS, utc())).is_empty());
         chat.set_notes_seen([]);
         let ours = chat.agent_lines(OURS, utc());
-        let (under, note) = once(&ours).expect("the first wake's note");
+        let [(under, note)] = once(&ours)[..] else {
+            panic!("the first wake's note: {ours:#?}");
+        };
         assert_eq!(under, RowShape::Woke);
-        assert_eq!(note.callout, chat.first_wake_note(OURS, &reply()));
+        let reply = reply_in("#api");
+        assert_eq!(note.callout, chat.first_wake_note("me-mbp", "cc-1", &reply));
         let room = chat.lines(AGENTS, utc(), false);
-        let (under, note) = once(&room).expect("the first overlap's note");
+        let [(under, note)] = once(&room)[..] else {
+            panic!("the first overlap's note: {room:#?}");
+        };
         assert_eq!(under, RowShape::Settled);
         assert_eq!(note.callout, chat.first_overlap_note(&settled()));
+        // A wake in the chat it was caused in has it there, as does an overlap settled.
+        let mut chat = woken();
+        settle(&mut chat, "10:05:00", ("me-mbp", "cc-1"), &settled());
+        chat.set_notes_seen([]);
+        let room = chat.lines(AGENTS, utc(), false);
+        let under: Vec<RowShape> = once(&room).iter().map(|(under, _)| *under).collect();
+        assert_eq!(under, [RowShape::Woke, RowShape::Settled]);
         chat.see_note("first_wake");
         chat.see_note("first_overlap");
-        assert_eq!(once(&chat.agent_lines(OURS, utc())), None);
-        assert_eq!(once(&chat.lines(AGENTS, utc(), false)), None);
+        assert!(once(&chat.agent_lines(OURS, utc())).is_empty());
+        assert!(once(&chat.lines(AGENTS, utc(), false)).is_empty());
     }
 }

@@ -583,24 +583,46 @@ impl Brain {
         let Some(definition) = self.kept.listing.role(role).cloned() else {
             return Vec::new();
         };
-        // The holder, speaking as the role.
-        if let Some(message) = &message
-            && let Some((say, text)) = Say::of(&message.event)
-        {
-            let holder = self.holder(role, now);
-            let theirs = sender == Sender::Machine
-                && holder.as_ref().is_some_and(|holder| {
-                    holder.machine.eq_ignore_ascii_case(account)
-                        && holder.session.session == message.session
-                });
-            if !theirs || say.role != role {
-                info!(
-                    role,
-                    "something said as a role by a session not holding it: refused"
-                );
-                return Vec::new();
+        // The holder, speaking as the role, or saying it woke for a person's word to the role
+        // (zirc_proto::woke::Woke::chat): said in their chat with the role, as it's theirs.
+        if let Some(message) = &message {
+            let said = Say::of(&message.event);
+            let woke = Woke::of(&message.event);
+            if said.is_some() || woke.is_some() {
+                let holder = self.holder(role, now);
+                let theirs = sender == Sender::Machine
+                    && holder.as_ref().is_some_and(|holder| {
+                        holder.machine.eq_ignore_ascii_case(account)
+                            && holder.session.session == message.session
+                    });
+                let out = match (said, woke) {
+                    (Some((say, text)), _) if say.role == role => {
+                        Some(Self::say_as(&definition, message, say, text))
+                    }
+                    (_, Some(woke)) if woke.role.as_deref() == Some(role) => {
+                        woke.chat().and_then(|chat| match chat {
+                            zirc_proto::woke::Chat::Direct(to) => Some(Out {
+                                role: definition.name.clone(),
+                                to: to.to_owned(),
+                                message: Message {
+                                    repo: Some(definition.repository.clone()),
+                                    ..message.clone()
+                                },
+                            }),
+                            zirc_proto::woke::Chat::Channel(_) => None,
+                        })
+                    }
+                    _ => None,
+                };
+                let Some(out) = out.filter(|_| theirs) else {
+                    info!(
+                        role,
+                        "something said as a role by a session not holding it: refused"
+                    );
+                    return Vec::new();
+                };
+                return vec![out];
             }
-            return vec![Self::say_as(&definition, message, say, text)];
         }
         if sender != Sender::Person {
             return Vec::new();

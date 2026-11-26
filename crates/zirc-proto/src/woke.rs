@@ -1,10 +1,12 @@
 //! What agents do, said where people see it (the user's decisions, 23 and 24 Nov 2026):
-//! each wake of a session's watch as one line in the session's own conversation
-//! ([`Woke`], [`KIND`]: `main-fix woke: build 612 failed on main`), and each overlap two sessions
-//! settled as one line in the agents' room ([`Settled`], [`SETTLED_KIND`]), which the
-//! session that agreed says with `zirc settle`. zircd says a wake for the session it woke,
-//! in the room its posts go to, at info, so history keeps it; apps show it only in the
-//! session's conversation, and it's nothing unread, nothing pushed and wakes no one.
+//! each wake of a session's watch as one line ([`Woke`], [`KIND`]: `main-fix woke: build 612
+//! failed on main`), and each overlap two sessions settled as one line in the agents' room
+//! ([`Settled`], [`SETTLED_KIND`]), which the session that agreed says with `zirc settle`.
+//! zircd says a wake for the session it woke, at info, so history keeps it, and where
+//! [`Woke::chat`] says (the user's choices, 26 Nov 2026): a wake a chat's message caused, in
+//! that chat alone, where apps draw it in among what's said; any other, in the room the
+//! session's posts go to, where apps show it only in the session's own conversation. Either
+//! way it's nothing unread, nothing pushed and wakes no one.
 //!
 //! Every word of both lines is decided here, and which of [`Tone`]'s colours a wake's edge
 //! has; who is named, as people read them, is the apps' to say ([`Woke::words`]'s `who`).
@@ -147,6 +149,15 @@ impl Tone {
             Self::Quiet => "muted",
         }
     }
+}
+
+/// The chat whose message woke a session ([`Woke::chat`]), where its line is said.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Chat<'a> {
+    /// A channel, as it's called on the server: `#general`.
+    Channel(&'a str),
+    /// The direct messages with someone, by their nick: the person who wrote.
+    Direct(&'a str),
 }
 
 /// A session's watch woke: what an [`Event::Custom`] of [`KIND`] carries, from the session.
@@ -316,6 +327,55 @@ impl Woke {
                 serde_json::from_value(data.clone()).ok()
             }
             _ => None,
+        }
+    }
+
+    /// The chat whose message woke it, which its line is said in and drawn in, alone (the
+    /// user's choices, 26 Nov 2026): the channel a line that named it, replied to it or
+    /// posted where it listens was said in, or a reaction to what it said was given in; a
+    /// person's direct message, to it or to the role it holds, the chat with that person.
+    /// `None` for what no chat caused, said in the room its posts go to: CI, wherever it
+    /// spoke, and zirc itself, how something
+    /// stands, a report, an overlap, another session's intent, commit or landing, a request
+    /// answered, and what another agent sent it directly, a chat no person reads.
+    #[must_use]
+    pub fn chat(&self) -> Option<Chat<'_>> {
+        // CI's word, or zirc's, is no chat's, wherever it was said.
+        if matches!(self.by, By::Ci | By::Zirc) {
+            return None;
+        }
+        match self.what {
+            What::Mentioned | What::Replied | What::Posted | What::Reacted => {
+                match self.channel.as_deref() {
+                    Some(channel) if channel.starts_with(['#', '&']) => {
+                        Some(Chat::Channel(channel))
+                    }
+                    _ => self.person_wrote(),
+                }
+            }
+            What::Wrote => self.person_wrote(),
+            _ => None,
+        }
+    }
+
+    /// The chat with the person it came from directly, when a person it was.
+    fn person_wrote(&self) -> Option<Chat<'_>> {
+        (self.by == By::Person)
+            .then_some(self.from.as_deref())
+            .flatten()
+            .map(Chat::Direct)
+    }
+
+    /// Whether its line, said in the conversation called `name`, is said in its own chat
+    /// ([`Woke::chat`]), so drawn there in among what's said: a channel's, said in that
+    /// channel, or one said to us directly. Else it's the session's, shown only in its own
+    /// conversation, as an older zircd says every wake.
+    #[must_use]
+    pub fn in_its_chat(&self, name: &str) -> bool {
+        match self.chat() {
+            Some(Chat::Channel(channel)) => channel.eq_ignore_ascii_case(name),
+            Some(Chat::Direct(_)) => !name.starts_with(['#', '&']),
+            None => false,
         }
     }
 
@@ -725,6 +785,62 @@ mod tests {
             branch: Some("main-fix".into()),
             landing,
             ..Woke::new(What::Build, By::Ci)
+        }
+    }
+
+    #[test]
+    fn a_wake_is_said_in_the_chat_whose_message_caused_it_and_any_other_in_the_room() {
+        let said = |what, by, channel: Option<&str>| Woke {
+            from: Some("rajesh".into()),
+            channel: channel.map(str::to_owned),
+            ..Woke::new(what, by)
+        };
+        let named = said(What::Mentioned, By::Person, Some("#general"));
+        assert_eq!(named.chat(), Some(Chat::Channel("#general")));
+        assert!(named.in_its_chat("#General"));
+        assert!(!named.in_its_chat("#agents"));
+        assert!(!named.in_its_chat("m3-mac/cc-1"));
+        for what in [What::Replied, What::Posted, What::Reacted] {
+            assert_eq!(
+                said(what, By::Agent, Some("#agents")).chat(),
+                Some(Chat::Channel("#agents"))
+            );
+        }
+        // A reaction given in a direct conversation, and a person's direct message.
+        assert_eq!(
+            said(What::Reacted, By::Person, Some("m3-mac")).chat(),
+            Some(Chat::Direct("rajesh"))
+        );
+        let wrote = said(What::Wrote, By::Person, None);
+        assert_eq!(wrote.chat(), Some(Chat::Direct("rajesh")));
+        assert!(wrote.in_its_chat("m3-mac/cc-1"));
+        assert!(wrote.in_its_chat("fixer"));
+        assert!(!wrote.in_its_chat("#agents"));
+    }
+
+    #[test]
+    fn a_wake_no_chat_caused_is_said_in_the_room() {
+        let said = |what, by, channel: Option<&str>| Woke {
+            from: Some("rajesh".into()),
+            channel: channel.map(str::to_owned),
+            ..Woke::new(what, by)
+        };
+        // What no chat caused, CI's and zirc's word, and what another agent sent it directly.
+        for woke in [
+            build(State::Failed, true),
+            said(What::Asked, By::Agent, None),
+            said(What::Noted, By::Agent, None),
+            said(What::Reacted, By::Agent, Some("m3-mac")),
+            said(What::Mentioned, By::Ci, Some("#general")),
+            said(What::Posted, By::Zirc, Some("#general")),
+            said(What::Overlap, By::Agent, Some("#agents")),
+            said(What::Intends, By::Agent, Some("#agents")),
+            said(What::Committed, By::Agent, Some("#agents")),
+            said(What::Decided, By::Person, Some("#decisions")),
+            Woke::new(What::Reported, By::Zirc),
+        ] {
+            assert_eq!(woke.chat(), None, "{woke:?}");
+            assert!(!woke.in_its_chat("#agents"));
         }
     }
 

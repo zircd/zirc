@@ -587,6 +587,94 @@ mod tests {
         assert_eq!(unread, 1);
     }
 
+    /// The fixer held by henrik's cc-1, woken by alice naming it in `#api`, said there as
+    /// zircd says it now, and by our word to it, said to us by the fixer's nick.
+    fn fixer_woken_in_its_chats() -> Chat {
+        use zirc_proto::woke::Woke;
+        let mut chat = with_fixer();
+        let host = zirc_proto::names::machine_host("henrik");
+        feed(&mut chat, &[&format!(":henrik-mbp!u@{host} JOIN #api")]);
+        let named = Woke {
+            from: Some("alice".into()),
+            channel: Some("#api".into()),
+            role: Some("fixer".into()),
+            ..Woke::new(
+                zirc_proto::woke::What::Mentioned,
+                zirc_proto::woke::By::Person,
+            )
+        };
+        feed(
+            &mut chat,
+            &[&at(
+                "10:02:00",
+                Some("w2"),
+                &format!(":henrik-mbp!u@{host} PRIVMSG #api :y"),
+            )],
+        );
+        let api = chat.position("#api").unwrap();
+        let w2 = chat.conversations[api]
+            .entries
+            .iter_mut()
+            .find(|entry| entry.id.as_deref() == Some("w2"))
+            .unwrap();
+        w2.kind = EntryKind::Zirc(Message::new("cc-1", named.event()));
+        let wrote = Woke {
+            from: Some("me".into()),
+            role: Some("fixer".into()),
+            ..Woke::new(zirc_proto::woke::What::Wrote, zirc_proto::woke::By::Person)
+        };
+        let took = SeatChange {
+            role: "fixer".into(),
+            repository: "monorepo".into(),
+            holder: holder(),
+            took: true,
+        };
+        from_fixer(&mut chat, "#api", "10:02:30", &took.event());
+        from_fixer(&mut chat, "me", "10:03:00", &wrote.event());
+        let fixer = chat.position("fixer").unwrap();
+        chat.conversations[fixer].entries.last_mut().unwrap().kind =
+            EntryKind::Zirc(Message::new("cc-1", wrote.event()));
+        // Counted again, as it's taken in as heard: the fed line it stands in for counted.
+        chat.conversations[fixer].recount("me");
+        chat
+    }
+
+    /// The wakes the conversation called `name` draws, as they say them.
+    fn wakes_in(chat: &Chat, name: &str) -> Vec<String> {
+        chat.lines(name, utc(), false)
+            .into_iter()
+            .filter(|line| line.shape == RowShape::Woke)
+            .map(|line| line.text)
+            .collect()
+    }
+
+    #[test]
+    fn a_wake_for_our_word_to_the_role_is_in_our_conversation_with_it_named_by_its_holder() {
+        // The user's choices, 26 Nov 2026: in the chat it was caused in, alone.
+        let chat = fixer_woken_in_its_chats();
+        let said = wakes_in(&chat, "fixer");
+        let [said] = &said[..] else {
+            panic!("one wake: {said:#?}");
+        };
+        assert!(said.starts_with("henrik's "), "{said}");
+        assert!(
+            said.ends_with(" woke as the fixer: you wrote to it"),
+            "{said}"
+        );
+        assert_eq!(chat.conversation("fixer").unwrap().unread, 0);
+    }
+
+    #[test]
+    fn a_roles_wake_a_rooms_line_caused_is_that_rooms_alone() {
+        let chat = fixer_woken_in_its_chats();
+        assert_eq!(wakes_in(&chat, "#api").len(), 1);
+        assert!(
+            !wakes_in(&chat, "fixer")
+                .iter()
+                .any(|said| said.contains("named it")),
+        );
+    }
+
     #[test]
     fn a_line_ops_hides_is_not_what_its_row_previews() {
         let mut chat = with_fixer();

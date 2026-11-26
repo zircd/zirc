@@ -1401,6 +1401,52 @@ mod tests {
     }
 
     #[test]
+    fn a_wake_a_channels_line_caused_is_a_row_under_it_in_that_channel() {
+        use zirc_proto::woke::{By, What, Woke};
+        let mut chat = chat();
+        let woke = Woke {
+            from: Some("alice".into()),
+            channel: Some("#api".into()),
+            line: Some("a1".into()),
+            ..Woke::new(What::Mentioned, By::Person)
+        };
+        hear(
+            &mut chat,
+            &[
+                at(
+                    "2026-10-30T09:00",
+                    "a1",
+                    "alice!u@h",
+                    "PRIVMSG #api :cc-12: is it cached?",
+                ),
+                zirc(
+                    ("2026-10-30T09:00", "w1"),
+                    ("me-mbp", "me"),
+                    "#api",
+                    woke.event(),
+                ),
+            ],
+        );
+        let lines = chat.lines("#api", utc(), false);
+        let said = shown(&layout(&look(&chat, 200, Links::Plain), &lines));
+        let at = said
+            .iter()
+            .position(|row| row.contains("is it cached?"))
+            .expect("alice's line");
+        // The user's choices, 26 Nov 2026: in the chat it was caused in, after its line.
+        assert_eq!(
+            said[at + 1].trim(),
+            "▎ cc-12 woke: alice named it: cc-12: is it cached?  09:00",
+            "{said:#?}"
+        );
+        let agent = chat.agent_lines("me-mbp/cc-12", utc());
+        assert!(
+            agent.iter().all(|line| line.shape != RowShape::Woke),
+            "{agent:#?}"
+        );
+    }
+
+    #[test]
     fn draws_a_new_divider_above_the_first_unread_without_breaking_the_run() {
         let mut chat = chat();
         hear(

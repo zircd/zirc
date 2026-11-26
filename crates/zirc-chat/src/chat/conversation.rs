@@ -225,10 +225,13 @@ impl Entry {
     }
 
     /// Whether it counts towards what's unread when `me` hasn't read it: someone else
-    /// saying something.
+    /// saying something, but never a wake's line, wherever it's shown.
     #[must_use]
     pub fn counts(&self, me: &str) -> bool {
-        self.is_said() && !self.from.is_empty() && !self.from.eq_ignore_ascii_case(me)
+        self.is_said()
+            && !self.is_woke()
+            && !self.from.is_empty()
+            && !self.from.eq_ignore_ascii_case(me)
     }
 
     /// What it asks of whoever reads it: a zirc message's level ([`zirc_proto::Message::level`]),
@@ -249,12 +252,20 @@ impl Entry {
                 && message.level_or_info() == Level::Info)
     }
 
-    /// Whether it's a wake's line ([`zirc_proto::woke`]): history keeps it for the agent's
-    /// own conversation, where it's shown; a room shows it only under Everything, as it
-    /// shows commits and pushes, and it's never unread there.
+    /// Whether it's a wake's line ([`zirc_proto::woke`]), never unread anywhere.
     #[must_use]
     pub fn is_woke(&self) -> bool {
         matches!(&self.kind, EntryKind::Zirc(message) if zirc_proto::woke::is_woke(&message.event))
+    }
+
+    /// Whether it's a wake's line said in the chat whose message caused it, the
+    /// conversation called `name` ([`zirc_proto::woke::Woke::in_its_chat`]): shown there, in
+    /// among what's said, and nowhere else. Any other wake's is the agent's, which a room
+    /// keeps to Everything, as it does commits and pushes, and the agent's own conversation
+    /// shows.
+    #[must_use]
+    pub fn is_woke_in(&self, name: &str) -> bool {
+        super::woke_of(self).is_some_and(|woke| woke.in_its_chat(name))
     }
 
     /// The id of the card it updates, when it's a live update of one ([`Message::is_live`]):
@@ -455,7 +466,8 @@ impl Conversation {
     /// work is whole.
     #[must_use]
     pub fn shows(&self, entry: &Entry) -> bool {
-        let level = if self.kind == Kind::Channel && (entry.is_commit_or_push() || entry.is_woke())
+        let level = if self.kind == Kind::Channel
+            && (entry.is_commit_or_push() || entry.is_woke() && !entry.is_woke_in(&self.name))
         {
             COMMITS_AND_PUSHES_SHOW_AT
         } else {

@@ -198,6 +198,56 @@ fn only_the_holders_session_speaks_as_the_role() {
 }
 
 #[test]
+fn the_holders_wake_for_a_persons_word_to_the_role_is_said_to_them_as_the_role() {
+    let mut brain = brain();
+    take(&mut brain, "henrik-mbp", "cc-1", LATER);
+    brain.tick(LATER + zirc_proto::leases::SETTLE);
+    let woke = |what, role: &str| Woke {
+        from: Some("ada".into()),
+        role: Some(role.into()),
+        ..Woke::new(what, By::Person)
+    };
+    let said = |session: &str, account: &str, woke: &Woke| Input::ToRole {
+        role: "fixer".into(),
+        from: account.into(),
+        account: account.into(),
+        sender: Sender::Machine,
+        id: None,
+        message: Some(Message::new(session, woke.event())),
+        text: String::new(),
+    };
+    let wrote = woke(What::Wrote, "fixer");
+    let outs = brain.heard(said("cc-1", "henrik-mbp", &wrote), LATER + 5000);
+    let [out] = &outs[..] else {
+        panic!("one line: {outs:?}");
+    };
+    assert_eq!((out.role.as_str(), out.to.as_str()), ("fixer", "ada"));
+    assert_eq!(Woke::of(&out.message.event), Some(wrote.clone()));
+    assert_eq!(
+        (out.message.session.as_str(), out.message.repo.as_deref()),
+        ("cc-1", Some("monorepo"))
+    );
+    // Only the holder's, only for a person's word to this role, never a room's.
+    for (session, account, woke) in [
+        ("cc-2", "henrik-mbp", wrote.clone()),
+        ("cc-1", "other-mac", wrote.clone()),
+        ("cc-1", "henrik-mbp", woke(What::Wrote, "oncall")),
+        ("cc-1", "henrik-mbp", woke(What::Asked, "fixer")),
+        (
+            "cc-1",
+            "henrik-mbp",
+            Woke {
+                channel: Some("#general".into()),
+                ..woke(What::Mentioned, "fixer")
+            },
+        ),
+    ] {
+        let outs = brain.heard(said(session, account, &woke), LATER + 5000);
+        assert!(outs.is_empty(), "{session} {account} {woke:?}: {outs:?}");
+    }
+}
+
+#[test]
 fn a_seat_is_learnt_not_said_while_the_sidecar_first_listens() {
     let mut brain = brain();
     take(&mut brain, "henrik-mbp", "cc-1", START);

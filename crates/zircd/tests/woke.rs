@@ -1,6 +1,6 @@
 //! What agents do, said where people see it: a wake's line and a settled overlap's.
 
-use zirc_core::ipc::{Delivery, Heard, Request, Response, Watching, Why};
+use zirc_core::ipc::{Delivery, Heard, Request, Response, Target, Watching, Why};
 use zirc_proto::woke::{By, Settled, What, Woke};
 use zirc_test_ergo::require_ergo;
 
@@ -88,6 +88,43 @@ async fn a_wake_is_said_as_the_session_it_woke_and_wakes_no_one() {
     // Whoever caused it hears the line with no reason, so its own watch stays asleep.
     let (heard, _) = next_woke(&mut asker).await;
     assert_eq!(heard.why, None);
+}
+
+#[tokio::test]
+async fn a_wake_a_chats_message_caused_is_said_in_that_chat() {
+    let ergo = require_ergo!();
+    let [(alpha, _alpha_clone), (beta, beta_clone)] = two_sessions(&ergo).await;
+    let mut woken = alpha.watch(Some("cc-a")).await;
+    let mut everything = beta.watch(None).await;
+    let asked = "cc-a: does the cache survive a restart?";
+    beta.request(plain_post(beta_clone.path(), "cc-b", asked, Target::Org))
+        .await;
+    assert_eq!(next_post_why(&mut woken).await.1, Some(Why::Mention));
+    // The user's choices, 26 Nov 2026: in #general alone, where it was asked.
+    let (line, woke) = next_woke(&mut everything).await;
+    assert_eq!(
+        (line.channel.as_str(), line.message.session.as_str()),
+        ("#general", "cc-a")
+    );
+    assert_eq!(
+        (woke.what, woke.channel.as_deref()),
+        (What::Mentioned, Some("#general"))
+    );
+}
+
+#[tokio::test]
+async fn a_wake_for_cis_word_is_said_in_the_agents_room_wherever_ci_said_it() {
+    let ergo = require_ergo!();
+    let [(alpha, _alpha_clone), (beta, _beta_clone)] = two_sessions(&ergo).await;
+    let mut woken = alpha.watch(Some("cc-a")).await;
+    let mut everything = beta.watch(None).await;
+    let (ci, mut ci_in) = zirc_test_irc::integration(&ergo, "zirc-ci").await;
+    zirc_test_irc::joins(&ci, &mut ci_in, "#general").await;
+    ci.privmsg("#general", "cc-a: build 8 of login failed")
+        .unwrap();
+    assert_eq!(next_post_why(&mut woken).await.1, Some(Why::Mention));
+    let (line, woke) = next_woke(&mut everything).await;
+    assert_eq!((line.channel.as_str(), woke.by), ("#agents", By::Ci));
 }
 
 #[tokio::test]

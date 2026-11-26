@@ -187,6 +187,45 @@ async fn logs_in_as_its_account_and_hears_messages_to_it() {
     assert!(matches!(message.event, zirc_proto::Event::Text { body } if body == "on it"));
 }
 
+#[tokio::test]
+async fn a_wake_for_the_owners_word_is_said_to_the_owner_alone() {
+    let ergo = require_ergo!();
+    register(&ergo, "mattias-mbp", "right-horse").await;
+    let (home, _daemon) = machine(&config(&ergo, "mattias-mbp", "right-horse", ""));
+    connected(home.path()).await;
+    let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
+    let add = Request::RepoAdd {
+        path: repo.path().to_owned(),
+        session: Some("cc-1531f8".to_owned()),
+    };
+    ipc::request(&paths::socket(home.path()), &add)
+        .await
+        .unwrap();
+    let mut session = watching(home.path(), "cc-1531f8").await;
+    let (owner, mut owner_in) = logged_in(&ergo, "mattias").await;
+    owner
+        .privmsg("mattias-mbp", "cc-1531f8: rebase on main please")
+        .unwrap();
+    next_direct(&mut session).await;
+    // The user's choices, 26 Nov 2026: in the chat the owner wrote in, their conversation
+    // with the session.
+    let woke = |line: &Line| {
+        let message = zirc_proto::decode(line.params.get(1)?).ok()??;
+        let woke = zirc_proto::woke::Woke::of(&message.event)?;
+        Some((message.session, woke))
+    };
+    let line = next_matching(&mut owner_in, |line| {
+        line.command == "PRIVMSG" && woke(line).is_some()
+    })
+    .await;
+    assert_eq!(line.params[0], "mattias");
+    let (session, woke) = woke(&line).unwrap();
+    assert_eq!(
+        (session.as_str(), woke.what, woke.from.as_deref()),
+        ("cc-1531f8", zirc_proto::woke::What::Wrote, Some("mattias"))
+    );
+}
+
 /// The next direct message, query or answer `watching` hears that concerns its session,
 /// as `zirc watch` prints them: zircd tells every watch everything, saying why it concerns
 /// each, if it does.

@@ -806,12 +806,15 @@ impl Chat {
             .conversations
             .iter()
             .filter(|room| room.kind == super::Kind::Channel)
-            .flat_map(|room| &room.entries)
-            .filter(|entry| {
+            .flat_map(|room| room.entries.iter().map(move |entry| (room, entry)))
+            // A wake a room's message caused is that room's alone.
+            .filter(|(room, entry)| {
                 woke_of(entry)
+                    .filter(|woke| !woke.in_its_chat(&room.name))
                     .and_then(|woke| woke.role)
                     .is_some_and(|of| fold(&of) == role)
-            });
+            })
+            .map(|(_, entry)| entry);
         let mut merged = conversation.clone();
         merged.entries.extend(wakes.cloned());
         merged
@@ -877,6 +880,15 @@ fn settle_briefs(lines: &mut [Line]) {
     }
 }
 
+/// A wake's line laid out: by its key, the agent session `session` on the machine `nick`
+/// said it.
+struct Woken {
+    key: String,
+    nick: String,
+    session: String,
+    woke: zirc_proto::woke::Woke,
+}
+
 /// Puts a conversation's items into lines.
 struct Layout<'a> {
     chat: &'a Chat,
@@ -885,9 +897,9 @@ struct Layout<'a> {
     /// The room each line of an agent's activity was said in, by its entry.
     rooms: HashMap<*const Entry, String>,
     keys: Keys,
-    /// The newest wake's line, by its key, which the first-wake note goes under
+    /// The newest wake's line of one of our agents, which the first-wake note goes under
     /// ([`Layout::once`]).
-    woken: Option<(String, zirc_proto::woke::Woke)>,
+    woken: Option<Woken>,
     /// The newest settled overlap's line that names one of our agents, by its key, which
     /// the first-overlap note goes under.
     settled: Option<(String, zirc_proto::woke::Settled)>,
@@ -1164,8 +1176,24 @@ impl<'a> Layout<'a> {
                     super::EntryKind::Zirc(message) => message.session.as_str(),
                     _ => "",
                 };
-                let callout = self.chat.woke_callout(&woke, &entry.from, session);
-                self.woken = Some((line.key.clone(), woke));
+                // One a role's nick said for its holder, to whoever wrote to the role, is the
+                // holder's.
+                let nick = self
+                    .chat
+                    .role_seat(&entry.from)
+                    .and_then(|seat| seat.holder)
+                    .filter(|holder| holder.session.session == session)
+                    .map_or_else(|| entry.from.clone(), |holder| holder.machine);
+                let here = &self.conversation.name;
+                let callout = self.chat.woke_callout(&woke, &nick, session, here);
+                if self.chat.ours(&nick) {
+                    self.woken = Some(Woken {
+                        key: line.key.clone(),
+                        nick,
+                        session: session.to_owned(),
+                        woke,
+                    });
+                }
                 (RowShape::Woke, callout)
             }
             (_, Some(settled)) => {
@@ -1189,36 +1217,34 @@ impl<'a> Layout<'a> {
         line
     }
 
-    /// Puts the one-time note our person hasn't seen under the newest line it's about: the
-    /// first-wake note under the newest wake in a conversation with one of our agents, the
-    /// first-overlap note under the newest settled overlap in a channel that names one of
-    /// them (the user's choice, 24 Nov 2026).
+    /// Puts each one-time note our person hasn't seen under the newest line it's about: the
+    /// first-wake note under the newest wake of one of our agents, the first-overlap note
+    /// under the newest settled overlap in a channel that names one of them (the user's
+    /// choice, 24 Nov 2026).
     fn once(&mut self, lines: &mut Vec<Line>) {
-        // In an agent's conversation, its wakes; in a channel, the overlaps settled there.
-        let note = if self.conversation.kind == super::Kind::Channel {
-            self.settled
-                .take()
-                .and_then(|(key, settled)| Some((key, self.chat.first_overlap_note(&settled)?)))
-        } else {
-            self.woken.take().and_then(|(key, woke)| {
-                let note = self.chat.first_wake_note(&self.conversation.name, &woke)?;
-                Some((key, note))
-            })
-        };
-        let Some((under, callout)) = note else {
-            return;
-        };
-        let Some(at) = lines.iter().position(|line| line.key == under) else {
-            return;
-        };
-        let Some(time) = DateTime::from_timestamp_millis(lines[at].time_ms) else {
-            return;
-        };
-        let mut line = self.blank(format!("{under}-once"), None, time, LineKind::Note);
-        line.text = callout.said();
-        line.shape = RowShape::Once;
-        line.callout = Some(callout);
-        lines.insert(at + 1, line);
+        let settled = (self.conversation.kind == super::Kind::Channel)
+            .then(|| self.settled.take())
+            .flatten()
+            .and_then(|(key, settled)| Some((key, self.chat.first_overlap_note(&settled)?)));
+        let woken = self.woken.take().and_then(|woken| {
+            let note = self
+                .chat
+                .first_wake_note(&woken.nick, &woken.session, &woken.woke)?;
+            Some((woken.key, note))
+        });
+        for (under, callout) in [woken, settled].into_iter().flatten() {
+            let Some(at) = lines.iter().position(|line| line.key == under) else {
+                continue;
+            };
+            let Some(time) = DateTime::from_timestamp_millis(lines[at].time_ms) else {
+                continue;
+            };
+            let mut line = self.blank(format!("{under}-once"), None, time, LineKind::Note);
+            line.text = callout.said();
+            line.shape = RowShape::Once;
+            line.callout = Some(callout);
+            lines.insert(at + 1, line);
+        }
     }
 
     /// A line with only its key, id, room, time and kind.

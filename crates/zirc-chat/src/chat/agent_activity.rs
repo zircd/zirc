@@ -137,7 +137,10 @@ impl Chat {
             found.extend(
                 room.entries
                     .iter()
-                    .filter(|entry| is_activity_of(nick, session, entry))
+                    // A wake a room's message caused is that room's alone.
+                    .filter(|entry| {
+                        is_activity_of(nick, session, entry) && !entry.is_woke_in(&room.name)
+                    })
                     .map(|entry| ActivityEntry {
                         entry: entry.clone(),
                         room: Some(room.name.clone()),

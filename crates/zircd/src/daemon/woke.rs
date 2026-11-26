@@ -1,19 +1,24 @@
 //! What a wake says where people see it ([`zirc_proto::woke`]): for each wake of a
-//! session's watch, one line from the session in the room its posts go to, saying what
-//! happened and whose doing it was, never what anyone said. Apps show it in the session's
-//! own conversation; it wakes no watch ([`zirc_proto::woke::is_kind`]).
+//! session's watch, one line from the session saying what happened and whose doing it was,
+//! never what anyone said. A wake a chat's message caused is said in that chat alone
+//! ([`Woke::chat`]): the channel, or to the person who wrote, through the role's nick when
+//! they wrote to the role. Any other is said in the room the session's posts go to, where
+//! apps show it in the session's own conversation. It wakes no watch
+//! ([`zirc_proto::woke::is_kind`]).
 
 use zirc_core::ipc::{Delivery, Direct, Response, Why};
-use zirc_proto::woke::{By, What, Woke};
-use zirc_proto::{Event, Message, ci};
+use zirc_proto::woke::{By, Chat, What, Woke};
+use zirc_proto::{AGENTS_CHANNEL, Event, Message, ci};
 
 use super::{Daemon, WATCHER_SESSION};
 
 impl Daemon {
     /// Says, as `session`, that its watch woke on `response` for `why`: the wake `id`
-    /// ([`Daemon::woke`]), or none for a role's wake that came with another. In the scope of the repository the line was said in when the
-    /// session works there, else of one it works in; nowhere for a session in none, which
-    /// has no room to say it in.
+    /// ([`Daemon::woke`]), or none for a role's wake that came with another. In the chat
+    /// whose message caused it ([`Woke::chat`]), when this machine can say it there; else
+    /// in the scope of the repository the line was said in when the session works there,
+    /// else of one it works in; nowhere for a session in none, which has no room to say it
+    /// in.
     pub(super) fn say_woke(
         &mut self,
         session: &str,
@@ -21,6 +26,34 @@ impl Daemon {
         why: Why,
         response: &Response,
     ) {
+        let woke = Woke {
+            wake: id,
+            ..self.woke_by(session, why, response)
+        };
+        let message = Message {
+            level: Some(zirc_proto::Level::Info),
+            ..self.signed(session, woke.event())
+        };
+        match woke.chat() {
+            // The agents' room is the repository's scope, said below.
+            Some(Chat::Channel(channel))
+                if channel != AGENTS_CHANNEL && self.joined.contains(channel) =>
+            {
+                return self.publish_message(channel, message);
+            }
+            // A person's word to the role goes back through the role's nick, which says it
+            // to them as the role (zirc-sidecar's roles), so it's in their chat with the role.
+            Some(Chat::Direct(nick)) => {
+                let to = woke.role.as_deref().unwrap_or(nick);
+                if let Some(client) = &self.client
+                    && let Err(err) = zirc_core::send::send_message(client, to, &message)
+                {
+                    tracing::warn!("couldn't say a wake to {to}: {err:#}");
+                }
+                return;
+            }
+            _ => {}
+        }
         let said_in = match response {
             Response::Delivery(delivery) => Some(delivery.scope()),
             Response::Overlap(overlap) => Some(overlap.channel.clone()),
@@ -41,14 +74,6 @@ impl Daemon {
         else {
             return;
         };
-        let woke = Woke {
-            wake: id,
-            ..self.woke_by(session, why, response)
-        };
-        let message = Message {
-            level: Some(zirc_proto::Level::Info),
-            ..self.signed(session, woke.event())
-        };
         self.publish_message(&scope, message);
     }
 
@@ -59,6 +84,7 @@ impl Daemon {
             Response::Direct(direct) => direct_woke(direct),
             Response::Reaction(reaction) => Woke {
                 from: Some(reaction.from.clone()),
+                channel: Some(reaction.channel.clone()),
                 line: Some(reaction.to.clone()),
                 ..Woke::new(What::Reacted, self.nick_is(&reaction.from, ""))
             },
