@@ -17,6 +17,12 @@ use crate::service;
 /// How long `daemon start` and `daemon stop` wait for zircd.
 pub(crate) const DAEMON_WAIT: Duration = Duration::from_secs(10);
 
+/// How long a restart is waited for: longer than a start or a stop, as zircd reads every
+/// repository it watches before it listens again. On a machine with some thirty worktrees
+/// it was back after 15 to 30 s, and `zirc update` had said it "didn't come back within
+/// 10s" each time, of a zircd that was fine (26 Nov 2026).
+pub(crate) const RESTART_WAIT: Duration = Duration::from_secs(90);
+
 #[derive(Debug, Subcommand)]
 pub(crate) enum DaemonCommand {
     /// Start zircd: by its login service once installed, otherwise in the background.
@@ -59,7 +65,8 @@ pub(crate) async fn restart(home: &Path, out: &mut impl Write) -> Result<bool> {
         }
         Ok(_) | Err(_) => return Ok(false),
     }
-    let deadline = tokio::time::Instant::now() + DAEMON_WAIT;
+    let started = tokio::time::Instant::now();
+    let mut said = false;
     loop {
         if socket_id(&socket) != before
             && let Ok(Response::Status(status)) = ipc::request(&socket, &Request::Status).await
@@ -70,11 +77,22 @@ pub(crate) async fn restart(home: &Path, out: &mut impl Write) -> Result<bool> {
             writeln!(out, "zircd restarted, running {version}")?;
             return Ok(true);
         }
-        if tokio::time::Instant::now() > deadline {
+        let waited = started.elapsed();
+        if waited > RESTART_WAIT {
+            // Still not a failure it can name: it may be reading a large machine's
+            // repositories yet.
             bail!(
-                "zircd didn't come back within {DAEMON_WAIT:?}: see {}",
+                "zircd isn't back after {RESTART_WAIT:?}, and may still be starting: {PROGRAM} \
+                 status says when it is, and its log is {}",
                 shown(&paths::log(home))
             );
+        }
+        if waited > DAEMON_WAIT && !said {
+            writeln!(
+                out,
+                "zircd is restarting: it reads each repository it watches first"
+            )?;
+            said = true;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
