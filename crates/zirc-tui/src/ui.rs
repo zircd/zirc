@@ -271,9 +271,11 @@ fn details_card(
     };
     frame.render_widget(Clear, card);
     frame.render_widget(
-        Paragraph::new(lines)
-            .scroll((scrolled.min(most), 0))
-            .block(panel_block(theme).padding(ratatui::widgets::Padding::horizontal(1))),
+        Paragraph::new(lines).scroll((scrolled.min(most), 0)).block(
+            panel_block(theme)
+                .title_bottom(keys_line(theme, zirc_core::chat::labels::ESC_CLOSES))
+                .padding(ratatui::widgets::Padding::horizontal(1)),
+        ),
         card,
     );
 }
@@ -340,8 +342,6 @@ fn agent_card(frame: &mut Frame<'_>, app: &App, nick: &str, session: &str, area:
         lines.push(Line::default());
         lines.push(Line::styled(fit(&heard, text), muted));
     }
-    lines.push(Line::default());
-    lines.push(Line::styled(zirc_core::chat::labels::ESC_CLOSES, muted));
     let height = u16::try_from(lines.len() + 2)
         .unwrap_or(u16::MAX)
         .min(area.height);
@@ -352,7 +352,9 @@ fn agent_card(frame: &mut Frame<'_>, app: &App, nick: &str, session: &str, area:
         height,
     };
     // The name it goes by on the border, when its title says something else.
-    let mut block = panel_block(theme).padding(ratatui::widgets::Padding::horizontal(1));
+    let mut block = panel_block(theme)
+        .title_bottom(keys_line(theme, zirc_core::chat::labels::ESC_CLOSES))
+        .padding(ratatui::widgets::Padding::horizontal(1));
     if card.handle != card.title {
         block = block.title(format!(" {} ", fit(&card.handle, text)));
     }
@@ -496,6 +498,11 @@ fn browse_card(frame: &mut Frame<'_>, app: &App, area: Rect) {
     );
 }
 
+/// A card's keys, on its bottom border: always shown, however little of the card fits.
+fn keys_line(theme: &Theme, keys: &str) -> Line<'static> {
+    Line::styled(format!(" {keys} "), fg(theme.muted))
+}
+
 /// A card's block over the scrollback, in the theme's colours.
 fn panel_block(theme: &Theme) -> Block<'static> {
     panel(Block::new().borders(Borders::ALL), theme).border_style(fg(theme.signal))
@@ -516,10 +523,18 @@ fn profile(frame: &mut Frame<'_>, app: &App, profile: &Profile, area: Rect) {
         height,
     };
     frame.render_widget(Clear, card);
+    let keys = if profile.nick.eq_ignore_ascii_case(app.nick()) {
+        zirc_core::chat::labels::ESC_CLOSES.to_owned()
+    } else {
+        format!(
+            "Enter talks to them · {}",
+            zirc_core::chat::labels::ESC_CLOSES
+        )
+    };
     frame.render_widget(
         Paragraph::new(lines).block(
-            panel(Block::new().borders(Borders::ALL), theme)
-                .border_style(fg(theme.signal))
+            panel_block(theme)
+                .title_bottom(keys_line(theme, &keys))
                 .padding(ratatui::widgets::Padding::horizontal(1)),
         ),
         card,
@@ -532,7 +547,6 @@ fn profile_lines(app: &App, profile: &Profile, width: usize) -> Vec<Line<'static
     let now = (app.chat.clock)();
     let muted = fg(theme.muted);
     let line = |text: String, style: Style| Line::styled(fit(&text, width), style);
-    let me = profile.nick.eq_ignore_ascii_case(app.nick());
     let card = profile.card(now, |at| app.zone.wall(at));
 
     let role = match card.presence {
@@ -558,16 +572,6 @@ fn profile_lines(app: &App, profile: &Profile, width: usize) -> Vec<Line<'static
                 .map(|text| line(text, fg(theme.text))),
         );
     }
-    lines.push(Line::default());
-    let keys = if me {
-        zirc_core::chat::labels::ESC_CLOSES.to_owned()
-    } else {
-        format!(
-            "Enter talks to them · {}",
-            zirc_core::chat::labels::ESC_CLOSES
-        )
-    };
-    lines.push(line(keys, muted));
     lines
 }
 
@@ -1290,10 +1294,28 @@ fn search_card(
 
 /// `line` on the signal colour when it's part of the row picked.
 fn picked_line(app: &App, line: Line<'static>, picked: bool) -> Line<'static> {
-    if picked {
-        line.style(fg(app.theme.on_signal).bg(colour(app.theme.signal)))
-    } else {
-        line
+    if !picked {
+        return line;
+    }
+    // Its words in on-signal: a span's own colour outranks its line's, so each takes it
+    // but one on a ground of its own, such as a count on its badge.
+    let theme = app.theme;
+    let Line {
+        spans, alignment, ..
+    } = line;
+    Line {
+        spans: spans
+            .into_iter()
+            .map(|span| {
+                if span.style.bg.is_some() {
+                    span
+                } else {
+                    span.patch_style(fg(theme.on_signal))
+                }
+            })
+            .collect(),
+        alignment,
+        style: fg(theme.on_signal).bg(colour(theme.signal)),
     }
 }
 
@@ -1472,12 +1494,7 @@ fn jump_card(frame: &mut Frame<'_>, app: &App, jumping: &Jumping, area: Rect) {
     // Each row to go to, the one picked on the signal colour.
     let mut row = 0;
     let mut push = |lines: &mut Vec<Line<'static>>, spans: Vec<Span<'static>>| {
-        let line = Line::from(spans);
-        lines.push(if row == at {
-            line.style(fg(theme.on_signal).bg(colour(theme.signal)))
-        } else {
-            line
-        });
+        lines.push(picked_line(app, Line::from(spans), row == at));
         row += 1;
     };
     for row in &jump.conversations {
@@ -1800,12 +1817,15 @@ fn new_line(app: &App, width: u16) -> Line<'static> {
             }
         },
     );
-    // The words, then a NEW tag on the badge colour, as every app ends the rule.
+    // The rule in the badge colour, the words in the red that reads as text (the badge's
+    // is 4.15:1 on dark's ground), then a NEW tag on the badge colour, as every app ends
+    // the rule.
     let theme = app.theme;
     let tag = format!(" {} ", tag_text("new"));
     let line = "─".repeat(usize::from(width).saturating_sub(label.width() + 1 + tag.width()));
     Line::from(vec![
-        Span::styled(format!("{line}{label} "), fg(theme.badge)),
+        Span::styled(line, fg(theme.badge)),
+        Span::styled(format!("{label} "), fg(theme.error)),
         Span::styled(
             tag,
             fg(theme.on_badge)
@@ -2094,13 +2114,22 @@ fn status(frame: &mut Frame<'_>, app: &App, area: Rect) {
         );
         return;
     }
-    frame.render_widget(Paragraph::new(status_left(app)), area);
     // What needs the person, at the right: the connection, only when it isn't up, and
-    // what mentions them.
-    frame.render_widget(
-        Paragraph::new(status_right(app)).alignment(ratatui::layout::Alignment::Right),
-        area,
-    );
+    // what mentions them; where we are, at the left, in what's left of the line and a
+    // space short of it, never drawn over ("irc.zirc.test · Serve 1 mention").
+    let right = status_right(app);
+    let right_width = u16::try_from(right.width())
+        .unwrap_or(u16::MAX)
+        .min(area.width);
+    let gap = u16::from(right_width > 0);
+    let [left_area, _, right_area] = Layout::horizontal([
+        Constraint::Min(0),
+        Constraint::Length(gap),
+        Constraint::Length(right_width),
+    ])
+    .areas(area);
+    frame.render_widget(Paragraph::new(status_left(app)), left_area);
+    frame.render_widget(Paragraph::new(right), right_area);
 }
 
 /// What the keys do while leaving a channel waits on the person.
@@ -2434,6 +2463,14 @@ mod tests {
         assert!(row_with(&rows, "Task ").contains("t-abc123"));
         row_with(&rows, zirc_core::chat::DATA);
         row_with(&rows, "\"task\": \"t-abc123\"");
+        // How to put it away on its edge, however little of it fits.
+        for (width, height) in [(screen.width, screen.height), (40, 10)] {
+            let (rows, _) = draw(&app, width, height);
+            row_with(
+                &rows,
+                &format!(" {} ─", zirc_core::chat::labels::ESC_CLOSES),
+            );
+        }
         // ↓ scrolls it rather than picking another message.
         app.key(KeyEvent::from(KeyCode::Down));
         assert_eq!(app.picked(), Some("m9"));
@@ -3162,8 +3199,10 @@ mod tests {
         let header = app.chat.role_header("fixer").unwrap();
         row_with(&rows, &header);
         // The card, never the event's plain text: its title, then how to fill it with the
-        // command, and who held it last.
-        row_with(&rows, &vacant.title());
+        // command, and who held it last. Its heading on a row of its own, never run into
+        // what it says ("…in monorepo Your message waits").
+        let heading = row_with(&rows, &vacant.title());
+        assert!(!heading.contains("Your message"), "{heading}");
         // Its command on a row of its own, to select and copy.
         assert!(
             rows.iter().any(
@@ -3914,6 +3953,9 @@ mod tests {
             )),
             "{card}"
         );
+        // Its keys on its edge, kept where the terminal's too short for the whole card.
+        let (rows, _) = draw(&app, 40, 10);
+        row_with(&rows, "Enter talks to them");
 
         // A machine's card says whose it is.
         app.key(KeyEvent::from(KeyCode::Esc));
@@ -4829,6 +4871,10 @@ mod tests {
         assert!(!rows.iter().any(|row| row.contains(PEOPLE_SECTION)));
         assert!(!rows.iter().any(|row| row.contains("#web")));
         assert!(row_with(&rows, "alice").contains("alice"));
+        // Where we are, cut short of what mentions us rather than run into its pill
+        // ("irc.zirc.test · Serve 1 mention").
+        let (rows, _) = draw(&super::tests::app(), 40, 10);
+        row_with(&rows, &format!("  {} ", mentions_label(1)));
     }
 
     #[test]
@@ -4870,20 +4916,41 @@ mod tests {
     fn reads_at_aa_dark_and_light() {
         // WCAG AA, as zirc.dev's Roles tab is held to: each letter 4.5:1 on what's behind it
         // (the terminal's own ground being the theme's), a mark (●, ▎) 3:1. Lines between
-        // panes are dividers, not measured.
-        for theme in [Theme::dark(), Theme::light()] {
+        // panes are dividers, not measured. The conversation with what's new marked, and
+        // Jump to open, its first row picked.
+        let mut failures = Vec::new();
+        for (theme, jump) in [Theme::dark(), Theme::light()]
+            .into_iter()
+            .flat_map(|theme| [(theme, false), (theme, true)])
+        {
             let mut app = app();
             app.chat
                 .set_threshold("#api", zirc_core::chat::COMMITS_AND_PUSHES_SHOW_AT);
             app.theme = theme;
             let _ = app.select(1);
-            let (_, terminal) = draw(&app, 100, 16);
+            if jump {
+                let _ = app.key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::ALT));
+                let _ = app.key(KeyEvent::from(KeyCode::Char('a')));
+            } else {
+                // Said in #web while we're in #api: #web opens on the New divider.
+                app.handle(
+                    "@msgid=w1;time=2026-10-30T11:40:00.000Z :bob!u@h PRIVMSG #web :lunch?"
+                        .parse()
+                        .unwrap(),
+                );
+                let _ = app.select(app.chat.position("#web").unwrap());
+            }
+            let (rows, terminal) = draw(&app, 100, 16);
+            if jump {
+                row_with(&rows, zirc_core::chat::JUMP_TO);
+            } else {
+                row_with(&rows, &tag_text("new"));
+            }
             let buffer = terminal.backend().buffer();
             let rgb = |colour: Color, or: Rgb| match colour {
                 Color::Rgb(r, g, b) => Rgb { r, g, b },
                 _ => or,
             };
-            let mut failures = Vec::new();
             for y in 0..16 {
                 for x in 0..100 {
                     let cell = &buffer[(x, y)];
@@ -4897,14 +4964,15 @@ mod tests {
                     let ratio = rgb(cell.fg, theme.text).contrast(rgb(cell.bg, theme.ground));
                     if ratio < if mark { 3.0 } else { 4.5 } {
                         failures.push(format!(
-                            "{:?} {letter:?} at {x},{y}: {ratio:.2}",
-                            theme.mode
+                            "{:?}{} {letter:?} at {x},{y}: {ratio:.2}",
+                            theme.mode,
+                            if jump { " Jump to" } else { "" }
                         ));
                     }
                 }
             }
-            assert!(failures.is_empty(), "below AA: {failures:?}");
         }
+        assert!(failures.is_empty(), "below AA: {failures:?}");
     }
 
     #[test]

@@ -625,19 +625,14 @@ fn callout_rows(look: &Look<'_>, line: &Line, rows: &mut Vec<Row>) {
         RowShape::Once => ONCE_MARK,
         _ => WOKE_MARK,
     };
-    // A vacant role's card puts its command on a row of its own, to select and copy, and
-    // its footer under it, where the other apps have a box with a Copy button.
+    // A vacant role's card puts its heading on a row of its own, as the other apps head
+    // their card with it, then what it says, its command on a row of its own, to select
+    // and copy, and its footer under it, where the other apps have a box with a Copy
+    // button.
     let apart = line.shape == RowShape::Vacant;
     let said = match &callout.button {
         Some(button) => format!("{mark} {} (/press {})", line.text, button.to_lowercase()),
-        None if apart => {
-            let words: String = callout
-                .spans
-                .iter()
-                .map(|span| span.text.as_str())
-                .collect();
-            format!("{mark} {} {words}", callout.label)
-        }
+        None if apart => format!("{mark} {}", callout.label),
         None => format!("{mark} {}", line.text),
     };
     let tone = Tone::Lead {
@@ -646,9 +641,18 @@ fn callout_rows(look: &Look<'_>, line: &Line, rows: &mut Vec<Row>) {
     };
     let mut runs = wrapped((said, Vec::new()), look.text_width, &tone);
     if apart {
-        for more in [callout.command.as_ref(), callout.footer.as_ref()]
-            .into_iter()
-            .flatten()
+        let words: String = callout
+            .spans
+            .iter()
+            .map(|span| span.text.as_str())
+            .collect();
+        for more in [
+            Some(&words),
+            callout.command.as_ref(),
+            callout.footer.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
         {
             runs.extend(wrapped(
                 (format!("  {more}"), Vec::new()),
