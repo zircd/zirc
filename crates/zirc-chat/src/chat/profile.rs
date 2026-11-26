@@ -220,7 +220,7 @@ pub struct Card {
     pub handle: Option<String>,
     /// Whether they're around, in words: `here`, `away: lunch`, `offline`, or nothing when
     /// unknown ([`Standing::label`]); on an agent session's card, whose away it is, as a
-    /// session is never away itself: `Maya Chen is away: lunch`.
+    /// session is never away itself: `Henrik Sandberg is away: lunch`.
     pub standing: String,
     /// Whether they're away.
     pub away: bool,
@@ -718,9 +718,9 @@ impl Chat {
 impl Chat {
     /// The card of `nick`'s agent session `session`, as opened from its row or its header:
     /// titled by what it's called ([`Chat::agent_label`]) and its owner's, `Fix the coupon
-    /// field · Maya Chen`, its handle, machine and id under that, `checkout · mbp · cc-4e21`,
+    /// field · Henrik Sandberg`, its handle, machine and id under that, `checkout · mbp · cc-4e21`,
     /// what it's doing, `fix the coupon field · 4m`, a line for whose
-    /// agent it is and its tool, `Maya Chen's agent · Claude Code`, then what it's changing
+    /// agent it is and its tool, `Henrik Sandberg's agent · Claude Code`, then what it's changing
     /// and has taken on ([`Profile::session_card`]). Its standing is its owner's.
     #[must_use]
     pub fn session_card(

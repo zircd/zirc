@@ -147,8 +147,8 @@ impl Chat {
     }
 
     /// The agent `session` on the machine `nick` as a line names it: what it's called, and
-    /// whose it is first when it isn't ours, `Maya Chen's checkout`; the machine's agents
-    /// as a whole, `Maya Chen's agent`, with no session.
+    /// whose it is first when it isn't ours, `Henrik Sandberg's checkout`; the machine's agents
+    /// as a whole, `Henrik Sandberg's agent`, with no session.
     fn side_name(&self, nick: &str, session: Option<&str>) -> String {
         let owner = self.whose(nick).map(|(owner, _)| owner);
         let theirs = owner

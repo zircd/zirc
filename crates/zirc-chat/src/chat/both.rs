@@ -27,7 +27,7 @@ pub struct BothChanger {
     /// Their agent session, when it's one; `None` for a machine's whole set, a person's.
     pub session: Option<String>,
     /// What to call them, as [`Chat::title`] would: an agent session by the name it goes by,
-    /// `checkout`, or else its id; a person by their name, `Maya Chen`.
+    /// `checkout`, or else its id; a person by their name, `Henrik Sandberg`.
     pub name: String,
 }
 

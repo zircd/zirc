@@ -20,7 +20,7 @@ pub enum Face {
     Person {
         /// Their nick, which a click on the face opens the card of.
         nick: String,
-        /// Up to two letters, of the name they show as: `MC` for Maya Chen.
+        /// Up to two letters, of the name they show as: `HS` for Henrik Sandberg.
         initials: String,
         /// Their colour, a hue in degrees from 0 up to 359, from their nick so it stays as
         /// names change ([`nick_degrees`]). Phones divide it by 360.

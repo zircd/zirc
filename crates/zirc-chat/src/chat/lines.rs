@@ -552,7 +552,7 @@ impl ReplyBar {
 pub struct LineMore {
     /// What it says: `Show 34 more lines`, or `Show less` while open.
     pub label: String,
-    /// What a screen reader says: `Show 34 more lines of Maya Chen's agent's message`.
+    /// What a screen reader says: `Show 34 more lines of Henrik Sandberg's agent's message`.
     pub spoken: String,
     /// How many lines the cut hides, code included.
     pub hidden: u32,
@@ -1306,7 +1306,7 @@ impl<'a> Layout<'a> {
     fn words(&self, line: &mut Line, blocks: Vec<Block>, always: bool, place: &str) {
         let shown = self.chat.body(&line.key, blocks, line.mention);
         let more = shown.more.map(|more| {
-            // Whose message, as its head says: `Maya Chen's agent`, or the person's name.
+            // Whose message, as its head says: `Henrik Sandberg's agent`, or the person's name.
             let whose = line
                 .speaker
                 .as_ref()

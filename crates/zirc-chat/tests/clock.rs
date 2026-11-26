@@ -23,6 +23,6 @@ fn a_pin_stops_the_clock_on_its_offset() {
         NaiveDate::from_ymd_opt(2026, 10, 16).unwrap()
     );
     // A chat reads it too.
-    let chat = Chat::new("maya", "irc.acme.test", Vec::new(), Options::default());
+    let chat = Chat::new("henrik", "irc.acme.test", Vec::new(), Options::default());
     assert_eq!((chat.clock)(), at);
 }

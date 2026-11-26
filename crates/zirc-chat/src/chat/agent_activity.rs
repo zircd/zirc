@@ -42,10 +42,10 @@ pub struct ActivityEntry {
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub struct ReadOnlyNote {
-    /// The line: `Only Maya Chen can message checkout`, or `checkout ended 6 days ago on
+    /// The line: `Only Henrik Sandberg can message checkout`, or `checkout ended 6 days ago on
     /// your mbp. Messages can't reach it`.
     pub text: String,
-    /// The button: `Message Maya Chen`, or `Message your mbp's agents`. Empty, as is
+    /// The button: `Message Henrik Sandberg`, or `Message your mbp's agents`. Empty, as is
     /// [`Self::dm`], where there's no one to go to instead, as in zirc's own direct
     /// messages: apps then show no button.
     pub button: String,
@@ -94,7 +94,7 @@ pub struct AgentHeader {
     pub active: bool,
     /// The one line every app's header says under its handle, after the here dot while
     /// [`Self::active`]: what it's doing while it's at it ([`Self::now`]), unless it isn't
-    /// listening with messages waiting, else [`Self::heard`]; a teammate's agent's says whose it is first, `Maya Chen's agent ·
+    /// listening with messages waiting, else [`Self::heard`]; a teammate's agent's says whose it is first, `Henrik Sandberg's agent ·
     /// Last heard 3m ago`, where ours needs no `Your agent`: its AGENT tag says it.
     pub line: String,
 }
@@ -171,8 +171,8 @@ impl Chat {
     }
 
     /// What replaces the composer where the person can't write: in the conversation with a
-    /// teammate's agent, `Only Maya Chen can message checkout`, with a `Message Maya Chen`
-    /// button that opens her direct conversation; in zirc's own direct messages,
+    /// teammate's agent, `Only Henrik Sandberg can message checkout`, with a `Message Henrik Sandberg`
+    /// button that opens his direct conversation; in zirc's own direct messages,
     /// `Zirc's notices can't be answered.` and no button; in the conversation with one of
     /// our agents that has ended, `checkout ended 6 days ago on your mbp. Messages can't
     /// reach it`, with `Message your mbp's agents`, which opens the machine's own thread, and `Remove

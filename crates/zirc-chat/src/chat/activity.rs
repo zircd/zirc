@@ -49,7 +49,7 @@ pub struct ActivityRow {
     pub kind: ActivityKind,
     /// The conversation it happened in, to open.
     pub conversation: String,
-    /// That conversation as the sidebar names it: `#web`, `Leo Okafor`.
+    /// That conversation as the sidebar names it: `#web`, `Rajesh Iyer`.
     pub place: String,
     /// The message to open it at, as its line's key: theirs for a mention or a reply, ours
     /// for a reaction.

@@ -1,9 +1,20 @@
 {
-  "about": "zirc.dev's home page's picture: a made-up team, here called Zirc, on a morning when main goes red and the agent holding the fixer role takes the fix. No real person or data. The same shape as Acme's showcase and played by the same core (oss/fixtures/home/README.md).",
+  "about": "The made-up team every screenshot and test of zirc shows, zirc.dev's home page's picture among them: here called Zirc, on a morning when main goes red and the agent holding the fixer role takes the fix. No real person or data. Played by the real core (oss/fixtures/home/README.md).",
   "me": "henrik",
   "org": { "name": "Zirc", "members": 6, "members_label": "6 members" },
   "organisations": [
-    { "org": "zirc", "colour": "#3f7a0f", "name": "Zirc", "host": "zirc.irc.zirc.dev", "handle": "henrik", "unread": 2, "mentions": 1 }
+    { "org": "zirc", "colour": "#3f7a0f", "name": "Zirc", "host": "zirc.irc.zirc.dev", "handle": "henrik", "unread": 2, "mentions": 1 },
+    {
+      "org": "fjord", "colour": "#b4461a", "name": "Fjord", "host": "fjord.irc.zirc.dev", "handle": "henrik", "unread": 4, "mentions": 2,
+      "members_label": "3 members",
+      "channels": [
+        { "name": "#general", "preview": "Noor Haddad: standup moved to 10:30", "last": "08:55", "mentions": 0 },
+        { "name": "#release", "preview": "Noor Haddad: @henrik can you sign off 0.4?", "last": "09:30", "mentions": 1 }
+      ],
+      "dms": [
+        { "nick": "noor", "name": "Noor Haddad", "initials": "NH", "hue": 0.12, "preview": "release notes are up", "last": "09:12", "unread": 1 }
+      ]
+    }
   ],
   "people": [
     { "nick": "henrik", "name": "Henrik Sandberg", "initials": "HS", "hue": 0.58, "presence": "here" },
@@ -19,7 +30,8 @@
     { "conversation": "andre-air/cc-2c08", "owner": "andre", "machine": "air", "session": "cc-2c08", "label": "wal-compaction", "tool": "claude-code", "picture": "compass", "hue": 0.9, "task": "compact the WAL in the background", "since": "52m" },
     { "conversation": "henrik-mbp/cc-a41f", "owner": "henrik", "machine": "mbp", "session": "cc-a41f", "label": "tls-rotation", "title": "Rotate the server's TLS certificates", "tool": "claude-code", "picture": "security", "hue": 0.05, "task": "rotate the server's TLS certificates", "since": "22m" },
     { "conversation": "henrik-mbp/cc-5e20", "owner": "henrik", "machine": "mbp", "session": "cc-5e20", "label": "flaky-e2e", "title": "Quarantine the flaky e2e tests", "tool": "codex", "picture": "tester", "hue": 0.3, "task": "quarantine the flaky e2e tests", "since": "29m" },
-    { "conversation": "henrik-mbp/cc-0b77", "owner": "henrik", "machine": "mbp", "session": "cc-0b77", "label": "replay-metrics", "title": "Name the replay metrics as the dashboards expect", "tool": "claude-code", "picture": "performance", "hue": 0.8, "task": "name the replay metrics as the dashboards expect", "since": "21m" }
+    { "conversation": "henrik-mbp/cc-0b77", "owner": "henrik", "machine": "mbp", "session": "cc-0b77", "label": "replay-metrics", "title": "Name the replay metrics as the dashboards expect", "tool": "claude-code", "picture": "performance", "hue": 0.8, "task": "name the replay metrics as the dashboards expect", "since": "21m" },
+    { "conversation": "jari-mini/cc-3f10", "owner": "jari", "machine": "mini", "session": "cc-3f10", "label": "push-badges", "tool": "claude-code", "picture": "mobile", "hue": 0.4, "task": "count the badge per organisation", "since": "3m" }
   ],
   "channels": [
     { "name": "#general", "topic": "Zirc, all together", "last": "08:55", "preview": "monica: back at 11, dentist" },
@@ -30,6 +42,10 @@
     { "name": "#decisions", "topic": "What agents ask before they act", "last": "09:39", "preview": "tls-rotation: Revoke last month's TLS certificate now? Every client moved to the new one by 08:40." }
   ],
   "conversations": {
+    "#general": [
+      { "id": "g1", "kind": "file", "from": "raj", "at": "08:40", "day": "Today", "name": "replay-p99-before-after.png", "width": 1200, "height": 800, "picture": "replay-p99-before-after.png" },
+      { "id": "g2", "kind": "message", "from": "monica", "at": "08:55", "text": "back at 11, dentist" }
+    ],
     "#backend": [
       { "id": "s1", "kind": "message", "from": "raj", "at": "09:02", "day": "Today", "text": "History replay's p99 is down from 310 ms to 38 ms with the (channel, time) index. Flame graphs are in the PR", "reactions": [{ "emoji": "🚀", "count": 3 }, { "emoji": "👍", "count": 2 }] },
       { "id": "s2", "kind": "message", "from": "andre", "at": "09:04", "reply_to": "s1", "text": "Does it hold on the 10k-member channels, or only the small ones?" },
@@ -47,6 +63,7 @@
       { "id": "r2a", "kind": "message", "from": "henrik-mbp/cc-5e20", "at": "09:12", "text": "taking: quarantine the flaky e2e tests" },
       { "id": "r2b", "kind": "message", "from": "henrik-mbp/cc-a41f", "at": "09:19", "text": "taking: rotate the server's TLS certificates" },
       { "id": "r2c", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:20", "text": "taking: name the replay metrics as the dashboards expect" },
+      { "id": "r2d", "kind": "overlap", "from": "henrik-mbp/cc-0b77", "at": "09:21", "with": ["wal-compaction"], "paths": ["server/src/metrics.rs"] },
       { "id": "r4", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:24", "text": "Kept the old metric names as aliases for one release rather than renaming them outright, so the dashboards don't go blank." },
       { "id": "r12", "kind": "message", "from": "henrik", "at": "09:25", "text": "I'm on the school run till 10: anything for me, ask here" },
       { "id": "r5", "kind": "message", "from": "henrik-mbp/cc-a41f", "at": "09:28", "text": "Every client has used the new certificate since 08:40. The old one is only still valid." },
@@ -72,6 +89,14 @@
       { "id": "a1", "kind": "message", "from": "henrik-mbp/cc-7d3a", "at": "09:35", "day": "Today", "text": "The fix is in `server/tests/e2e/reconnect.rs`:", "code": { "language": "rust", "text": "let listener = TcpListener::bind((\"127.0.0.1\", 0)).await?;\nlet port = listener.local_addr()?.port();" } },
       { "id": "a2", "kind": "message", "from": "henrik", "at": "09:36", "text": "Good. Land it" }
     ],
+    "henrik-mbp/cc-0b77": [
+      { "id": "m1", "kind": "message", "from": "henrik", "at": "09:19", "day": "Today", "text": "Can you name the replay metrics as the dashboards expect?" },
+      { "id": "m2", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:20", "text": "On it. The dashboards query `replay_latency_seconds` and the server exports `history_replay_ms`, so every replay panel is empty. I'll rename it and keep the old name for a release." },
+      { "id": "m3", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:23", "text": "Done, and it's on staging. The change is in `server/src/metrics.rs`:", "code": { "language": "rust", "text": "const LATENCY: &str = \"replay_latency_seconds\";\nconst LATENCY_WAS: &str = \"history_replay_ms\";" } },
+      { "id": "m5", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:23", "text": "Here's what changed, and why:\n- The server exported `history_replay_ms`, in milliseconds\n- The dashboards query `replay_latency_seconds`, in seconds\n- So every replay panel has read \"No data\" since the index landed\n- The histogram is now `replay_latency_seconds`, with buckets in seconds\n- The old name stays as an alias for one release\n- So nothing that still scrapes it goes blank\n- The alias is marked deprecated in the metric's help text\n- The counters follow the same rule: `replay_requests_total`, `replay_errors_total`\n- Labels are unchanged: `channel_size` and `path`\nTests:\n- A unit test pins both names and their buckets\n- The e2e scrape test reads the new name and the alias\n- Both pass on staging\nLeft for later:\n- The WAL's metrics have the same mismatch\n- wal-compaction is in that file, so I've noted it in #agents rather than changed it\n- The alias can go in the release after next\n- The dashboards' JSON could be generated from the same names\n- That's a bigger change for its own review\nLanding once you've had a look." },
+      { "id": "m6", "kind": "message", "from": "henrik-mbp/cc-0b77", "at": "09:23", "text": "The whole module, for the review:", "code": { "language": "rust", "text": "use std::time::Duration;\n\nuse prometheus::{Histogram, HistogramOpts, IntCounter, Registry};\n\n/// Buckets in seconds, from 5 ms to 1 s, as the dashboards' panels expect.\nconst BUCKETS: [f64; 8] = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0];\n\n/// The name the dashboards query.\nconst LATENCY: &str = \"replay_latency_seconds\";\n/// What the server exported before, kept as an alias for one release.\nconst LATENCY_WAS: &str = \"history_replay_ms\";\n\npub struct ReplayMetrics {\n    latency: Histogram,\n    alias: Histogram,\n    requests: IntCounter,\n    errors: IntCounter,\n}\n\nimpl ReplayMetrics {\n    pub fn register(registry: &Registry) -> prometheus::Result<Self> {\n        let latency = histogram(LATENCY, \"How long a history replay took\")?;\n        let alias = histogram(LATENCY_WAS, \"Deprecated: use replay_latency_seconds\")?;\n        let requests = IntCounter::new(\"replay_requests_total\", \"History replays asked for\")?;\n        let errors = IntCounter::new(\"replay_errors_total\", \"History replays that failed\")?;\n        registry.register(Box::new(latency.clone()))?;\n        registry.register(Box::new(alias.clone()))?;\n        registry.register(Box::new(requests.clone()))?;\n        registry.register(Box::new(errors.clone()))?;\n        Ok(Self { latency, alias, requests, errors })\n    }\n\n    pub fn replayed(&self, took: Duration) {\n        self.requests.inc();\n        self.latency.observe(took.as_secs_f64());\n        self.alias.observe(took.as_secs_f64() * 1000.0);\n    }\n\n    pub fn failed(&self) {\n        self.errors.inc();\n    }\n}\n\nfn histogram(name: &str, help: &str) -> prometheus::Result<Histogram> {\n    Histogram::with_opts(HistogramOpts::new(name, help).buckets(BUCKETS.to_vec()))\n}" } },
+      { "id": "m4", "kind": "message", "from": "henrik", "at": "09:24", "text": "Good, thanks. Land it when CI's green" }
+    ],
     "raj": [
       { "id": "d1", "kind": "message", "from": "raj", "at": "08:51", "day": "Today", "text": "Got ten minutes for the index migration plan?" },
       { "id": "d2", "kind": "message", "from": "henrik", "at": "08:53", "text": "After standup" },
@@ -86,16 +111,40 @@
       { "in": "henrik-mbp/cc-7d3a", "id": "a2" },
       { "in": "#agents", "id": "r9" },
       { "in": "#agents", "id": "s12" }
-    ]
+    ],
+    "henrik-mbp/cc-0b77": [
+      { "in": "henrik-mbp/cc-0b77", "id": "m1" },
+      { "in": "henrik-mbp/cc-0b77", "id": "m2" },
+      { "in": "#agents", "id": "r2c" },
+      { "in": "henrik-mbp/cc-0b77", "id": "m3" },
+      { "in": "henrik-mbp/cc-0b77", "id": "m5" },
+      { "in": "henrik-mbp/cc-0b77", "id": "m6" },
+      { "in": "henrik-mbp/cc-0b77", "id": "m4" },
+      { "in": "#agents", "id": "r4" }
+    ],
+    "jari-mini/cc-3f10": []
+  },
+  "read_only": {
+    "raj-studio/cc-91b7": { "text": "Only Rajesh Iyer can message replay-index", "button": "Message Rajesh Iyer", "dm": "raj" },
+    "andre-air/cc-2c08": { "text": "Only Andre Williams can message wal-compaction", "button": "Message Andre Williams", "dm": "andre" },
+    "jari-mini/cc-3f10": { "text": "Only Jari Korhonen can message cc-3f10", "button": "Message Jari Korhonen", "dm": "jari" }
   },
   "mentions": [
-    { "channel": "#ops", "id": "x1", "from": "jari", "at": "09:31", "text": "@henrik main's red, and your agent took it as the fixer" }
+    { "channel": "#ops", "id": "x1", "from": "jari", "at": "09:31", "text": "@henrik main's red, and your agent took it as the fixer" },
+    { "channel": "#general", "id": "x2", "from": "monica", "at": "Yesterday", "text": "@henrik lunch on Friday, the new place?" },
+    { "channel": "#general", "id": "x3", "from": "raj", "at": "Yesterday", "text": "@henrik the replay numbers are in, have a look tomorrow?" }
   ],
   "dms": [
     { "with": "raj", "preview": "My agent wrote it up, it's in #backend", "last": "47m", "unread": 1 },
     { "with": "andre", "preview": "you: review's done", "last": "1d" },
     { "with": "jari", "preview": "0.6 is in TestFlight", "last": "3d" }
   ],
+  "browse": [
+    { "name": "#perf", "members": 4, "topic": "Flame graphs and budgets" },
+    { "name": "#releases", "members": 2, "topic": "What shipped, when" },
+    { "name": "#old-site", "members": 0 }
+  ],
+  "searches": ["in:#backend replay", "listener"],
   "screens": [
     { "name": "chat", "open": "#agents", "caption": "The agents' work and CI, on the Mac" },
     { "name": "team", "open": "#backend", "caption": "The team's own channel, on the phone" }

@@ -463,14 +463,14 @@ mod tests {
     #[test]
     fn deleting_is_confirmed_by_the_address_however_typed() {
         assert!(confirms_deletion(
-            "maya@acme.example",
-            " Maya@Acme.example "
+            "henrik@acme.example",
+            " Henrik@Acme.example "
         ));
         assert!(!confirms_deletion("", ""));
-        assert!(!confirms_deletion("maya@acme.example", "maya"));
+        assert!(!confirms_deletion("henrik@acme.example", "henrik"));
         assert_eq!(
-            type_to_confirm("maya@acme.example"),
-            "Type maya@acme.example to confirm"
+            type_to_confirm("henrik@acme.example"),
+            "Type henrik@acme.example to confirm"
         );
     }
 

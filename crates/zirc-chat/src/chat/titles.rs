@@ -97,7 +97,7 @@ impl Chat {
     /// a person by the name they show as, `Carol Danvers`, as their messages are headed
     /// ([`Chat::shown_name`]), one of our machines as its owner and its own name,
     /// `mattias · mbp`; one of our agent sessions by what it goes by, `checkout`, and a
-    /// teammate's by that and whose, `checkout · Maya Chen`.
+    /// teammate's by that and whose, `checkout · Henrik Sandberg`.
     #[must_use]
     pub fn title(&self, name: &str) -> String {
         if self.is_server(name) {
@@ -109,7 +109,7 @@ impl Chat {
         };
         match agent(name) {
             // An agent session by what it goes by: ours alone, `checkout`, as its AGENT tag
-            // and our list say it's ours; a teammate's with whose, `checkout · Maya Chen`.
+            // and our list say it's ours; a teammate's with whose, `checkout · Henrik Sandberg`.
             Some((nick, session)) => {
                 let owner = self
                     .machine(nick)
@@ -167,7 +167,7 @@ impl Chat {
 
     /// What an open conversation's header says under its name, where a phone has two lines:
     /// for an agent session, whose agent it is, as its messages are headed ([`agent_name`]),
-    /// `Maya Chen's agent` or `your agent`; `None` for any other conversation.
+    /// `Henrik Sandberg's agent` or `your agent`; `None` for any other conversation.
     #[must_use]
     pub fn subtitle(&self, name: &str) -> Option<String> {
         let (nick, session) = agent(name)?;

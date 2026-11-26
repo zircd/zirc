@@ -74,7 +74,7 @@ impl More {
     }
 
     /// What a screen reader says for it, naming whose message it is as its header does:
-    /// `Show 34 more lines of Maya Chen's agent's message` for `Maya Chen's agent`.
+    /// `Show 34 more lines of Henrik Sandberg's agent's message` for `Henrik Sandberg's agent`.
     #[must_use]
     pub fn spoken(&self, whose: &str) -> String {
         let what = if self.updates || self.steps.is_some() {

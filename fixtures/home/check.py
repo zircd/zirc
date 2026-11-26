@@ -1,4 +1,4 @@
-"""Checks the showcase names only what it has: people, agents and conversations."""
+"""Checks the team names only what it has: people, agents and conversations."""
 import json
 import os
 import sys
@@ -11,19 +11,13 @@ channels = {c["name"] for c in show["channels"]}
 speakers = people | agents | {"zirc-ci"}
 assert show["me"] in people, "me isn't one of the people"
 assert show["org"]["members"] == len(people), "the org's members aren't its people"
-# The organisations the phone is signed in to, Acme first and shown: the one this file is.
+# The organisations the phone is signed in to, the team's own first and shown: the one this file is.
 organisations = show.get("organisations", [])
-assert organisations and organisations[0]["name"] == show["org"]["name"], "Acme isn't the first organisation"
+assert organisations and organisations[0]["name"] == show["org"]["name"], "the team's own isn't the first organisation"
 for organisation in organisations:
     assert organisation["handle"] == show["me"], f"{organisation['org']}'s handle isn't me"
 for agent in show["agents"]:
     assert agent["owner"] in people, f"{agent['conversation']}'s owner isn't one of the people"
-for channel in show["channels"]:
-    for branch in channel.get("branches", []):
-        assert branch in channels, f"{branch} isn't a channel"
-# A channel's agents room, such as #web/agents, which zirc.dev's home page shows and the phones
-# don't list.
-rooms = {f"{name}/agents" for name in channels if "/" not in name}
 # Our machines' threads, `Your agents · mbp`: what was said to every agent there.
 machines = {m["conversation"] for m in show.get("machines", [])}
 for machine in show.get("machines", []):
@@ -31,14 +25,14 @@ for machine in show.get("machines", []):
     for session in machine["sessions"]:
         assert session in agents, f"{session} isn't an agent"
 for name, messages in show["conversations"].items():
-    assert name in channels or name in people or name in agents or name in rooms or name in machines, f"{name} is neither a channel, a person, an agent session, a machine nor an agents room"
+    assert name in channels or name in people or name in agents or name in machines, f"{name} is neither a channel, a person, an agent session nor a machine"
     ids = set()
     for message in messages:
         assert message["from"] in speakers, f"{message['id']} is from no one known"
         assert "reply_to" not in message or message["reply_to"] in ids, f"{message['id']} answers no earlier message"
         ids.add(message["id"])
         picture = message.get("picture")
-        assert picture is None or os.path.exists(os.path.join(os.path.dirname(sys.argv[1]), picture)), f"{picture} isn't beside the showcase"
+        assert picture is None or os.path.exists(os.path.join(os.path.dirname(sys.argv[1]), picture)), f"{picture} isn't beside the team's file"
         assert message["kind"] in ("message", "file", "intent", "overlap", "landed", "failed", "request"), f"{message['id']} is a {message['kind']}"
         # A request is an agent's, asked of its owner: what a yes does and what a no does.
         assert message["kind"] != "request" or (message["from"] in agents and message.get("text") and message.get("yes") and message.get("no")), f"{message['id']} is a request without an agent, a question, a yes or a no"
@@ -66,8 +60,8 @@ for agent, refs in show.get("activity", {}).items():
 for agent, note in show.get("read_only", {}).items():
     assert agent in agents and not agent.startswith(show["me"] + "-"), f"{agent} is ours, not read-only"
     assert note["dm"] in people, f"{agent}'s owner {note['dm']} isn't one of the people"
-# The store's screenshots (`store`, the home page's team) open what's there too.
+# The store's screenshots (`store`) open what's there too.
 for screen in show["screens"] + show.get("store", []):
     opens = screen.get("open")
     assert opens is None or opens in show["conversations"] or opens in show.get("activity", {}), f"{screen['name']} opens nothing"
-print("showcase: ok")
+print("home: ok")

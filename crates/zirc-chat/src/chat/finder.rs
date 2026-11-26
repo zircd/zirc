@@ -197,7 +197,7 @@ impl ServerSearch {
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub struct ScreenChip {
-    /// What it shows: `in #api`, `from leo`.
+    /// What it shows: `in #api`, `from raj`.
     pub label: String,
     /// The token it stands for, to take it away: `in:#api`.
     pub token: String,
@@ -340,7 +340,7 @@ pub struct SearchScreen {
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub struct SearchSegments {
-    /// The conversation as the sidebar names it: `#api`, `Leo Okafor`, `checkout`.
+    /// The conversation as the sidebar names it: `#api`, `Rajesh Iyer`, `checkout`.
     pub here: String,
     /// [`super::EVERYWHERE`].
     pub everywhere: String,
@@ -570,7 +570,7 @@ impl Chat {
     /// Where a conversation the server names `server_name` is here: the conversation of that
     /// name, else the name as the server gave it.
     fn local_name(&self, server_name: &str) -> String {
-        // The person's own direct messages come back as the pair, `@me,@leo`: here, `leo`.
+        // The person's own direct messages come back as the pair, `@me,@raj`: here, `raj`.
         let me = fold(self.me());
         let server_name = match server_name.split_once(',') {
             Some((a, b)) if bare(a) == me => b,
@@ -1095,7 +1095,7 @@ impl Chat {
     /// Where a hit in the conversation `name`, said by `from`, was, as a [`SearchHit::aside`]
     /// in one list of every conversation's hits says it: the conversation as shown for a
     /// channel or an agent's; for direct messages, `DM` when the other person said it and
-    /// `to Leo Okafor` when you did, so the name isn't said twice.
+    /// `to Rajesh Iyer` when you did, so the name isn't said twice.
     pub(super) fn hit_place(&self, name: &str, from: &str) -> String {
         let title = self.title(name);
         if is_channel(name) || agent(name).is_some() {

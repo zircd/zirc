@@ -1,6 +1,6 @@
 //! What a selection across messages reads as when it's copied, as every app that selects
 //! text across them copies it (the user chose it on 10 Nov 2026): one message a line,
-//! `[09:12] Maya Chen: the words`, its further lines indented under it. Within one message,
+//! `[09:12] Henrik Sandberg: the words`, its further lines indented under it. Within one message,
 //! a copy is its words alone, as selected: there's no one else to tell apart.
 //!
 //! A message whose words are all selected copies as it was typed, as its menu's Copy text
@@ -15,7 +15,7 @@
 pub struct CopiedMessage {
     /// `09:12`.
     pub clock: String,
-    /// `Maya Chen`; empty for what has no one to say it.
+    /// `Henrik Sandberg`; empty for what has no one to say it.
     pub name: String,
     /// What of its words is selected, as they're shown: the end of the first message's and
     /// the start of the last's, when a selection starts or ends inside them.
@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn one_message_copies_as_its_words_alone() {
         assert_eq!(
-            copied(&[said("09:12", "Maya Chen", "heads up")]),
+            copied(&[said("09:12", "Henrik Sandberg", "heads up")]),
             "heads up"
         );
         assert_eq!(copied(&[]), "");
@@ -98,21 +98,21 @@ mod tests {
         let messages = [
             said(
                 "09:12",
-                "Maya Chen",
+                "Henrik Sandberg",
                 "heads up, our agents are both in the checkout code",
             ),
             said(
                 "09:13",
-                "Leo Okafor",
+                "Rajesh Iyer",
                 "Thanks!\nI'll let mine finish first\n",
             ),
-            said("09:14", "", "Priya joined"),
+            said("09:14", "", "Andre joined"),
         ];
         assert_eq!(
             copied(&messages),
-            "[09:12] Maya Chen: heads up, our agents are both in the checkout code\n\
-             [09:13] Leo Okafor: Thanks!\n    I'll let mine finish first\n\
-             [09:14] Priya joined"
+            "[09:12] Henrik Sandberg: heads up, our agents are both in the checkout code\n\
+             [09:13] Rajesh Iyer: Thanks!\n    I'll let mine finish first\n\
+             [09:14] Andre joined"
         );
     }
 
@@ -121,7 +121,7 @@ mod tests {
         let whole = CopiedMessage {
             whole: true,
             typed: "see [the plan](https://zirc.dev/plan)\n- one\n- two".into(),
-            ..said("09:12", "Maya Chen", "see the plan\none\ntwo")
+            ..said("09:12", "Henrik Sandberg", "see the plan\none\ntwo")
         };
         assert_eq!(
             copied(std::slice::from_ref(&whole)),
@@ -129,38 +129,41 @@ mod tests {
         );
         let part = CopiedMessage {
             typed: "Thanks! I'll let *mine* finish first".into(),
-            ..said("09:13", "Leo Okafor", "Thanks! I'll let")
+            ..said("09:13", "Rajesh Iyer", "Thanks! I'll let")
         };
         assert_eq!(
             copied(&[whole, part]),
-            "[09:12] Maya Chen: see [the plan](https://zirc.dev/plan)\n    - one\n    - two\n\
-             [09:13] Leo Okafor: Thanks! I'll let"
+            "[09:12] Henrik Sandberg: see [the plan](https://zirc.dev/plan)\n    - one\n    - two\n\
+             [09:13] Rajesh Iyer: Thanks! I'll let"
         );
     }
 
     #[test]
     fn a_name_or_a_time_selected_alone_copies_as_itself_and_with_words_as_the_line() {
         let name = CopiedMessage {
-            head: "Maya".into(),
-            ..said("09:12", "Maya Chen", "")
+            head: "Henrik".into(),
+            ..said("09:12", "Henrik Sandberg", "")
         };
-        assert_eq!(copied(&[name]), "Maya");
+        assert_eq!(copied(&[name]), "Henrik");
         let both = CopiedMessage {
             head: "Chen 09:12".into(),
-            ..said("09:12", "Maya Chen", "heads up")
+            ..said("09:12", "Henrik Sandberg", "heads up")
         };
-        assert_eq!(copied(&[both]), "[09:12] Maya Chen: heads up");
+        assert_eq!(copied(&[both]), "[09:12] Henrik Sandberg: heads up");
     }
 
     #[test]
     fn a_message_with_none_of_its_words_selected_has_no_line_among_several() {
         let ended_on_a_name = CopiedMessage {
-            head: "Leo".into(),
-            ..said("09:13", "Leo Okafor", "")
+            head: "Raj".into(),
+            ..said("09:13", "Rajesh Iyer", "")
         };
         assert_eq!(
-            copied(&[said("09:12", "Maya Chen", "heads up"), ended_on_a_name]),
-            "[09:12] Maya Chen: heads up"
+            copied(&[
+                said("09:12", "Henrik Sandberg", "heads up"),
+                ended_on_a_name
+            ]),
+            "[09:12] Henrik Sandberg: heads up"
         );
     }
 }

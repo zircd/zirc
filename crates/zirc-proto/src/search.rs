@@ -1,5 +1,5 @@
 //! A search as people type it, for every app, the TUI and the CLI alike: words, plus tokens
-//! that narrow it (`in:#api from:leo agent:checkout type:landing has:link after:2026-11-01
+//! that narrow it (`in:#api from:raj agent:checkout type:landing has:link after:2026-11-01
 //! before:2026-11-07 sort:best`). [`Query::parse`] reads one, [`Query`]'s `Display` writes it
 //! back, so a recent search or a chip's removal round-trips; [`Query::params`] is what to ask
 //! the server's history for ([`zirc_proto::login::HISTORY_PATH`]).
@@ -91,7 +91,7 @@ pub struct Query {
 /// A part of a [`Query`] shown on its own, which can be taken away: a chip.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chip {
-    /// What it shows, such as `in #api` or `from leo`.
+    /// What it shows, such as `in #api` or `from raj`.
     pub label: String,
     /// The token it stands for, such as `in:#api`.
     pub token: String,
@@ -394,19 +394,19 @@ mod tests {
             }
         );
         assert_eq!(
-            Query::parse("in:@leo x", None).unwrap().scope,
-            Scope::Conversation("@leo".into())
+            Query::parse("in:@raj x", None).unwrap().scope,
+            Scope::Conversation("@raj".into())
         );
     }
 
     #[test]
     fn tokens_narrow_and_the_rest_is_text_quotes_and_unknown_keys_included() {
         let query = Query::parse(
-            r#"from:@leo agent:checkout type:landing has:link after:2026-11-01 "in:the box" https://x.dev/a sort:old"#,
+            r#"from:@raj agent:checkout type:landing has:link after:2026-11-01 "in:the box" https://x.dev/a sort:old"#,
             None,
         )
         .unwrap();
-        assert_eq!(query.from.as_deref(), Some("leo"));
+        assert_eq!(query.from.as_deref(), Some("raj"));
         assert_eq!(query.agent.as_deref(), Some("checkout"));
         assert_eq!(query.kinds, ["landing"]);
         assert_eq!(query.has, ["link"]);
@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn it_round_trips_through_its_text() {
         for (typed, opened_in) in [
-            ("in:#api from:leo timeout", None),
+            ("in:#api from:raj timeout", None),
             ("timeout", Some("#api")),
             (
                 "type:landing has:file before:2026-11-07 sort:best \"gateway down\"",
@@ -438,13 +438,13 @@ mod tests {
 
     #[test]
     fn chips_come_away_one_by_one_and_widening_looks_everywhere() {
-        let query = Query::parse("from:leo has:link timeout", Some("#api")).unwrap();
+        let query = Query::parse("from:raj has:link timeout", Some("#api")).unwrap();
         let chips = query.chips();
         let labels: Vec<_> = chips.iter().map(|c| c.label.as_str()).collect();
-        assert_eq!(labels, ["in #api", "from leo", "has link"]);
+        assert_eq!(labels, ["in #api", "from raj", "has link"]);
         let wider = query.without(&chips[0]);
         assert_eq!(wider.scope, Scope::Server);
-        assert_eq!(wider.from.as_deref(), Some("leo"));
+        assert_eq!(wider.from.as_deref(), Some("raj"));
         assert_eq!(query.without(&chips[2]).has, Vec::<String>::new());
         assert_eq!(query.widened().scope, Scope::Server);
         assert_eq!(query.widened().text, "timeout");
@@ -452,7 +452,7 @@ mod tests {
 
     #[test]
     fn it_asks_the_server_with_counts_and_its_sort() {
-        let here = Query::parse("from:leo \"gateway down\"", Some("#api")).unwrap();
+        let here = Query::parse("from:raj \"gateway down\"", Some("#api")).unwrap();
         let params = here.params();
         let get = |key: &str| {
             params
@@ -462,7 +462,7 @@ mod tests {
         };
         assert_eq!(get("q"), Some("gateway down"));
         assert_eq!(get("conversation"), Some("#api"));
-        assert_eq!(get("sender"), Some("leo"));
+        assert_eq!(get("sender"), Some("raj"));
         assert_eq!(get("sort"), Some("new"));
         assert_eq!(get("counts"), Some("1"));
         let everywhere = Query::parse("type:event x", None).unwrap();

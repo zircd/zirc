@@ -22,7 +22,6 @@ docs/using.md
 # How the crates are built, the pinned Ergo their tests start, and what they include.
 bazel
 dev/ergo
-fixtures/acme
 fixtures/home
 generated
 

@@ -48,7 +48,7 @@ pub const APP_TAG: &str = "APP";
 pub const ROLE_TAG: &str = "ROLE";
 
 /// What tags an agent session's own conversation in its header, after its title:
-/// `checkout · Maya Chen AGENT`.
+/// `checkout · Henrik Sandberg AGENT`.
 pub const AGENT_TAG: &str = "AGENT";
 
 /// Who a row is from, as its head shows them.

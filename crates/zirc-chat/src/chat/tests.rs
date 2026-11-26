@@ -3398,9 +3398,9 @@ fn a_title_opens_its_people_or_someones_card_in_every_app() {
         }
     );
     assert_eq!(
-        chat.title_opens("maya-mbp/cc-1"),
+        chat.title_opens("henrik-mbp/cc-1"),
         TitleOpens::Card {
-            nick: "maya-mbp".into(),
+            nick: "henrik-mbp".into(),
             session: Some("cc-1".into())
         }
     );
@@ -5415,7 +5415,11 @@ fn ranks_the_quick_switchers_matches_as_every_app_does() {
     assert_eq!(switch_rank("docs", "#api-docs", None), Some(1));
     assert_eq!(switch_rank("pi do", "#api-docs", None), Some(2));
     assert_eq!(
-        switch_rank("coupon", "checkout · Maya Chen", Some("the coupon field")),
+        switch_rank(
+            "coupon",
+            "checkout · Henrik Sandberg",
+            Some("the coupon field")
+        ),
         Some(2)
     );
     assert_eq!(switch_rank("web", "#api", None), None);
@@ -7782,8 +7786,8 @@ fn a_long_code_block_shows_its_first_eight_lines_whole_for_highlighting() {
     );
     assert_eq!(more.label(), "Show 33 more lines");
     assert_eq!(
-        more.spoken("Maya Chen's agent"),
-        "Show 33 more lines of Maya Chen's agent's message"
+        more.spoken("Henrik Sandberg's agent"),
+        "Show 33 more lines of Henrik Sandberg's agent's message"
     );
     assert_eq!(more.terminal_line(), "… 33 more lines · Enter shows them");
     // Opened, it's all there, and says "Show less" at its end.
@@ -8190,16 +8194,16 @@ fn the_card_the_note_and_the_header_are_the_wire_records() {
     );
     assert_eq!(
         serde_json::to_value(super::agent_activity::ReadOnlyNote {
-            text: "Only Maya Chen can message checkout".into(),
-            button: "Message Maya Chen".into(),
-            dm: "maya".into(),
+            text: "Only Henrik Sandberg can message checkout".into(),
+            button: "Message Henrik Sandberg".into(),
+            dm: "henrik".into(),
             remove: String::new(),
         })
         .unwrap(),
         json!({
-            "text": "Only Maya Chen can message checkout",
-            "button": "Message Maya Chen",
-            "dm": "maya",
+            "text": "Only Henrik Sandberg can message checkout",
+            "button": "Message Henrik Sandberg",
+            "dm": "henrik",
             "remove": "",
         })
     );
@@ -8445,7 +8449,7 @@ fn the_server_channel_shows_notices_and_sends_what_is_typed_there_as_it_is() {
     );
     assert_eq!(chat.header_title("#api"), chat.short_title("#api"));
     // The AGENT tag is any agent session's, a teammate's too, and nothing else's.
-    assert!(chat.shows_agent_tag("maya-mbp/cc-1"));
+    assert!(chat.shows_agent_tag("henrik-mbp/cc-1"));
     assert!(!chat.shows_agent_tag("#api") && !chat.shows_agent_tag("irc.zirc.test"));
 
     // Another conversation shown, the server's stands for nothing shown again.

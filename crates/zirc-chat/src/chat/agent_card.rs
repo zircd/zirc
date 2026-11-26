@@ -40,10 +40,10 @@ pub struct AgentCard {
     pub titled: bool,
     /// Its short handle, `checkout`, in mono, or its id when it has none.
     pub handle: String,
-    /// Whose agent it is: `Maya Chen's agent`, `your agent`. `None` when its owner isn't
+    /// Whose agent it is: `Henrik Sandberg's agent`, `your agent`. `None` when its owner isn't
     /// known.
     pub whose: Option<String>,
-    /// [`Self::whose`] as it follows the handle, muted, when the card is titled: ` · Maya
+    /// [`Self::whose`] as it follows the handle, muted, when the card is titled: ` · Henrik
     /// Chen's agent`, its separator first. Untitled, the title is the handle, and `whose`
     /// shows alone.
     pub after_handle: Option<String>,
@@ -51,7 +51,7 @@ pub struct AgentCard {
     pub tool: Option<String>,
     /// Where it runs, after the tool's icon: `Claude Code · mbp`.
     pub place: Option<String>,
-    /// Its owner's away, on its own line: `Maya Chen is away: lunch`.
+    /// Its owner's away, on its own line: `Henrik Sandberg is away: lunch`.
     pub standing: Option<String>,
     /// What it's doing now, from its latest intent or taking, marker first: `✎ about to
     /// change web/src/checkout/Coupon.tsx · 4m`, `⟶ the login bug · 12m`, or `Nothing in
@@ -286,7 +286,7 @@ impl super::Chat {
 /// ([`Chat::heard_all`]).
 pub(super) type Heard = std::collections::HashMap<(String, String), DateTime<Utc>>;
 
-/// Between the parts of a card's line: `Claude Code · mbp`, `checkout · Maya Chen's agent`.
+/// Between the parts of a card's line: `Claude Code · mbp`, `checkout · Henrik Sandberg's agent`.
 pub(super) const SEPARATOR: &str = " · ";
 
 /// What a session is doing, in the parts its card's Now line draws.

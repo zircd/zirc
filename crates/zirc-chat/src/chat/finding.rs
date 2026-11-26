@@ -107,7 +107,7 @@ impl Finding {
         }
     }
 
-    /// Adds `token` (`in:#api` from a group's count, `from:leo`) as a chip, keeping what's
+    /// Adds `token` (`in:#api` from a group's count, `from:raj`) as a chip, keeping what's
     /// typed.
     pub fn add(&mut self, token: &str) {
         if let Ok(base) = SearchQuery::parse(&format!("{} {token}", self.base), None) {
@@ -220,10 +220,10 @@ mod tests {
     #[test]
     fn a_finished_token_becomes_a_chip_and_the_rest_stays_typed() {
         let mut search = finding(Some("#api"));
-        search.take_typed("from:leo time");
+        search.take_typed("from:raj time");
         assert_eq!(search.typed, "time");
-        assert_eq!(search.base.from.as_deref(), Some("leo"));
-        assert_eq!(search.query().to_string(), "in:#api from:leo time");
+        assert_eq!(search.base.from.as_deref(), Some("raj"));
+        assert_eq!(search.query().to_string(), "in:#api from:raj time");
     }
 
     #[test]
@@ -234,10 +234,10 @@ mod tests {
         assert_eq!(search.query().to_string(), "in:* timeout");
         search.add("in:#web");
         assert_eq!(search.query().to_string(), "in:#web timeout");
-        search.add("from:leo");
+        search.add("from:raj");
         search.remove("in:#web");
-        assert_eq!(search.query().to_string(), "in:* from:leo timeout");
-        search.remove("from:leo");
+        assert_eq!(search.query().to_string(), "in:* from:raj timeout");
+        search.remove("from:raj");
         assert_eq!(search.query().to_string(), "in:* timeout");
     }
 
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn backspace_takes_the_last_chip_but_not_the_scope_the_control_holds() {
         let mut search = finding(Some("#api"));
-        search.take_typed("from:leo ");
+        search.take_typed("from:raj ");
         assert!(search.backspace());
         assert_eq!(search.base.from, None);
         assert!(!search.backspace());

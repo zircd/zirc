@@ -235,7 +235,7 @@ pub struct SearchHit {
     /// every conversation's hits where it was before it ([`Chat::hit_place`]),
     /// `#api · Sat 08:00`.
     pub aside: String,
-    /// What a screen reader says of it: "Leo Okafor in #api, 9:14: the gateway's upstream
+    /// What a screen reader says of it: "Rajesh Iyer in #api, 9:14: the gateway's upstream
     /// timeout is 30s".
     pub a11y: String,
 }

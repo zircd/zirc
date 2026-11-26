@@ -1,31 +1,39 @@
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-# The team in zirc.dev's home page's picture (README.md): the same shape as Acme's showcase
-# (//fixtures/acme), played by the same core.
+# The made-up team everything zirc shows of itself uses (README.md): zirc.dev's home page's
+# picture, the store screenshots, the design pass's shots and the apps' tests. home.json is
+# the team and its morning, played by the real core.
 exports_files(
-    ["home.json"],
+    [
+        "home.json",
+        "replay-p99-before-after.png",
+    ],
     visibility = [
-        # The Mac app's harness and the iPhone's screenshot host show it for the home page's
-        # shots (web/art/home-shots.sh).
+        # The phones' tests, screenshot hosts and store screenshots have the real core show
+        # it, as the core's own tests do.
+        "//oss/apps/android:__subpackages__",
         "//oss/apps/ios:__subpackages__",
+        "//oss/apps/mobile/core:__pkg__",
+        # The Mac app's harness shows it, for its smoke test and the home page's shots
+        # (web/art/home-shots.sh).
         "//oss/apps/mac:__pkg__",
-        # Both phones' store screenshots play it (its `store` screens).
-        "//oss/apps/android:__pkg__",
-        # zirc-app's tests stage it (src/showcase.rs).
+        # The web client's screenshots stage it too.
+        "//oss/web:__pkg__",
+        # zirc-app's tests stage it (src/showcase.rs), as the desktop's showcase does.
         "//crates/zirc-app:__pkg__",
     ],
 )
 
-# Everything home.json names is in it, by Acme's checker.
+# Everything home.json names is in it: who said what, whose agents, which conversations.
 sh_test(
     name = "home_test",
     size = "small",
     srcs = ["check.sh"],
     args = ["$(rootpath home.json)"],
-    data = [
+    data = glob(["*.png"]) + [
+        "check.py",
         "home.json",
-        "//fixtures/acme:check.py",
     ],
     tags = [
         "kind:unit",

@@ -8,7 +8,7 @@ use crate::chat::{
     Finding, RecentSearches, SearchLimits, SearchQuery, SearchScope, SearchSort, absorb_search,
 };
 
-/// A chat in `#api` and `#web`, with Leo's direct messages, some of it about timeouts.
+/// A chat in `#api` and `#web`, with Raj's direct messages, some of it about timeouts.
 fn scene() -> Chat {
     let mut chat = Scene::in_api().into_chat();
     feed(
@@ -16,10 +16,10 @@ fn scene() -> Chat {
         &[
             ":me!u@h JOIN #api",
             ":me!u@h JOIN #web",
-            "@time=2026-11-06T09:14:00.000Z;msgid=a1 :leo!u@h PRIVMSG #api :the gateway's upstream timeout is 30s",
-            "@time=2026-11-06T09:20:00.000Z;msgid=a2 :maya!u@h PRIVMSG #api :raising it to 60",
-            "@time=2026-11-06T10:00:00.000Z;msgid=w1 :priya!u@h PRIVMSG #web :checkout timeout on slow 3G",
-            "@time=2026-11-06T11:00:00.000Z;msgid=d1 :leo!u@h PRIVMSG me :did you bump the timeout?",
+            "@time=2026-11-06T09:14:00.000Z;msgid=a1 :raj!u@h PRIVMSG #api :the gateway's upstream timeout is 30s",
+            "@time=2026-11-06T09:20:00.000Z;msgid=a2 :henrik!u@h PRIVMSG #api :raising it to 60",
+            "@time=2026-11-06T10:00:00.000Z;msgid=w1 :andre!u@h PRIVMSG #web :checkout timeout on slow 3G",
+            "@time=2026-11-06T11:00:00.000Z;msgid=d1 :raj!u@h PRIVMSG me :did you bump the timeout?",
         ],
     );
     chat
@@ -119,7 +119,7 @@ fn in_one_conversation_it_is_flat_newest_first_and_says_how_many_elsewhere() {
                 "a1",
                 "2026-11-06T09:14:00Z",
                 "#api",
-                "leo",
+                "raj",
                 "the gateway's upstream timeout is 30s",
             ),
             said(
@@ -133,7 +133,7 @@ fn in_one_conversation_it_is_flat_newest_first_and_says_how_many_elsewhere() {
         Some(counts(&[
             ("#api", 23),
             ("#web", 3),
-            ("leo", 4),
+            ("raj", 4),
             ("#ops", 7),
         ])),
     ));
@@ -214,14 +214,14 @@ fn everywhere_by_best_match_groups_by_conversation_and_by_time_is_one_list() {
                 "a1",
                 "2026-11-06T09:14:00Z",
                 "#api",
-                "leo",
+                "raj",
                 "the gateway's upstream timeout is 30s",
             ),
             said(
                 "d1",
                 "2026-11-06T11:00:00Z",
-                "leo",
-                "leo",
+                "raj",
+                "raj",
                 "did you bump the timeout?",
             ),
             said(
@@ -235,13 +235,13 @@ fn everywhere_by_best_match_groups_by_conversation_and_by_time_is_one_list() {
                 "w1",
                 "2026-11-06T10:00:00Z",
                 "#web",
-                "priya",
+                "andre",
                 "checkout timeout on slow 3G",
             ),
         ],
         Some(counts(&[
             ("#api", 23),
-            ("leo", 4),
+            ("raj", 4),
             ("#web", 3),
             ("#a", 1),
             ("#b", 1),
@@ -257,10 +257,10 @@ fn everywhere_by_best_match_groups_by_conversation_and_by_time_is_one_list() {
         .iter()
         .map(|g| (g.conversation.as_str(), g.count, g.hits.len()))
         .collect();
-    assert_eq!(groups, [("#api", 23, 2), ("leo", 4, 1), ("#web", 3, 1)]);
+    assert_eq!(groups, [("#api", 23, 2), ("raj", 4, 1), ("#web", 3, 1)]);
     // In a group, newest first; a direct message narrows by its @.
     assert_eq!(screen.groups[0].hits[0].id.as_deref(), Some("a1"));
-    assert_eq!(screen.groups[1].token, "in:@leo");
+    assert_eq!(screen.groups[1].token, "in:@raj");
     assert!(screen.groups[0].face.is_none() && screen.groups[1].face.is_some());
     // Its count, as a screen reader says it, narrows to it.
     assert_eq!(
@@ -299,8 +299,8 @@ fn everywhere_by_best_match_groups_by_conversation_and_by_time_is_one_list() {
     // Return opens the first.
     assert_eq!(screen.first().and_then(|h| h.id.as_deref()), Some("d1"));
     assert_eq!(
-        chat.hit_place("leo", "me"),
-        format!("to {}", chat.title("leo"))
+        chat.hit_place("raj", "me"),
+        format!("to {}", chat.title("raj"))
     );
 }
 
@@ -391,8 +391,8 @@ fn an_empty_search_says_where_it_looked_and_what_to_try() {
 #[test]
 fn typed_tokens_become_chips_and_the_rest_stays_typed() {
     let base = SearchQuery::parse("", Some("#api")).unwrap();
-    let (query, rest) = absorb_search(&base, "from:leo time").unwrap();
-    assert_eq!(query.from.as_deref(), Some("leo"));
+    let (query, rest) = absorb_search(&base, "from:raj time").unwrap();
+    assert_eq!(query.from.as_deref(), Some("raj"));
     assert_eq!(rest, "time");
     // A token still being typed stays typed.
     assert!(absorb_search(&base, "timeout from:le").is_none());
@@ -462,7 +462,7 @@ fn a_hit_s_day_is_the_person_s_own_around_midnight() {
             "z1",
             "2026-11-06T23:30:00Z",
             "#api",
-            "leo",
+            "raj",
             "late deploy",
         )],
         None,
@@ -509,19 +509,19 @@ fn the_server_s_name_for_one_s_own_direct_messages_is_the_conversation_here() {
         vec![said(
             "d1",
             "2026-11-06T11:00:00Z",
-            "@leo,@me",
-            "leo",
+            "@raj,@me",
+            "raj",
             "did you bump the timeout?",
         )],
-        Some(counts(&[("@leo,@me", 1), ("#api", 2)])),
+        Some(counts(&[("@raj,@me", 1), ("#api", 2)])),
     ));
     let screen = chat.search_screen(&query, Some(&server), true, false, wall);
-    let leo = screen
+    let raj = screen
         .groups
         .iter()
         .find(|group| group.hits.iter().any(|hit| hit.id.as_deref() == Some("d1")))
-        .expect("Leo's group");
-    assert_eq!(leo.conversation, "leo");
-    assert_eq!(leo.count, 1);
-    assert_eq!(leo.token, "in:@leo");
+        .expect("Raj's group");
+    assert_eq!(raj.conversation, "raj");
+    assert_eq!(raj.count, 1);
+    assert_eq!(raj.token, "in:@raj");
 }

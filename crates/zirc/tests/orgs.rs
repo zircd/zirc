@@ -46,7 +46,7 @@ impl Machine {
              [org.server]\nhost = \"127.0.0.1\"\nport = {}\ntls = false\n",
             globex.port()
         );
-        std::fs::write(&config, format!("owner = \"maya\"\n{text}{globex}")).unwrap();
+        std::fs::write(&config, format!("owner = \"henrik\"\n{text}{globex}")).unwrap();
         tokio::spawn(zircd::run(home.path().to_owned(), std::future::pending()));
         let repo = zirc_test_ergo::git::clone("https://github.com/acme/web.git");
         let machine = Self { home, repo };

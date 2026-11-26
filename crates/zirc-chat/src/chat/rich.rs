@@ -143,7 +143,7 @@ impl super::Chat {
 
     /// `text` as plain words, as an excerpt shows it where there's no room for chips, such
     /// as Activity's: formatting gone, and each mention and session by the name it shows
-    /// as ([`super::Chat::span_label`]), `Maya Chen the plan is up` for `@maya the plan is
+    /// as ([`super::Chat::span_label`]), `Henrik Sandberg the plan is up` for `@henrik the plan is
     /// up`. Blocks on lines of their own.
     #[must_use]
     pub fn shown_text(&self, text: &str) -> String {

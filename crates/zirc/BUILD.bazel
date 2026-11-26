@@ -14,7 +14,7 @@ zirc_rust_binary(
     test_env = {
         # `zirc daemon start` in the integration tests starts this zircd.
         "ZIRC_ZIRCD": "$(rootpath //crates/zircd)",
-        # What zirc.dev's terminals show, which tests/terminals.rs makes (fixtures/acme).
+        # What zirc.dev's terminals show, which tests/terminals.rs makes (fixtures/home).
         "ZIRC_TERMINALS": "$(rootpath //fixtures/home:terminals.json)",
     },
 )

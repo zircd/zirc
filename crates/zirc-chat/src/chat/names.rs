@@ -159,7 +159,7 @@ impl Chat {
     }
 
     /// The initials `nick`'s avatar shows in every app: those of the name they show as
-    /// ([`Chat::shown_name`]), `MC` for Maya Chen, else of their nick.
+    /// ([`Chat::shown_name`]), `HS` for Henrik Sandberg, else of their nick.
     #[must_use]
     pub fn avatar_initials(&self, nick: &str) -> String {
         super::initials(&self.shown_name(nick))

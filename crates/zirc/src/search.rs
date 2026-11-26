@@ -150,7 +150,7 @@ pub async fn search(
     Ok(())
 }
 
-/// `args` with what its words say as a search (`in:#api from:leo after:2026-11-01 timeout`),
+/// `args` with what its words say as a search (`in:#api from:raj after:2026-11-01 timeout`),
 /// read as every app reads one ([`zirc_proto::search::Query`]); a flag given says the same and
 /// wins. `in:*` is everywhere, as without `--in`.
 fn read_tokens(mut args: SearchArgs) -> Result<SearchArgs> {
@@ -373,18 +373,18 @@ mod tests {
     fn words_read_as_a_search_and_flags_win() {
         let args = read(&[
             "in:#API",
-            "from:@leo",
+            "from:@raj",
             "after:2026-11-01",
             "type:event",
             "\"gateway down\"",
         ])
         .unwrap();
         assert_eq!(args.conversation.as_deref(), Some("#api"));
-        assert_eq!(args.from.as_deref(), Some("leo"));
+        assert_eq!(args.from.as_deref(), Some("raj"));
         assert_eq!(args.since, "2026-11-01");
         assert!(args.events);
         assert_eq!(args.text, ["gateway down"]);
-        let flags = read(&["--in", "#web", "--from", "ada", "in:#api", "from:leo", "x"]).unwrap();
+        let flags = read(&["--in", "#web", "--from", "ada", "in:#api", "from:raj", "x"]).unwrap();
         assert_eq!(
             (flags.conversation.as_deref(), flags.from.as_deref()),
             (Some("#web"), Some("ada"))

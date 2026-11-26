@@ -780,8 +780,8 @@ mod tests {
         assert_eq!(org_initials("Zirc Labs"), "ZL");
         assert_eq!(composer_placeholder("#api", None), "Message #api");
         assert_eq!(
-            composer_placeholder("Leo Okafor", Some("Acme")),
-            "Message Leo Okafor in Acme"
+            composer_placeholder("Rajesh Iyer", Some("Acme")),
+            "Message Rajesh Iyer in Acme"
         );
     }
 
