@@ -213,6 +213,10 @@ pub struct HeardTool {
     /// times.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub said: Option<HeardSaid>,
+    /// Whether it was heard lately, as the server answers ([`HeardTool::as_of`]), by a post or
+    /// a test. None from a server older than it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heard: Option<HeardState>,
 }
 
 /// What Connect a tool says of a tool heard: `lead`, then when (`at`, as the page says a time),
@@ -230,9 +234,89 @@ pub struct HeardSaid {
     pub tail: String,
 }
 
-/// Whether a role's server has heard a tool, in a word after its name, as zirc.dev's Roles tab
-/// and a role's own page say it: heard, by a post or a test, or not yet.
-pub const HEARD_WORDS: (&str, &str) = ("heard", "not heard yet");
+/// How long a sender counts as heard after it last posted, in seconds: three days (the user's
+/// choice, 26 Nov 2026), after which its dot fades, so a one-off test, or a tool or CI no
+/// longer connected, doesn't stay green.
+pub const HEARD_FOR: u64 = 3 * 86_400;
+
+/// Whether a sender was heard lately: a tool at a role's address, or what reports to roles by
+/// itself ([`HeardReporter`]), as zirc.dev's Roles tab, a role's own page and Connect a tool
+/// show it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[ts(rename = "InboundHeardState")]
+pub enum HeardState {
+    /// Within [`HEARD_FOR`].
+    Heard,
+    /// Once, but not within [`HEARD_FOR`].
+    Quiet,
+    /// Never.
+    Never,
+}
+
+impl HeardState {
+    /// Every state.
+    pub const ALL: [Self; 3] = [Self::Heard, Self::Quiet, Self::Never];
+
+    /// A sender last heard at `last` (unix seconds), at `now`.
+    #[must_use]
+    pub fn of(last: Option<u64>, now: u64) -> Self {
+        match last {
+            None => Self::Never,
+            Some(last) if now.saturating_sub(last) < HEARD_FOR => Self::Heard,
+            Some(_) => Self::Quiet,
+        }
+    }
+
+    /// How it's written: `heard`, `quiet`, `never`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Heard => "heard",
+            Self::Quiet => "quiet",
+            Self::Never => "never",
+        }
+    }
+
+    /// It in a word after the sender's name: `heard`, `not heard lately`, `not heard yet`.
+    #[must_use]
+    pub const fn words(self) -> &'static str {
+        match self {
+            Self::Heard => "heard",
+            Self::Quiet => "not heard lately",
+            Self::Never => "not heard yet",
+        }
+    }
+}
+
+/// When the organisation's server last heard something that reports to roles by itself
+/// ([`Subject::reporter`]: CI, the alert bridge), which is connected once for the whole
+/// organisation, so every role that takes its kinds shows the same: as the server answers
+/// zirc.dev ([`crate::roles::StandingShown::reporters`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "InboundHeardReporter", optional_fields)]
+pub struct HeardReporter {
+    /// It, as [`Subject::reporter`] names it: `CI`, `Alerts`.
+    pub reporter: String,
+    /// When it last said anything, in unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub last: Option<u64>,
+    /// Whether that's lately.
+    pub heard: HeardState,
+}
+
+impl HeardReporter {
+    /// `reporter`, last heard at `last`, at `now`.
+    #[must_use]
+    pub fn new(reporter: &str, last: Option<u64>, now: u64) -> Self {
+        Self {
+            reporter: reporter.to_owned(),
+            last,
+            heard: HeardState::of(last, now),
+        }
+    }
+}
 
 impl HeardTool {
     /// `tool`, not heard yet.
@@ -245,12 +329,14 @@ impl HeardTool {
             today: 0,
             day: 0,
             said: None,
+            heard: None,
         }
     }
 
     /// It as the server answers at `now` (unix seconds) for role `role`: today's count only
-    /// while it's today's, and what Connect a tool says of it. What it heard last says it: a
-    /// test, which woke no one, or a post, with today's count.
+    /// while it's today's, whether it was heard lately ([`HeardState`]), and what Connect a
+    /// tool says of it. What it heard last says it: a test, which woke no one, or a post, with
+    /// today's count; "Last heard" once that's past [`HEARD_FOR`].
     #[must_use]
     pub fn as_of(&self, role: &str, now: u64) -> Self {
         let today = if self.day == now / 86_400 {
@@ -259,14 +345,20 @@ impl HeardTool {
             0
         };
         let name = self.tool.name();
+        let heard = HeardState::of(self.last.max(self.last_test), now);
+        let lead = if heard == HeardState::Heard {
+            "✓ Heard"
+        } else {
+            "Last heard"
+        };
         let said = match (self.last, self.last_test) {
             (last, Some(test)) if last.is_none_or(|last| test >= last) => Some(HeardSaid {
-                lead: format!("✓ Heard a test from {name}"),
+                lead: format!("{lead} a test from {name}"),
                 at: test,
                 tail: format!(". {role} wasn't woken by it."),
             }),
             (Some(last), _) => Some(HeardSaid {
-                lead: format!("✓ Heard from {name}"),
+                lead: format!("{lead} from {name}"),
                 at: last,
                 tail: if today > 0 {
                     format!(" · {today} today")
@@ -279,6 +371,7 @@ impl HeardTool {
         Self {
             today,
             said,
+            heard: Some(heard),
             ..self.clone()
         }
     }
@@ -419,11 +512,17 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Signs::decl(config),
         HeardTool::decl(config),
         HeardSaid::decl(config),
+        HeardState::decl(config),
+        HeardReporter::decl(config),
         Heard::decl(config),
         format!("const INBOUND_HEARD_PATH = {HEARD_PATH:?};"),
         format!(
-            "const INBOUND_HEARD_WORDS = {{ heard: {:?}, not: {:?} }} as const;",
-            HEARD_WORDS.0, HEARD_WORDS.1
+            "const INBOUND_HEARD_WORDS: Record<InboundHeardState, string> = {{ {} }};",
+            HeardState::ALL
+                .iter()
+                .map(|state| format!("{}: {:?}", state.as_str(), state.words()))
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         format!(
             "const INBOUND_TOOLS: readonly {{ id: InboundTool; name: string; sends: string; wakesOn: string; openIn: string; subject: RoleReportSubject | null; signs: InboundSigns | null }}[] = [{}];",
@@ -577,6 +676,31 @@ mod tests {
             ("✓ Heard a test from Sentry", ". oncall wasn't woken by it.")
         );
         assert_eq!(HeardTool::new(Tool::Linear).as_of("oncall", 0).said, None);
+    }
+
+    #[test]
+    fn a_sender_heard_fades_after_three_days_and_says_so() {
+        assert_eq!(HeardState::of(None, 10), HeardState::Never);
+        assert_eq!(
+            HeardState::of(Some(10), 10 + HEARD_FOR - 1),
+            HeardState::Heard
+        );
+        assert_eq!(HeardState::of(Some(10), 10 + HEARD_FOR), HeardState::Quiet);
+        let mut heard = HeardTool::new(Tool::Github);
+        heard.heard(1_000, true);
+        assert_eq!(heard.as_of("oncall", 1_060).heard, Some(HeardState::Heard));
+        let later = heard.as_of("oncall", 1_000 + HEARD_FOR);
+        assert_eq!(later.heard, Some(HeardState::Quiet));
+        assert_eq!(later.said.unwrap().lead, "Last heard a test from GitHub");
+        assert_eq!(
+            HeardTool::new(Tool::Linear).as_of("oncall", 0).heard,
+            Some(HeardState::Never)
+        );
+        let ci = HeardReporter::new("CI", Some(5), 5 + HEARD_FOR);
+        assert_eq!(
+            (ci.heard, ci.heard.words()),
+            (HeardState::Quiet, "not heard lately")
+        );
     }
 
     #[test]

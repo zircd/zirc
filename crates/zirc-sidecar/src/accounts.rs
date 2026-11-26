@@ -718,11 +718,45 @@ async fn roles_shown(State(ergo): State<Arc<Ergo>>) -> Response {
             }
         })
         .collect();
+    drop(profiles);
     Json(zirc_proto::roles::StandingShown {
         listing: standing.listing,
         seats,
+        reporters: reporters_heard(&ergo).await,
     })
     .into_response()
+}
+
+/// Each of [`zirc_proto::role_report::Subject::reporters`] as the Roles tab shows it on every
+/// role that takes its kinds, from the activity store ([`crate::activity::reporters_heard`]):
+/// none where the store can't be read, which is logged.
+async fn reporters_heard(ergo: &Ergo) -> Vec<zirc_proto::inbound::HeardReporter> {
+    let path = crate::activity::path_for(&ergo.history);
+    let read = tokio::task::spawn_blocking(move || {
+        crate::activity::reporters_heard(&crate::activity::open(&path)?)
+    })
+    .await;
+    let heard = match read {
+        Ok(Ok(heard)) => heard,
+        Ok(Err(failure)) => {
+            warn!(%failure, "couldn't read when each reporter was last heard");
+            return Vec::new();
+        }
+        Err(failure) => {
+            warn!(%failure, "reading when each reporter was last heard stopped");
+            return Vec::new();
+        }
+    };
+    let now = jiff::Timestamp::now()
+        .as_second()
+        .try_into()
+        .unwrap_or_default();
+    zirc_proto::role_report::Subject::reporters()
+        .into_iter()
+        .map(|reporter| {
+            zirc_proto::inbound::HeardReporter::new(reporter, heard.get(reporter).copied(), now)
+        })
+        .collect()
 }
 
 async fn set_teams(

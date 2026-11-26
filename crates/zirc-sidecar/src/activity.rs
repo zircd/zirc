@@ -258,6 +258,56 @@ pub fn firsts(connection: &Connection) -> rusqlite::Result<Vec<zirc_proto::onboa
     Ok(kept)
 }
 
+/// When the organisation last heard each of [`zirc_proto::role_report::Subject::reporters`],
+/// in unix seconds, whichever role it reported to: CI by anything only it says
+/// ([`zirc_proto::ci::only_cis`], kept as words from anyone else), and each by a report of a
+/// kind it finds. One never heard, or no longer in the history, isn't listed.
+///
+/// # Errors
+///
+/// When the store can't be read.
+pub fn reporters_heard(
+    connection: &Connection,
+) -> rusqlite::Result<std::collections::BTreeMap<&'static str, u64>> {
+    use zirc_proto::role_report::{CI_REPORTER, Subject};
+    let mut heard = std::collections::BTreeMap::new();
+    let mut note = |reporter: &'static str, nanotime: i64| {
+        let at = u64::try_from(nanotime / 1_000_000_000).unwrap_or_default();
+        let last = heard.entry(reporter).or_insert(at);
+        *last = (*last).max(at);
+    };
+    // One by one, as each is the index's last of its kind.
+    let mut last_of =
+        connection.prepare_cached("SELECT max(nanotime) FROM rows WHERE kind = ?1")?;
+    for kind in [
+        zirc_proto::ci::LANDING_KIND,
+        zirc_proto::ci::DEPLOY_KIND,
+        zirc_proto::ci::CHECK_KIND,
+    ] {
+        if let Some(nanotime) = last_of.query_row([kind], |row| row.get::<_, Option<i64>>(0))? {
+            note(CI_REPORTER, nanotime);
+        }
+    }
+    let mut reports = connection.prepare_cached(
+        "SELECT json_extract(data, '$.kind'), max(nanotime) FROM rows
+         WHERE kind = ?1 AND data IS NOT NULL GROUP BY 1",
+    )?;
+    let found = reports.query_map([zirc_proto::role_report::KIND], |row| {
+        Ok((row.get::<_, Option<String>>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    for each in found {
+        let (kind, nanotime) = each?;
+        if let Some(reporter) = Subject::ALL
+            .into_iter()
+            .find(|subject| kind.as_deref() == Some(subject.as_str()))
+            .and_then(Subject::reporter)
+        {
+            note(reporter, nanotime);
+        }
+    }
+    Ok(heard)
+}
+
 fn open_file(path: &Path) -> rusqlite::Result<Connection> {
     let connection = Connection::open_with_flags(
         path,
@@ -417,6 +467,9 @@ pub fn metadata(message: &Message) -> Option<Value> {
                 // Its name, how it stands and who's on it ([`zirc_proto::state::State`]), never
                 // why, which is words.
                 zirc_proto::state::KIND => &["name", "level", "owner"],
+                // A report to a role: to which, and of what kind, for when each reporter was
+                // last heard ([`reporters_heard`]), never what it says.
+                zirc_proto::role_report::KIND => &["role", "kind"],
                 zirc_proto::LEASE_KIND => &["name", "action", "session", "until"],
                 // A question to a person: which one, where it stands and whether a yes can
                 // be undone ([`zirc_proto::request::Request`]), never the question.
@@ -1507,6 +1560,63 @@ mod tests {
             (firsts[0].account.as_str(), firsts[0].at),
             ("ada-mbp", 100_000)
         );
+    }
+
+    #[test]
+    fn hears_ci_by_what_only_it_says_and_each_reporter_by_its_reports_to_any_role() {
+        use zirc_proto::role_report::{RoleReport, Subject};
+        let dir = tempfile::tempdir().unwrap();
+        let path = history(dir.path());
+        let mut store = open(&path_for(&path)).unwrap();
+        assert!(reporters_heard(&store).unwrap().is_empty());
+        let check = Message::new(
+            "ci",
+            Event::Custom {
+                kind: zirc_proto::ci::CHECK_KIND.into(),
+                data: json!({"state": "passed", "build": "8"}),
+                text: "master passed".into(),
+            },
+        );
+        add(
+            &path,
+            "m1",
+            "#agents",
+            20 * SECOND,
+            zirc_proto::ci::NICK,
+            &zirc(&check),
+        );
+        // A landing a member's machine says isn't CI's.
+        let landing = Message::new(
+            "cc-a",
+            Event::Custom {
+                kind: zirc_proto::ci::LANDING_KIND.into(),
+                data: json!({"state": "passed", "build": "9"}),
+                text: "landed".into(),
+            },
+        );
+        add(
+            &path,
+            "m2",
+            "#agents",
+            30 * SECOND,
+            "ada-mbp",
+            &zirc(&landing),
+        );
+        let container = RoleReport::new("fixer", Subject::Container, "web/web");
+        let report = Message::new("alerts", container.event());
+        add(
+            &path,
+            "m3",
+            "#ops",
+            40 * SECOND,
+            "zirc-alerts",
+            &zirc(&report),
+        );
+        catch_up(&mut store, &path).unwrap();
+        let heard = reporters_heard(&store).unwrap();
+        assert_eq!(heard.get("CI"), Some(&20));
+        assert_eq!(heard.get("Alerts"), Some(&40));
+        assert_eq!(heard.len(), 2);
     }
 
     #[test]

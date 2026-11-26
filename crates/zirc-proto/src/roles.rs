@@ -400,6 +400,10 @@ pub struct StandingShown {
     pub listing: Listing,
     /// Each role's seat, in the same order.
     pub seats: Vec<SeatShown>,
+    /// When the server last heard each of [`crate::role_report::Subject::reporters`], for
+    /// every role that takes its kinds. Empty from a server older than it.
+    #[serde(default)]
+    pub reporters: Vec<crate::inbound::HeardReporter>,
 }
 
 impl Standing {

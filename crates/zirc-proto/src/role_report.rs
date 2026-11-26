@@ -55,6 +55,10 @@ pub const BUILD_MAX: usize = 32;
 /// ([`OpenItem::reminded`]): `build 609 · 2 h · nudged`.
 pub const NUDGED: &str = "nudged";
 
+/// CI, as a reporter ([`Subject::reporter`]): it reports warnings and flaky tests, and is
+/// heard by anything it says ([`crate::ci::only_cis`]).
+pub const CI_REPORTER: &str = "CI";
+
 /// What a report is about. Kinds are added here; a sidecar older than a kind doesn't read its
 /// reports, as it couldn't say what they are.
 #[derive(
@@ -142,10 +146,22 @@ impl Subject {
     #[must_use]
     pub const fn reporter(self) -> Option<&'static str> {
         match self {
-            Self::Warning | Self::Flaky => Some("CI"),
+            Self::Warning | Self::Flaky => Some(CI_REPORTER),
             Self::Container => Some("Alerts"),
             Self::Error | Self::Issue | Self::Incident => None,
         }
+    }
+
+    /// Every [`Subject::reporter`], once each, in [`Subject::ALL`]'s order: `CI`, `Alerts`.
+    #[must_use]
+    pub fn reporters() -> Vec<&'static str> {
+        let mut reporters = Vec::new();
+        for reporter in Self::ALL.into_iter().filter_map(Self::reporter) {
+            if !reporters.contains(&reporter) {
+                reporters.push(reporter);
+            }
+        }
+        reporters
     }
 
     /// Who finds one, as a wake says it: its [`Subject::reporter`], `CI` or `Alerts`, and
