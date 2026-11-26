@@ -523,3 +523,48 @@ fn config_for_tui(ergo: &Ergo) -> Config {
         .extend(zirc_tui::cli::EXTRA_CAPS.iter().map(|&cap| cap.to_owned()));
     config
 }
+
+/// A message to a machine whose zircd is stopped, as for an update: a real Ergo refuses it,
+/// as a machine's account isn't always-on, and the input holds it again to send once the
+/// machine's back (the user's choice, 25 Nov 2026).
+#[tokio::test]
+async fn a_message_to_a_machine_not_connected_comes_back_to_the_input() {
+    let ergo = require_ergo!();
+    register(&ergo, "tui", "passphrase-for-tui").await;
+    let mut session = signed_in(&ergo).await;
+    {
+        // The machine says hello beside the person, then its zircd stops.
+        let (machine, mut machine_in) = person(&ergo, "tui-mbp").await;
+        machine.join("#api").unwrap();
+        next_matching(&mut machine_in, |line| line.command == "JOIN").await;
+        machine.privmsg("tui", "hi").unwrap();
+        until(
+            &mut session,
+            "the machine's hello, beside the person",
+            |app| {
+                let here = |name: &str, member: bool| {
+                    app.conversations()
+                        .iter()
+                        .any(|c| c.is(name) && (!member || c.has_member("tui-mbp")))
+                };
+                here("tui-mbp", false) && here("#api", true)
+            },
+        )
+        .await;
+        machine.quit("stopping for an update").unwrap();
+    }
+    until(&mut session, "the machine gone", |app| {
+        app.conversations()
+            .iter()
+            .any(|c| c.is("#api") && !c.has_member("tui-mbp"))
+    })
+    .await;
+    let dm = buffer_at(&session.app, "tui-mbp");
+    let _ = session.app.select(dm);
+    assert!(typed(&mut session, "rebase please"));
+    until(&mut session, "the message back in the input", |app| {
+        app.input.text() == "rebase please"
+    })
+    .await;
+    assert!(screen(&session.app).contains("Not sent: tui-mbp isn't connected"));
+}

@@ -14,11 +14,14 @@ impl Chat {
         self.sent(target);
         if let Some((nick, session)) = agent(target) {
             // An agent hears plain words; zircd takes only text for it.
-            let lines = self.said(nick, &to_agent(session, text), false);
+            let body = to_agent(session, text);
+            let lines = self.said(nick, &body, false);
+            self.awaiting_echo(target, text, self.bodies(&body, false));
             self.echo(target, EntryKind::Message(strip_formatting(text)));
             return lines;
         }
         let lines = self.said(target, text, action);
+        self.awaiting_echo(target, text, self.bodies(text, action));
         let kind = if action {
             EntryKind::Action(strip_formatting(text))
         } else {
@@ -33,6 +36,7 @@ impl Chat {
     /// message it answers and plain IRC clients as an ordinary line. Returns what to send.
     pub fn say_reply(&mut self, target: &str, to: &str, text: &str) -> Vec<Line> {
         let mut lines = self.said(target, text, false);
+        self.awaiting_echo(target, text, self.bodies(text, false));
         tag_opening(&mut lines, REPLY, to);
         self.echo_reply(
             target,
@@ -86,6 +90,14 @@ impl Chat {
         } else {
             lines(text)
         }
+    }
+
+    /// What each message `text` goes as says, as its echo comes back.
+    fn bodies(&self, text: &str, action: bool) -> Vec<String> {
+        self.outgoing(text, action)
+            .into_iter()
+            .map(|(Outgoing::Line(body) | Outgoing::Batch(body))| body)
+            .collect()
     }
 
     /// The lines that say `text` to `target`, as [`Chat::say`] sends them.

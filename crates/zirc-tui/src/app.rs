@@ -284,6 +284,9 @@ pub struct App {
     flash: Option<String>,
     /// What was typed, when the last key sent it, so a send that fails can give it back.
     sent_typed: Option<String>,
+    /// How many times the core had given the shown conversation's composer back what was
+    /// written, as the input last took it ([`App::take_back_draft`]).
+    draft_restored: u64,
     /// On a client signed in to several organisations, each of them with what's unread
     /// there, and which this app is, as whoever holds them says before each draw. Empty
     /// with one: then nothing is said about organisations.
@@ -454,6 +457,7 @@ impl App {
             hidden: None,
             flash: None,
             sent_typed: None,
+            draft_restored: 0,
             prefs_changed: false,
             tabbed: None,
             send_typing: true,
@@ -1016,6 +1020,7 @@ impl App {
     pub fn handle(&mut self, line: Line) -> Vec<Line> {
         self.changed();
         let lines = self.chat.receive(line);
+        self.take_back_draft();
         // An open search finds what just came in.
         if let Some(searching) = &mut self.searching {
             searching.refresh(&self.chat, self.zone);
@@ -1048,7 +1053,22 @@ impl App {
         let draft = self.chat.draft().to_owned();
         let end = draft.len();
         self.input.replace(draft, end);
+        self.draft_restored = self.chat.draft_restored_in(&self.current().name);
         lines
+    }
+
+    /// The input takes again what's written in the conversation shown when the core gave it
+    /// back, as when a message to a machine not connected wasn't sent
+    /// ([`Chat::draft_restored_in`]).
+    fn take_back_draft(&mut self) {
+        let restored = self.chat.draft_restored_in(&self.current().name);
+        if restored == self.draft_restored {
+            return;
+        }
+        self.draft_restored = restored;
+        let draft = self.chat.draft().to_owned();
+        let end = draft.len();
+        self.input.replace(draft, end);
     }
 
     /// Whose profile is shown, if anyone's.
@@ -1958,6 +1978,11 @@ impl App {
         if !self.edited(&before) {
             return Action::Send(Vec::new());
         }
+        // Kept as the conversation's draft as it changes, never a message being corrected,
+        // so what the core gives back joins what's written since.
+        if self.editing_id().is_none() {
+            self.chat.set_draft(self.input.text());
+        }
         Action::Send(self.typed())
     }
 
@@ -2233,6 +2258,9 @@ impl App {
 
     fn submit(&mut self) -> Action {
         let typed = self.input.take();
+        if self.editing_id().is_none() {
+            self.chat.set_draft("");
+        }
         if !zirc_core::compose::sendable(&typed) {
             return Action::Send(Vec::new());
         }
@@ -2871,6 +2899,34 @@ mod tests {
         assert_eq!(app.input.text(), "half a thought");
         let _ = app.select(web);
         assert_eq!(app.input.text(), "over here");
+    }
+
+    /// A message the server refused as whom it's to isn't connected, as a machine whose
+    /// zircd is stopped: the input holds it again, to send once they are (the user's choice,
+    /// 25 Nov 2026), and the conversation says why.
+    #[test]
+    fn a_message_refused_as_not_connected_comes_back_to_the_input() {
+        let mut app = app();
+        app.connected(link(true));
+        feed(
+            &mut app,
+            &[":me!u@h JOIN #api", ":mattias-mbp!u@h PRIVMSG me :hi"],
+        );
+        let dm = app
+            .conversations()
+            .iter()
+            .position(|c| c.name == "mattias-mbp")
+            .unwrap();
+        let _ = app.select(dm);
+        for c in "rebase".chars() {
+            app.key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        app.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.input.text(), "");
+        feed(&mut app, &[":srv 401 me mattias-mbp :No such nick"]);
+        assert_eq!(app.input.text(), "rebase");
+        assert!(app.current().entries.iter().any(|e| e.kind
+            == zirc_core::chat::EntryKind::Info(zirc_core::chat::not_connected("mattias-mbp"))));
     }
 
     #[test]

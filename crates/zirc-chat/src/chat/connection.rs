@@ -230,6 +230,9 @@ impl Chat {
             // Nov 2026).
             "NOTICE" if self.receipt_tag(&line, super::nick_of(&line)) => Vec::new(),
             "PRIVMSG" | "NOTICE" => {
+                if !history && line.command == "PRIVMSG" {
+                    self.echoed(&line);
+                }
                 let mut lines = self.message(&line, history);
                 // A part sealed with a key this device lacks: it asks for the key.
                 lines.extend(self.ask_for_sealed(&line));

@@ -58,6 +58,7 @@ pub mod lines;
 mod list;
 mod live;
 pub use live::{ENDED, Listening};
+pub use unechoed::not_connected;
 mod members;
 mod more;
 mod names;
@@ -94,6 +95,7 @@ mod status;
 mod thread;
 mod titles;
 mod typing;
+mod unechoed;
 mod unread;
 mod view;
 mod waiting;
@@ -101,7 +103,7 @@ mod woke;
 mod words;
 mod working;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use zirc_line::Line;
@@ -516,6 +518,12 @@ pub struct Chat {
     /// conversation is joined again, a direct message's once connected, so what's typed
     /// offline waits rather than being refused, in every app (the user's choice, 20 Nov 2026).
     held: Vec<(String, Vec<Line>)>,
+    /// What was said directly and not yet echoed by the server, oldest first: one it refused
+    /// goes back to its composer ([`unechoed`]).
+    unechoed: Vec<unechoed::Unechoed>,
+    /// The conversations, folded, whose composer was given back what was written and whose
+    /// app hasn't said its draft since ([`Chat::set_draft_in`]).
+    given_back: BTreeSet<String>,
     /// The server's channels and how many are in each, from the last complete `LIST`, and
     /// the one coming in.
     listed: Vec<(String, usize)>,
@@ -719,6 +727,8 @@ impl Chat {
             raw_until: None,
             joins,
             held: Vec::new(),
+            unechoed: Vec::new(),
+            given_back: BTreeSet::new(),
             listed: Vec::new(),
             listing: Vec::new(),
             listed_once: false,

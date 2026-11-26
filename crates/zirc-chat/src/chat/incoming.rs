@@ -159,6 +159,8 @@ impl Chat {
                 let last = line.params.last().map_or("", String::as_str);
                 self.error(line, format!("{}: {last}", param(0)));
             }
+            // ERR_NOSUCHNICK for a direct message of ours: it goes back to its composer.
+            "401" if self.refused_to(param(1)) => {}
             // ERR_NOMOTD: the Server channel says so ([`Chat::server_window`]).
             "422" => {}
             numeric if numeric.starts_with(['4', '5']) && numeric.len() == 3 => {

@@ -367,6 +367,8 @@ pub struct Conversation {
     pub mentions: usize,
     /// What's written in its composer and not yet sent ([`Chat::draft`]).
     pub draft: String,
+    /// How many times what was written went back to its composer ([`Chat::draft_restored_in`]).
+    pub draft_restored: u64,
     /// Up to when the person has read it, in any of their apps, as the server keeps it
     /// (`draft/read-marker`). `None` until the server says.
     pub read: Option<DateTime<Utc>>,
@@ -521,6 +523,7 @@ impl Conversation {
             unread: 0,
             mentions: 0,
             draft: String::new(),
+            draft_restored: 0,
             read: None,
             joined: kind != Kind::Channel,
             standing: Attendance::Fresh,

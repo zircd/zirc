@@ -33,8 +33,16 @@ impl Chat {
         }
     }
 
-    /// Keeps `text` as the draft of the conversation at `at`.
+    /// Keeps `text` as the draft of the conversation at `at`. The first word from the app
+    /// after what was written was given back ([`Chat::draft_restored_in`]) can be its field
+    /// emptied for the send, when the refusal came first: that empty one doesn't undo it.
     fn keep_draft(&mut self, at: usize, text: &str) {
+        let given_back = self
+            .given_back
+            .remove(&super::fold(&self.conversations[at].name));
+        if given_back && text.is_empty() {
+            return;
+        }
         let conversation = &mut self.conversations[at];
         if conversation.draft != text {
             text.clone_into(&mut conversation.draft);
