@@ -56,12 +56,13 @@ register_toolchains("@rust_toolchains//:all")
 # only: Macs build for themselves with Xcode's, as GPUI needs.
 bazel_dep(name = "hermetic_cc_toolchain", version = "4.3.0")
 
-# Its zig wrapper drops the linker flag Rust's aarch64 Linux targets add and zig refuses,
-# for the desktop app's arm64 Linux build.
+# Its zig wrapper drops two linker flags rustc adds: the one Rust's aarch64 Linux targets
+# add and zig refuses, for the desktop app's arm64 Linux build, and -O1, which zig ignores
+# with a warning on every optimised Rust binary.
 single_version_override(
     module_name = "hermetic_cc_toolchain",
     patch_strip = 1,
-    patches = ["//bazel:hermetic_cc_toolchain-fix-cortex-a53.patch"],
+    patches = ["//bazel:hermetic_cc_toolchain-zig-linker-flags.patch"],
 )
 
 zig = use_extension("@hermetic_cc_toolchain//toolchain:ext.bzl", "toolchains")
