@@ -725,7 +725,8 @@ impl Chat {
     /// field · Henrik Sandberg`, its handle, machine and id under that, `checkout · mbp · cc-4e21`,
     /// what it's doing, `fix the coupon field · 4m`, a line for whose
     /// agent it is and its tool, `Henrik Sandberg's agent · Claude Code`, then what it's changing
-    /// and has taken on ([`Profile::session_card`]). Its standing is its owner's.
+    /// and has taken on ([`Profile::session_card`]). Its dot and standing are the session's own,
+    /// as its header says them ([`Chat::session_presence`]).
     #[must_use]
     pub fn session_card(
         &self,
@@ -757,13 +758,18 @@ impl Chat {
                 line.push(zirc_proto::tool_name(tool));
             }
             card.agent = Some(line.join(" · "));
-            // A session is never away itself: its owner's away is what the card says.
-            if card.away {
-                card.standing = format!("{owner} is {}", card.standing);
-            }
         } else {
             card.title = label;
         }
+        // Whether the session is here is its own, from its watch, never its machine's: the
+        // dot its row and header have, and its header's words ([`Chat::session_presence`]).
+        let presence = self
+            .session_presence(nick, session)
+            .unwrap_or(Presence::Gone);
+        card.presence = presence;
+        card.away = presence == Presence::Away;
+        let doing = self.doing_now(nick, session, now).active;
+        card.standing = self.heard_line(nick, session, doing, now).0;
         card.doing = self
             .claim(nick, session)
             .map(|(task, since)| format!("{task} · {}", ago_short(since, now)));

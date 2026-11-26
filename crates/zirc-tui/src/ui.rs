@@ -299,7 +299,7 @@ fn agent_card(frame: &mut Frame<'_>, app: &App, nick: &str, session: &str, area:
         fit(&card.title, text),
         fg(theme.text).add_modifier(Modifier::BOLD),
     )];
-    let about = [card.whose, card.place, card.standing]
+    let about = [card.whose, card.place]
         .into_iter()
         .flatten()
         .collect::<Vec<_>>()

@@ -3047,11 +3047,12 @@ fn names_agents_first_on_every_kind_of_row() {
     );
     assert_eq!(card.agent.as_deref(), Some("Alice's agent · Claude Code"));
     assert!(!card.work.is_empty());
-    // Away is its owner's, and says so.
-    assert_eq!(card.standing, "here");
+    // Its standing is the session's own, as its header says it, never its machine's.
+    let heard = chat.agent_header("alice-mbp/cc-1").unwrap().heard;
+    assert_eq!(card.standing, heard);
     feed(&mut chat, &[":alice-mbp!u@machine/alice AWAY :lunch"]);
     let card = chat.session_card("alice-mbp", "cc-1", noon(), |at| at.naive_utc());
-    assert_eq!(card.standing, "Alice is away: lunch");
+    assert_eq!(card.standing, heard);
 
     // In the people list, the session sits under its owner with its own avatar.
     let rows = chat.people_rows("#api");
@@ -3214,7 +3215,6 @@ fn an_agent_card_with_no_title_card_leads_with_its_task_its_handle_under_it() {
             after_handle: Some(" · Alice's agent".into()),
             tool: Some("claude-code".into()),
             place: Some("Claude Code · alice-mbp".into()),
-            standing: None,
             now: Some("✎ about to change src/auth · 8m".into()),
             now_lead: Some("✎ about to change".into()),
             now_paths: Some(" src/auth".into()),
@@ -8222,7 +8222,6 @@ fn the_card_the_note_and_the_header_are_the_wire_records() {
             "afterHandle": " · Alice's agent",
             "tool": "claude-code",
             "place": "Claude Code · alice-mbp",
-            "standing": null,
             "now": "✎ about to change src/auth · 8m",
             "nowLead": "✎ about to change",
             "nowPaths": " src/auth",

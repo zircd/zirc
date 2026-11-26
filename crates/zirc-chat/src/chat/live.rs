@@ -216,6 +216,19 @@ impl Chat {
         })
     }
 
+    /// The agent session `session` on the machine `nick`'s dot, the one value its row in
+    /// Messages, its header, its card and its profile card all read: here only while a watch
+    /// of its is open, away once it closes (the user's rule, 23 Nov 2026); `None` once it has
+    /// ended, or when its machine has never said ([`Chat::listening`]).
+    #[must_use]
+    pub fn session_presence(&self, nick: &str, session: &str) -> Option<super::Presence> {
+        match self.listening(nick, session)? {
+            Listening::Online => Some(super::Presence::Here),
+            Listening::Away { .. } => Some(super::Presence::Away),
+            Listening::Ended { .. } => None,
+        }
+    }
+
     /// Whether the agent session `session` on the machine `nick` is known to its machine:
     /// `Some(true)` while it's online or away ([`Chat::listening`]), `Some(false)` once it
     /// has ended, and `None` when its machine has never said.
@@ -311,10 +324,12 @@ impl Chat {
             .collect()
     }
 
-    /// What an agent's card and header say under its name: `Active now` while it's at work
-    /// or online; away, `Not listening for 17 min · 1 message waiting` while messages wait,
-    /// else `Away · last heard 3h ago`; `Ended · last heard 3h ago` once it has ended; else
-    /// when it was last heard. With whether it's active, for the here dot.
+    /// What an agent's card and header say under its name: `Active now` while it's online
+    /// ([`Chat::session_presence`]); away, `Not listening for 17 min · 1 message waiting`
+    /// while messages wait, else `Away · last heard 3h ago`; `Ended · last heard 3h ago` once
+    /// it has ended; else when it was last heard. With whether it's online, for the here dot.
+    /// Where its machine never says whether a watch is open, as zircds before the lists
+    /// don't, it's active while `doing` something, as before.
     pub(super) fn heard_line(
         &self,
         nick: &str,

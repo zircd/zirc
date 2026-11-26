@@ -721,3 +721,86 @@ fn a_session_we_wrote_to_is_listed_after_starting_again_though_it_never_answered
         ["<me> everyone stop"]
     );
 }
+
+/// `#api` with bob's machine and his agent session cc-bob, watching, which has written to us.
+fn with_bobs_session() -> Scene {
+    let mut chat = with_mbp();
+    feed(
+        &mut chat,
+        &[
+            ":bob!u@h JOIN #api",
+            ":bob-mbp!u@machine/bob JOIN #api",
+            &zirc("bob-mbp", &live(&["cc-bob"])),
+            &dm("bob-mbp", "cc-bob", "on it", 0),
+        ],
+    );
+    let _ = chat.mark_read("bob-mbp/cc-bob");
+    chat
+}
+
+/// cc-bob's presence and its header's words, once its row in Messages, its header, its card
+/// and its profile card are checked to say the same, as each app draws them.
+fn bobs_presence(chat: &Chat) -> (Option<Presence>, String) {
+    let now = (chat.clock)();
+    let row = find(&rows(chat), "bob-mbp/cc-bob")
+        .cloned()
+        .expect("listed");
+    let header = chat.agent_header("bob-mbp/cc-bob").unwrap();
+    let card = chat.agent_card("bob-mbp", "cc-bob", now);
+    let profile = chat.session_card("bob-mbp", "cc-bob", now, |at| at.naive_utc());
+    let one = chat.session_presence("bob-mbp", "cc-bob");
+    let here = one == Some(Presence::Here);
+    let shown = (
+        row.presence,
+        profile.presence,
+        profile.away,
+        header.active,
+        card.active,
+    );
+    let said = (card.heard.clone(), profile.standing.clone());
+    assert_eq!(
+        (shown, said),
+        (
+            (
+                one,
+                one.unwrap_or(Presence::Gone),
+                one == Some(Presence::Away),
+                here,
+                here
+            ),
+            (Some(header.heard.clone()), header.heard.clone())
+        ),
+        "row, profile card, header and card disagree"
+    );
+    (one, header.heard)
+}
+
+/// An agent session's dot is one value ([`Chat::session_presence`]): its row in Messages,
+/// its header, its card and its profile card all read it, and change together as its watch
+/// opens and closes, whatever its machine's or its owner's IRC away says (the Android
+/// report, 26 Nov 2026: the header said online, the card away).
+#[test]
+fn a_sessions_row_header_and_cards_read_one_presence_and_change_together() {
+    let mut chat = with_bobs_session();
+    let watching = (Some(Presence::Here), "Active now".to_owned());
+    let not_watching = (
+        Some(Presence::Away),
+        "Away · last heard just now".to_owned(),
+    );
+    assert_eq!(bobs_presence(&chat), watching);
+    // Its machine's IRC away is no say in it.
+    feed(&mut chat, &[":bob-mbp!u@machine/bob AWAY :idle"]);
+    assert_eq!(bobs_presence(&chat), watching);
+    // Its watch closed: away everywhere at once.
+    feed(
+        &mut chat,
+        &[&zirc("bob-mbp", &away(&["cc-bob"], &[("cc-bob", 0, 0)]))],
+    );
+    assert_eq!(bobs_presence(&chat), not_watching);
+    // Nor is its owner's: the card says only the session's (the user's choice, 26 Nov 2026).
+    feed(&mut chat, &[":bob!u@h AWAY :lunch"]);
+    assert_eq!(bobs_presence(&chat), not_watching);
+    // Watching again: online everywhere at once.
+    feed(&mut chat, &[&zirc("bob-mbp", &live(&["cc-bob"]))]);
+    assert_eq!(bobs_presence(&chat), watching);
+}

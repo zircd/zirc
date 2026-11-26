@@ -14,7 +14,7 @@ use zirc_proto::Event;
 use zirc_proto::session::SessionCard;
 
 use super::conversation::{EntryKind, Kind, fold};
-use super::profile::{Standing, ago_short};
+use super::profile::ago_short;
 
 /// What the Message button says.
 pub const MESSAGE: &str = "Message";
@@ -51,8 +51,6 @@ pub struct AgentCard {
     pub tool: Option<String>,
     /// Where it runs, after the tool's icon: `Claude Code · mbp`.
     pub place: Option<String>,
-    /// Its owner's away, on its own line: `Henrik Sandberg is away: lunch`.
-    pub standing: Option<String>,
     /// What it's doing now, from its latest intent or taking, marker first: `✎ about to
     /// change web/src/checkout/Coupon.tsx · 4m`, `⟶ the login bug · 12m`, or `Nothing in
     /// progress`.
@@ -100,17 +98,9 @@ impl super::Chat {
         let whose = owner
             .as_deref()
             .map(|owner| super::agent_name(None, owner).0);
-        let standing = match self.profile(nick).away {
-            Some(why) => {
-                let away = Standing::Away(why).label();
-                Some(match whose_parts.as_ref() {
-                    Some((owner, _)) if !mine => format!("{} is {away}", self.shown_name(owner)),
-                    _ if mine => format!("You're {away}"),
-                    _ => away,
-                })
-            }
-            None => None,
-        };
+        // When it was heard and whether it's online, titled or not, as its header says.
+        let doing = self.doing_now(nick, session, now);
+        let (heard, active) = self.heard_line(nick, session, doing.active, now);
         let registered = self.session_titles.get(session).map(|(_, card)| card);
         if registered.is_none() && !titled {
             return AgentCard {
@@ -122,14 +112,13 @@ impl super::Chat {
                 after_handle: None,
                 tool: None,
                 place: None,
-                standing,
                 now: None,
                 now_lead: None,
                 now_paths: None,
                 now_ago: None,
                 task: None,
-                heard: None,
-                active: false,
+                heard: Some(heard),
+                active,
                 mine,
                 message_label: MESSAGE.to_owned(),
             };
@@ -143,8 +132,6 @@ impl super::Chat {
             .into_iter()
             .chain(whose_parts.map(|(_, machine)| machine))
             .collect();
-        let doing = self.doing_now(nick, session, now);
-        let (heard, active) = self.heard_line(nick, session, doing.active, now);
         AgentCard {
             session: session.to_owned(),
             title,
@@ -157,7 +144,6 @@ impl super::Chat {
             whose,
             tool,
             place: (!place.is_empty()).then(|| place.join(SEPARATOR)),
-            standing,
             now: Some(doing.line()),
             now_lead: Some(doing.lead.clone()),
             now_paths: doing.paths_text(),

@@ -1129,11 +1129,7 @@ impl Chat {
             let unread = if ended { 0 } else { row.unread };
             row.folded =
                 !self.kept(&row.name, unread) && self.agent_folds(nick, session_id, active);
-            row.presence = match listening {
-                Some(Listening::Online) => Some(super::Presence::Here),
-                Some(Listening::Away { .. }) => Some(super::Presence::Away),
-                Some(Listening::Ended { .. }) | None => None,
-            };
+            row.presence = self.session_presence(nick, session_id);
             row.not_listening = self.not_listening_short(nick, session_id);
             // Ended, it says so where its time was.
             if ended {
