@@ -1135,13 +1135,24 @@ async fn starting_to_watch_a_repository_invites_the_machines_owner_to_agents() {
 #[tokio::test]
 async fn a_sessions_first_watch_goes_to_the_recorder_once() {
     use zirc_proto::activity::{HINT_SHOWN_KIND, HintShown, Record, Watching};
+    // What's recorded of cc-login's watches and hints: its card goes to the recorder too,
+    // once, when its name is known, before the first watch's record or after it (build 10616).
+    async fn next_watch_or_hint(recorded: &mut zirc_irc::Incoming) -> zirc_proto::Message {
+        loop {
+            let sent = next_record_of(recorded, "cc-login").await;
+            if Watching::of(&sent.event).is_some() || HintShown::of(&sent.event).is_some() {
+                return sent;
+            }
+        }
+    }
+
     let ergo = require_ergo!();
     let (machine, _main, _main_root, _login_root) = machine_with_a_session_worktree(&ergo).await;
     let (_recorder, mut recorded) =
         zirc_test_irc::person(&ergo, zirc_proto::activity::RECORDER).await;
 
     let first = machine.watch(Some("cc-login")).await;
-    let sent = next_record_of(&mut recorded, "cc-login").await;
+    let sent = next_watch_or_hint(&mut recorded).await;
     assert_eq!(sent.session, "cc-login");
     assert!(sent.is_live(), "never in history");
     assert_eq!(Watching::of(&sent.event), Some(Watching {}));
@@ -1163,6 +1174,6 @@ async fn a_sessions_first_watch_goes_to_the_recorder_once() {
         })
         .await;
     assert!(matches!(done, Response::Done), "{done:?}");
-    let sent = next_record_of(&mut recorded, "cc-login").await;
+    let sent = next_watch_or_hint(&mut recorded).await;
     assert_eq!(HintShown::of(&sent.event), Some(shown), "{sent:?}");
 }
