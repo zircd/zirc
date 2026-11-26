@@ -60,6 +60,31 @@ pub(crate) struct How<'a> {
     pub(crate) hints: &'a std::sync::Mutex<zirc_core::hints::Watch>,
 }
 
+/// What `zirc watch` says when its output is thrown away, as `zirc watch > /dev/null` or
+/// `&> /dev/null &` does: what it takes is lost, and the agent never wakes for it.
+pub(crate) const THROWN_AWAY: &str = "this watch's output goes to /dev/null, so what it \
+takes is lost and nothing wakes you: run it as a background command your tool tells you of \
+when it ends (in Claude Code, Bash with run_in_background), with its output kept";
+
+/// Whether `out` is `/dev/null`, where nothing written is kept.
+pub(crate) fn thrown_away(out: &std::fs::File) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let (Ok(out), Ok(null)) = (out.metadata(), std::fs::metadata("/dev/null")) else {
+        return false;
+    };
+    (out.dev(), out.ino()) == (null.dev(), null.ino())
+}
+
+/// Refuses to watch while this process's stdout is `/dev/null` ([`THROWN_AWAY`]).
+pub(crate) fn kept() -> Result<()> {
+    use std::os::fd::AsFd;
+    let stdout = std::io::stdout().as_fd().try_clone_to_owned()?;
+    if thrown_away(&std::fs::File::from(stdout)) {
+        bail!(THROWN_AWAY);
+    }
+    Ok(())
+}
+
 /// How long after a line `zirc watch --once` waits for more that come with it, such as the
 /// rest of what was missed, before it stops.
 pub(crate) const ONCE_BURST: Duration = Duration::from_millis(200);
@@ -688,6 +713,20 @@ mod tests {
     use zirc_proto::Message;
 
     use crate::lines::tests::delivery;
+
+    #[test]
+    fn a_watch_into_dev_null_is_refused_and_one_into_a_file_is_not() {
+        let null = std::fs::File::options()
+            .write(true)
+            .open("/dev/null")
+            .unwrap();
+        assert!(super::thrown_away(&null));
+        let dir = std::env::temp_dir().join(format!("zirc-watch-kept-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = std::fs::File::create(dir.join("out")).unwrap();
+        assert!(!super::thrown_away(&file));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_waking_line_shows_its_hint_once_and_json_carries_it() {

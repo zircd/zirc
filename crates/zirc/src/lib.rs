@@ -1086,7 +1086,10 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Hints { check } => hints_command(&home, &socket, check, out).await,
         Command::Catchup(args) => catchup::catchup(&socket, &home, args, out).await,
         Command::Trim(args) => post::trim(&socket, args, out).await,
-        Command::Watch(args) => watch::watch(&socket, &home, name, args, out).await,
+        Command::Watch(args) => {
+            watch::kept()?;
+            watch::watch(&socket, &home, name, args, out).await
+        }
         // Boxed: the client's future would make every command's as large.
         Command::Tui(tui) => Box::pin(tui.run(&home, out)).await,
         Command::Sessions(args) => {
