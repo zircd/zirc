@@ -306,9 +306,6 @@ fn fresh(alerted: &mut Alerted, current: &BTreeSet<String>, now: u64) -> Vec<Str
 pub struct Presence {
     /// channel → nick → worktree → paths
     working: BTreeMap<String, BTreeMap<String, Sets>>,
-    /// (channel, worktree, worktree) → overlapping paths already alerted about → since when
-    /// gone, if gone. Kept across reconnects: it's this machine's own, not the server's.
-    alerted_locally: BTreeMap<(String, Worktree, Worktree), Alerted>,
     /// channel → (nick, session) → what it's taking on
     claims: BTreeMap<String, BTreeMap<(String, String), Claim>>,
     /// channel → (nick, session) → what it's about to touch
@@ -318,7 +315,7 @@ pub struct Presence {
     /// reconnects: it's what happened.
     done: BTreeMap<(String, String), u64>,
     /// what a conflict is between → clashing paths already alerted about → since when gone,
-    /// if gone. This machine's own, like `alerted_locally`.
+    /// if gone. This machine's own, kept across reconnects.
     alerted_conflicts: BTreeMap<String, Alerted>,
     /// (channel, nick) → the numbered parts of a working set heard so far: the last part's
     /// number and the parts.
@@ -978,7 +975,8 @@ impl Presence {
     }
 
     /// Which of `clashing`, the paths a conflict between two sides named by `key` is in,
-    /// are news at `now`, by the same rule as [`Presence::new_local_overlaps`].
+    /// are news at `now`: once per path, until it stops clashing for longer than
+    /// [`ALERT_GRACE_SECS`].
     pub fn new_conflicts(
         &mut self,
         key: &str,
@@ -991,56 +989,6 @@ impl Presence {
             self.alerted_conflicts.remove(key);
         }
         new
-    }
-
-    /// The overlaps between this machine's `worktrees` in `channel` worth an alert at `now`
-    /// (seconds since the Unix epoch): once per path, until it stops overlapping for longer
-    /// than [`ALERT_GRACE_SECS`].
-    pub fn new_local_overlaps(
-        &mut self,
-        channel: &str,
-        worktrees: &[(Worktree, &BTreeSet<String>)],
-        now: u64,
-    ) -> Vec<LocalOverlap> {
-        let mut sorted: Vec<&(Worktree, &BTreeSet<String>)> = worktrees.iter().collect();
-        sorted.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let mut current = BTreeMap::new();
-        for (i, (a, a_paths)) in sorted.iter().enumerate() {
-            for (b, b_paths) in &sorted[i + 1..] {
-                let paths: BTreeSet<String> = a_paths.intersection(b_paths).cloned().collect();
-                if !paths.is_empty() {
-                    current.insert(
-                        (channel.to_owned(), a.clone(), b.clone()),
-                        ([a.clone(), b.clone()], paths),
-                    );
-                }
-            }
-        }
-
-        // This channel's pairs no longer overlapping age out like their paths.
-        for (key, alerted) in &mut self.alerted_locally {
-            if key.0 == channel && !current.contains_key(key) {
-                fresh(alerted, &BTreeSet::new(), now);
-            }
-        }
-        self.alerted_locally
-            .retain(|_, alerted| !alerted.is_empty());
-
-        current
-            .into_iter()
-            .filter_map(|(key, (worktrees, paths))| {
-                let new = fresh(self.alerted_locally.entry(key).or_default(), &paths, now);
-                (!new.is_empty()).then(|| LocalOverlap {
-                    channel: channel.to_owned(),
-                    worktrees,
-                    paths: new,
-                    same_lines: BTreeMap::new(),
-                    apart: Vec::new(),
-                    why: None,
-                })
-            })
-            .collect()
     }
 }
 
@@ -1316,22 +1264,6 @@ mod tests {
     }
 
     #[test]
-    fn finds_overlaps_between_branches_of_one_checkout() {
-        let mut presence = Presence::default();
-        let login = worktree("/src/api", "login");
-        let logout = worktree("/src/api", "logout");
-        let a = set(&["src/auth.rs", "src/login.rs"]);
-        let b = set(&["src/auth.rs"]);
-        let local = [(login.clone(), &a), (logout.clone(), &b)];
-        let overlaps = presence.new_local_overlaps("#api", &local, 100);
-        assert_eq!(overlaps.len(), 1);
-        assert_eq!(overlaps[0].worktrees, [login, logout]);
-        assert_eq!(overlaps[0].paths, ["src/auth.rs"]);
-        // Once per path.
-        assert!(presence.new_local_overlaps("#api", &local, 101).is_empty());
-    }
-
-    #[test]
     fn forgets_those_who_leave() {
         let mut presence = Presence::default();
         presence.working_at("#api", "beta", Place::default(), paths(&["a.rs"]), false);
@@ -1342,48 +1274,6 @@ mod tests {
         assert_eq!(presence.members("#web")[0].nick, "beta_");
         presence.quit("beta_");
         assert!(presence.members("#web").is_empty());
-    }
-
-    fn worktree(path: &str, branch: &str) -> Worktree {
-        Worktree {
-            path: path.into(),
-            branch: Some(branch.into()),
-        }
-    }
-
-    #[test]
-    fn finds_overlaps_between_worktrees_once() {
-        let mut presence = Presence::default();
-        let mut check = |feature: &[&str], now: u64| {
-            let (main, feature, other) = (set(&["a.rs", "b.rs"]), set(feature), set(&["d.rs"]));
-            presence.new_local_overlaps(
-                "#api",
-                &[
-                    (worktree("/wt/feature", "feature"), &feature),
-                    (worktree("/repo", "main"), &main),
-                    (worktree("/wt/other", "other"), &other),
-                ],
-                now,
-            )
-        };
-        assert_eq!(
-            check(&["a.rs", "c.rs"], 0),
-            [LocalOverlap {
-                channel: "#api".into(),
-                worktrees: [
-                    worktree("/repo", "main"),
-                    worktree("/wt/feature", "feature")
-                ],
-                paths: paths(&["a.rs"]),
-                same_lines: BTreeMap::new(),
-                apart: Vec::new(),
-                why: None,
-            }]
-        );
-        assert!(check(&["a.rs", "c.rs"], 1).is_empty());
-        // The feature worktree commits a.rs, then later changes it again: new again.
-        assert!(check(&["c.rs"], 2).is_empty());
-        assert_eq!(check(&["a.rs", "c.rs"], 3 + ALERT_GRACE_SECS).len(), 1);
     }
 
     #[test]

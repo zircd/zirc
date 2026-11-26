@@ -14,7 +14,7 @@ use zirc_proto::telemetry::Event as Usage;
 use zirc_proto::{AGENTS_CHANNEL, Event};
 
 use super::book::Field;
-use super::{Daemon, Input, PART_ROOM, WATCHER_SESSION, now, predict, worktree_name};
+use super::{Daemon, PART_ROOM, WATCHER_SESSION, now, worktree_name};
 
 impl Daemon {
     /// Everyone's working sets in the repositories' scopes, each of this machine's
@@ -247,38 +247,17 @@ impl Daemon {
         self.told_whole(channel);
     }
 
-    /// Tells watching clients about overlaps in `channel` they haven't heard about yet:
-    /// with other machines now, and between this machine's own worktrees once Git has said
-    /// which lines they share, in a task of its own ([`Input::Predicted`]).
+    /// Tells watching clients about overlaps in `channel`: with other machines, and between
+    /// this machine's own worktrees. Either is told once its lines are compared, in a task
+    /// of its own ([`Daemon::fitted`]), and again when what's said of a file changes, as
+    /// when changes in different parts of it come to meet in the same lines.
     pub(super) fn check_overlaps(&mut self, channel: &str) {
-        // Where another machine's lines are being compared, what's found tells
-        // ([`Daemon::fitted`]): an overlap is said once, with its lines.
+        // Where another machine's lines are being compared, what's found tells: an
+        // overlap is said once, with its lines.
         if !self.predict_remote(channel) {
             self.tell_remote(channel);
         }
         self.refresh_pairs(channel);
-        let local: Vec<(Worktree, BTreeSet<String>)> = self
-            .local(channel)
-            .into_iter()
-            .map(|(worktree, _, paths)| (worktree, paths))
-            .collect();
-        let local: Vec<(Worktree, &BTreeSet<String>)> = local
-            .iter()
-            .map(|(worktree, paths)| (worktree.clone(), paths))
-            .collect();
-        let mut overlaps = self.presence.new_local_overlaps(channel, &local, now());
-        if overlaps.is_empty() {
-            return;
-        }
-        let channel = channel.to_owned();
-        let inputs = self.inputs.clone();
-        self.checking += 1;
-        tokio::spawn(async move {
-            for overlap in &mut overlaps {
-                predict(overlap).await;
-            }
-            let _ = inputs.send(Input::Predicted(channel, overlaps));
-        });
     }
 
     /// Tells watching clients where each worktree here in `channel` and another machine
@@ -304,14 +283,14 @@ impl Daemon {
         }
     }
 
-    /// Tells watching clients about the `overlaps` between this machine's own worktrees in
-    /// `channel`, which Git has said the shared lines of ([`Daemon::check_overlaps`]).
-    pub(super) fn predicted(&mut self, channel: &str, overlaps: Vec<LocalOverlap>) {
-        self.checking = self.checking.saturating_sub(1);
+    /// Tells watching clients what's news of the `overlaps` between this machine's own
+    /// worktrees in `channel`, whose lines were just compared ([`Daemon::refresh_pairs`]).
+    /// Until 26 Nov 2026 a file was told once for as long as both changed it, so one told
+    /// as changed in different parts was never told again when the lines came to meet.
+    pub(super) fn tell_local(&mut self, channel: &str, overlaps: Vec<LocalOverlap>) {
         let alerts: Vec<(Response, bool)> = overlaps
             .into_iter()
             .filter_map(|mut overlap| {
-                self.predictions.note(&overlap);
                 let escalated = self.told.local_news(&mut overlap, self.clock.now())?;
                 Some((Response::LocalOverlap(overlap), escalated))
             })

@@ -127,6 +127,66 @@ async fn a_file_both_machines_change_whose_lines_cant_be_compared_waits_for_the_
 }
 
 #[tokio::test]
+async fn two_clones_on_one_machine_are_told_whether_their_lines_meet() {
+    let ergo = require_ergo!();
+    let machine = Machine::start(&ergo, "solo").await;
+    let (first, second) = (clone(), clone());
+    let _remote = share_lines(&first, &second);
+    for (clone, session) in [(&first, "cc-1"), (&second, "cc-2")] {
+        let path = clone.path().to_owned();
+        let session = Some(session.to_owned());
+        machine.request(Request::RepoAdd { path, session }).await;
+    }
+    let mut hears = machine.watch(None).await;
+
+    // Different parts of a file both have: Git can't rebase one clone's tree onto the
+    // other's, so the lines each changes are compared.
+    std::fs::write(first.path().join("lines.txt"), ten_lines(1, "first's")).unwrap();
+    std::fs::write(second.path().join("lines.txt"), ten_lines(10, "second's")).unwrap();
+    let apart = next_local_overlap(&mut hears).await;
+    assert_eq!(apart.apart, ["lines.txt"], "{apart:?}");
+
+    // Then the same line.
+    std::fs::write(second.path().join("lines.txt"), ten_lines(1, "second's")).unwrap();
+    let same = next_local_overlap(&mut hears).await;
+    assert_eq!(same.same_lines.keys().collect::<Vec<_>>(), ["lines.txt"]);
+}
+
+#[tokio::test]
+async fn worktrees_whose_changes_come_to_meet_are_told_again() {
+    let ergo = require_ergo!();
+    let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
+    std::fs::write(main_root.join("lines.txt"), ten_lines(0, "")).unwrap();
+    git(&main_root, &["add", "lines.txt"]);
+    git(&main_root, &["commit", "--quiet", "--message", "Lines"]);
+    git(&login_root, &["merge", "--quiet", "--ff-only", "main"]);
+    // As far as the repository knows, origin's main: what each worktree's lines are of.
+    git(
+        &main_root,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    let mut hears = machine.watch(None).await;
+    let mut login_hears = machine.watch(Some("cc-login")).await;
+
+    // Different parts of the file: told, to the person here.
+    std::fs::write(main_root.join("lines.txt"), ten_lines(1, "main's")).unwrap();
+    std::fs::write(login_root.join("lines.txt"), ten_lines(10, "login's")).unwrap();
+    let apart = next_local_overlap(&mut hears).await;
+    assert_eq!(apart.apart, ["lines.txt"], "{apart:?}");
+
+    // Its change reaches main's line: told again, and the session wakes for it, the first
+    // it's woken with.
+    std::fs::write(login_root.join("lines.txt"), ten_lines(1, "login's")).unwrap();
+    let same = loop {
+        let overlap = next_local_overlap(&mut login_hears).await;
+        if overlap.why.is_some() {
+            break overlap;
+        }
+    };
+    assert_eq!(same.same_lines.keys().collect::<Vec<_>>(), ["lines.txt"]);
+}
+
+#[tokio::test]
 async fn an_overlap_is_news_once() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), (beta, beta_clone)] = two_machines(&ergo).await;

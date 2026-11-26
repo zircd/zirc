@@ -160,7 +160,7 @@ impl Daemon {
                 Ok(Some(Input::Scanned(root, _))) => {
                     self.scanning.remove(&root);
                 }
-                Ok(Some(Input::PushChecked(_) | Input::Predicted(..) | Input::Fitted(_))) => {
+                Ok(Some(Input::PushChecked(_) | Input::Fitted(_))) => {
                     self.checking = self.checking.saturating_sub(1);
                 }
                 Ok(Some(input)) => held.push(input),

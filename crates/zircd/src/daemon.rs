@@ -107,9 +107,6 @@ pub enum Input {
     Scanned(PathBuf, Result<scans::Scan>),
     /// What a push was found to clash with on this machine ([`Daemon::check_push`]).
     PushChecked(scans::Clashes),
-    /// The overlaps between this machine's worktrees in this channel, with the lines Git
-    /// says they share ([`Daemon::check_overlaps`]).
-    Predicted(String, Vec<LocalOverlap>),
     /// The lines both sides change, for intents' fits, as Git says ([`fit::Found`]).
     Fitted(fit::Found),
     /// The request waiting on the server with this token has waited long enough.
@@ -1052,7 +1049,6 @@ impl Daemon {
             Input::UndoneChecked(channel, session, found) => {
                 self.undone_checked(&channel, &session, found);
             }
-            Input::Predicted(channel, overlaps) => self.predicted(&channel, overlaps),
             Input::Fitted(found) => self.fitted(found),
             Input::Holds(root, answer) => {
                 let _ = answer.send(self.holds(&root));
@@ -1448,21 +1444,33 @@ async fn predict(overlap: &mut LocalOverlap) {
         Some(shared) => (shared.clone(), shared),
         None => (a_fork, b_fork),
     };
-    let (Some(a_tree), Some(b_tree)) = (
+    let trees = (
         git::own_tree(a, &a_base, &overlap.paths).await,
         git::own_tree(b, &b_base, &overlap.paths).await,
-    ) else {
-        return;
+    );
+    let rebased = match &trees {
+        (Some(a_tree), Some(b_tree)) => {
+            let ours = Side {
+                base: &a_base,
+                tree: a_tree,
+            };
+            let theirs = Side {
+                base: &b_base,
+                tree: b_tree,
+            };
+            git::rebase(a, ours, theirs, &overlap.paths).await
+        }
+        _ => None,
     };
-    let ours = Side {
-        base: &a_base,
-        tree: &a_tree,
-    };
-    let theirs = Side {
-        base: &b_base,
-        tree: &b_tree,
-    };
-    let Some(rebased) = git::rebase(a, ours, theirs, &overlap.paths).await else {
+    let Some(rebased) = rebased else {
+        // Not one repository's worktrees, as two clones aren't: Git has no tree of the
+        // other's here to rebase onto, so the lines each changes are compared, as another
+        // machine's are.
+        let paths = overlap.paths.clone();
+        if let Some((same_lines, apart)) = fit::by_lines((a, &a_base), (b, &b_base), &paths).await {
+            overlap.same_lines = same_lines;
+            overlap.apart = apart.into_iter().collect();
+        }
         return;
     };
     overlap.paths.retain(|path| rebased.both.contains(path));

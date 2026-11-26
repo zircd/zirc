@@ -340,7 +340,7 @@ impl Daemon {
         for (i, (a, _, a_paths)) in local.iter().enumerate() {
             for (b, _, b_paths) in &local[i + 1..] {
                 let shared: Vec<String> = a_paths.intersection(b_paths).cloned().collect();
-                if shared.is_empty() || a.path == b.path {
+                if shared.is_empty() {
                     continue;
                 }
                 let mut key = [a.path.clone(), b.path.clone()];
@@ -394,8 +394,9 @@ impl Daemon {
         }
     }
 
-    /// Notes what [`Daemon::refresh_pairs`] found.
+    /// Notes what [`Daemon::refresh_pairs`] found, and tells what's news of it.
     fn pairs_predicted(&mut self, predicted: Vec<(u64, LocalOverlap)>) {
+        let mut found: BTreeMap<String, Vec<LocalOverlap>> = BTreeMap::new();
         for (stamp, overlap) in predicted {
             self.predictions.note(&overlap);
             let mut key = [
@@ -404,6 +405,13 @@ impl Daemon {
             ];
             key.sort();
             self.predictions.stamps.insert(key, stamp);
+            found
+                .entry(overlap.channel.clone())
+                .or_default()
+                .push(overlap);
+        }
+        for (channel, overlaps) in found {
+            self.tell_local(&channel, overlaps);
         }
     }
 
@@ -496,17 +504,9 @@ impl Daemon {
 }
 
 /// Which of `job`'s files the worktree changes on the same lines as the other machine's
-/// session, and which in different parts: its own work counted from the commit theirs is,
-/// what landed between the two left out. `None` without that commit here.
+/// session, and which in different parts ([`lines_meet`]). `None` without the commit its
+/// lines are of here.
 async fn predict_against(job: &Job) -> Option<Predicted> {
-    let root = job.key.0.as_path();
-    let theirs_base = job.lines.base.as_str();
-    if !git::has_commit(root, theirs_base).await {
-        return None;
-    }
-    let counted = git::hunks(root, theirs_base, None, &job.files).await;
-    let landed = git::hunks(root, theirs_base, Some(&job.base), &job.files).await;
-    let ours = hunks::without(&counted, &landed);
     let theirs: Hunks = job
         .files
         .iter()
@@ -521,7 +521,41 @@ async fn predict_against(job: &Job) -> Option<Predicted> {
             ))
         })
         .collect();
-    let prediction = hunks::predict(&job.files, &ours, &theirs);
+    let (root, base) = (job.key.0.as_path(), job.base.as_str());
+    lines_meet(root, base, &job.lines.base, &job.files, &theirs).await
+}
+
+/// The same of two worktrees on this machine that Git can't compare as one repository's,
+/// as when each is a clone of its own: `ours` at `root`, built on `ours_base`, against
+/// what the one at `theirs` changes from `theirs_base`. One person's four sessions, a
+/// clone each, were told only that both changed a file (the agent evals' H4, 26 Nov 2026).
+pub(super) async fn by_lines(
+    (root, ours_base): (&Path, &str),
+    (theirs, theirs_base): (&Path, &str),
+    files: &[String],
+) -> Option<Predicted> {
+    let their_lines = git::hunks(theirs, theirs_base, None, files).await;
+    lines_meet(root, ours_base, theirs_base, files, &their_lines).await
+}
+
+/// Which of `files` the worktree at `root`, built on `ours_base`, changes on the same lines
+/// as `theirs`, lines of `theirs_base`, and which in different parts: its own work counted
+/// from the commit theirs is of, what landed between the two left out. `None` without that
+/// commit here.
+async fn lines_meet(
+    root: &Path,
+    ours_base: &str,
+    theirs_base: &str,
+    files: &[String],
+    theirs: &Hunks,
+) -> Option<Predicted> {
+    if !git::has_commit(root, theirs_base).await {
+        return None;
+    }
+    let counted = git::hunks(root, theirs_base, None, files).await;
+    let landed = git::hunks(root, theirs_base, Some(ours_base), files).await;
+    let ours = hunks::without(&counted, &landed);
+    let prediction = hunks::predict(files, &ours, theirs);
     Some((
         prediction.same_lines,
         prediction.apart.into_iter().collect(),
