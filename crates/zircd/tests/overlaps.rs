@@ -488,6 +488,76 @@ async fn two_sessions_that_settle_a_second_time_are_told_to_agree_who_continues(
     assert!(told.why.is_some(), "it wakes the session it names");
 }
 
+/// cc-main's and cc-login's worktrees come to change the same line of three files both
+/// have, and the person's watch has heard so of the last.
+async fn meet_in_three_files(
+    machine: &Machine,
+    main_root: &std::path::Path,
+    login_root: &std::path::Path,
+) {
+    let files = ["one.txt", "two.txt", "three.txt"];
+    for file in files {
+        std::fs::write(main_root.join(file), ten_lines(0, "")).unwrap();
+    }
+    // By name: cc-login's worktree is inside the checkout.
+    git(main_root, &["add", "one.txt", "two.txt", "three.txt"]);
+    git(
+        main_root,
+        &["commit", "--quiet", "--message", "Three files"],
+    );
+    git(login_root, &["merge", "--quiet", "--ff-only", "main"]);
+    let mut hears = machine.watch(None).await;
+    for file in files {
+        std::fs::write(main_root.join(file), ten_lines(1, "main's")).unwrap();
+        std::fs::write(login_root.join(file), ten_lines(1, "login's")).unwrap();
+    }
+    let mut met = std::collections::BTreeSet::new();
+    while met.len() < files.len() {
+        met.extend(next_local_overlap(&mut hears).await.same_lines.into_keys());
+    }
+}
+
+fn keeps_meeting(heard: &Heard) -> bool {
+    says(heard, "cc-main: you and cc-login keep meeting")
+}
+
+#[tokio::test]
+async fn two_sessions_whose_lines_meet_in_three_files_are_told_they_keep_meeting() {
+    let ergo = require_ergo!();
+    let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
+    let mut main_hears = machine.watch(Some("cc-main")).await;
+    meet_in_three_files(&machine, &main_root, &login_root).await;
+    let heard = until_marker(&mut main_hears, keeps_meeting).await;
+    assert!(heard.iter().any(keeps_meeting));
+}
+
+#[tokio::test]
+async fn a_pair_with_a_settle_standing_isnt_told_they_keep_meeting() {
+    let ergo = require_ergo!();
+    let (machine, _main, main_root, login_root) = machine_with_a_session_worktree(&ergo).await;
+    let mut main_hears = machine.watch(Some("cc-main")).await;
+    let settled = machine
+        .request(Request::Settle {
+            repo: main_root.clone(),
+            session: "cc-main".into(),
+            with: "cc-login".into(),
+            first: "them".into(),
+            paths: vec![main_root.join("README.md")],
+            same_lines: true,
+            agreed: zirc_proto::woke::Agreed::Order,
+        })
+        .await;
+    assert!(
+        matches!(settled, Response::Settled { said: true, .. }),
+        "{settled:?}"
+    );
+    meet_in_three_files(&machine, &main_root, &login_root).await;
+    // A word to it comes after whatever the meeting said.
+    post(&machine, &login_root, "cc-login", "@cc-main a word").await;
+    let heard = until_marker(&mut main_hears, |heard| says(heard, "a word")).await;
+    assert!(!heard.iter().any(keeps_meeting), "{heard:?}");
+}
+
 #[tokio::test]
 async fn a_commit_in_other_parts_of_your_files_is_no_news() {
     let ergo = require_ergo!();

@@ -266,12 +266,18 @@ fn noted_for(delivery: &Delivery, session: Option<&str>) -> bool {
     let zirc_proto::Event::Text { body } = &delivery.message.event else {
         return false;
     };
+    // Not the gotchas where it has started changing: they need nothing done, and ended a
+    // wait for a landing with nothing to act on (25 Nov 2026).
     delivery.message.session == zirc_proto::NO_SESSION
-        && zirc_proto::addressed(body).is_some_and(|(to, _)| to.eq_ignore_ascii_case(session))
+        && zirc_proto::addressed(body).is_some_and(|(to, said)| {
+            to.eq_ignore_ascii_case(session)
+                && !said.trim_start().starts_with(zirc_core::gotchas::STARTED)
+        })
 }
 
-/// Whether `heard` is for `session` itself: a direct message or note to it, or its person's
-/// answer to its request. A wait run in the foreground holds its session's turn, so what its
+/// Whether `heard` is for `session` itself and needs it: a direct message or a query to it, or
+/// its person's answer to its request. Not another agent's note, a teammate's report that
+/// asks nothing and that its watch prints: four ended one wait for a landing (25 Nov 2026). A wait run in the foreground holds its session's turn, so what its
 /// person says ends it: a "stop" sent while one waited for its landing was read only once the
 /// landing it should have cancelled had landed (the agent evals' M3, 16 Nov 2026).
 fn for_session(heard: &Heard, session: Option<&str>) -> bool {
@@ -280,7 +286,7 @@ fn for_session(heard: &Heard, session: Option<&str>) -> bool {
     };
     match heard {
         Heard::Direct(direct) => {
-            direct.session.as_deref() == Some(session) && direct.answer.is_none()
+            direct.session.as_deref() == Some(session) && direct.answer.is_none() && !direct.note
         }
         Heard::Answered(answered) => answered.request.session == session,
         _ => false,
@@ -585,6 +591,11 @@ mod tests {
             "a session's post"
         );
         assert!(!noted_for(&note(zirc_proto::NO_SESSION, dropped), None));
+        let gotchas = "cc-1: you've started changing web, where others learnt 1 gotcha: use pnpm";
+        assert!(
+            !noted_for(&note(zirc_proto::NO_SESSION, gotchas), Some("cc-1")),
+            "it needs nothing done"
+        );
     }
 
     #[test]
@@ -607,6 +618,12 @@ mod tests {
             })
         };
         assert!(for_session(&direct(Some("cc-1"), None), Some("cc-1")));
+        // A teammate's note asks nothing of it: its watch prints it.
+        let mut note = direct(Some("cc-1"), None);
+        if let Heard::Direct(direct) = &mut note {
+            direct.note = true;
+        }
+        assert!(!for_session(&note, Some("cc-1")), "a note");
         assert!(
             !for_session(&direct(Some("cc-2"), None), Some("cc-1")),
             "another session's"

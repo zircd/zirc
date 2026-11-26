@@ -84,17 +84,13 @@ impl Daemon {
             return;
         }
         let keys: Vec<String> = new.iter().map(|gotcha| key(gotcha)).collect();
-        // Those it's shown, for how often each is used: the first SHOWN, by id.
+        // Those it's shown, for how often each is used, by id.
         let ids: Vec<String> = new
             .iter()
-            .take(gotchas::SHOWN)
+            .take(gotchas::SHOWN_AT_START)
             .filter_map(|gotcha| gotcha.id.clone())
             .collect();
-        let body = format!(
-            "{session}: you've started changing {}, where {}",
-            dirs.join(", "),
-            gotchas::text(&new)
-        );
+        let body = gotchas::started(session, dirs, &new);
         for key in keys {
             self.gotchas_told.insert((session.to_owned(), key));
         }

@@ -332,7 +332,7 @@ async fn a_session_starting_to_change_files_is_told_the_gotchas_kept_about_them(
 
     let (body, why) = next_post_why(&mut watching).await;
     assert!(
-        body.starts_with("cc-b: you've started changing web, where gotchas others learnt here"),
+        body.starts_with("cc-b: you've started changing web, where others learnt 1 gotcha: "),
         "{body}"
     );
     assert!(

@@ -124,6 +124,41 @@ pub fn line(gotcha: &Gotcha) -> String {
     crate::one_line::one_line(&line)
 }
 
+/// How zircd's line to a session about the gotchas where it has started changing begins,
+/// after the session it names: it needs nothing done, so `zirc wait` doesn't end for it.
+pub const STARTED: &str = "you've started changing";
+
+/// The most gotchas [`started`] says in its line: a watch prints it as one line, and five
+/// gotchas under twenty directories were more than anyone read there (a session's feedback,
+/// 25 Nov 2026).
+pub const SHOWN_AT_START: usize = 2;
+
+/// What `session` is told as it starts changing `dirs`, of the gotchas `new` under them: the
+/// directories that have some, how many there are, the newest [`SHOWN_AT_START`] of them,
+/// and how to read the rest.
+#[must_use]
+pub fn started(session: &str, dirs: &[String], new: &[&Gotcha]) -> String {
+    let has_some = |dir: &&String| {
+        new.iter()
+            .any(|gotcha| gotcha.paths.iter().any(|theirs| touches(theirs, dir)))
+    };
+    let dirs: Vec<String> = dirs.iter().filter(has_some).cloned().collect();
+    let count = match new.len() {
+        1 => "1 gotcha".to_owned(),
+        many => format!("{many} gotchas, newest first"),
+    };
+    let shown: Vec<String> = new.iter().take(SHOWN_AT_START).map(|it| line(it)).collect();
+    let rest = match new.len().saturating_sub(SHOWN_AT_START) {
+        0 => String::new(),
+        more => format!(" | and {more} more: `zirc gotchas {}`", dirs.join(" ")),
+    };
+    format!(
+        "{session}: {STARTED} {}, where others learnt {count}: {}{rest}",
+        zirc_proto::some_of(&dirs, 4, ", "),
+        shown.join(" | ")
+    )
+}
+
 /// `gotchas` as lines to show under a heading, the first [`SHOWN`] of them; empty when there
 /// are none.
 #[must_use]
@@ -172,6 +207,39 @@ mod tests {
                 ),
             )
         }
+    }
+
+    #[test]
+    fn a_session_starting_somewhere_is_told_two_gotchas_and_where_the_rest_are() {
+        let all: Vec<Gotcha> = [
+            said("cc-1", &["web"], "use pnpm", "2026-11-01T10:00:00Z"),
+            said("cc-2", &["web/e2e"], "no clipboard", "2026-11-02T10:00:00Z"),
+            said(
+                "cc-3",
+                &["ops/land.sh"],
+                "curl hangs",
+                "2026-11-03T10:00:00Z",
+            ),
+        ]
+        .iter()
+        .filter_map(of)
+        .collect();
+        let dirs: Vec<String> = ["docs", "ops", "web"].map(String::from).into();
+        let line = started("cc-9", &dirs, &under(&all, &dirs));
+        // Only the directories that have some; the newest two; the rest a command away.
+        assert!(
+            line.starts_with("cc-9: you've started changing ops, web, where others learnt 3 gotchas, newest first: 2026-11-03 cc-3: curl hangs (ops/land.sh)"),
+            "{line}"
+        );
+        assert!(
+            line.contains(" | 2026-11-02 cc-2: no clipboard (web/e2e)"),
+            "{line}"
+        );
+        assert!(
+            line.ends_with(" | and 1 more: `zirc gotchas ops web`"),
+            "{line}"
+        );
+        assert!(!line.contains("use pnpm"), "{line}");
     }
 
     #[test]

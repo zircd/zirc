@@ -132,6 +132,9 @@ impl Daemon {
         let [a, b] = &sessions.into_iter().collect::<Vec<_>>()[..] else {
             return;
         };
+        if self.settled_here(channel, a, (None, b)) {
+            return;
+        }
         let files: Vec<String> = overlap.same_lines.keys().cloned().collect();
         if let Some(kept) = self.meetings.met(channel, (a, b), &files, now()) {
             self.tell_keeps_meeting(channel, (a, b), &kept);
@@ -154,6 +157,9 @@ impl Daemon {
             return;
         }
         for other in &overlap.sessions {
+            if self.settled_here(&overlap.channel, &mine, (Some(&overlap.nick), other)) {
+                continue;
+            }
             let theirs = format!("{}/{other}", overlap.nick);
             if let Some(kept) = self
                 .meetings
@@ -166,6 +172,23 @@ impl Daemon {
                 self.tell_dropped(&overlap.channel, keeps_meeting_line(&mine, &theirs, &kept));
             }
         }
+    }
+
+    /// Whether `mine`, a session here, and `other`, on `machine` or here, have a settle
+    /// standing in `scope` ([`Daemon::settled_with`]): their meeting elsewhere meanwhile is
+    /// what the settle already covers, so it doesn't count towards telling them they keep
+    /// meeting. A session that had just settled one file was told so of four at its next
+    /// wake (25 Nov 2026); settling a second time still tells them.
+    fn settled_here(
+        &self,
+        scope: &str,
+        mine: &str,
+        (machine, other): (Option<&str>, &str),
+    ) -> bool {
+        let Some(me) = self.client.as_ref().map(|client| client.nick().to_owned()) else {
+            return false;
+        };
+        self.settled_with(scope, (&me, mine), (machine.unwrap_or(&me), other))
     }
 
     /// `settled`, said in `scope`, is between two of this machine's sessions: each is told
