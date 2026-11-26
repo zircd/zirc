@@ -99,15 +99,18 @@ async fn another_machines_change_wakes_a_session_only_once_their_lines_meet() {
 }
 
 #[tokio::test]
-async fn a_file_both_machines_change_whose_lines_cant_be_compared_waits_for_the_next_wake() {
+async fn machines_without_a_commit_in_common_compare_lines_as_each_counts_them_and_say_so() {
     let ergo = require_ergo!();
     let [(alpha, alpha_clone), (beta, beta_clone)] = two_machines(&ergo).await;
+    let _ = &alpha;
     let (theirs, mine) = (alpha_clone.path(), beta_clone.path());
-    // Beta is built on a commit alpha's lines aren't of, and doesn't have theirs.
-    git(
-        mine,
-        &["commit", "--quiet", "--amend", "--message", "Another start"],
-    );
+    // Alpha is built on a commit beta has never fetched: its lines are of that one.
+    std::fs::write(theirs.join("alpha.md"), "alpha only\n").unwrap();
+    git(theirs, &["add", "alpha.md"]);
+    git(theirs, &["commit", "--quiet", "--message", "Alpha's"]);
+    for clone in [theirs, mine] {
+        git(clone, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    }
     let session = Some("cc-b".to_owned());
     let path = mine.to_owned();
     beta.request(Request::RepoAdd { path, session }).await;
@@ -115,15 +118,19 @@ async fn a_file_both_machines_change_whose_lines_cant_be_compared_waits_for_the_
 
     std::fs::write(theirs.join("README.md"), "alpha's take\n").unwrap();
     std::fs::write(mine.join("README.md"), "beta's take\n").unwrap();
-    let unknown = next_overlap(&mut cc_b).await;
-    assert_eq!(unknown.paths, readme());
-    assert!(unknown.same_lines.is_empty() && unknown.apart.is_empty());
-    assert_eq!(unknown.why, None, "a note for its next wake");
-    // Whatever wakes it next brings it along.
-    post(&alpha, theirs, "cc-a", "@cc-b a word").await;
-    let woke = until_marker(&mut cc_b, |heard| says(heard, "a word")).await;
-    let noted = |heard: &Heard| matches!(heard, Heard::Overlap(overlap) if overlap.why.is_some());
-    assert!(woke.iter().any(noted), "{woke:?}");
+    let rough = loop {
+        let overlap = next_overlap(&mut cc_b).await;
+        if !overlap.same_lines.is_empty() {
+            break overlap;
+        }
+    };
+    assert_eq!(rough.same_lines.keys().collect::<Vec<_>>(), ["README.md"]);
+    assert!(rough.no_common_base, "{rough:?}");
+    assert_eq!(
+        rough.why,
+        Some(Why::Overlap),
+        "it wakes, as lines that meet do"
+    );
 }
 
 #[tokio::test]

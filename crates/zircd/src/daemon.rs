@@ -1467,10 +1467,10 @@ async fn predict(overlap: &mut LocalOverlap) {
         // other's here to rebase onto, so the lines each changes are compared, as another
         // machine's are.
         let paths = overlap.paths.clone();
-        if let Some((same_lines, apart)) = fit::by_lines((a, &a_base), (b, &b_base), &paths).await {
-            overlap.same_lines = same_lines;
-            overlap.apart = apart.into_iter().collect();
-        }
+        let ((same_lines, apart), rough) = fit::by_lines((a, &a_base), (b, &b_base), &paths).await;
+        overlap.same_lines = same_lines;
+        overlap.apart = apart.into_iter().collect();
+        overlap.no_common_base = rough;
         return;
     };
     overlap.paths.retain(|path| rebased.both.contains(path));
@@ -2239,6 +2239,7 @@ mod tests {
             paths: paths.iter().map(|&p| p.to_owned()).collect(),
             same_lines: same.iter().map(|&p| (p.to_owned(), vec![[1, 1]])).collect(),
             apart: Vec::new(),
+            no_common_base: false,
             why: None,
         };
         let mut told = Told::default();
@@ -2280,6 +2281,7 @@ mod tests {
             paths: vec!["a.rs".into()],
             same_lines: same.iter().map(|&p| (p.to_owned(), vec![[1, 1]])).collect(),
             apart: apart.iter().map(|&p| p.to_owned()).collect(),
+            no_common_base: false,
             why: None,
         };
         let mut told = Told::default();
@@ -2384,6 +2386,7 @@ mod tests {
             paths: vec!["feed.txt".into()],
             same_lines: BTreeMap::new(),
             apart: Vec::new(),
+            no_common_base: false,
             why: None,
         };
         predict(&mut overlap).await;

@@ -42,6 +42,7 @@ async fn sessions_in_worktrees_on_one_machine_hear_each_other() {
             // Both change README.md's only line.
             same_lines: [("README.md".to_owned(), vec![[1, 1]])].into(),
             apart: Vec::new(),
+            no_common_base: false,
             why: Some(Why::Overlap),
         }
     );

@@ -938,6 +938,7 @@ fn says_the_same_lines_only_when_zircd_does() {
         paths: vec!["a.rs".into()],
         same_lines: [("a.rs".to_owned(), vec![[3, 9]])].into(),
         apart: Vec::new(),
+        no_common_base: false,
         why: None,
     });
     let both = chat.both_changing("#api");
@@ -992,6 +993,7 @@ fn what_zircd_says_of_a_repositorys_scope_shows_in_the_agents_room() {
         paths: vec!["a.rs".into()],
         same_lines: [("a.rs".to_owned(), vec![[3, 9]])].into(),
         apart: Vec::new(),
+        no_common_base: false,
         why: None,
     });
     assert!(chat.both_changing("#agents")[0].same_lines);

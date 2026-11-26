@@ -457,6 +457,7 @@ impl Daemon {
                 sessions: sessions.clone(),
                 same_lines,
                 apart: Vec::new(),
+                no_common_base: false,
                 pushed: Some(branch.clone()),
                 why: None,
             });

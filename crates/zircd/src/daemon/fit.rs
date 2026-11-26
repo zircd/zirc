@@ -32,6 +32,8 @@ pub(super) struct Predictions {
     pairs: BTreeMap<[PathBuf; 2], Predicted>,
     /// The same of a worktree here and another machine's session.
     remote: BTreeMap<RemoteKey, Predicted>,
+    /// Those of `remote` compared without a commit the two share ([`lines_meet`]).
+    rough: BTreeSet<RemoteKey>,
     /// For each pair, what its prediction was made from ([`stamp`]): it's made again only
     /// once that changes.
     stamps: BTreeMap<[PathBuf; 2], u64>,
@@ -48,9 +50,8 @@ pub(crate) type RemoteKey = (PathBuf, String, String);
 #[derive(Debug)]
 pub(crate) enum Found {
     /// Of worktrees here in a channel and other machines' sessions, from the lines those
-    /// said ([`Daemon::predict_remote`]): nothing where what theirs are counted from isn't
-    /// here.
-    Remote(String, Vec<(RemoteKey, Option<Predicted>)>),
+    /// said ([`Daemon::predict_remote`]), and whether without a commit the two share.
+    Remote(String, Vec<(RemoteKey, Predicted, bool)>),
     /// Of pairs of worktrees here, with what each was made from ([`Daemon::refresh_pairs`]).
     Pairs(Vec<(u64, LocalOverlap)>),
 }
@@ -80,6 +81,7 @@ impl Predictions {
         self.pairs.retain(|[a, b], _| a != root && b != root);
         self.stamps.retain(|[a, b], _| a != root && b != root);
         self.remote.retain(|(here, _, _), _| here != root);
+        self.rough.retain(|(here, _, _)| here != root);
     }
 
     /// Gives `overlap`, a worktree here's with another machine, what was last predicted of
@@ -90,10 +92,12 @@ impl Predictions {
             return;
         };
         let mut sessions = BTreeSet::new();
-        for ((here, nick, session), (same, apart)) in &self.remote {
+        for (key, (same, apart)) in &self.remote {
+            let (here, nick, session) = key;
             if here != root || *nick != overlap.nick {
                 continue;
             }
+            let before = sessions.len();
             for path in &overlap.paths {
                 if let Some(lines) = same.get(path) {
                     let all = overlap.same_lines.entry(path.clone()).or_default();
@@ -107,6 +111,7 @@ impl Predictions {
                 }
                 sessions.insert(session.clone());
             }
+            overlap.no_common_base |= sessions.len() > before && self.rough.contains(key);
         }
         overlap.apart.sort_unstable();
         overlap.apart.dedup();
@@ -359,6 +364,7 @@ impl Daemon {
                         paths: shared,
                         same_lines: BTreeMap::new(),
                         apart: Vec::new(),
+                        no_common_base: false,
                         why: None,
                     },
                 ));
@@ -382,11 +388,13 @@ impl Daemon {
         self.checking = self.checking.saturating_sub(1);
         match found {
             Found::Remote(channel, predicted) => {
-                for (key, it) in predicted {
-                    match it {
-                        Some(it) => self.predictions.remote.insert(key, it),
-                        None => self.predictions.remote.remove(&key),
-                    };
+                for (key, it, rough) in predicted {
+                    if rough {
+                        self.predictions.rough.insert(key.clone());
+                    } else {
+                        self.predictions.rough.remove(&key);
+                    }
+                    self.predictions.remote.insert(key, it);
                 }
                 self.tell_remote(&channel);
             }
@@ -482,9 +490,10 @@ impl Daemon {
             .filter(|(_, watched)| watched.scope == channel)
             .map(|(root, _)| root)
             .collect();
-        self.predictions
-            .remote
-            .retain(|key, _| !here.contains(&key.0) || jobs.iter().any(|job| job.key == *key));
+        let kept =
+            |key: &RemoteKey| !here.contains(&key.0) || jobs.iter().any(|job| job.key == *key);
+        self.predictions.remote.retain(|key, _| kept(key));
+        self.predictions.rough.retain(|key| kept(key));
         if jobs.is_empty() {
             return false;
         }
@@ -494,8 +503,8 @@ impl Daemon {
         tokio::spawn(async move {
             let mut predicted = Vec::new();
             for job in jobs {
-                let it = predict_against(&job).await;
-                predicted.push((job.key, it));
+                let (it, rough) = predict_against(&job).await;
+                predicted.push((job.key, it, rough));
             }
             let _ = inputs.send(Input::Fitted(Found::Remote(channel, predicted)));
         });
@@ -504,9 +513,9 @@ impl Daemon {
 }
 
 /// Which of `job`'s files the worktree changes on the same lines as the other machine's
-/// session, and which in different parts ([`lines_meet`]). `None` without the commit its
-/// lines are of here.
-async fn predict_against(job: &Job) -> Option<Predicted> {
+/// session, and which in different parts, and whether without a commit the two share
+/// ([`lines_meet`]).
+async fn predict_against(job: &Job) -> (Predicted, bool) {
     let theirs: Hunks = job
         .files
         .iter()
@@ -533,33 +542,37 @@ pub(super) async fn by_lines(
     (root, ours_base): (&Path, &str),
     (theirs, theirs_base): (&Path, &str),
     files: &[String],
-) -> Option<Predicted> {
+) -> (Predicted, bool) {
     let their_lines = git::hunks(theirs, theirs_base, None, files).await;
     lines_meet(root, ours_base, theirs_base, files, &their_lines).await
 }
 
 /// Which of `files` the worktree at `root`, built on `ours_base`, changes on the same lines
 /// as `theirs`, lines of `theirs_base`, and which in different parts: its own work counted
-/// from the commit theirs is of, what landed between the two left out. `None` without that
-/// commit here.
+/// from the commit theirs is of, what landed between the two left out. Without that commit
+/// here, as when this clone hasn't fetched it, the two are compared as each counts its
+/// lines, from its own base, and it says so (the second it returns): what landed between
+/// may have moved them, so it can be off, but it's better than nothing to say (the user's
+/// word, 26 Nov 2026: "just use the lines as they are, but warn that they lack a common
+/// base").
 async fn lines_meet(
     root: &Path,
     ours_base: &str,
     theirs_base: &str,
     files: &[String],
     theirs: &Hunks,
-) -> Option<Predicted> {
-    if !git::has_commit(root, theirs_base).await {
-        return None;
-    }
-    let counted = git::hunks(root, theirs_base, None, files).await;
-    let landed = git::hunks(root, theirs_base, Some(ours_base), files).await;
-    let ours = hunks::without(&counted, &landed);
+) -> (Predicted, bool) {
+    let shared = git::has_commit(root, theirs_base).await;
+    let ours = if shared {
+        let counted = git::hunks(root, theirs_base, None, files).await;
+        let landed = git::hunks(root, theirs_base, Some(ours_base), files).await;
+        hunks::without(&counted, &landed)
+    } else {
+        git::hunks(root, ours_base, None, files).await
+    };
     let prediction = hunks::predict(files, &ours, theirs);
-    Some((
-        prediction.same_lines,
-        prediction.apart.into_iter().collect(),
-    ))
+    let apart = prediction.apart.into_iter().collect();
+    ((prediction.same_lines, apart), !shared)
 }
 
 /// Whether `response` is an overlap whose lines couldn't be compared: a note for the
@@ -621,7 +634,8 @@ mod tests {
             },
         };
         let same = |spans| async move {
-            let (same, apart) = predict_against(&job(spans)).await.unwrap();
+            let ((same, apart), rough) = predict_against(&job(spans)).await;
+            assert!(!rough, "their base is here");
             (same.contains_key("a.txt"), apart.contains("a.txt"))
         };
         // Theirs on line 50: the same lines.
@@ -650,6 +664,10 @@ mod tests {
                 lines: [("a.txt".to_owned(), vec![[1, 1]])].into(),
             },
         };
-        assert_eq!(predict_against(&job).await, None);
+        // Line 1 here, changed, against theirs on line 1 of a commit this clone lacks: the
+        // lines as each counts them, and that it's so.
+        std::fs::write(here.join("a.txt"), numbered(&[(1, "mine")])).unwrap();
+        let ((same, _), rough) = predict_against(&job).await;
+        assert!(same.contains_key("a.txt") && rough);
     }
 }

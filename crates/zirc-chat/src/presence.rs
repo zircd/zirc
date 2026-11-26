@@ -38,6 +38,10 @@ pub struct Overlap {
     /// Of the paths, the ones both change in different parts: likely to merge.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub apart: Vec<String>,
+    /// Whether their lines were compared as each side counts them, from commits the two
+    /// don't share: what landed between the two isn't allowed for, so they may be off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_common_base: bool,
     /// The branch whose push changes them, when it's a push that was compared with the
     /// worktree: whichever of the two merges second has a conflict to resolve. Until 25 Nov
     /// 2026 that was an alert of its own, "conflict ahead".
@@ -75,6 +79,10 @@ pub struct LocalOverlap {
     /// Of those, the ones both change in different parts: likely to merge.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub apart: Vec<String>,
+    /// Whether their lines were compared as each side counts them, from commits the two
+    /// don't share: what landed between the two isn't allowed for, so they may be off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_common_base: bool,
     /// Why it concerns the watching session, if it does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<Why>,

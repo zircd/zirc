@@ -80,7 +80,19 @@ pub(crate) fn overlap_line(overlap: &Overlap) -> String {
         (Some(branch), None) => format!("pushed {branch}, which changes"),
         (None, _) => "is also changing".to_owned(),
     };
-    format!("{} overlap: {who} {doing} {paths}", overlap.channel)
+    let warned = no_common_base(overlap.no_common_base);
+    format!("{} overlap: {who} {doing} {paths}{warned}", overlap.channel)
+}
+
+/// What an overlap's line ends with when its lines were compared without a commit the two
+/// sides share.
+fn no_common_base(lacking: bool) -> &'static str {
+    if lacking {
+        " (no common base: each side's lines are counted from a different commit, so they \
+         may be off; fetch and rebase onto the default branch to compare exactly)"
+    } else {
+        ""
+    }
 }
 
 /// An overlap's `paths`, each with how the two sides' lines meet in it where that's known:
@@ -117,11 +129,12 @@ pub(crate) fn local_overlap_line(overlap: &LocalOverlap) -> String {
     let [a, b] = &overlap.worktrees;
     let paths = marked(&overlap.paths, &overlap.same_lines, &overlap.apart);
     format!(
-        "{} overlap: worktrees {} and {} are both changing {}",
+        "{} overlap: worktrees {} and {} are both changing {}{}",
         overlap.channel,
         describe(a),
         describe(b),
-        some_of(&paths)
+        some_of(&paths),
+        no_common_base(overlap.no_common_base)
     )
 }
 
@@ -371,6 +384,7 @@ pub(crate) mod tests {
             paths: vec!["src/auth.rs".into(), "src/login.rs".into(), "new.rs".into()],
             same_lines: [("src/auth.rs".to_owned(), vec![[40, 58]])].into(),
             apart: vec!["src/login.rs".into()],
+            no_common_base: false,
             why: None,
         };
         assert_eq!(
@@ -388,6 +402,20 @@ pub(crate) mod tests {
             same_lines: [("src/auth.rs".to_owned(), vec![[3, 4], [9, 9]])].into(),
             ..Overlap::default()
         };
+        let rough = Overlap {
+            no_common_base: true,
+            pushed: None,
+            ..pushed.clone()
+        };
+        assert!(
+            overlap_line(&rough).ends_with(
+                "src/auth.rs (same lines: 3-4, 9) (no common base: each side's lines are \
+                 counted from a different commit, so they may be off; fetch and rebase onto \
+                 the default branch to compare exactly)"
+            ),
+            "{}",
+            overlap_line(&rough)
+        );
         assert_eq!(
             overlap_line(&pushed),
             "#zirc/api overlap: alpha pushed main, which changes what worktree \
@@ -412,6 +440,7 @@ pub(crate) mod tests {
             paths: vec!["Cargo.lock".into(), "web/pnpm-lock.yaml".into()],
             same_lines: std::collections::BTreeMap::new(),
             apart: Vec::new(),
+            no_common_base: false,
             why: None,
         };
         for path in &local.paths {

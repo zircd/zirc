@@ -2859,6 +2859,10 @@
           },
           "description": "Of the paths, the ones both change in different parts: likely to merge."
         },
+        "no_common_base": {
+          "type": "boolean",
+          "description": "Whether their lines were compared as each side counts them, from commits the two\ndon't share: what landed between the two isn't allowed for, so they may be off."
+        },
         "pushed": {
           "type": [
             "string",
@@ -2931,6 +2935,10 @@
             "type": "string"
           },
           "description": "Of those, the ones both change in different parts: likely to merge."
+        },
+        "no_common_base": {
+          "type": "boolean",
+          "description": "Whether their lines were compared as each side counts them, from commits the two\ndon't share: what landed between the two isn't allowed for, so they may be off."
         },
         "why": {
           "anyOf": [
