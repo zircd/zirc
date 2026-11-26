@@ -133,8 +133,21 @@ pub fn sign_in_to_zirc() -> String {
 /// The button that signs in in the browser: `Sign in with zirc.dev`.
 pub const SIGN_IN_WITH_ZIRC_DEV: &str = "Sign in with zirc.dev";
 
-/// Under a sign-in's button: what signing in with zirc.dev does.
-pub const SIGN_IN_NOTE: &str = "Sign in with your zirc.dev account, in your browser: it sets up your team's server and your name, and keeps your passphrase in the Keychain.";
+/// Under a sign-in's button: what signing in with zirc.dev does, the passphrase kept where
+/// the computer keeps secrets: the Keychain on a Mac, the system's keyring elsewhere (Linux's
+/// Secret Service).
+#[must_use]
+pub fn sign_in_note(mac: bool) -> String {
+    let store = if mac {
+        "the Keychain"
+    } else {
+        "your system's keyring"
+    };
+    format!(
+        "Sign in with your zirc.dev account, in your browser: it sets up your team's server and \
+         your name, and keeps your passphrase in {store}."
+    )
+}
 
 /// Why files can't be shared while not signed in with zirc.dev.
 pub const SIGN_IN_TO_SHARE: &str = "Sign in to zirc.dev to share files";
