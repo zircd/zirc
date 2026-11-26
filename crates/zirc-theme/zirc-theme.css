@@ -249,7 +249,7 @@
   --zirc-button-tonal-border: transparent;
   --zirc-button-outline-ground: var(--zirc-surface-raised);
   --zirc-button-outline-text: var(--zirc-body);
-  --zirc-button-outline-border: var(--zirc-rule);
+  --zirc-button-outline-border: var(--zirc-edge);
   --zirc-button-ghost-ground: transparent;
   --zirc-button-ghost-text: var(--zirc-body);
   --zirc-button-ghost-border: transparent;
