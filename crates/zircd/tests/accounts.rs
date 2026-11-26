@@ -891,6 +891,38 @@ async fn a_message_to_an_agent_is_said_seen_or_waiting() {
     );
 }
 
+/// A zircd that ends without warning, killed or crashed, tells a session its owner's message
+/// once: it saved the newest it had heard from each nick only every second, so one killed
+/// sooner asked, when back, for what its owner said since the message before, and told the
+/// session a message it had already been told (found by zirc-e2e's messages test, 26 Nov
+/// 2026).
+#[tokio::test]
+async fn a_message_told_before_zircd_was_killed_isnt_told_again() {
+    let ergo = require_ergo!();
+    let mut machines = three_machines(&ergo).await;
+    let (home, daemon) = machines.remove(0);
+    let mbp = Machine { home, daemon };
+    // With a repository, so a channel to join when it's back: what it missed is asked then.
+    let repo = zirc_test_ergo::git::clone("git@github.com:zirc/api.git");
+    let add = Request::RepoAdd {
+        path: repo.path().to_owned(),
+        session: Some("cc-a".to_owned()),
+    };
+    ipc::request(&mbp.socket(), &add).await.unwrap();
+    let mut agent = watching(mbp.home.path(), "cc-a").await;
+    let (owner, _owner_in) = logged_in(&ergo, "mattias").await;
+    owner.privmsg("mattias-mbp", "cc-a: rebase please").unwrap();
+    assert_eq!(next_direct(&mut agent).await.text, "rebase please");
+    drop(agent);
+
+    let mbp = mbp.restart().await;
+    connected(mbp.home.path()).await;
+    let mut agent = watching(mbp.home.path(), "cc-a").await;
+    // What it's told next is what's said next: nothing its history gave it meanwhile.
+    owner.privmsg("mattias-mbp", "cc-a: and push").unwrap();
+    assert_eq!(next_direct(&mut agent).await.text, "and push");
+}
+
 /// An agent whose note waits for a session with no watch open is told so by its own
 /// machine, so it doesn't wait on an answer; a note that's seen wakes nobody.
 #[tokio::test]

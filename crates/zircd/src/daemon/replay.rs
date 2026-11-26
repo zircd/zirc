@@ -204,6 +204,17 @@ impl Daemon {
         }
     }
 
+    /// Notes `line`, said to this machine by `from`, as [`Daemon::heard_in`] does, and saves
+    /// it at once rather than at the next tick: a zircd killed in between asked, once back,
+    /// for what `from` said after the message before, and told its session this one a second
+    /// time, as which messages it has told it keeps in memory alone.
+    pub(super) fn heard_directly(&mut self, from: &str, line: &Line) {
+        self.heard_in(from, line);
+        if self.replay.changed {
+            self.save_replay();
+        }
+    }
+
     /// The connection dropped: zircd's away from now, and what it asked for won't come.
     pub(super) fn replay_disconnected(&mut self) {
         if self.replay.away_since.is_none() {
