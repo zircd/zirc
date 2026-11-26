@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use serde_yaml::Value;
+use serde_norway::Value;
 use zirc_proto::desired::{ChannelCreation, Multiline, RateLimit, Settings};
 
 use crate::ergo::{Operator, OperatorError};
@@ -22,7 +22,7 @@ const ON_RESTART: &[(&[&str], &str)] = &[(&["server", "max-line-len"], "settings
 
 /// `yaml` with the value at `path` set to `value`, a YAML scalar or flow sequence, and the
 /// rest as it was, comments included: the release's `default.yaml` is YAML 1.1, which
-/// `serde_yaml` would change as it wrote it out again (`0777`, an octal number there, becomes a
+/// `serde_norway` would change as it wrote it out again (`0777`, an octal number there, becomes a
 /// string). Keys are indented four spaces a level, as Ergo's file has them; a key that isn't
 /// there (or is only in a comment) goes first in its section. `None` when a section on the
 /// way isn't there.
@@ -276,7 +276,7 @@ fn as_the_image_has_it(default_yaml: &str) -> String {
 pub enum ApplyError {
     #[error("not YAML: {0}")]
     /// The config isn't YAML.
-    Yaml(#[from] serde_yaml::Error),
+    Yaml(#[from] serde_norway::Error),
     #[error("couldn't write Ergo's config: {0}")]
     /// The config file or the MOTD couldn't be written.
     Write(#[from] std::io::Error),
@@ -307,13 +307,13 @@ pub async fn apply(
 ) -> Result<Vec<String>, ApplyError> {
     let path = dir.join(CONFIG);
     let running_text = std::fs::read_to_string(&path)?;
-    let running: Value = serde_yaml::from_str(&running_text)?;
+    let running: Value = serde_norway::from_str(&running_text)?;
     let mut config = listening_as(&running_text, config);
     let mut pending = Vec::new();
     for (keys, field) in ON_RESTART {
         let get = |value: &Value| keys.iter().try_fold(value, |at, key| at.get(*key)).cloned();
         let now = get(&running);
-        if get(&serde_yaml::from_str(&config)?) != now {
+        if get(&serde_norway::from_str(&config)?) != now {
             pending.push((*field).to_owned());
             // Absent, it's Ergo's default; every config the controller renders says it.
             let now = now.map_or_else(|| "512".to_owned(), |now| yaml_scalar(&now));
@@ -328,7 +328,7 @@ pub async fn apply(
 
 /// A scalar as YAML has it.
 fn yaml_scalar(value: &Value) -> String {
-    serde_yaml::to_string(value)
+    serde_norway::to_string(value)
         .unwrap_or_default()
         .trim_end()
         .to_owned()
@@ -437,7 +437,7 @@ history:
             channel_creation: ChannelCreation::Operators,
             ..Settings::default()
         };
-        let config: Value = serde_yaml::from_str(&file(DEFAULT, &settings, &held())).unwrap();
+        let config: Value = serde_norway::from_str(&file(DEFAULT, &settings, &held())).unwrap();
         assert_eq!(config["history"]["restrictions"]["expire-time"], 0);
         assert_eq!(config["server"]["max-line-len"], 1024);
         assert_eq!(config["limits"]["multiline"]["max-bytes"], 16384);
@@ -455,7 +455,7 @@ history:
     #[test]
     fn it_listens_as_the_image_does_whichever_file_it_starts_from() {
         let rendered = file(DEFAULT, &Settings::default(), &held());
-        let config: Value = serde_yaml::from_str(&rendered).unwrap();
+        let config: Value = serde_norway::from_str(&rendered).unwrap();
         let listeners = config["server"]["listeners"].as_mapping().unwrap();
         assert!(listeners.contains_key(":6667"));
         assert!(!listeners.contains_key("127.0.0.1:6667"));
