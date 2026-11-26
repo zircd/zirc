@@ -2,6 +2,7 @@
 //! the machine is signed in to, watches repositories for edits, commits and pushes, and
 //! serves the `zirc` CLI over a Unix socket.
 
+pub mod children;
 mod cli;
 mod clock;
 mod config;

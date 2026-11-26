@@ -5551,6 +5551,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "notify",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",

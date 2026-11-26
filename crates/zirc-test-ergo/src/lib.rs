@@ -22,6 +22,8 @@
 //! [`scenario`] is the one path every app's end-to-end test walks, the teammate's side of
 //! it and what the server heard said once, and [`control`] is how a driver asks `serve` for
 //! it over HTTP. `e2e.sh` is that for a driver in shell.
+//!
+//! [`tether`] is how a server ends with the process that started it, however that ends.
 
 pub mod control;
 pub mod git;
@@ -30,6 +32,7 @@ pub mod jwt;
 pub mod scenario;
 pub mod signin;
 pub mod stage;
+pub mod tether;
 pub mod wait;
 pub mod web;
 
@@ -40,11 +43,12 @@ pub use zirc_sidecar::environment::HISTORY;
 
 use std::net::{Ipv4Addr, TcpListener};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use std::{env, fs, io::Write as _};
 
 use tempfile::TempDir;
+pub use tether::Tethered;
 
 /// How long a server gets to start listening.
 const STARTUP: Duration = Duration::from_secs(15);
@@ -70,7 +74,7 @@ macro_rules! require_ergo {
 
 /// A running Ergo.
 pub struct Ergo {
-    child: Child,
+    child: Tethered,
     port: u16,
     ws_port: u16,
     /// Where it keeps its config, database and history.
@@ -239,17 +243,8 @@ impl Ergo {
     pub fn restart(&mut self) {
         // Stopped as an upgrade stops it, so it finishes writing what it took to its history
         // first: killed, a message heard live just before could be gone after (build 3581).
-        // By the shell's own kill, as CI's image has no kill command (build 3586), and killed
-        // after all if it hasn't ended in a while, so a restart never waits forever.
-        let _ = Command::new("sh")
-            .args(["-c", &format!("kill -TERM {}", self.child.id())])
-            .status();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while matches!(self.child.try_wait(), Ok(None)) && std::time::Instant::now() < deadline {
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        // Killed after all if it hasn't ended in a while, so a restart never waits forever.
+        self.child.stop(Duration::from_secs(10));
         let before = self.log().matches(&Self::listening(self.port)).count();
         self.child = run(&self.binary, &self.dir, &self.env);
         assert!(self.listens(before), "Ergo didn't listen on its port again");
@@ -335,13 +330,6 @@ impl Ergo {
     }
 }
 
-impl Drop for Ergo {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
 /// `ergo` with `args`, in the server's directory `dir` and environment `env`.
 fn command(binary: &Path, dir: &Path, env: &[(String, String)], args: &[&str]) -> Command {
     let mut command = Command::new(binary);
@@ -354,18 +342,20 @@ fn command(binary: &Path, dir: &Path, env: &[(String, String)], args: &[&str]) -
     command
 }
 
-/// Runs the server in `dir`, adding to its log there.
-fn run(binary: &Path, dir: &Path, env: &[(String, String)]) -> Child {
+/// Runs the server in `dir`, adding to its log there: stopped when it's dropped, or when this
+/// process ends.
+fn run(binary: &Path, dir: &Path, env: &[(String, String)]) -> Tethered {
     let log = fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(dir.join("ergo.log"))
         .expect("opening ergo.log");
-    command(binary, dir, env, &["run"])
-        .stdout(log.try_clone().expect("log file"))
-        .stderr(log)
-        .spawn()
-        .expect("starting ergo")
+    Tethered::spawn(
+        command(binary, dir, env, &["run"])
+            .stdout(log.try_clone().expect("log file"))
+            .stderr(log),
+    )
+    .expect("starting ergo")
 }
 
 /// The Ergo binary and its `default.yaml`, from the environment Bazel sets.

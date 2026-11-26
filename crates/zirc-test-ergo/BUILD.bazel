@@ -6,6 +6,9 @@ zirc_rust_library(
     surface = "server",
     # What it stages is sent through a real server (tests/stage.rs).
     ergo = True,
+    # Killed, `serve` takes its Ergo with it (tests/tether.rs).
+    test_data = [":serve"],
+    test_env = {"ZIRC_SERVE": "$(rootpath :serve)"},
 )
 
 # The apps' end-to-end path for a driver in shell (src/scenario.rs, src/control.rs).
