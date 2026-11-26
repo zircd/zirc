@@ -431,9 +431,12 @@ impl super::Chat {
     /// they show, us too, never "you".
     #[must_use]
     pub fn quote(&self, conversation: &Conversation, entry: &Entry) -> Option<Quote> {
-        let mut quote = conversation.quote(entry, &|owner| self.owner_name(owner), &|parent| {
-            self.speaker(parent).avatar
-        })?;
+        let mut quote = conversation.quote(
+            entry,
+            &|owner| self.owner_name(owner),
+            &|parent| self.speaker(parent).avatar,
+            &|text| self.shown_text(text),
+        )?;
         if let Some(parent) = conversation.entry(&quote.id) {
             quote.name = self.speaker(parent).name;
         }
@@ -636,12 +639,14 @@ impl Conversation {
     }
 
     /// What `entry` answers, as [`super::Chat::quote`] says, an agent's owner named as
-    /// `owner_name` says.
+    /// `owner_name` says, its words as `shown` shows them: plain, each mention by its name,
+    /// as the message itself reads (`Leo Okafor heads up`, never `@leo heads up`).
     pub(crate) fn quote(
         &self,
         entry: &Entry,
         owner_name: &dyn Fn(&str) -> String,
         avatar: &dyn Fn(&Entry) -> super::Avatar,
+        shown: &dyn Fn(&str) -> String,
     ) -> Option<Quote> {
         let id = entry.reply_to.as_deref()?;
         let parent = self.entry(id)?;
@@ -669,6 +674,7 @@ impl Conversation {
             // [`super::Chat::quote`] names it as its row's head does.
             &str::to_owned,
         );
+        let said = shown(&said);
         let first = said.lines().next().unwrap_or_default();
         let text = if first.chars().count() > QUOTE_CHARS {
             let cut: String = first.chars().take(QUOTE_CHARS - 1).collect();

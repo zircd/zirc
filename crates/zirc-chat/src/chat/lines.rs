@@ -2149,7 +2149,8 @@ pub(in crate::chat) mod tests {
                 &at(
                     "09:00:00",
                     Some("m1"),
-                    ":alice!u@h PRIVMSG #api :the login bug",
+                    // Quoted as it reads: plain, its mention by the name it shows as.
+                    ":alice!u@h PRIVMSG #api :@alice the **login** bug",
                 ),
                 &at("09:01:00", Some("m2"), ":bob!u@h PRIVMSG #api :on it")
                     .replace(";msgid=m2", ";msgid=m2;+draft/reply=m1"),
@@ -2164,7 +2165,7 @@ pub(in crate::chat) mod tests {
             Some(LineQuote {
                 id: "m1".into(),
                 from: "Alice Liddell".into(),
-                text: "the login bug".into(),
+                text: "Alice Liddell the login bug".into(),
                 face: Some(Face::Person {
                     nick: "alice".into(),
                     initials: "AL".into(),
@@ -2185,7 +2186,7 @@ pub(in crate::chat) mod tests {
         ); // As text, for an app that draws it so.
         assert_eq!(
             line(&lines, "on it").quote.as_ref().unwrap().line(),
-            "↪ Alice Liddell: the login bug"
+            "↪ Alice Liddell: Alice Liddell the login bug"
         );
         assert_eq!(
             line(&lines, "and that").quote.as_ref().unwrap().line(),
@@ -2198,7 +2199,10 @@ pub(in crate::chat) mod tests {
         // In every app's words: who, bold, and what they said; an earlier message once gone.
         let bar = ReplyBar::of(chat.quoted(conversation, "m1"));
         assert_eq!(bar.from.as_deref(), Some("Alice Liddell"));
-        assert_eq!(bar.line(), "Replying to Alice Liddell: the login bug");
+        assert_eq!(
+            bar.line(),
+            "Replying to Alice Liddell: Alice Liddell the login bug"
+        );
         let gone = ReplyBar::of(chat.quoted(conversation, "gone"));
         assert_eq!(
             (gone.line(), gone.from),
