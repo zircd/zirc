@@ -1392,10 +1392,35 @@ impl<'a> Layout<'a> {
         }
     }
 
+    /// The card of `landing` when it's a request's, its note saying its person by the name
+    /// they show as: the rest of the card as its machine sent it.
+    fn request_note(&self, landing: &Landing<'_>) -> Option<zirc_proto::card::Card> {
+        let super::EntryKind::Zirc(message) = &landing.entry.kind else {
+            return None;
+        };
+        let request = zirc_proto::request::Request::of(&message.event)?;
+        let mut card = landing.card.clone()?;
+        card.note = self.chat.request_named(request).card().note;
+        Some(card)
+    }
+
     /// How a landing went, or any card, as CI or an integration posts it: one line, its
     /// words the card's line or what was said, with its branch and commit linked, and its
     /// outcome and buttons.
     fn landing(&mut self, landing: &Landing<'_>) -> Line {
+        // A request's note names its person as every app shows them
+        // ([`super::Chat::request_named`]).
+        let named;
+        let landing = match self.request_note(landing) {
+            Some(card) => {
+                named = Landing {
+                    card: Some(card),
+                    ..landing.clone()
+                };
+                &named
+            }
+            None => landing,
+        };
         let entry = landing.entry;
         let parts = landing.parts();
         let card_line = landing.card_line();

@@ -412,3 +412,24 @@ fn a_message_that_reached_no_one_says_so_under_it_and_ends_the_session() {
         .unwrap();
     assert!(row.folded);
 }
+
+#[test]
+fn an_answered_requests_card_and_preview_name_its_person_as_they_show() {
+    let mut scene = in_decisions();
+    let revoke = ask("me-mbp/1", "cc-1", "Revoke last month's certificate now?");
+    scene.hears(&[&posted("me-mbp", "r1", &answered(&revoke, Answer::Yes))]);
+    let profiles: zirc_proto::profile::Profiles =
+        serde_json::from_str(r#"{"me": {"name": "Maya Chen", "avatar": null}}"#).unwrap();
+    scene.take_profiles(&profiles, "https://zirc.dev/");
+    // Its card's note, which its machine wrote with her handle, and the list's preview: her
+    // name, as every app shows her.
+    let lines = scene.lines(zirc_proto::request::CHANNEL, utc(), false);
+    let card = format!("{:?}", lines.last().expect("the request's card").rich);
+    assert!(card.contains("Maya Chen answered yes at 12:01"), "{card}");
+    assert!(!card.contains("me answered"), "{card}");
+    let preview = scene.preview(zirc_proto::request::CHANNEL).unwrap().text;
+    assert!(
+        preview.ends_with("Maya Chen answered yes: Revoke last month's certificate now?"),
+        "{preview}"
+    );
+}

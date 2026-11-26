@@ -203,6 +203,18 @@ impl Chat {
         })
     }
 
+    /// `request` with the person it needs named as they show ([`Chat::shown_name`]), not by
+    /// the handle their machine wrote into it: its card's note and its words read `Maya Chen
+    /// answered yes …`, in every app, old requests too, as each carries whom it needs (`by`,
+    /// whose account alone answers it).
+    #[must_use]
+    pub fn request_named(&self, request: Request) -> Request {
+        Request {
+            by: self.shown_name(&request.by),
+            ..request
+        }
+    }
+
     /// What waits for the person's answer: their agents' open requests, then the questions
     /// their agents put to them directly, each the longest waiting first, times on a clock
     /// `offset` from UTC.

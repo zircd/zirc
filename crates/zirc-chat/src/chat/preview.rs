@@ -74,6 +74,10 @@ impl Chat {
                 event if let Some(vacant) = zirc_proto::roles::Vacant::of(event) => {
                     named(vacant.title())
                 }
+                // A request by its words, its person named as they show, as its card does.
+                event if let Some(request) = zirc_proto::request::Request::of(event) => {
+                    named(line(&self.request_named(request).text()))
+                }
                 event => named(super::describe::describe(event).headline),
             },
             _ => return None,
