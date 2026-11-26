@@ -50,6 +50,11 @@ pub const INBOUND_PATH: &str = "/in/{role}/{secret}";
 /// The command that takes a role, before the role's name: `zirc role take`.
 pub const TAKE_COMMAND: &str = "zirc role take";
 
+/// What a person tells an agent to take a role with, `{role}` its name: what zirc.dev's vacant
+/// card gives to copy, and what the agent guide teaches an agent to take a role on
+/// ([`tell_an_agent`]).
+pub const TELL_AN_AGENT: &str = "Take the {role} role.";
+
 /// The most triggers a role has.
 pub const MAX_TRIGGERS: usize = 16;
 
@@ -499,6 +504,12 @@ pub fn take_command(role: &str) -> String {
     format!("{TAKE_COMMAND} {role}")
 }
 
+/// What a person tells an agent to take role `role` with: `Take the fixer role.`
+#[must_use]
+pub fn tell_an_agent(role: &str) -> String {
+    TELL_AN_AGENT.replace("{role}", role)
+}
+
 /// A role's holder woken, by a direct message to the role, a trigger or a report: what a
 /// [`WAKE_KIND`] event carries, from the role's nick to the holder's machine. Its text is
 /// what woke it: a direct message's words, or the wake's ([`crate::woke::Woke::words`]).
@@ -784,6 +795,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
             format!("const ROLE_SEATS = {SEATS};"),
             format!("const ROLE_MAX_BRIEF = {MAX_BRIEF};"),
             format!("const TAKE_COMMAND = {TAKE_COMMAND:?};"),
+            format!("const TELL_AN_AGENT = {TELL_AN_AGENT:?};"),
             format!("const ROLES_ACCOUNTS_PATH = {ACCOUNTS_PATH:?};"),
             format!("const INBOUND_PATH = {INBOUND_PATH:?};"),
             format!(
@@ -823,6 +835,7 @@ mod tests {
     fn the_take_command_is_zircs() {
         assert!(TAKE_COMMAND.starts_with(&format!("{} ", crate::PROGRAM)));
         assert_eq!(take_command("fixer"), "zirc role take fixer");
+        assert_eq!(tell_an_agent("fixer"), "Take the fixer role.");
     }
 
     fn fixer() -> Definition {

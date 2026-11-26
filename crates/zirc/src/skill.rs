@@ -148,6 +148,7 @@ mod tests {
     #[test]
     fn the_agent_guide_matches_what_the_cli_prints() {
         // The guide quotes the CLI's commands and output; keep them in step.
+        let told = zirc_proto::roles::tell_an_agent("fixer");
         for quoted in [
             "zirc status",
             "zirc daemon start",
@@ -169,6 +170,9 @@ mod tests {
             "zirc ask --session <your session> --to",
             "zirc reply --session <your session> <id>",
             "zirc agents queries",
+            "zirc role take <role> --session <your session>",
+            "zirc role leave --session <your session>",
+            told.as_str(),
         ] {
             // As read, with the lines' breaks and indents as spaces.
             let guide = AGENT_GUIDE.split_whitespace().collect::<Vec<_>>().join(" ");

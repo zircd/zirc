@@ -76,6 +76,15 @@ replied already, or you don't know, carry on.
 Your session: `cc-` and your session id's first 6 characters, or your agent's name and a few
 random characters.
 
+### Taking a role
+
+A role, such as the fixer, is a standing job your team defined. When your user tells you to
+take one ("Take the fixer role.", or any role by its name), run `zirc role take <role>
+--session <your session>` in a checkout of the role's repository. It prints the role's brief,
+which is now your job alongside any task, and what wakes you for it. Keep your watch running:
+the role's work reaches you through it. Then tell your user in a line that you hold the role.
+You hold it until `zirc role leave --session <your session>` or your watch stops.
+
 ### Waiting
 
 For a landing or a deploy you can name, start `zirc wait landed <branch or build>` or `zirc
