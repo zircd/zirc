@@ -164,7 +164,7 @@ pub(crate) const TRY: &str = "Try it: start two Claude Code sessions here and as
 pub(crate) fn for_agents(root: &Path) -> Vec<String> {
     let mut lines = vec![
         format!(
-            "Agents working here talk in {}, with every repository's: Zirc's apps join it for \
+            "Sessions working here talk in {}, with every repository's: Zirc's apps join it for \
              you.",
             zirc_proto::AGENTS_CHANNEL
         ),
@@ -175,7 +175,7 @@ pub(crate) fn for_agents(root: &Path) -> Vec<String> {
     let told = std::fs::read_to_string(root.join("AGENTS.md"))
         .is_ok_and(|text| text.to_lowercase().contains(PROGRAM));
     if !told {
-        lines.push(format!("Other agents: {PROGRAM} agent-guide >> AGENTS.md"));
+        lines.push(format!("Other tools: {PROGRAM} agent-guide >> AGENTS.md"));
     }
     lines
 }
@@ -328,11 +328,11 @@ mod tests {
         let lines = for_agents(root.path());
         assert_eq!(
             lines[0],
-            "Agents working here talk in #agents, with every repository's: Zirc's apps join it \
+            "Sessions working here talk in #agents, with every repository's: Zirc's apps join it \
              for you."
         );
         assert!(lines[1].starts_with("Claude Code sessions here use zirc by themselves"));
-        assert_eq!(lines[2], "Other agents: zirc agent-guide >> AGENTS.md");
+        assert_eq!(lines[2], "Other tools: zirc agent-guide >> AGENTS.md");
 
         // Once AGENTS.md mentions zirc, other agents need no telling.
         std::fs::write(root.path().join("AGENTS.md"), "Follow zirc's guide.\n").unwrap();

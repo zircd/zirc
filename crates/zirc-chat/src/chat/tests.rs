@@ -839,6 +839,7 @@ fn both_rows(chat: &Chat) -> Vec<Parts> {
                     view::Names {
                         owner: &str::to_owned,
                         session: &str::to_owned,
+                        tool: &|_, _| None,
                     },
                 )
             }),
@@ -2939,16 +2940,19 @@ fn says_the_same_on_every_apps_card() {
     assert_eq!(card.standing, "here");
     assert!(!card.away);
     assert_eq!(card.presence, Presence::Here);
-    assert_eq!(card.agent.as_deref(), Some("Agent of alice, on alice-mbp"));
+    assert_eq!(
+        card.agent.as_deref(),
+        Some("alice's sessions, on alice-mbp")
+    );
     assert_eq!(
         card.with_session("cc-1").agent.as_deref(),
-        Some("Agent of alice, on alice-mbp · cc-1")
+        Some("alice's sessions, on alice-mbp · cc-1")
     );
     let profile = chat.profile("alice-mbp");
     let mine = profile.session_card("cc-1", noon(), |at| at.naive_utc());
     assert_eq!(
         mine.agent.as_deref(),
-        Some("Agent of alice, on alice-mbp · cc-1")
+        Some("alice's sessions, on alice-mbp · cc-1")
     );
     assert!(!mine.work.is_empty());
     let other = profile.session_card("cc-2", noon(), |at| at.naive_utc());
@@ -2981,18 +2985,22 @@ fn names_agents_first_on_every_kind_of_row() {
         serde_json::from_str(r#"{"alice": {"name": "Alice", "avatar": null}}"#).unwrap();
     chat.take_profiles(&profiles, "https://zirc.dev/");
 
-    // The one place an agent's name line is made: agent first.
+    // The one place a session's name line is made: session first, then whose it is and its
+    // tool, never "agent" (the user's choice, 27 Nov 2026).
     assert_eq!(
-        agent_name(Some("analytics"), "Alice"),
-        ("analytics".to_owned(), Some("Alice's agent".to_owned()))
+        agent_name(Some("analytics"), "Alice", Some(zirc_proto::CLAUDE_CODE)),
+        (
+            "analytics".to_owned(),
+            Some("Alice's Claude Code".to_owned())
+        )
     );
     assert_eq!(
-        agent_name(None, "Alice"),
-        ("Alice's agent".to_owned(), None)
+        agent_name(None, "Alice", None),
+        ("Alice's session".to_owned(), None)
     );
     assert_eq!(
-        agent_label(Some("analytics"), "Alice"),
-        "analytics, agent of Alice"
+        agent_label(Some("analytics"), "Alice", Some(zirc_proto::CODEX)),
+        "analytics, Alice's Codex"
     );
 
     let conversation = chat.conversation("#api").unwrap();
@@ -3005,9 +3013,9 @@ fn names_agents_first_on_every_kind_of_row() {
     let speaker = chat.speaker(posted);
     assert_eq!(
         (speaker.name.as_str(), speaker.detail.as_deref()),
-        ("analytics", Some("Alice's agent"))
+        ("analytics", Some("Alice's Claude Code"))
     );
-    assert_eq!(speaker.label, "analytics, agent of Alice");
+    assert_eq!(speaker.label, "analytics, Alice's Claude Code");
 
     // An activity row says whose agent too, and its plain text never the machine's nick.
     let rows = chat.items(conversation, |time| time.date_naive());
@@ -3024,12 +3032,15 @@ fn names_agents_first_on_every_kind_of_row() {
     // speaker does, never its id.
     assert_eq!(intent.0.actor, "analytics");
     // Its owner is named as the speaker names them, by their name.
-    assert_eq!(intent.0.actor_detail.as_deref(), Some("Alice's agent"));
+    assert_eq!(
+        intent.0.actor_detail.as_deref(),
+        Some("Alice's Claude Code")
+    );
     assert!(!intent.1.contains("alice-mbp"), "{}", intent.1);
     let speaker = chat.speaker(intent.2);
     assert_eq!(
         (speaker.name.as_str(), speaker.detail.as_deref()),
-        ("analytics", Some("Alice's agent"))
+        ("analytics", Some("Alice's Claude Code"))
     );
 
     // The card of an agent row describes the session: what it's called (its task, with no
@@ -3045,7 +3056,7 @@ fn names_agents_first_on_every_kind_of_row() {
         "{:?}",
         card.doing
     );
-    assert_eq!(card.agent.as_deref(), Some("Alice's agent · Claude Code"));
+    assert_eq!(card.agent.as_deref(), Some("Alice's Claude Code"));
     assert!(!card.work.is_empty());
     // Its standing is the session's own, as its header says it, never its machine's.
     let heard = chat.agent_header("alice-mbp/cc-1").unwrap().heard;
@@ -3116,7 +3127,7 @@ fn a_people_row_is_the_wire_record_every_app_draws() {
     // What every app draws after her name, muted, and at her row's end; ours says `you`.
     assert_eq!(
         (alice.detail.as_deref(), alice.aside.as_deref()),
-        (Some("· 1 agent"), Some("away"))
+        (Some("· 1 session"), Some("away"))
     );
     let me = rows.iter().find(|row| row.me).unwrap();
     assert_eq!(
@@ -3211,8 +3222,8 @@ fn an_agent_card_with_no_title_card_leads_with_its_task_its_handle_under_it() {
             title: "the login bug".into(),
             titled: true,
             handle: "analytics".into(),
-            whose: Some("Alice's agent".into()),
-            after_handle: Some(" · Alice's agent".into()),
+            whose: Some("Alice's Claude Code".into()),
+            after_handle: Some(" · Alice's Claude Code".into()),
             tool: Some("claude-code".into()),
             place: Some("Claude Code · alice-mbp".into()),
             now: Some("✎ about to change src/auth · 8m".into()),
@@ -3274,7 +3285,7 @@ fn an_agent_card_has_the_full_title_where_it_runs_and_what_its_doing() {
         ),
         (Some("✎ about to change"), Some(" src/auth"), Some(" · 8m"))
     );
-    assert_eq!(card.after_handle.as_deref(), Some(" · Alice's agent"));
+    assert_eq!(card.after_handle.as_deref(), Some(" · Alice's Claude Code"));
     assert_eq!(card.task.as_deref(), Some("refactor login"));
     assert_eq!(card.heard.as_deref(), Some("Active now"));
     assert!(card.active);
@@ -3598,7 +3609,7 @@ fn lists_each_person_once_with_their_machines_and_sessions_under_them() {
             ("bob".to_owned(), true, vec![]),
             ("me".to_owned(), true, vec![]),
             (
-                "alice · 1 agent".to_owned(),
+                "alice · 1 session".to_owned(),
                 true,
                 vec!["alice · alice-mbp: cc-1 the login bug".to_owned()]
             ),
@@ -5687,8 +5698,8 @@ fn heads_each_row_with_an_avatar_a_name_and_a_label() {
     unknown.avatar = Some("unicorn".into());
     let agent = chat.speaker(&entry("mattias-matt", EntryKind::Zirc(post)));
     assert_eq!(agent.name, "zirc-chat");
-    assert_eq!(agent.detail.as_deref(), Some("mattias's agent"));
-    assert_eq!(agent.label, "zirc-chat, agent of mattias");
+    assert_eq!(agent.detail.as_deref(), Some("mattias's Claude Code"));
+    assert_eq!(agent.label, "zirc-chat, mattias's Claude Code");
     let Avatar::Agent {
         tool,
         owner,
@@ -5801,7 +5812,7 @@ fn each_agent_session_speaks_as_itself() {
             row("zirc-chat", Some("cc-598aa1"), false),
             row("zirc-chat", Some("cc-598aa1"), true),
             row("cc-ad4f7c", Some("cc-ad4f7c"), false),
-            row("mattias's agent", None, false),
+            row("mattias's session", None, false),
         ]
     );
     // Files shared by two sessions on one machine are two runs.
@@ -5957,7 +5968,7 @@ fn tells_people_agents_and_integrations_apart() {
     assert_eq!(app_label("zirc-alerts", None).as_deref(), Some("alerts"));
     assert_eq!(app_label("zirc", None).as_deref(), Some("zirc"));
     assert_eq!(app_label("carol-mbp", Some(&post)), None);
-    // A system row's who: apps by their name, never "zirc's agent"; a machine as its
+    // A system row's who: apps by their name, never "zirc's session"; a machine as its
     // owner's agent, the owner as named.
     let named = |owner: &str| {
         if owner == "carol" {
@@ -5968,7 +5979,7 @@ fn tells_people_agents_and_integrations_apart() {
     };
     assert_eq!(actor("zirc-alerts", None, &named), "Alerts");
     assert_eq!(actor("zirc-ci", None, &named), "CI");
-    assert_eq!(actor("m3-mac", Some("carol"), &named), "Carol's agent");
+    assert_eq!(actor("m3-mac", Some("carol"), &named), "Carol's session");
     assert_eq!(actor("dana", None, &named), "dana");
 }
 
@@ -7269,7 +7280,7 @@ fn offers_people_then_agent_sessions_then_apps() {
             agent.detail.as_deref(),
             agent.nick.as_str()
         ),
-        ("zirc-chat", Some("alice's agent"), "alice-mbp")
+        ("zirc-chat", Some("alice's session"), "alice-mbp")
     );
     assert!(matches!(agent.avatar, Avatar::Agent { .. }));
     assert_eq!(all[4].name, "Alerts");
@@ -7451,7 +7462,7 @@ fn names_a_conversation_shortly_for_the_composer() {
     // Under an agent session's name, whose agent it is; nothing under anyone else's.
     assert_eq!(
         chat.subtitle("alice-mbp/cc-598aa1").as_deref(),
-        Some("alice's agent")
+        Some("alice's session")
     );
     assert_eq!(chat.subtitle("#api"), None);
     assert_eq!(chat.subtitle("ada"), None);
@@ -7828,8 +7839,8 @@ fn a_long_code_block_shows_its_first_eight_lines_whole_for_highlighting() {
     );
     assert_eq!(more.label(), "Show 33 more lines");
     assert_eq!(
-        more.spoken("Henrik Sandberg's agent"),
-        "Show 33 more lines of Henrik Sandberg's agent's message"
+        more.spoken("Henrik Sandberg's session"),
+        "Show 33 more lines of Henrik Sandberg's session's message"
     );
     assert_eq!(more.terminal_line(), "… 33 more lines · Enter shows them");
     // Opened, it's all there, and says "Show less" at its end.
@@ -8218,8 +8229,8 @@ fn the_card_the_note_and_the_header_are_the_wire_records() {
             "title": "the login bug",
             "titled": true,
             "handle": "analytics",
-            "whose": "Alice's agent",
-            "afterHandle": " · Alice's agent",
+            "whose": "Alice's Claude Code",
+            "afterHandle": " · Alice's Claude Code",
             "tool": "claude-code",
             "place": "Claude Code · alice-mbp",
             "now": "✎ about to change src/auth · 8m",
@@ -8286,6 +8297,7 @@ fn a_push_of_several_commits_lists_them_under_its_verb() {
             view::Names {
                 owner: &str::to_owned,
                 session: &str::to_owned,
+                tool: &|_, _| None,
             },
         )
     };

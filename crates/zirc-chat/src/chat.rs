@@ -228,8 +228,8 @@ pub use sidebar::{
     ListKind, ListOptions, ListRow, NO_MESSAGES, NOTHING_AT_THIS_LEVEL, RowUnder, UnderKind,
 };
 pub use speaker::{
-    AGENT_TAG, APP_TAG, Avatar, ROLE_TAG, Speaker, YOU, agent_avatar, agent_label, agent_name,
-    agent_session, app_name, machine_words, possessive, sender_text, tool_mark,
+    AGENT_TAG, APP_TAG, Avatar, Speaker, YOU, agent_avatar, agent_label, agent_name, agent_session,
+    app_name, machine_words, possessive, sender_text, tool_mark, whose_tool,
 };
 pub use split::split_message;
 pub use status::{Connection, Logged, Notice, Status};

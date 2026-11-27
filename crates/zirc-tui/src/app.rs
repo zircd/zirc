@@ -1097,7 +1097,7 @@ impl App {
     fn show_agent(&mut self, handle: &str) -> Vec<Line> {
         match self.chat.session_named(handle) {
             Some(agent) => self.agent = Some(agent),
-            None => self.note(format!("No agent session goes by {handle} here")),
+            None => self.note(format!("No session goes by {handle} here")),
         }
         Vec::new()
     }
@@ -2141,9 +2141,9 @@ impl App {
     fn list_agents(&mut self) -> Vec<Line> {
         let agents = self.chat.agents();
         self.note(if agents.is_empty() {
-            "no agents are working on your machines".to_owned()
+            "no sessions are working on your machines".to_owned()
         } else {
-            format!("your agents, each to /query: {}", agents.join(", "))
+            format!("your sessions, each to /query: {}", agents.join(", "))
         });
         Vec::new()
     }
@@ -2778,7 +2778,7 @@ mod tests {
         let said = texts(app.current());
         assert!(
             said.iter()
-                .any(|line| line.ends_with("queries to this machine's agents: mine"))
+                .any(|line| line.ends_with("queries to this machine's sessions: mine"))
         );
         assert!(said.last().unwrap().ends_with("zircd: zircd isn't running"));
     }

@@ -275,7 +275,7 @@ mod tests {
         assert_eq!(said.sessions[1].handle, None);
         assert_eq!(
             said.sessions[1].line,
-            "cc-b · agent · Not listening for 17 min · 1 message waiting"
+            "cc-b · session · Not listening for 17 min · 1 message waiting"
         );
     }
 }

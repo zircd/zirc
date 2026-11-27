@@ -17,8 +17,9 @@ use super::face::Face;
 use super::woke::Callout;
 use super::{Chat, nick_degrees};
 
-/// What heads the people list's part for roles, under the people and over the apps.
-pub const ROLES_SECTION: &str = "Roles";
+/// What heads the people list's part for coworkers (roles, inside zirc), under the people and
+/// over the apps.
+pub const ROLES_SECTION: &str = super::office::COWORKERS;
 
 /// A role in a conversation's people list, as the Roles part draws it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -172,8 +173,8 @@ impl Chat {
         self.machine_said(&holder.machine)
     }
 
-    /// The line under a role's name in our conversation with it: `Private to you · held by
-    /// main-fix on Henrik's mbp`, `Private to you · Vacant in monorepo`.
+    /// The line under a role's name in our conversation with it: `Private to you · main-fix
+    /// at the desk, on Henrik's mbp`, `Private to you · Desk empty, in monorepo`.
     #[must_use]
     pub fn role_header(&self, nick: &str) -> Option<String> {
         if !self.is_role(nick) {
@@ -191,9 +192,9 @@ impl Chat {
     }
 
     /// A seat taken or left as the conversation called `name` says it: of one of our
-    /// sessions, in our own conversation with the role, `your main-fix took the role`, and in
-    /// a room, `your main-fix took the fixer role in monorepo`; of anyone else's, whose the
-    /// session is, `main-fix (Henrik's) took the fixer role in monorepo`.
+    /// sessions, in our own conversation with the role, `your main-fix sat at the desk`, and in
+    /// a room, `your main-fix sat at fixer's desk in monorepo`; of anyone else's, whose the
+    /// session is, `main-fix (Henrik's) sat at fixer's desk in monorepo`.
     #[must_use]
     pub fn seat_words(&self, change: &SeatChange, name: &str) -> String {
         let owner = self.whose(&change.holder.machine).map(|(owner, _)| owner);
@@ -403,11 +404,11 @@ mod tests {
         };
         assert_eq!(
             chat.seat_words(&change, "#api"),
-            "your main-fix took the fixer role in monorepo"
+            "your main-fix sat at fixer's desk in monorepo"
         );
         assert_eq!(
             chat.seat_words(&change, "fixer"),
-            "your main-fix took the role"
+            "your main-fix sat at the desk"
         );
         // Anyone else's, by whose it is.
         let theirs = SeatChange {
@@ -555,7 +556,8 @@ mod tests {
             (speaker.name.as_str(), speaker.detail.as_deref()),
             ("fixer", None)
         );
-        assert_eq!(speaker.tag.as_deref(), Some(crate::chat::ROLE_TAG));
+        // No tag: its job follows its name, here none, as the server hasn't said its staff.
+        assert_eq!(speaker.tag, None);
         assert_eq!(speaker.face, chat.role_face("fixer"));
         // The session's row is the coworker too, before any line of the desk's is heard.
         assert_eq!(chat.desk_of("me-mbp", "cc-1").as_deref(), Some("fixer"));
@@ -826,7 +828,7 @@ mod tests {
         from_fixer(&mut chat, "me", "10:00:00", &vacant.event());
         assert_eq!(
             chat.header_line("fixer").unwrap().text,
-            "Private to you · Vacant in monorepo"
+            "Private to you · Desk empty, in monorepo"
         );
         let lines = chat.lines("fixer", utc(), false);
         let line = lines
@@ -834,9 +836,9 @@ mod tests {
             .find(|line| line.shape == RowShape::Vacant)
             .expect("the vacant card");
         let callout = line.callout.as_ref().unwrap();
-        assert_eq!(callout.label, "Nobody holds fixer in monorepo");
+        assert_eq!(callout.label, "Nobody's at fixer's desk in monorepo");
         // The command in a box of its own, its words around it, not in them.
-        assert_eq!(callout.command.as_deref(), Some("zirc role take fixer"));
+        assert_eq!(callout.command.as_deref(), Some("zirc desk take fixer"));
         assert!(
             callout
                 .spans
@@ -844,9 +846,9 @@ mod tests {
                 .all(|span| !span.text.contains("zirc role"))
         );
         assert!(callout.footer.as_deref().is_some_and(|footer| {
-            footer.starts_with("Last held by main-fix (Claude Code) on henrik-mbp")
+            footer.starts_with("Last at the desk: main-fix (Claude Code) on henrik-mbp")
         }));
-        assert!(callout.said().contains("zirc role take fixer"));
+        assert!(callout.said().contains("zirc desk take fixer"));
     }
 
     #[test]
@@ -866,12 +868,12 @@ mod tests {
         let line = lines.last().unwrap();
         assert_eq!(line.shape, RowShape::System);
         assert_eq!(line.from, "fixer");
-        // The role's tag after its name, as an app's after its.
+        // No tag after a coworker's name, as an app has: its job follows it, when known.
         assert_eq!(
             line.speaker
                 .as_ref()
                 .and_then(|speaker| speaker.tag.as_deref()),
-            Some(crate::chat::ROLE_TAG)
+            None
         );
         let said: Vec<&str> = line
             .rich

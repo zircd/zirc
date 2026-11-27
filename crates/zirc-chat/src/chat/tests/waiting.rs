@@ -366,7 +366,7 @@ fn an_ended_sessions_conversation_says_why_it_cant_be_written_to() {
         scene.read_only_note("me-mbp/cc-2"),
         Some(ReadOnlyNote {
             text: "cc-2 ended 6 days ago on your mbp. Messages can't reach it".into(),
-            button: "Message your mbp's agents".into(),
+            button: "Message your mbp's sessions".into(),
             dm: "me-mbp".into(),
             remove: "Remove from Messages".into(),
         })

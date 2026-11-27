@@ -43,13 +43,10 @@ pub enum Avatar {
 /// `Alerts APP`. An app never has a presence dot.
 pub const APP_TAG: &str = "APP";
 
-/// What tags a role's lines after its name, in a room as in our conversation with it (mock
-/// `MacTools`): `oncall ROLE`.
-pub const ROLE_TAG: &str = "ROLE";
-
-/// What tags an agent session's own conversation in its header, after its title:
-/// `checkout · Henrik Sandberg AGENT`.
-pub const AGENT_TAG: &str = "AGENT";
+/// What tags a session's own conversation in its header, after its title: `checkout · Henrik
+/// Sandberg SESSION` (the user's choice, 27 Nov 2026: a person doesn't have an "agent"; the
+/// name stays, as a session is an agent inside zirc).
+pub const AGENT_TAG: &str = "SESSION";
 
 /// Who a row is from, as its head shows them.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,9 +55,10 @@ pub struct Speaker {
     pub avatar: Avatar,
     /// The name line: a person's name, an agent session's name, an app's label.
     pub name: String,
-    /// What follows the name, muted: `mattias's agent` for an agent session.
+    /// What follows the name, muted: `mattias's Claude Code` for a session, `Fixer` for a
+    /// coworker holding that job.
     pub detail: Option<String>,
-    /// What a screen reader says of them: `zirc-chat, agent of mattias`.
+    /// What a screen reader says of them: `zirc-chat, mattias's Claude Code`.
     pub label: String,
     /// Whether it's one of zirc's apps, named by the app's name and tagged [`APP_TAG`].
     pub is_app: bool,
@@ -119,27 +117,41 @@ pub fn machine_words(owner: &str, name: &str, machine: &str) -> String {
     format!("{} {short}", possessive(name))
 }
 
-/// An agent's name line, the one place it's composed, agent first (the user's choice): an
-/// agent session as its name, `analytics`, with `mattias's agent` after it, muted; the
-/// machine itself, with no session, as `mattias's agent` alone. `owner` is as the owner
-/// shows: their profile's name, or else their nick.
+/// A session's name line, the one place it's composed, session first (the user's choice): a
+/// session as its name, `analytics`, with whose it is after it, muted, its tool by name
+/// (`mattias's Claude Code`, the user's choice of 27 Nov 2026: a person doesn't have an
+/// "agent"), or `mattias's session` where its tool is unknown ([`zirc_proto::tool_said`]);
+/// with no session, as `mattias's session` alone. `owner` is as the owner
+/// shows: their profile's name, or else their nick. (Internally a session is still an "agent":
+/// [`SenderKind::Agent`], this function's name.)
 #[must_use]
-pub fn agent_name(session: Option<&str>, owner: &str) -> (String, Option<String>) {
-    let agent = format!("{} agent", possessive(owner));
+pub fn agent_name(
+    session: Option<&str>,
+    owner: &str,
+    tool: Option<&str>,
+) -> (String, Option<String>) {
+    let whose = whose_tool(owner, tool);
     match session {
-        Some(session) => (session.to_owned(), Some(agent)),
-        None => (agent, None),
+        Some(session) => (session.to_owned(), Some(whose)),
+        None => (whose, None),
     }
 }
 
-/// What a screen reader says of an agent, as [`agent_name`] shows it: `analytics, agent of
-/// mattias`, or `mattias's agent` for the machine itself.
+/// Whose session it is and its tool, as people read it after its name: `mattias's Claude Code`,
+/// `your Codex`, `Ada's session`.
 #[must_use]
-pub fn agent_label(session: Option<&str>, owner: &str) -> String {
+pub fn whose_tool(owner: &str, tool: Option<&str>) -> String {
+    format!("{} {}", possessive(owner), zirc_proto::tool_said(tool))
+}
+
+/// What a screen reader says of a session, as [`agent_name`] shows it: `analytics, mattias's
+/// Claude Code`, `analytics, your session`, or `mattias's session` with no session.
+#[must_use]
+pub fn agent_label(session: Option<&str>, owner: &str, tool: Option<&str>) -> String {
+    let whose = whose_tool(owner, tool);
     match session {
-        Some(session) if owner == YOU => format!("{session}, your agent"),
-        Some(session) => format!("{session}, agent of {owner}"),
-        None => format!("{} agent", possessive(owner)),
+        Some(session) => format!("{session}, {whose}"),
+        None => whose,
     }
 }
 
@@ -173,7 +185,7 @@ pub fn sender_text(
                         .unwrap_or_else(|| session_name(&session))
                 });
             match session {
-                Some(_) => agent_name(session.as_deref(), &owner).0,
+                Some(_) => agent_name(session.as_deref(), &owner, None).0,
                 None => nick.to_owned(),
             }
         }
@@ -233,6 +245,7 @@ impl Chat {
                 agent_name(
                     Some(&self.session_label(session)),
                     &self.owner_name(self.owner_of(nick)),
+                    None,
                 )
                 .0
             }
@@ -367,8 +380,15 @@ impl Chat {
                         is_app: false,
                     };
                 }
-                let (name, detail) = agent_name(session_name.as_deref(), &shown);
-                let label = agent_label(session_name.as_deref(), &shown);
+                let tool = message
+                    .and_then(|message| message.tool.clone())
+                    .or_else(|| {
+                        session
+                            .as_deref()
+                            .and_then(|session| self.presence.tool_of(nick, session))
+                    });
+                let (name, detail) = agent_name(session_name.as_deref(), &shown, tool.as_deref());
+                let label = agent_label(session_name.as_deref(), &shown, tool.as_deref());
                 Speaker {
                     avatar: agent_avatar(entry).unwrap_or(Avatar::Person { nick: owner }),
                     name,
@@ -381,16 +401,28 @@ impl Chat {
         }
     }
 
-    /// Someone who speaks as themselves, a person or a coworker, by `nick`.
+    /// Someone who speaks as themselves, a person or a coworker, by `nick`: a coworker with the
+    /// job it holds after its name, muted, `John  Fixer` (the user's choice, 27 Nov 2026, in
+    /// place of a ROLE tag), and nothing there when it holds none.
     fn person_speaker(&self, nick: &str) -> Speaker {
-        let name = self.shown_name(nick);
+        let name = if self.coworker_of(nick).is_some() {
+            self.coworker_name(nick)
+        } else {
+            self.shown_name(nick)
+        };
+        let job = self
+            .is_role(nick)
+            .then(|| self.coworker_job(nick))
+            .flatten();
         Speaker {
             avatar: Avatar::Person {
                 nick: nick.to_owned(),
             },
-            label: name.clone(),
+            label: job
+                .as_ref()
+                .map_or_else(|| name.clone(), |job| format!("{name}, {job}")),
             name,
-            detail: None,
+            detail: job,
             is_app: false,
         }
     }

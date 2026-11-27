@@ -387,7 +387,7 @@ fn sessions_card(frame: &mut Frame<'_>, app: &App, panel: &SessionsPanel, area: 
         Some(Ok(listed)) if listed.is_empty() => vec![empty_hint(
             theme,
             &fit(
-                "No sessions in the last day: an agent's zirc watch --session shows here",
+                "No sessions in the last day: a session's zirc watch --session shows here",
                 text,
             ),
             0,
@@ -3097,7 +3097,7 @@ mod tests {
         let (rows, terminal) = draw(&app, 120, 24);
         let buffer = terminal.backend().buffer();
         // Its post: Claude Code's mark, its name, whose agent it is; no AGENT tag.
-        let (x, y) = place_of(&rows, "✳ zirc-chat mattias's agent  11:20");
+        let (x, y) = place_of(&rows, "✳ zirc-chat mattias's Claude Code  11:20");
         let mark = buffer[(x, y)].fg;
         assert_ne!(mark, colour(app.theme.muted));
         assert!(!rows.iter().any(|row| row.contains(AGENT_TAG)));
@@ -3106,7 +3106,7 @@ mod tests {
         assert!(
             !rows
                 .iter()
-                .any(|row| row.contains("mattias's agent  11:30"))
+                .any(|row| row.contains("mattias's Claude Code  11:30"))
         );
     }
 
@@ -4091,7 +4091,7 @@ mod tests {
         };
         let _ = type_line(&mut app, "/agents");
         let (rows, _) = draw(&app, 120, 16);
-        row_with(&rows, "your agents, each to /query: me-laptop/cc-1531f8");
+        row_with(&rows, "your sessions, each to /query: me-laptop/cc-1531f8");
 
         let _ = type_line(&mut app, "/query me-laptop/cc-1531f8");
         let Action::Send(sent) = type_line(&mut app, "run them again") else {
@@ -4436,7 +4436,7 @@ mod tests {
         assert!(app.agent().is_none());
         typing(&mut app, "/who nobody");
         let (rows, _) = draw(&app, 80, 24);
-        row_with(&rows, "No agent session goes by nobody here");
+        row_with(&rows, "No session goes by nobody here");
     }
 
     #[test]

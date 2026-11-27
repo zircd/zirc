@@ -63,7 +63,7 @@ impl Colleagues {
             data: serde_json::to_value(self).unwrap_or_default(),
             // Short, so the line fits beside its payload.
             text: format!(
-                "agents {} ask colleagues' agents; colleagues {} answer agents",
+                "sessions {} ask colleagues' sessions; colleagues {} answer sessions",
                 say(self.queries),
                 say(self.answers)
             ),

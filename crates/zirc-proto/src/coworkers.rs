@@ -200,7 +200,7 @@ impl JobKind {
             }
             Self::Triage => "Reads each new issue, labels it, finds a likely owner and asks them.",
             Self::Reviewer => {
-                "Reviews each landing and answers its author; best from another vendor's agent."
+                "Reviews each landing and answers its author; best run in another vendor's tool."
             }
             Self::Release => "Cuts and checks releases when you ask, and keeps their notes.",
         }

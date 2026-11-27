@@ -502,7 +502,7 @@ impl Parts {
 }
 
 /// Who `nick` is as a system row says it: one of zirc's apps by its name ([`super::app_name`]),
-/// `CI`; a machine, whose `owner` its host says, as its owner's agent, the owner as
+/// `CI`; a machine, whose `owner` its host says, as its owner's session, the owner as
 /// `owner_name` says ([`super::Chat::owner_name`]); anyone else by their nick.
 #[must_use]
 pub fn actor(nick: &str, owner: Option<&str>, owner_name: &dyn Fn(&str) -> String) -> String {
@@ -510,7 +510,7 @@ pub fn actor(nick: &str, owner: Option<&str>, owner_name: &dyn Fn(&str) -> Strin
         (SenderKind::Integration, _) => {
             super::app_name(&app_label(nick, None).unwrap_or_else(|| "zirc".to_owned()))
         }
-        (SenderKind::Agent, Some(owner)) => super::agent_name(None, &owner_name(owner)).0,
+        (SenderKind::Agent, Some(owner)) => super::agent_name(None, &owner_name(owner), None).0,
         _ => nick.to_owned(),
     }
 }
@@ -635,7 +635,14 @@ pub(super) fn event_parts(
     let actor_detail = owner
         .as_deref()
         .filter(|_| session.is_some())
-        .and_then(|owner| super::agent_name(Some(&actor), &owner_name(owner)).1);
+        .and_then(|owner| {
+            let tool = message.tool.clone().or_else(|| {
+                session
+                    .as_deref()
+                    .and_then(|session| (names.tool)(nick, session))
+            });
+            super::agent_name(Some(&actor), &owner_name(owner), tool.as_deref()).1
+        });
     Parts {
         icon,
         actor,
@@ -1729,6 +1736,7 @@ impl super::Chat {
         let names = Names {
             owner: &|owner| self.owner_name(owner),
             session: &|session| self.session_label(session),
+            tool: &|nick, session| self.presence.tool_of(nick, session),
         };
         items(conversation, day, names)
     }
@@ -1743,6 +1751,9 @@ pub(crate) struct Names<'a> {
     pub owner: &'a dyn Fn(&str) -> String,
     /// An agent session's, by its id.
     pub session: &'a dyn Fn(&str) -> String,
+    /// The tool a session runs in, by its machine's nick and its id, where its line doesn't
+    /// say: what follows its owner, `Alice's Claude Code`.
+    pub tool: &'a dyn Fn(&str, &str) -> Option<String>,
 }
 
 /// Whether `message` starts a thread on a message that's among `entries`: then it's the line

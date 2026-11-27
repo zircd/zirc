@@ -227,7 +227,7 @@ pub struct Card {
     /// Their dot ([`Standing::presence`]).
     pub presence: Presence,
     /// For a machine, whose agent it is and where, the same in every app: `Agent of dana,
-    /// on matt`, and with [`Card::with_session`] `Agent of dana, on matt · cc-55aa66`. The
+    /// on matt`, and with [`Card::with_session`] `dana's sessions, on matt · cc-55aa66`. The
     /// machine and session are said here, never in a message's header.
     pub agent: Option<String>,
     /// A line each under the name and the handle: their real name, their account, how long
@@ -380,7 +380,7 @@ impl Profile {
 impl Profile {
     /// The card for the agent `session` on this machine, as opened from its row or from
     /// something it said: only what that session is changing, about to change and has
-    /// taken on, and `Agent of dana, on matt · cc-55aa66`.
+    /// taken on, and `dana's sessions, on matt · cc-55aa66`.
     #[must_use]
     pub fn session_card(
         &self,
@@ -398,10 +398,13 @@ impl Profile {
         narrowed.card(now, wall).with_session(session)
     }
 
-    /// For a machine, whose agent it is and where: `Agent of dana, on matt`.
+    /// For a machine, whose sessions it runs and where: `dana's sessions, on matt`.
     fn agent(&self) -> Option<String> {
         let (owner, machine) = self.machine.as_ref()?;
-        Some(format!("Agent of {owner}, on {machine}"))
+        Some(format!(
+            "{} sessions, on {machine}",
+            super::possessive(owner)
+        ))
     }
 }
 
@@ -765,13 +768,9 @@ impl Chat {
                 .chain([machine.as_str(), session])
                 .collect();
             card.ids = Some(ids.join(" · "));
-            // Whose agent, as every row says it: the one place that's composed.
-            let (whose, _) = super::agent_name(None, &owner);
-            let mut line = vec![whose];
-            if let Some(tool) = self.session_tools.get(session) {
-                line.push(zirc_proto::tool_name(tool));
-            }
-            card.agent = Some(line.join(" · "));
+            // Whose session and its tool, as every row says it: the one place that's composed.
+            let tool = self.session_tools.get(session).map(String::as_str);
+            card.agent = Some(super::whose_tool(&owner, tool));
         } else {
             card.title = label;
         }

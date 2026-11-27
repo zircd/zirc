@@ -212,15 +212,15 @@ const EXAMPLES: &[(&str, &[&str])] = &[
     ("playbook", &["zirc playbook src/login", "zirc playbook"]),
     ("join", &["zirc join auth --session cc-1"]),
     (
-        "role",
+        "desk",
         &[
-            "zirc role take fixer --session cc-1",
-            "zirc role say --session cc-1 --to ada \"on it: the flake is the port rebind\"",
-            "zirc role last fixer",
-            "zirc role leave --session cc-1",
+            "zirc desk take John --session cc-1",
+            "zirc desk say --session cc-1 --to ada \"on it: the flake is the port rebind\"",
+            "zirc desk last john",
+            "zirc desk leave --session cc-1",
         ],
     ),
-    ("roles", &["zirc roles"]),
+    ("coworkers", &["zirc coworkers"]),
     ("catchup", &["zirc catchup --since 3h"]),
     ("search", &["zirc search --since 2d --from ada login"]),
     (
@@ -284,8 +284,19 @@ const GROUPS: &[(&str, &[&str])] = &[
     (
         "Coordinate",
         &[
-            "who", "intend", "settle", "lease", "state", "wait", "stack", "gotcha", "playbook",
-            "join", "report", "role", "roles",
+            "who",
+            "intend",
+            "settle",
+            "lease",
+            "state",
+            "wait",
+            "stack",
+            "gotcha",
+            "playbook",
+            "join",
+            "report",
+            "desk",
+            "coworkers",
         ],
     ),
     (
@@ -423,8 +434,8 @@ pub struct Cli {
     )]
     tool: Option<String>,
     /// The picture your session goes by, from `zirc avatars`, such as fixer: apps draw that
-    /// bot. Without it, the one its name tells, else a plain bot. `--role`, its name before
-    /// roles were seats (`zirc role`), still takes one. `zirc watch`, `zirc join` and `zirc
+    /// bot. Without it, the one its name tells, else a plain bot. `--role`, its older name,
+    /// still takes one. `zirc watch`, `zirc join` and `zirc
     /// post` set it for the session.
     #[arg(
         long = "avatar",
@@ -640,9 +651,9 @@ enum Command {
     /// Answer a query your watch printed, by its id.
     #[command(after_long_help = examples("reply", ""))]
     Reply(queries::ReplyArgs),
-    /// Choose who may ask this machine's agents.
+    /// Choose who may ask this machine's sessions.
     ///
-    /// Who may query this machine's agents with `zirc ask`.
+    /// Who may query this machine's sessions with `zirc ask`.
     #[command(subcommand)]
     #[command(after_long_help = examples("agents", ""))]
     Agents(AgentsCommand),
@@ -835,16 +846,17 @@ enum Command {
     /// zircd agrees leases with every machine in the organisation, through its channel.
     #[command(after_long_help = examples("lease", ""))]
     Lease(lease::LeaseArgs),
-    /// Take, leave or speak as one of your organisation's roles, such as the fixer.
+    /// Sit at a coworker's desk, leave it, or speak as the coworker, such as John.
     ///
-    /// A role is a standing job its organisation's admins define on zirc.dev, with one seat a
-    /// session takes only by this command, in a checkout of the role's repository: its nick
-    /// is then yours to answer for. What wakes it, a direct message to it among them, wakes
-    /// your watch; you hold it while your watch runs. `zirc roles` says who holds each.
-    ///
-    /// A role is a coworker's desk: `zirc desk take ada` sits your session at Ada's.
-    #[command(subcommand, visible_alias = "desk")]
-    #[command(after_long_help = examples("role", ""))]
+    /// A coworker is one your office hired on zirc.dev, with a job and a desk one session at
+    /// a time sits at, only by this command, in a checkout of the coworker's repository: its
+    /// nick is then yours to answer for. What wakes it, a direct message to it among them,
+    /// wakes your watch; you stay at the desk while your watch runs. `zirc coworkers` says
+    /// who sits where. Other sessions sit at hot desks: they need no command.
+    // `zirc role`, its name before coworkers, still runs it, hidden; inside zirc a coworker's
+    // desk is still a role's seat (RoleCommand, Request::RoleTake, the role:<name> lease).
+    #[command(subcommand, name = "desk", alias = "role")]
+    #[command(after_long_help = examples("desk", ""))]
     Role(roles::RoleCommand),
     /// See or say how something shared stands, such as a broken master.
     ///
@@ -857,15 +869,15 @@ enum Command {
     /// --check fails when one shown is broken, for a one-off check in a CI script.
     #[command(after_long_help = examples("state", ""))]
     State(state::StateArgs),
-    /// Report something to a role, such as a flaky test to the fixer.
+    /// Report something to a coworker, such as a flaky test to John.
     ///
-    /// Report something for a role's holder to do, such as a flaky test or a new warning
-    /// in CI's logs to the fixer. It goes to #ops, where the server keeps one open item per
+    /// Report something for the session at a coworker's desk to do, such as a flaky test or
+    /// a new warning in CI's logs. It goes to #ops, where the server keeps one open item per
     /// kind and key: the same reported again adds nothing, and only a new one wakes the
-    /// holder, or waits for the next while no one holds the role. One left open is said
-    /// again later. A landing whose commit has the trailer Fixes: report <id> closes it when
-    /// it passes; the holder closes one with --done, or --baselined when it can't be fixed
-    /// here.
+    /// session at the desk, or waits for the next while the desk is empty. One left open is
+    /// said again later. A landing whose commit has the trailer Fixes: report <id> closes it
+    /// when it passes; the session at the desk closes one with --done, or --baselined when it
+    /// can't be fixed here.
     #[command(after_long_help = examples("report", ""))]
     Report(report::ReportArgs),
     /// Show who holds and who's waiting for each lease.
@@ -948,8 +960,10 @@ enum Command {
     /// Such as: zirc agent-guide >> CLAUDE.md
     #[command(hide = true)]
     AgentGuide,
-    /// List your organisation's roles: who holds each, and what wakes it.
-    #[command(after_long_help = examples("roles", ""))]
+    /// List your office's coworkers: who sits at each desk, and what wakes it.
+    // `zirc roles`, its name before coworkers, still runs it, hidden.
+    #[command(name = "coworkers", alias = "roles")]
+    #[command(after_long_help = examples("coworkers", ""))]
     Roles,
     /// List the pictures a session can go by, for `--avatar`, each a bot.
     #[command(hide = true)]

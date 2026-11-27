@@ -375,7 +375,7 @@ impl Chat {
         }
     }
 
-    fn coworker_of(&self, nick: &str) -> Option<&Coworker> {
+    pub(super) fn coworker_of(&self, nick: &str) -> Option<&Coworker> {
         self.office.staff.as_ref()?.coworker(&fold(nick))
     }
 
@@ -388,7 +388,7 @@ impl Chat {
 
     /// Coworker `nick`'s job as people read it: `Fixer`, or a job of the office's own by its
     /// name.
-    fn coworker_job(&self, nick: &str) -> Option<String> {
+    pub(super) fn coworker_job(&self, nick: &str) -> Option<String> {
         let job = self.coworker_of(nick)?.jobs.first()?;
         Some(JobKind::of_name(job).map_or_else(|| job.clone(), |kind| kind.label().to_owned()))
     }

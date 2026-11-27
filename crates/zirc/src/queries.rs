@@ -15,7 +15,7 @@ use crate::post::{print_channel, print_posted};
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum AgentsCommand {
-    /// Say, or set, who may query this machine's agents with `zirc ask`.
+    /// Say, or set, who may query this machine's sessions with `zirc ask`.
     ///
     /// off, mine (this machine's other sessions, and your own account and machines, by
     /// default) or anyone, which lets any member's agents try to steer yours.

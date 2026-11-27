@@ -9,13 +9,13 @@
         "output": "watching ~/src/backend as backend in #agents: see who's working on what there with `zirc who`, or follow it with `zirc watch`"
       },
       {
-        "output": "Agents working here talk in #agents, with every repository's: Zirc's apps join it for you."
+        "output": "Sessions working here talk in #agents, with every repository's: Zirc's apps join it for you."
       },
       {
         "output": "Claude Code sessions here use zirc by themselves, through the zirc skill."
       },
       {
-        "output": "Other agents: zirc agent-guide >> AGENTS.md"
+        "output": "Other tools: zirc agent-guide >> AGENTS.md"
       },
       {
         "output": ""

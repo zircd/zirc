@@ -461,12 +461,12 @@ impl Woke {
     /// `who` being whoever did it as people read them (`Rajesh Iyer`, `replay-index`),
     /// which the reader's app knows: `CI landed its branch main-fix · build 613`, `Rajesh
     /// Iyer replied in #agents`. With no `who`, whose doing it was in a word: `a person`,
-    /// `another agent`. Never a report's id, which only the holder's own watch shows.
+    /// `another session`. Never a report's id, which only the holder's own watch shows.
     #[must_use]
     pub fn words(&self, who: Option<&str>) -> String {
         let who = who.unwrap_or(match self.by {
             By::Ci => "CI",
-            By::Agent => "another agent",
+            By::Agent => "another session",
             By::Person => "a person",
             By::Zirc => crate::NAME,
         });
@@ -782,7 +782,7 @@ pub fn note_words(
         crate::onboarding::Note::FirstOverlap => (
             "Your first overlap.",
             format!(
-                "{} saw two agents about to change the same files, and they agreed an order \
+                "{} saw two sessions about to change the same files, and they agreed an order \
                  before either pushed. You don't need to do anything: every overlap gets one \
                  line like the one above.",
                 crate::NAME

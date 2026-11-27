@@ -393,7 +393,7 @@ pub(crate) fn avatar_named(id: &str) -> (&'static str, Option<String>) {
         return (role, None);
     }
     let role = zirc_proto::guess_role(id).unwrap_or(zirc_proto::DEFAULT_ROLE);
-    let note = format!("{id:?} isn't a role, so it's {role}; `{PROGRAM} avatars` lists them");
+    let note = format!("{id:?} isn't a picture, so it's {role}; `{PROGRAM} avatars` lists them");
     (role, Some(note))
 }
 
@@ -882,7 +882,7 @@ mod tests {
         assert_eq!(role, "builder");
         assert!(
             note.unwrap()
-                .contains("\"developer\" isn't a role, so it's builder")
+                .contains("\"developer\" isn't a picture, so it's builder")
         );
         assert_eq!(avatar_named("unicorn").0, "agent");
     }

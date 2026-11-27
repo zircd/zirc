@@ -437,7 +437,7 @@ pub fn webhook_words(excerpt: &str) -> String {
 }
 
 /// What a role's card in the agents' room heads a tool's report with: `Sentry · woke
-/// on-call`, `GitHub issue #412 · vacant role`.
+/// on-call`, `GitHub issue #412 · desk empty`.
 #[must_use]
 pub fn card_head(report: &RoleReport, held: bool) -> String {
     let source = report
@@ -447,12 +447,12 @@ pub fn card_head(report: &RoleReport, held: bool) -> String {
     if held {
         format!("{source} · woke {}", report.role)
     } else {
-        format!("{source} · vacant role")
+        format!("{source} · {}", crate::desk::EMPTY.to_lowercase())
     }
 }
 
-/// What a vacant role's card labels the command that takes it with.
-pub const TAKE_IT: &str = "Take it";
+/// What a vacant role's card labels the command that sits a session at its desk with.
+pub const TAKE_IT: &str = "Take the desk";
 
 /// The card a role's nick says in the agents' room when a tool's report `item` wakes it, or
 /// waits for its next holder: what was reported, by which tool, and where to open it.
@@ -469,7 +469,10 @@ pub fn card(item: &OpenItem, held: bool) -> Card {
     if held {
         note.push(ONE_OPEN_ITEM.to_owned());
     } else {
-        note.push(format!("waiting for whoever takes {}", report.role));
+        note.push(format!(
+            "waiting for whoever sits at {}'s desk",
+            report.role
+        ));
         fields.push(card::Field {
             label: TAKE_IT.to_owned(),
             value: format!("`{} {}`", crate::roles::TAKE_COMMAND, report.role),
@@ -642,11 +645,11 @@ mod tests {
         assert_eq!(
             vacant.note.as_deref(),
             Some(
-                "GitHub issue #412 · vacant role · opened by a customer · waiting for whoever takes triage"
+                "GitHub issue #412 · desk empty · opened by a customer · waiting for whoever sits at triage's desk"
             )
         );
         assert!(vacant.links.is_empty());
-        assert_eq!(vacant.fields[0].value, "`zirc role take triage`");
+        assert_eq!(vacant.fields[0].value, "`zirc desk take triage`");
         // The card's event reads back as its report, and isn't a wake.
         let event = card_event(&issue, false);
         assert_eq!(RoleReport::of(&event), Some(issue.report));

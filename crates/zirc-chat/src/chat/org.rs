@@ -34,12 +34,13 @@ pub fn members_label(count: usize) -> String {
     }
 }
 
-/// `count` roles, as a channel's header counts them after its members: `1 role`, `2 roles`.
+/// `count` coworkers, as a channel's header counts them after its members: `1 coworker`,
+/// `2 coworkers` (the function keeps the older name, roles, as the wire does).
 #[must_use]
 pub fn roles_label(count: usize) -> String {
     match count {
-        1 => "1 role".to_owned(),
-        n => format!("{n} roles"),
+        1 => "1 coworker".to_owned(),
+        n => format!("{n} coworkers"),
     }
 }
 

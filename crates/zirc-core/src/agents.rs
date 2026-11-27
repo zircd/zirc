@@ -13,14 +13,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use zirc_proto::names::Hosted;
 
-/// What an app or the CLI says before letting anyone query this machine's agents.
+/// What an app or the CLI says before letting anyone query this machine's sessions.
 pub const ANYONE_WARNING: &str = "Anyone in any organisation this machine is signed in to, \
-    and any of their agents, could then ask this machine's agents to do things. A question can \
-    carry instructions (prompt injection): your agents treat queries as requests, never as \
+    and any of their sessions, could then ask this machine's sessions to do things. A question can \
+    carry instructions (prompt injection): your sessions treat queries as requests, never as \
     yours, but they may still be talked into acting on one. Choose \"mine\" unless you trust \
     everyone in those organisations.";
 
-/// Who may query this machine's agents.
+/// Who may query this machine's sessions.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Queries {
@@ -63,7 +63,7 @@ impl Queries {
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
-            Self::Off => "No one may query this machine's agents",
+            Self::Off => "No one may query this machine's sessions",
             Self::Mine => "Only me: my machines and their sessions",
             Self::Anyone => "Anyone on the server",
         }
@@ -71,13 +71,13 @@ impl Queries {
 }
 
 /// An app's Settings page for the setting, headed so.
-pub const TITLE: &str = "Who may query this machine's agents";
+pub const TITLE: &str = "Who may query this machine's sessions";
 
 /// What an app says while it asks zircd for the setting.
 pub const ASKING: &str = "Asking zircd…";
 
 /// What an app says when zircd doesn't answer, as the setting is zircd's to keep.
-pub const UNANSWERED: &str = "zircd isn't answering on this machine; its agents' queries are \
+pub const UNANSWERED: &str = "zircd isn't answering on this machine; its sessions' queries are \
     its to allow. Start it with zirc daemon start.";
 
 /// The buttons under [`ANYONE_WARNING`], before an app lets anyone query: allow, or keep.
@@ -85,11 +85,11 @@ pub const ALLOW_ANYONE: &str = "Allow anyone";
 /// See [`ALLOW_ANYONE`].
 pub const KEEP: &str = "Keep it as it is";
 
-/// What every zirc app and the CLI say of the setting: `queries to this machine's agents:
+/// What every zirc app and the CLI say of the setting: `queries to this machine's sessions:
 /// mine`, with the warning when it's `anyone`.
 #[must_use]
 pub fn said(queries: Queries, colleagues_kept_out: bool) -> String {
-    let said = format!("queries to this machine's agents: {}", queries.word());
+    let said = format!("queries to this machine's sessions: {}", queries.word());
     match queries {
         Queries::Anyone if colleagues_kept_out => format!("{said}\n{KEPT_OUT}"),
         Queries::Anyone => format!("{said}\nwarning: {ANYONE_WARNING}"),
@@ -97,15 +97,15 @@ pub fn said(queries: Queries, colleagues_kept_out: bool) -> String {
     }
 }
 
-/// What every zirc app says of `anyone` while the organisation keeps other members' agents
+/// What every zirc app says of `anyone` while the organisation keeps other members' sessions
 /// out (`zirc_proto::colleagues`).
-pub const KEPT_OUT: &str = "but your organisation doesn't let colleagues' agents ask: only \
+pub const KEPT_OUT: &str = "but your organisation doesn't let colleagues' sessions ask: only \
     your own machines may, until an owner or admin turns it on in zirc.dev's Server tab";
 
 /// Everything in `agents.toml`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Agents {
-    /// Who may query this machine's agents.
+    /// Who may query this machine's sessions.
     #[serde(default)]
     pub queries: Queries,
 }
@@ -268,18 +268,18 @@ impl Queries {
 }
 
 /// What a machine whose agents take queries as `queries` say, while the organisation does or
-/// doesn't let members' agents ask each other's, answers an agent whose query it won't take,
+/// doesn't let members' sessions ask each other's, answers an agent whose query it won't take,
 /// so it doesn't wait for an answer that won't come.
 #[must_use]
 pub fn refused(queries: Queries, colleagues_may: bool) -> String {
     let why = match queries {
-        Queries::Off => "this machine's agents take no queries",
+        Queries::Off => "this machine's sessions take no queries",
         Queries::Anyone if !colleagues_may => {
-            "the organisation doesn't let members' agents ask each other's"
+            "the organisation doesn't let members' sessions ask each other's"
         }
         _ => {
-            "this machine's agents take queries only from its person's own machines (its person \
-             can let colleagues' agents in with `zirc agents queries anyone`)"
+            "this machine's sessions take queries only from its person's own machines (its person \
+             can let colleagues' sessions in with `zirc agents queries anyone`)"
         }
     };
     format!("{REFUSED}{why}. {INSTEAD}")

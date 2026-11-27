@@ -166,15 +166,16 @@ impl Chat {
     }
 
     /// What an open conversation's header says under its name, where a phone has two lines:
-    /// for an agent session, whose agent it is, as its messages are headed ([`agent_name`]),
-    /// `Henrik Sandberg's agent` or `your agent`; `None` for any other conversation.
+    /// for a session, whose it is and its tool, as its messages are headed ([`agent_name`]),
+    /// `Henrik Sandberg's Claude Code` or `your session`; `None` for any other conversation.
     #[must_use]
     pub fn subtitle(&self, name: &str) -> Option<String> {
         let (nick, session) = agent(name)?;
         let owner = self
             .machine(nick)
             .map_or_else(|| self.owner_of(nick).to_owned(), |(owner, _)| owner);
-        agent_name(Some(session), &self.owner_name(&owner)).1
+        let tool = self.presence.tool_of(nick, session);
+        agent_name(Some(session), &self.owner_name(&owner), tool.as_deref()).1
     }
 
     /// Whether the header of the conversation called `name` carries the AGENT tag: any agent
@@ -212,17 +213,14 @@ impl Chat {
     /// 2026).
     #[must_use]
     pub fn header_title(&self, name: &str) -> String {
-        // A role is headed by its name, and addressed in the composer as "the fixer".
-        if self.is_role(name) {
-            return name.to_owned();
-        }
         self.short_title(name)
     }
 
     /// The conversation called `name` as a composer names it, `Message <short title>`: a
     /// channel as named, an agent session as it goes by ([`Chat::session_label`]), a group
     /// by who's in it, a machine as its owner and
-    /// its own name, a role as `the fixer`, and a person by the name they show as. Every
+    /// its own name, a coworker by the name it's shown by, `John`, and a person by the name they
+    /// show as. Every
     /// app's composer says this.
     #[must_use]
     pub fn short_title(&self, name: &str) -> String {
@@ -230,7 +228,7 @@ impl Chat {
             return SERVER_TITLE.to_owned();
         }
         if self.is_role(name) {
-            return zirc_proto::roles::addressed(name);
+            return self.coworker_name(name);
         }
         match agent(name) {
             Some((nick, session)) => self.agent_label(nick, session),

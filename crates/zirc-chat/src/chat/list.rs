@@ -663,13 +663,13 @@ impl PersonRow {
             .sum()
     }
 
-    /// The row's line: `alice`, `alice · 2 agents`, `alice · 1 agent`.
+    /// The row's line: `alice`, `alice · 2 sessions`, `alice · 1 session`.
     #[must_use]
     pub fn label(&self) -> String {
         match self.agents() {
             0 => self.person.label(),
-            1 => format!("{} · 1 agent", self.person.label()),
-            n => format!("{} · {n} agents", self.person.label()),
+            1 => format!("{} · 1 session", self.person.label()),
+            n => format!("{} · {n} sessions", self.person.label()),
         }
     }
 }

@@ -450,3 +450,47 @@ fn a_hot_desks_badge_says_whose_it_is_its_tool_and_what_its_doing() {
         "checkout-form, a session at a hot desk, henrik's · Claude Code, Changing the payment form"
     );
 }
+
+#[test]
+fn a_line_said_at_a_coworkers_desk_is_headed_by_its_name_and_job_with_no_tag() {
+    let mut scene = office();
+    let seated = Message {
+        desk: Some("john".into()),
+        tool: Some(zirc_proto::CLAUDE_CODE.into()),
+        ..Message::new(
+            "cc-1",
+            Event::Text {
+                body: "on it".into(),
+            },
+        )
+    };
+    scene.hears(&[&zirc("henrik-mbp", &seated)]);
+    let line = scene.lines("#api", utc(), false).pop().unwrap();
+    let speaker = line.speaker.unwrap();
+    // The user's choice, 27 Nov 2026: the job, muted, where a ROLE tag was.
+    assert_eq!(
+        (
+            speaker.name.as_str(),
+            speaker.detail.as_deref(),
+            speaker.tag
+        ),
+        ("John", Some("Fixer"), None)
+    );
+    assert_eq!(speaker.label, "John, Fixer");
+    // A session at a hot desk says whose it is by its tool, never "agent".
+    let hot = Message {
+        tool: Some(zirc_proto::CODEX.into()),
+        ..Message::new(
+            "cc-2",
+            Event::Text {
+                body: "looking".into(),
+            },
+        )
+    };
+    scene.hears(&[&zirc("henrik-mbp", &hot)]);
+    let line = scene.lines("#api", utc(), false).pop().unwrap();
+    assert_eq!(
+        line.speaker.unwrap().detail.as_deref(),
+        Some("henrik's Codex")
+    );
+}

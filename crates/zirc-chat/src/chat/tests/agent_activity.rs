@@ -289,7 +289,7 @@ fn a_line_from_a_machine_itself_is_headed_with_its_name_and_the_agents_glyph() {
         let entry = chat.conversation(room).unwrap().entries[at].clone();
         chat.speaker(&entry)
     };
-    // Our machine, bare: its name, not "your agent", with the agents' glyph.
+    // Our machine, bare: its name, not "your session", with the agents' glyph.
     let ours = head("me-mbp", 0);
     assert_eq!(ours.name, "me-mbp");
     assert_eq!(ours.detail.as_deref(), Some("your machine"));
@@ -313,7 +313,7 @@ fn a_line_from_a_machine_itself_is_headed_with_its_name_and_the_agents_glyph() {
     let session = head("me-mbp/cc-1", 0);
     assert_eq!(
         (session.name.as_str(), session.detail.as_deref()),
-        ("checkout", Some("your agent"))
+        ("checkout", Some("your session"))
     );
     // And the thread's preview follows the rule.
     assert_eq!(
@@ -345,7 +345,7 @@ fn a_header_has_the_now_line_for_an_untitled_session_too() {
     // A teammate's says whose it is first.
     assert_eq!(
         chat.agent_header("bob-laptop/cc-2").unwrap().line,
-        "Bob Lee's agent · Not heard yet"
+        "Bob Lee's session · Not heard yet"
     );
     assert_eq!(chat.agent_header("bob"), None);
 }

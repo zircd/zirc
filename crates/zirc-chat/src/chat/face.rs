@@ -83,14 +83,14 @@ pub struct LineSpeaker {
     pub name: String,
     /// What follows the name, muted: `mattias's agent` for an agent session.
     pub detail: Option<String>,
-    /// What a screen reader says of them: `zirc-chat, agent of mattias`.
+    /// What a screen reader says of them: `zirc-chat, mattias's Claude Code`.
     pub label: String,
     /// For an agent session, its id, `cc-598aa1`, whose card a click on them opens.
     pub session: Option<String>,
     /// Whether it's one of zirc's apps, CI or Alerts, which [`super::APP_TAG`] follows.
     pub app: bool,
     /// The tag after its name, decided here for every app, which draws it as it's given:
-    /// [`super::APP_TAG`] for one of zirc's apps, [`super::ROLE_TAG`] for a role; none for a
+    /// [`super::APP_TAG`] for one of zirc's apps; none for a
     /// person or an agent session.
     pub tag: Option<String>,
 }
@@ -225,8 +225,6 @@ impl Chat {
             Avatar::Agent { session, .. } => session.clone(),
             _ => None,
         };
-        // A coworker's own line, or one said at its desk.
-        let role = matches!(&speaker.avatar, Avatar::Person { nick } if self.is_role(nick));
         let several = self.presence.repositories(zirc_proto::AGENTS_CHANNEL) > 1;
         let (detail, label) = match entry.repo().filter(|_| several) {
             Some(repo) => (
@@ -245,13 +243,9 @@ impl Chat {
             label,
             session,
             app: speaker.is_app,
-            tag: if speaker.is_app {
-                Some(super::APP_TAG.to_owned())
-            } else if role {
-                Some(super::ROLE_TAG.to_owned())
-            } else {
-                None
-            },
+            // A coworker has no tag: its job follows its name, muted, as its detail (the
+            // user's choice, 27 Nov 2026, in place of a ROLE tag).
+            tag: speaker.is_app.then(|| super::APP_TAG.to_owned()),
         }
     }
 }

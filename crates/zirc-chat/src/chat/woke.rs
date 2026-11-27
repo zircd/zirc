@@ -164,8 +164,8 @@ impl Chat {
                 )
             }
             (Some(session), None) => self.session_label(session),
-            (None, Some(owner)) => super::agent_name(None, &owner).0,
-            (None, None) => super::agent_name(None, super::YOU).0,
+            (None, Some(owner)) => super::agent_name(None, &owner, None).0,
+            (None, None) => super::agent_name(None, super::YOU, None).0,
         }
     }
 
@@ -686,7 +686,7 @@ mod tests {
         let note = chat.first_overlap_note(&settled()).expect("the note");
         assert!(
             note.said()
-                .starts_with("Your first overlap. Zirc saw two agents")
+                .starts_with("Your first overlap. Zirc saw two sessions")
         );
         assert_eq!(chat.see_note("first_overlap"), Some(Note::FirstOverlap));
         assert_eq!(chat.first_overlap_note(&settled()), None);

@@ -45,7 +45,7 @@ pub struct ReadOnlyNote {
     /// The line: `Only Henrik Sandberg can message checkout`, or `checkout ended 6 days ago on
     /// your mbp. Messages can't reach it`.
     pub text: String,
-    /// The button: `Message Henrik Sandberg`, or `Message your mbp's agents`. Empty, as is
+    /// The button: `Message Henrik Sandberg`, or `Message your mbp's sessions`. Empty, as is
     /// [`Self::dm`], where there's no one to go to instead, as in zirc's own direct
     /// messages: apps then show no button.
     pub button: String,
@@ -178,7 +178,7 @@ impl Chat {
     /// button that opens his direct conversation; in zirc's own direct messages,
     /// `Zirc's notices can't be answered.` and no button; in the conversation with one of
     /// our agents that has ended, `checkout ended 6 days ago on your mbp. Messages can't
-    /// reach it`, with `Message your mbp's agents`, which opens the machine's own thread, and `Remove
+    /// reach it`, with `Message your mbp's sessions`, which opens the machine's own thread, and `Remove
     /// from Messages` (the user's choices, 25 Nov 2026). `None` where [`Chat::can_message`].
     #[must_use]
     pub fn read_only_note(&self, name: &str) -> Option<ReadOnlyNote> {
@@ -234,7 +234,7 @@ impl Chat {
         };
         ReadOnlyNote {
             text,
-            button: format!("Message {machine}'s agents"),
+            button: format!("Message {machine}'s sessions"),
             dm: nick.to_owned(),
             remove: REMOVE_FROM_MESSAGES.to_owned(),
         }
@@ -281,7 +281,8 @@ impl Chat {
         } else {
             match self.whose(nick) {
                 Some((owner, _)) if !owner.eq_ignore_ascii_case(self.me()) => {
-                    let whose = super::agent_name(None, &self.owner_name(&owner)).0;
+                    let tool = self.presence.tool_of(nick, session);
+                    let whose = super::whose_tool(&self.owner_name(&owner), tool.as_deref());
                     format!("{whose} · {heard}")
                 }
                 _ => heard.clone(),

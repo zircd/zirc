@@ -547,7 +547,7 @@ impl ReplyBar {
 pub struct LineMore {
     /// What it says: `Show 34 more lines`, or `Show less` while open.
     pub label: String,
-    /// What a screen reader says: `Show 34 more lines of Henrik Sandberg's agent's message`.
+    /// What a screen reader says: `Show 34 more lines of Henrik Sandberg's session's message`.
     pub spoken: String,
     /// How many lines the cut hides, code included.
     pub hidden: u32,
@@ -999,7 +999,7 @@ impl<'a> Layout<'a> {
     }
 
     /// Puts, under our latest message to a role while nobody holds it, that it waits:
-    /// `Waiting: nobody holds the fixer role` ([`zirc_proto::roles::waiting`]), where a
+    /// `Waiting: nobody's at fixer's desk` ([`zirc_proto::roles::waiting`]), where a
     /// message to an agent says it was seen. A note, as a receipt is.
     fn role_waiting(&mut self, lines: &mut Vec<Line>) {
         let name = &self.conversation.name;
@@ -2373,7 +2373,7 @@ pub(in crate::chat) mod tests {
         );
         let speaker = made.speaker.as_ref().unwrap();
         assert_eq!(speaker.session.as_deref(), Some("cc-1"));
-        assert_eq!(speaker.detail.as_deref(), Some("your agent"));
+        assert_eq!(speaker.detail.as_deref(), Some("your session"));
         // A post to another session says whom.
         let post = line(&lines, "please rebase");
         let system = post.system.as_ref().unwrap();
@@ -2532,7 +2532,7 @@ pub(in crate::chat) mod tests {
         assert!(matches!(cut.rich.as_slice(), [RichBlock::Items { .. }]));
         let more = cut.more.as_ref().expect("a control");
         assert_eq!(more.label, "Show 6 more lines");
-        assert_eq!(more.spoken, "Show 6 more lines of your agent's message");
+        assert_eq!(more.spoken, "Show 6 more lines of your session's message");
         // Addressed to a session, its words follow `→ ` and the session.
         let to = &lines[1];
         assert_eq!(

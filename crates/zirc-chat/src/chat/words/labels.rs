@@ -193,8 +193,8 @@ pub const KEYBOARD_SHORTCUTS: &str = "Keyboard shortcuts";
 /// What a screen reader calls the panel of who works on what.
 pub const WHO_IS_WORKING: &str = "Who is working on what";
 
-/// The heading over an agent session's details.
-pub const AGENT_HEADING: &str = "Agent";
+/// The heading over a session's details.
+pub const AGENT_HEADING: &str = "Session";
 
 /// Where an agent session runs, under its name: `on m3-mac`.
 #[must_use]

@@ -40,11 +40,11 @@ pub struct AgentCard {
     pub titled: bool,
     /// Its short handle, `checkout`, in mono, or its id when it has none.
     pub handle: String,
-    /// Whose agent it is: `Henrik Sandberg's agent`, `your agent`. `None` when its owner isn't
-    /// known.
+    /// Whose session it is, and its tool: `Henrik Sandberg's Claude Code`, `your session`
+    /// ([`super::whose_tool`]). `None` when its owner isn't known.
     pub whose: Option<String>,
     /// [`Self::whose`] as it follows the handle, muted, when the card is titled: ` · Henrik
-    /// Chen's agent`, its separator first. Untitled, the title is the handle, and `whose`
+    /// Chen's Claude Code`, its separator first. Untitled, the title is the handle, and `whose`
     /// shows alone.
     pub after_handle: Option<String>,
     /// The tool it runs in, `claude-code`, for the tool's icon.
@@ -96,9 +96,10 @@ impl super::Chat {
         let owner = whose_parts
             .as_ref()
             .map(|(owner, _)| self.owner_name(owner));
+        let tool = self.presence.tool_of(nick, session);
         let whose = owner
             .as_deref()
-            .map(|owner| super::agent_name(None, owner).0);
+            .map(|owner| super::whose_tool(owner, tool.as_deref()));
         // When it was heard and whether it's online, titled or not, as its header says.
         let doing = self.doing_now(nick, session, now);
         let (heard, active) = self.heard_line(nick, session, doing.active, now);

@@ -19,8 +19,8 @@ use crate::client::{ask_in, here, org_here};
 // The doc comments on the arguments are --help text, where backticks would show.
 #[derive(Debug, Args)]
 pub(super) struct ReportArgs {
-    /// The role it's for, such as fixer.
-    #[arg(value_name = "ROLE")]
+    /// The coworker it's for, by its nick, such as john.
+    #[arg(value_name = "COWORKER")]
     role: String,
     /// What it's about.
     #[arg(long, value_parser = subjects())]

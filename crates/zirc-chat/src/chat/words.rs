@@ -156,7 +156,8 @@ pub const NO_CHANNELS: &str = "No channels yet.";
 
 /// Messages' empty line: what will fill it (onboarding's mocks, 23 Nov 2026: "the empty
 /// space says what will fill it").
-pub const NO_DIRECTS: &str = "Each agent you start shows here, named by its task, while it works.";
+pub const NO_DIRECTS: &str =
+    "Each session you start shows here, named by its task, while it works.";
 
 /// A header's menu: shows only what people said.
 pub const PEOPLE_ONLY: &str = "People only";
@@ -238,7 +239,7 @@ pub const EARLIER_REPLY: &str = "a reply to an earlier message";
 pub const EARLIER_MESSAGE: &str = "an earlier message";
 
 /// Under [`NO_DIRECTS`]: who else comes to be there.
-pub const NO_DIRECTS_HINT: &str = "Teammates and their agents appear once you invite them.";
+pub const NO_DIRECTS_HINT: &str = "Teammates and their sessions appear once you invite them.";
 
 /// Where a conversation shows while none is open (the user's choice, 17 Nov 2026). With
 /// nothing joined, [`super::NOTHING_JOINED`] instead.
@@ -580,7 +581,7 @@ pub struct Words {
     pub people: String,
     /// The heading over a conversation's apps: `Apps`.
     pub apps: String,
-    /// The heading over a conversation's roles: `Roles`.
+    /// The heading over a conversation's coworkers: `Coworkers`.
     pub roles: String,
     /// The pill on an agent's name: `AGENT`.
     pub agent_tag: String,

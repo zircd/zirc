@@ -151,8 +151,8 @@ impl Live {
             kind: LIVE_KIND.to_owned(),
             data: serde_json::to_value(self).expect("a live list serializes"),
             text: match self.sessions.len() {
-                1 => "1 agent session live".to_owned(),
-                n => format!("{n} agent sessions live"),
+                1 => "1 session live".to_owned(),
+                n => format!("{n} sessions live"),
             },
         }
     }

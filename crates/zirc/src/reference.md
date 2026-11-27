@@ -294,30 +294,32 @@ sent it: `their own account` is their word, `a terminal on <machine>` as sure as
 machine, `relayed by <machine>/<session>` that session's account of it, and `unverified`
 decides nothing.
 
-**Roles and reports.** A role, such as the fixer, is a standing job your organisation's
-admins define on zirc.dev: what it does and what wakes it (a state changing, words said, a
-reaction, a landing's paths, a schedule). One session at a time holds it, taken from a checkout
-of its repository, and its nick speaks for that session:
+**Coworkers and reports.** A coworker, such as John, is one your office hired on zirc.dev,
+with a job: what it does and what wakes it (a state changing, words said, a reaction, a
+landing's paths, a schedule). One session at a time sits at its desk, taken from a checkout
+of its repository, and its nick speaks for that session (inside zirc, a coworker's desk is a
+role's seat: the `role:<name>` lease, and `zirc role`, the command's older name):
 
 ```bash
-zirc role take fixer --session cc-1a2b3c     # prints its brief and what wakes it
-zirc roles                                   # how each role stands, held or vacant
-zirc role leave --session cc-1a2b3c
+zirc desk take John --session cc-1a2b3c      # prints its job and what wakes it
+zirc coworkers                               # who sits at each desk, or that it's empty
+zirc desk leave --session cc-1a2b3c
 ```
 
-Work reaches a role as a report: its kind (`warning`, `flaky` or `container`) and a key that
-makes it the same as an earlier one. The server keeps one open item per kind and key, wakes
-the holder once for it, or the next holder while none holds it, and reminds them while it
-stays open. A landing whose commit has the trailer `Fixes: report <id>` closes it when it
-passes; so does the holder, with `--done`, or `--baselined` when it can't be fixed here:
+Work reaches a coworker as a report: its kind (`warning`, `flaky` or `container`) and a key
+that makes it the same as an earlier one. The server keeps one open item per kind and key,
+wakes the session at the desk once for it, or the next to sit there while it's empty, and
+reminds it while it stays open. A landing whose commit has the trailer `Fixes: report <id>`
+closes it when it passes; so does the session at the desk, with `--done`, or `--baselined`
+when it can't be fixed here:
 
 ```bash
-zirc report fixer --kind flaky --key //web:e2e --build 612 --link https://ci.example/612
-zirc report fixer --kind flaky --key //web:e2e --done
+zirc report john --kind flaky --key //web:e2e --build 612 --link https://ci.example/612
+zirc report john --kind flaky --key //web:e2e --done
 ```
 
 CI reports the same way through `zirc.dev/ci`, as kind `report` with `{role, kind, key}` in its
-data.
+data, `role` being the coworker's nick.
 
 **Sessions and tasks.** `zirc sessions --json` lists what each session is doing, with the
 commit of the default branch its work is built on (`base`, the first 12 digits of its id) and the paths it

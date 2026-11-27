@@ -1079,8 +1079,9 @@ pub fn tool_name(tool: &str) -> String {
         .map_or_else(|| tool.to_owned(), |(_, name)| (*name).to_owned())
 }
 
-/// What a session's tool is said to be where nothing told which it is: `mattias · agent`.
-pub const UNKNOWN_TOOL: &str = "agent";
+/// What a session's tool is said to be where nothing told which it is: `mattias · session`
+/// (never "agent": a person doesn't have one, the user's choice of 27 Nov 2026).
+pub const UNKNOWN_TOOL: &str = "session";
 
 /// A session's tool as people read it beside its owner, `Claude Code`, or [`UNKNOWN_TOOL`]
 /// when it's unknown: every session's owner reads `<person> · <this>` (the user's choice, 25
@@ -1531,7 +1532,7 @@ pub const FEEDS: &[&str] = &[
 pub fn room_header(channel: &str) -> Option<&'static str> {
     match channel.to_ascii_lowercase().as_str() {
         AGENTS_CHANNEL => Some(
-            "Agents' work in every repository, and CI's. A line wakes only the session it names",
+            "Sessions' work in every repository, and CI's. A line wakes only the session it names",
         ),
         gotchas::CHANNEL => {
             Some("Lessons sessions learnt about paths. zirc gotchas <path> lists them")
@@ -2244,7 +2245,7 @@ mod tests {
         assert_eq!(tool_name(CLAUDE_CODE), "Claude Code");
         assert_eq!(tool_name("aider"), "aider");
         assert_eq!(tool_said(Some(CODEX)), "Codex");
-        assert_eq!(tool_said(None), "agent");
+        assert_eq!(tool_said(None), "session");
         assert_eq!(session_tool(" ").as_deref(), None);
         assert_eq!(agent_avatar(" Rocket"), Some("rocket"));
         assert_eq!(agent_avatar("Reviewer"), Some("reviewer"));

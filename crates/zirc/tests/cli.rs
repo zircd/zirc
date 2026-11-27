@@ -1091,7 +1091,7 @@ async fn says_who_may_query_this_machines_agents_and_warns_before_anyone() {
     until_connected(home.path()).await;
 
     let said = zirc(home.path(), &["agents", "queries"]).await.unwrap();
-    assert_eq!(said, "queries to this machine's agents: mine\n");
+    assert_eq!(said, "queries to this machine's sessions: mine\n");
     // Anyone only by a person at a terminal, never an agent or script, as here.
     let refused = zirc(home.path(), &["agents", "queries", "anyone", "--yes"])
         .await
@@ -1103,7 +1103,7 @@ async fn says_who_may_query_this_machines_agents_and_warns_before_anyone() {
     let said = zirc(home.path(), &["agents", "queries", "off"])
         .await
         .unwrap();
-    assert_eq!(said, "queries to this machine's agents: off\n");
+    assert_eq!(said, "queries to this machine's sessions: off\n");
 
     // A session asks another here, which hears it on its watch.
     zirc(home.path(), &["agents", "queries", "mine"])

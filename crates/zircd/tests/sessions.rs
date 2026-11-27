@@ -404,7 +404,7 @@ async fn a_session_goes_by_its_name_and_says_its_tool_and_avatar() {
     assert!(
         refused
             .to_string()
-            .contains("isn't a role: pick one of agent, reviewer"),
+            .contains("isn't a picture: pick one of agent, reviewer"),
         "{refused}"
     );
     let mut beta_hears = beta.watch(None).await;

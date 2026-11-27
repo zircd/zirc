@@ -65,7 +65,7 @@ impl Daemon {
     ) -> Result<Response> {
         let server = self
             .content_server()
-            .context("this machine can't ask its organisation's server about roles")?;
+            .context("this machine can't ask its office's server about its coworkers")?;
         let standing = server.roles().await.map_err(anyhow::Error::msg)?;
         // A person names a coworker as it's shown ("You're John."): its desk is its nick's.
         let role = standing
@@ -76,8 +76,8 @@ impl Daemon {
             && held != role
         {
             bail!(
-                "{session} is the {held} already: a session holds one role, so leave it first \
-                 ({} role leave)",
+                "{session} sits at {held}'s desk already: a session sits at one desk, so leave it \
+                 first ({} desk leave)",
                 zirc_proto::PROGRAM
             );
         }
@@ -89,11 +89,11 @@ impl Daemon {
                 .map(|role| role.name.as_str())
                 .collect();
             bail!(
-                "there's no {role} role: {}",
+                "there's no coworker {role}: {}",
                 if names.is_empty() {
-                    "your organisation's admins add roles on zirc.dev".to_owned()
+                    "your office hires coworkers on zirc.dev".to_owned()
                 } else {
-                    format!("its roles are {}", names.join(", "))
+                    format!("its coworkers are {}", names.join(", "))
                 }
             );
         };
@@ -186,7 +186,7 @@ impl Daemon {
             })
             .collect();
         if turns.is_empty() {
-            bail!("{session} holds no role");
+            bail!("{session} sits at no coworker's desk");
         }
         for turn in turns {
             let role = roles::of_lease(&turn.want.name).unwrap_or_default();
@@ -210,7 +210,7 @@ impl Daemon {
     ) -> Result<Response> {
         let role = self
             .role_of(session)
-            .with_context(|| format!("{session} holds no role to speak as"))?;
+            .with_context(|| format!("{session} sits at no coworker's desk to speak from"))?;
         anyhow::ensure!(!text.trim().is_empty(), "say something");
         let say = Say {
             role: role.clone(),
@@ -229,7 +229,7 @@ impl Daemon {
     pub(super) async fn role_standing(&self) -> Result<Response> {
         let server = self
             .content_server()
-            .context("this machine can't ask its organisation's server about roles")?;
+            .context("this machine can't ask its office's server about its coworkers")?;
         let standing = server.roles().await.map_err(anyhow::Error::msg)?;
         Ok(Response::RoleStanding(standing))
     }
@@ -305,7 +305,7 @@ impl Daemon {
                 self.say_lease(
                     &session,
                     event,
-                    format!("{session} came second to role {role}"),
+                    format!("{session} came second to {role}'s desk"),
                 );
                 let holder = self
                     .leases
@@ -319,7 +319,7 @@ impl Daemon {
                         |h| format!("{}/{}", h.nick, h.session),
                     );
                 self.tell_session(
-                    format!("{session}: {holder} took the {role} role a moment before you: you're not the {role}"),
+                    format!("{session}: {holder} sat at {role}'s desk a moment before you: you're not {role}"),
                     None,
                 );
             }

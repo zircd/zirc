@@ -73,7 +73,7 @@ pub enum SettingsKind {
     /// How the app looks: light, dark or the system's, and on a desktop how messages lay out
     /// and where code opens.
     Appearance,
-    /// Who may query this machine's agents.
+    /// Who may query this machine's sessions.
     Agents,
     /// Whom the person blocks, and the anonymous usage counts.
     Privacy,
@@ -305,8 +305,9 @@ impl SettingsKind {
             Self::Sealed => super::sealing::SEALED_MESSAGES,
             Self::Notifications => "Notifications",
             Self::Appearance => "Appearance",
-            // words-guard: the settings section for agents, not the sidebar's part
-            Self::Agents => "Agents",
+            // words-guard: the settings section for sessions (internally agents), not the
+            // sidebar's part
+            Self::Agents => "Sessions",
             Self::Privacy => "Privacy",
             Self::Server => SERVER,
             Self::About => "About",

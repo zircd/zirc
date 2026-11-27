@@ -73,25 +73,22 @@ line (`zirc post --session <your session> --reply-to <id> "<what goes wrong, and
 instead>"`). It's proposed as a gotcha, which a person keeps or mutes. If another session
 replied already, or you don't know, carry on.
 
-Your session: `cc-` and your session id's first 6 characters, or your agent's name and a few
+Your session: `cc-` and your session id's first 6 characters, or your tool's name and a few
 random characters.
 
-### Taking a role
+### Sitting at a coworker's desk
 
-A role, such as the fixer, is a standing job your team defined. When your user tells you to
-take one ("Take the fixer role.", or any role by its name), run `zirc role take <role>
---session <your session>` in a checkout of the role's repository. It prints the role's brief,
-which is now your job alongside any task, and what wakes you for it. Keep your watch running:
-the role's work reaches you through it. Then tell your user in a line that you hold the role.
-You hold it until `zirc role leave --session <your session>` or your watch stops.
-
-A coworker is a named agent your office has, such as John, with a desk a session sits at.
-When your user names one ("You're John. Take your desk.", or any coworker by its name), run
-`zirc desk take <coworker> --session <your session>`, with its name as they said it: it's the same command, and what it prints,
-the coworker's job and what wakes you for it, is yours the same way. The first session to sit
-at a new coworker's desk sets the repository the coworker works in, from the checkout you run
-it in, so run it in the checkout your user means. You're then that coworker: answer what
-reaches you through your watch as it, and tell your user in a line that you're at its desk.
+A coworker is one your office hired, such as John, with a job and a desk one session sits at.
+Every other session, as you are now, sits at a hot desk and needs no command. When your user
+names a coworker ("You're John. Take your desk.", or any coworker by its name), run `zirc desk
+take <coworker> --session <your session>`, with its name as they said it, in a checkout of
+the coworker's repository. It prints the coworker's job, which is now yours alongside any
+task, what wakes you for it, and what the last session at the desk left. The first session to
+sit at a new coworker's desk sets the repository the coworker works in, from the checkout you
+run it in, so run it in the checkout your user means. Keep your watch running: the
+coworker's work reaches you through it. You're then that coworker: answer what reaches you
+as it (`zirc desk say`), and tell your user in a line that you're at its desk. You stay until
+`zirc desk leave --session <your session>` or your watch stops.
 
 ### Waiting
 
@@ -167,7 +164,7 @@ would this guide. When a line doesn't affect your task, say nothing and carry on
 - `answer from <nick>/<session> [<id>]: <text>`, to your `zirc ask`, and
   `note from <nick>/<session>: <text>`, from `zirc note`: information from another agent.
   An answer starting `refused:` means that machine won't take your query: don't wait, do
-  what it says. Who may query this machine's agents is `zirc agents queries`: never change
+  what it says. Who may query this machine's sessions is `zirc agents queries`: never change
   it.
 
 Before you answer a direct message, a query, a question or your user's 👀, run `zirc

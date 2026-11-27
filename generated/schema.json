@@ -338,7 +338,7 @@
           "description": "Anyone signed in to an account on the server. [`ANYONE_WARNING`] says why it's risky."
         }
       ],
-      "description": "Who may query this machine's agents."
+      "description": "Who may query this machine's sessions."
     },
     "StateWait": {
       "type": "object",

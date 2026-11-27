@@ -116,7 +116,7 @@ fn the_next_holder_is_woken_by_what_waited_and_its_writer_told() {
         ["ada", "henrik", zirc_proto::AGENTS_CHANNEL, "henrik-mbp"]
     );
     let change = SeatChange::of(&outs[2].message.event).unwrap();
-    assert_eq!(change.words(), "cc-1 took the fixer role in monorepo");
+    assert_eq!(change.words(), "cc-1 sat at fixer's desk in monorepo");
     let (wake, text) = wake_of(&outs[3]);
     assert_eq!(
         (wake.session.as_str(), text.as_str()),
@@ -331,7 +331,7 @@ fn a_restarted_sidecar_says_a_seat_left_once_asked_machines_say_nothing_of_it() 
     assert_eq!(to, [zirc_proto::AGENTS_CHANNEL]);
     assert_eq!(
         SeatChange::of(&outs[0].message.event).unwrap().words(),
-        "cc-1 left the fixer role"
+        "cc-1 left fixer's desk"
     );
     assert!(brain.tick(asked + LISTEN_FIRST + 2000).is_empty());
 }
@@ -357,7 +357,7 @@ fn leaving_says_so_and_keeps_the_last_holder() {
     assert_eq!(to, ["henrik", zirc_proto::AGENTS_CHANNEL]);
     assert_eq!(
         SeatChange::of(&outs[1].message.event).unwrap().words(),
-        "cc-1 left the fixer role"
+        "cc-1 left fixer's desk"
     );
     let seat = &brain.standing(LATER + 9000).seats[0];
     assert!(seat.holder.is_none());
@@ -489,7 +489,7 @@ fn the_first_session_to_sit_sets_a_coworkers_repository_and_zirc_devs_next_word_
     let standing = brain.standing(LATER);
     assert_eq!(standing.seats[2].role, "hedy");
     assert_eq!(standing.seats[2].repository, "");
-    assert_eq!(standing.seats[2].status(""), "Vacant");
+    assert_eq!(standing.seats[2].status(""), "Desk empty");
     assert_eq!(standing.staff.coworkers[2].repository, None);
     let (role, _) = brain.sit("hedy", "docs", LATER).unwrap();
     assert_eq!(role.repository, "docs");

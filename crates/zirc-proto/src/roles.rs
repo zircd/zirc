@@ -47,13 +47,10 @@ pub const ACCOUNTS_PATH: &str = "/v1/roles";
 /// the server only its digest ([`Address`]).
 pub const INBOUND_PATH: &str = "/in/{role}/{secret}";
 
-/// The command that takes a role, before the role's name: `zirc role take`.
-pub const TAKE_COMMAND: &str = "zirc role take";
-
-/// What a person tells an agent to take a role with, `{role}` its name: what zirc.dev's vacant
-/// card gives to copy, and what the agent guide teaches an agent to take a role on
-/// ([`tell_an_agent`]).
-pub const TELL_AN_AGENT: &str = "Take the {role} role.";
+/// The command that takes a role, before the role's name: `zirc desk take`, as a role is a
+/// coworker's desk in what people read ([`crate::coworkers::DESK_COMMAND`]); `zirc role take`
+/// still works, hidden.
+pub const TAKE_COMMAND: &str = crate::coworkers::DESK_COMMAND;
 
 /// The most triggers a role has.
 pub const MAX_TRIGGERS: usize = 16;
@@ -578,15 +575,15 @@ impl Seat {
         }
     }
 
-    /// Under the role's name, in its conversation's header and among the members: `held by
-    /// main-fix on Henrik's MacBook`, `Vacant in monorepo`. `machine` is the holder's
-    /// machine as the reader's app names it.
+    /// Under the coworker's name, in its conversation's header: `main-fix at the desk, on
+    /// Henrik's MacBook`, `Desk empty, in monorepo`. `machine` is the holder's machine as the
+    /// reader's app names it.
     #[must_use]
     pub fn status(&self, machine: &str) -> String {
         match &self.holder {
-            Some(holder) => format!("held by {} on {machine}", holder.session.who()),
+            Some(holder) => format!("{} at the desk, on {machine}", holder.session.who()),
             None if self.repository.is_empty() => VACANT_NOWHERE.to_owned(),
-            None => format!("Vacant in {}", self.repository),
+            None => format!("{VACANT_NOWHERE}, in {}", self.repository),
         }
     }
 
@@ -602,34 +599,22 @@ impl Seat {
 }
 
 /// How a seat with no holder and no repository yet stands ([`Seat::status`]).
-pub const VACANT_NOWHERE: &str = "Vacant";
+pub const VACANT_NOWHERE: &str = crate::desk::EMPTY;
 
 /// The private conversation's header line before the seat's status ([`Seat::status`]).
 pub const PRIVATE: &str = "Private to you";
 
-/// A role as it's addressed, after `Message` in its conversation's composer: `the fixer`.
-#[must_use]
-pub fn addressed(role: &str) -> String {
-    format!("the {role}")
-}
-
-/// That `who` left role `role`: `main-fix left the fixer role`, as a seat left is said
-/// everywhere ([`SeatChange::words`], zircd's lease event).
+/// That `who` left role `role`'s seat, its coworker's desk: `main-fix left john's desk`, as a
+/// seat left is said everywhere ([`SeatChange::words`], zircd's lease event).
 #[must_use]
 pub fn left_words(who: &str, role: &str) -> String {
-    format!("{who} left the {role} role")
+    format!("{who} left {role}'s desk")
 }
 
 /// The command that takes role `role`.
 #[must_use]
 pub fn take_command(role: &str) -> String {
     format!("{TAKE_COMMAND} {role}")
-}
-
-/// What a person tells an agent to take role `role` with: `Take the fixer role.`
-#[must_use]
-pub fn tell_an_agent(role: &str) -> String {
-    TELL_AN_AGENT.replace("{role}", role)
 }
 
 /// A role's holder woken, by a direct message to the role, a trigger or a report: what a
@@ -725,7 +710,7 @@ pub struct Vacant {
 }
 
 impl Vacant {
-    /// The card's heading: `Nobody holds fixer in monorepo`.
+    /// The card's heading: `Nobody's at john's desk in monorepo`.
     #[must_use]
     pub fn title(&self) -> String {
         vacant_title(&self.seat.role, &self.seat.repository)
@@ -735,8 +720,8 @@ impl Vacant {
     #[must_use]
     pub fn body(&self) -> String {
         format!(
-            "Your message waits here for whoever takes the role next. To fill it, tell an \
-             agent in a {} checkout to take it, or run:",
+            "Your message waits here for whoever sits at the desk next. To seat a session, \
+             tell one in a {} checkout to take the desk, or run:",
             self.seat.repository
         )
     }
@@ -747,14 +732,14 @@ impl Vacant {
         take_command(&self.seat.role)
     }
 
-    /// The card's last line: `Last held by main-fix (Claude Code) on Henrik's MacBook; the
-    /// next holder can ask it. Nobody else is told.`, or without a last holder, `Nobody else
-    /// is told.`. `machine` is the last holder's machine as the reader's app names it.
+    /// The card's last line: `Last at the desk: main-fix (Claude Code) on Henrik's MacBook;
+    /// the next session there can ask it. Nobody else is told.`, or with nobody there before,
+    /// `Nobody else is told.`. `machine` is the last holder's machine as the reader's app names it.
     #[must_use]
     pub fn footer(&self, machine: Option<&str>) -> String {
         match &self.seat.last {
             Some(last) => format!(
-                "Last held by {} on {}; the next holder can ask it. {NOBODY_ELSE}",
+                "Last at the desk: {} on {}; the next session there can ask it. {NOBODY_ELSE}",
                 last.who_with_tool(),
                 machine.unwrap_or(&last.machine)
             ),
@@ -787,20 +772,20 @@ impl Vacant {
     }
 }
 
-/// A vacant role's card's heading ([`Vacant::title`]): `Nobody holds fixer in monorepo`.
+/// A vacant role's card's heading ([`Vacant::title`]): `Nobody's at john's desk in monorepo`.
 #[must_use]
 pub fn vacant_title(role: &str, repository: &str) -> String {
-    format!("Nobody holds {role} in {repository}")
+    format!("Nobody's at {role}'s desk in {repository}")
 }
 
 /// The vacant card's last words.
 const NOBODY_ELSE: &str = "Nobody else is told.";
 
-/// Under a message to a vacant role, where a sent message says it was seen: `Waiting: nobody
-/// holds the fixer role`.
+/// Under a message to a vacant role, where a sent message says it was seen: `Waiting: nobody's
+/// at john's desk`.
 #[must_use]
 pub fn waiting(role: &str) -> String {
-    format!("Waiting: nobody holds the {role} role")
+    format!("Waiting: nobody's at {role}'s desk")
 }
 
 /// A seat taken or left: what a [`SEAT_KIND`] event carries.
@@ -818,8 +803,8 @@ pub struct SeatChange {
 }
 
 impl SeatChange {
-    /// Its line, in the agents' room and the role's conversations: `main-fix took the fixer
-    /// role in monorepo`, `main-fix left the fixer role`: how to take it is said only while
+    /// Its line, in the agents' room and the role's conversations: `main-fix sat at john's
+    /// desk in monorepo`, `main-fix left john's desk`: how to take it is said only while
     /// it's vacant, on its card ([`Vacant::command`]). What plain
     /// IRC clients show; apps say whose the session is ([`SeatChange::words_with`]).
     #[must_use]
@@ -828,7 +813,7 @@ impl SeatChange {
     }
 
     /// Its line, `whose` being the session's owner as the reader's app says it, possessive:
-    /// `main-fix (Henrik's) took the fixer role in monorepo`. Zirc
+    /// `main-fix (Henrik's) sat at john's desk in monorepo`. Zirc
     /// can't know who asked the session to take it, so it names whose the session is.
     #[must_use]
     pub fn words_with(&self, whose: Option<&str>) -> String {
@@ -839,8 +824,8 @@ impl SeatChange {
         self.words_of(&who)
     }
 
-    /// Its line in a room, read by the session's owner: `your main-fix took the fixer role
-    /// in monorepo`, `your main-fix left the fixer role`.
+    /// Its line in a room, read by the session's owner: `your main-fix sat at john's desk in
+    /// monorepo`, `your main-fix left john's desk`.
     #[must_use]
     pub fn words_ours(&self) -> String {
         self.words_of(&format!("your {}", self.holder.session.who()))
@@ -849,18 +834,18 @@ impl SeatChange {
     /// Its line, the session named as `who`.
     fn words_of(&self, who: &str) -> String {
         if self.took {
-            format!("{who} took the {} role in {}", self.role, self.repository)
+            format!("{who} sat at {}'s desk in {}", self.role, self.repository)
         } else {
             left_words(who, &self.role)
         }
     }
 
-    /// Its line in its session's owner's own conversation with the role: `your main-fix took
-    /// the role`, `your main-fix left the role`.
+    /// Its line in its session's owner's own conversation with the coworker: `your main-fix
+    /// sat at the desk`, `your main-fix left the desk`.
     #[must_use]
     pub fn words_yours(&self) -> String {
-        let did = if self.took { "took" } else { "left" };
-        format!("your {} {did} the role", self.holder.session.who())
+        let did = if self.took { "sat at" } else { "left" };
+        format!("your {} {did} the desk", self.holder.session.who())
     }
 
     /// Its event.
@@ -918,7 +903,6 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
             ),
             format!("const ROLE_MAX_BRIEF = {MAX_BRIEF};"),
             format!("const TAKE_COMMAND = {TAKE_COMMAND:?};"),
-            format!("const TELL_AN_AGENT = {TELL_AN_AGENT:?};"),
             format!("const ROLES_ACCOUNTS_PATH = {ACCOUNTS_PATH:?};"),
             format!("const INBOUND_PATH = {INBOUND_PATH:?};"),
             format!(
@@ -960,8 +944,7 @@ mod tests {
     #[test]
     fn the_take_command_is_zircs() {
         assert!(TAKE_COMMAND.starts_with(&format!("{} ", crate::PROGRAM)));
-        assert_eq!(take_command("fixer"), "zirc role take fixer");
-        assert_eq!(tell_an_agent("fixer"), "Take the fixer role.");
+        assert_eq!(take_command("john"), "zirc desk take john");
     }
 
     #[test]
@@ -1130,16 +1113,16 @@ mod tests {
             },
             reply_to: None,
         };
-        assert_eq!(vacant.title(), "Nobody holds fixer in monorepo");
-        assert_eq!(vacant.command(), "zirc role take fixer");
+        assert_eq!(vacant.title(), "Nobody's at fixer's desk in monorepo");
+        assert_eq!(vacant.command(), "zirc desk take fixer");
         assert_eq!(
             vacant.footer(Some("Henrik's MacBook")),
-            "Last held by main-fix (Claude Code) on Henrik's MacBook; the next holder can \
-             ask it. Nobody else is told."
+            "Last at the desk: main-fix (Claude Code) on Henrik's MacBook; the next session \
+             there can ask it. Nobody else is told."
         );
-        assert_eq!(vacant.seat.status("x"), "Vacant in monorepo");
+        assert_eq!(vacant.seat.status("x"), "Desk empty, in monorepo");
         assert_eq!(Vacant::of(&vacant.event()), Some(vacant));
-        assert_eq!(waiting("fixer"), "Waiting: nobody holds the fixer role");
+        assert_eq!(waiting("fixer"), "Waiting: nobody's at fixer's desk");
     }
 
     #[test]
@@ -1155,7 +1138,7 @@ mod tests {
         };
         assert_eq!(
             seat.status("Henrik's MacBook"),
-            "held by main-fix on Henrik's MacBook"
+            "main-fix at the desk, on Henrik's MacBook"
         );
         assert_eq!(
             seat.member_line("Henrik's MacBook"),
@@ -1169,9 +1152,9 @@ mod tests {
         };
         assert_eq!(
             change.words_with(Some("Henrik's")),
-            "main-fix (Henrik's) took the fixer role in monorepo"
+            "main-fix (Henrik's) sat at fixer's desk in monorepo"
         );
-        assert_eq!(change.words_yours(), "your main-fix took the role");
+        assert_eq!(change.words_yours(), "your main-fix sat at the desk");
         assert_eq!(SeatChange::of(&change.event()), Some(change));
     }
 
