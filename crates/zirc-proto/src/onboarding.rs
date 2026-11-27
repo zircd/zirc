@@ -66,7 +66,8 @@ pub enum Signal {
     /// zirc.dev: the office hired a coworker ([`crate::coworkers::Coworker`]).
     Hired,
     /// The recorder: a session on a member's machine sat at a coworker's desk
-    /// ([`crate::activity::Seated`]).
+    /// ([`crate::activity::Seated`]), or the server says one of the member's machines holds
+    /// a desk now or held one last ([`Firsts::with_desks`]).
     Seated,
     /// The recorder: a session at a coworker's desk was woken by a direct message from the
     /// person whose machine it runs on ([`crate::activity::Wake::wrote`]), which it answers.
@@ -775,6 +776,37 @@ pub struct Firsts {
     pub firsts: Vec<First>,
 }
 
+impl Firsts {
+    /// The firsts the activity store kept, with a [`Signal::Seated`] for each machine the
+    /// office's server says holds a coworker's desk now or held one last (`seats`, from its
+    /// lease events), at the earlier of its record and that turn. So a desk held counts
+    /// whatever zircd wrote: one from before the `x-zirc/seated` record (zirc 0.1.72 and
+    /// older) never writes it, nor does a session that sat down before an upgrade.
+    #[must_use]
+    pub fn with_desks(firsts: Vec<First>, seats: &[crate::roles::Seat]) -> Self {
+        let mut firsts = firsts;
+        let holders = seats
+            .iter()
+            .flat_map(|seat| seat.holder.iter().chain(seat.last.iter()));
+        for holder in holders {
+            let at = i64::try_from(holder.since.saturating_mul(1000)).unwrap_or(i64::MAX);
+            let kept = firsts.iter_mut().find(|first| {
+                first.signal == Signal::Seated
+                    && first.account.eq_ignore_ascii_case(&holder.machine)
+            });
+            match kept {
+                Some(first) => first.at = first.at.min(at),
+                None => firsts.push(First {
+                    signal: Signal::Seated,
+                    account: holder.machine.clone(),
+                    at,
+                }),
+            }
+        }
+        Self { firsts }
+    }
+}
+
 /// These as TypeScript, for the web app's generated file.
 ///
 /// # Panics
@@ -1093,6 +1125,56 @@ mod tests {
         assert_eq!(
             of(crate::ci::LANDING_KIND, machine, true, false, None),
             Some(Signal::Agent)
+        );
+    }
+
+    #[test]
+    fn a_desk_held_or_held_last_is_seated_whatever_zircd_wrote() {
+        let holder = |machine: &str, since| crate::roles::Holder {
+            machine: machine.into(),
+            since,
+            session: crate::session::SessionCard {
+                session: "cc-1".into(),
+                name: None,
+                title: None,
+                tool: None,
+            },
+        };
+        let seat = |holder, last| crate::roles::Seat {
+            role: "fixer".into(),
+            repository: String::new(),
+            holder,
+            last,
+            waiting: 0,
+            wakes_on: Vec::new(),
+            woke_today: 0,
+        };
+        let first = |signal, account: &str, at| First {
+            signal,
+            account: account.into(),
+            at,
+        };
+        let kept = vec![
+            first(Signal::Agent, "ada-mbp", 5),
+            first(Signal::Seated, "Bo-mbp", 9_000),
+        ];
+        let seats = [
+            seat(Some(holder("ada-mbp", 7)), Some(holder("bo-mbp", 4))),
+            seat(None, None),
+        ];
+        assert_eq!(
+            Firsts::with_desks(kept, &seats).firsts,
+            vec![
+                first(Signal::Agent, "ada-mbp", 5),
+                // The earlier of the record and the turn the server knows.
+                first(Signal::Seated, "Bo-mbp", 4_000),
+                // No record at all: a zircd from before it.
+                first(Signal::Seated, "ada-mbp", 7_000),
+            ]
+        );
+        assert_eq!(
+            Firsts::with_desks(Vec::new(), &[seat(None, None)]).firsts,
+            Vec::new()
         );
     }
 

@@ -1479,6 +1479,8 @@ async fn read_activity(
     }
 }
 
+/// `GET /v1/firsts`: the activity store's firsts, with a desk held now or last as seated
+/// ([`zirc_proto::onboarding::Firsts::with_desks`]).
 async fn read_firsts(State(ergo): State<Arc<Ergo>>) -> Response {
     let store = crate::activity::path_for(&ergo.history);
     let read = tokio::task::spawn_blocking(move || {
@@ -1486,7 +1488,11 @@ async fn read_firsts(State(ergo): State<Arc<Ergo>>) -> Response {
     })
     .await;
     match read {
-        Ok(Ok(firsts)) => Json(zirc_proto::onboarding::Firsts { firsts }).into_response(),
+        Ok(Ok(firsts)) => Json(zirc_proto::onboarding::Firsts::with_desks(
+            firsts,
+            &ergo.roles.standing().seats,
+        ))
+        .into_response(),
         Ok(Err(failure)) => history_failed(failure),
         Err(failure) => history_failed(failure),
     }
