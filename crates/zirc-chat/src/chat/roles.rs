@@ -768,6 +768,94 @@ mod tests {
         assert!(names(&chat).contains(&"henrik-mbp/cc-1".to_owned()));
     }
 
+    /// The fixer held by henrik's cc-1, woken in `#api` by a web pod's alert and three
+    /// reminders of it, then saying, from the fixer's nick, what it's doing about it.
+    fn fixer_on_a_pod() -> Chat {
+        use zirc_proto::incident::Outcome;
+        use zirc_proto::role_report::{OpenItem, RoleReport, Subject};
+        use zirc_proto::woke::Woke;
+        let mut chat = with_fixer();
+        let host = zirc_proto::names::machine_host("henrik");
+        feed(&mut chat, &[&format!(":henrik-mbp!u@{host} JOIN #api")]);
+        cc1_takes_the_fixer(&mut chat, "08:00:00");
+        let item = OpenItem::opened(
+            RoleReport {
+                summary: "web/web's pod web-7ff48bd49f-qgfqb: Error".into(),
+                ..RoleReport::new("fixer", Subject::Container, "web/web")
+            },
+            0,
+        );
+        // The mock's wall of wakes: the alert, then three reminders of it.
+        let first = Woke::reported(&item, false).event();
+        from_cc1(&mut chat, "#api", "08:33:00", first);
+        for time in ["08:35:00", "08:38:00", "08:41:00"] {
+            from_cc1(&mut chat, "#api", time, Woke::reported(&item, true).event());
+        }
+        // Said by the fixer's nick in the room, as its sidecar says it.
+        let role = zirc_proto::names::role_host("fixer");
+        let line = format!(":fixer!u@{role} PRIVMSG #api :x");
+        feed(&mut chat, &[&at("08:42:00", Some("o1"), &line)]);
+        let api = chat.position("#api").unwrap();
+        let said = chat.conversations[api]
+            .entries
+            .iter_mut()
+            .find(|entry| entry.id.as_deref() == Some("o1"))
+            .unwrap();
+        let outcome = Outcome {
+            role: "fixer".into(),
+            about: item.id.clone(),
+            done: false,
+        };
+        let text = "Looking into it: the pod crashes on start.";
+        said.kind = EntryKind::Zirc(Message::new("cc-1", outcome.event(text)));
+        chat
+    }
+
+    #[test]
+    fn wakes_about_one_alert_are_one_card_where_the_first_was() {
+        let chat = fixer_on_a_pod();
+        let lines = chat.lines("fixer", utc(), false);
+        assert!(lines.iter().all(|line| line.shape != RowShape::Woke));
+        let cards: Vec<_> = lines
+            .iter()
+            .filter(|line| line.incident.is_some())
+            .collect();
+        assert_eq!(cards.len(), 1);
+        // Where the first wake was, with its one time; the outcome's line went.
+        assert_eq!(cards[0].clock, "08:33");
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.text.starts_with("Looking into"))
+        );
+        // Outcomes count as no wake on the row.
+        assert_eq!(chat.wakes_shown("fixer").0, 4);
+    }
+
+    #[test]
+    fn an_incidents_card_says_what_its_wakes_did_and_the_coworkers_line() {
+        let chat = fixer_on_a_pod();
+        let lines = chat.lines("fixer", utc(), false);
+        let card = lines.iter().find_map(|line| line.incident.clone()).unwrap();
+        assert_eq!(
+            (card.source.as_str(), card.title.as_str()),
+            ("ALERTS", "Web pod is failing")
+        );
+        assert_eq!(
+            card.status.as_deref(),
+            Some("Still open · woke fixer 4 times, last 08:41")
+        );
+        assert_eq!(card.reference.as_deref(), Some("web-7ff4…"));
+        assert_eq!(
+            (card.show.as_str(), card.wakes.len()),
+            ("Show the 4 wakes", 4)
+        );
+        assert!(card.wakes[1].text.starts_with("still open: Alerts found"));
+        let said = card.outcome.unwrap();
+        assert_eq!(said.text, "Looking into it: the pod crashes on start.");
+        assert_eq!(said.pill, None);
+    }
+
     #[test]
     fn a_rows_preview_skips_wakes_and_counts_them_when_theyre_all_there_is() {
         use zirc_proto::woke::Woke;

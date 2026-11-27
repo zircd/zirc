@@ -252,10 +252,14 @@ impl Entry {
                 && message.level_or_info() == Level::Info)
     }
 
-    /// Whether it's a wake's line ([`zirc_proto::woke`]), never unread anywhere.
+    /// Whether it's a wake's line ([`zirc_proto::woke`]), or a coworker's line on what it
+    /// woke for ([`zirc_proto::incident::Outcome`]), which its card shows: never unread
+    /// anywhere, never pushed, and kept to Everything in a room.
     #[must_use]
     pub fn is_woke(&self) -> bool {
-        matches!(&self.kind, EntryKind::Zirc(message) if zirc_proto::woke::is_woke(&message.event))
+        matches!(&self.kind, EntryKind::Zirc(message)
+            if zirc_proto::woke::is_woke(&message.event)
+                || zirc_proto::incident::Outcome::of(&message.event).is_some())
     }
 
     /// Whether it's a wake's line said in the chat whose message caused it, the

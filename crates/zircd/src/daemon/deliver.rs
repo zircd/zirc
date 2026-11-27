@@ -471,12 +471,14 @@ impl Daemon {
         // retiring is no one's news either, nor the team's hints changing, which zircd reads.
         // Nor a wake's own line or an overlap settled, which are for people to see: a wake
         // that woke another would never end. Nor a report to a role, whose holder the
-        // tenant's sidecar wakes once for each open item, however often it's reported.
+        // tenant's sidecar wakes once for each open item, however often it's reported. Nor
+        // a coworker's word on what it did about one, which is for its card.
         if let Event::Custom { kind, .. } = &delivery.message.event
             && (zirc_core::gotchas::is_kind(kind)
                 || kind == zirc_proto::hints::CHANGED_KIND
                 || zirc_proto::woke::is_kind(kind)
-                || zirc_proto::role_report::is_kind(kind))
+                || zirc_proto::role_report::is_kind(kind)
+                || zirc_proto::incident::is_kind(kind))
         {
             return None;
         }

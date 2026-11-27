@@ -2290,6 +2290,17 @@
           "minimum": 0,
           "description": "For a landing that closed items of the role it was woken as (`Fixes: report <id>`):\nhow many, which its line says after the landing, `· the item is closed`."
         },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "For that landing, the items it closed, by id, which their cards say closed\n([`crate::incident`])."
+        },
+        "quiet": {
+          "type": "boolean",
+          "description": "Said without waking anyone: a reminder of an item its holder already said what it's\ndoing about ([`crate::incident::Outcome`]), which its card counts and nobody hears."
+        },
         "excerpt": {
           "type": [
             "string",

@@ -76,7 +76,10 @@ pub fn why(settings: &NotifySettings, now: i64, me: &str, heard: &Heard<'_>) -> 
     let (kind, words) = entry_of(heard.body, false)?;
     // A wake's line is for whoever opens the agent's conversation: never pushed, whatever
     // the room's level.
-    if matches!(&kind, EntryKind::Zirc(message) if zirc_proto::woke::is_woke(&message.event)) {
+    if matches!(&kind, EntryKind::Zirc(message)
+        if zirc_proto::woke::is_woke(&message.event)
+            || zirc_proto::incident::Outcome::of(&message.event).is_some())
+    {
         return None;
     }
     if asks(&kind, me) {

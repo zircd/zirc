@@ -236,6 +236,14 @@ pub struct Woke {
     /// how many, which its line says after the landing, `· the item is closed`.
     #[serde(default, skip_serializing_if = "crate::is_zero")]
     pub closed: u32,
+    /// For that landing, the items it closed, by id, which their cards say closed
+    /// ([`crate::incident`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<String>,
+    /// Said without waking anyone: a reminder of an item its holder already said what it's
+    /// doing about ([`crate::incident::Outcome`]), which its card counts and nobody hears.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub quiet: bool,
     /// For a post from a tool zirc doesn't know, how what it sent begins
     /// ([`EXCERPT_MAX`] characters), which its line says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -281,6 +289,8 @@ impl Woke {
             report: None,
             excerpt: None,
             closed: 0,
+            items: Vec::new(),
+            quiet: false,
         }
     }
 

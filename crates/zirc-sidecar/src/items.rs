@@ -85,12 +85,15 @@ impl Closed {
     /// The wake its role's holder is woken with.
     #[must_use]
     pub fn woke(&self) -> zirc_proto::woke::Woke {
-        zirc_proto::woke::Woke::closed_by_landing(
-            &self.role,
-            self.build.clone(),
-            self.branch.clone(),
-            u32::try_from(self.ids.len()).unwrap_or(u32::MAX),
-        )
+        zirc_proto::woke::Woke {
+            items: self.ids.clone(),
+            ..zirc_proto::woke::Woke::closed_by_landing(
+                &self.role,
+                self.build.clone(),
+                self.branch.clone(),
+                u32::try_from(self.ids.len()).unwrap_or(u32::MAX),
+            )
+        }
     }
 
     /// What the holder's watch shows of it: the wake's words, and the items' ids.

@@ -13,6 +13,7 @@ use ts_rs::TS;
 use super::conversation::{Conversation, Entry, agent, fold};
 use super::face::{Face, LineSpeaker};
 use super::flat::{RichBlock, RichSpan, is_plain};
+use super::incident::IncidentCard;
 use super::rich::{Block, Span, SpanKind};
 use super::view::{Item, Landing, Parts};
 use super::woke::{Callout, settled_of, woke_of};
@@ -119,6 +120,11 @@ pub enum RowShape {
     /// monospace box of its own with a Copy button, then [`Callout::footer`], muted (the
     /// user's choice, 25 Nov 2026, as mock `PhoneVacant`).
     Vacant,
+    /// A coworker's wakes about one alert, build or issue, as one card ([`Line::incident`]):
+    /// its source chip, title and the line's time; its status and reference, muted; its
+    /// detail; the coworker's line on it under a rule; and a button that shows its wakes
+    /// under it, which the app keeps open or not by the line's key.
+    Incident,
 }
 
 /// How a message's words are styled, decided here for every app, which never styles them
@@ -254,6 +260,8 @@ pub struct Line {
     /// For a wake's line, a settled overlap's or a one-time note ([`RowShape::Woke`],
     /// [`RowShape::Settled`], [`RowShape::Once`]): what it draws.
     pub callout: Option<Callout>,
+    /// For an incident's card ([`RowShape::Incident`]): what it draws.
+    pub incident: Option<IncidentCard>,
     /// What can be done with it, which its hover bar, menu and long-press sheet offer.
     pub actions: LineActions,
 }
@@ -886,11 +894,16 @@ fn settle_briefs(lines: &mut [Line]) {
 
 /// A wake's line laid out: by its key, the agent session `session` on the machine `nick`
 /// said it.
+#[derive(Clone)]
 struct Woken {
     key: String,
     nick: String,
     session: String,
     woke: zirc_proto::woke::Woke,
+    /// When it was said.
+    time_ms: i64,
+    /// Its words after its heading, whole.
+    words: String,
 }
 
 /// Puts a conversation's items into lines.
@@ -907,6 +920,10 @@ struct Layout<'a> {
     /// The newest settled overlap's line that names one of our agents, by its key, which
     /// the first-overlap note goes under.
     settled: Option<(String, zirc_proto::woke::Settled)>,
+    /// Each wake's line laid out, in order, for its incident ([`Layout::incidents`]).
+    wakes: Vec<Woken>,
+    /// Each coworker's line on an incident, by its line's key ([`zirc_proto::incident::Outcome`]).
+    outcomes: Vec<(String, i64, zirc_proto::incident::Outcome, String)>,
 }
 
 impl<'a> Layout<'a> {
@@ -924,6 +941,8 @@ impl<'a> Layout<'a> {
             keys: Keys::default(),
             woken: None,
             settled: None,
+            wakes: Vec::new(),
+            outcomes: Vec::new(),
         }
     }
 
@@ -964,6 +983,7 @@ impl<'a> Layout<'a> {
             }
             lines.push(line);
         }
+        self.incidents(&mut lines);
         self.receipt(&mut lines);
         self.role_waiting(&mut lines);
         self.once(&mut lines);
@@ -1069,6 +1089,13 @@ impl<'a> Layout<'a> {
                 text,
                 continues,
             } => self.said(entry, LineKind::Action, text, continues),
+            Item::Event { entry, .. } if super::outcome_of(entry).is_some() => {
+                let (outcome, text) = super::outcome_of(entry).expect("an outcome");
+                let line = self.said(entry, LineKind::Chat, &text, false);
+                self.outcomes
+                    .push((line.key.clone(), line.time_ms, outcome, text));
+                line
+            }
             Item::Event { entry, .. }
                 if woke_of(entry).is_some()
                     || settled_of(entry).is_some()
@@ -1162,14 +1189,18 @@ impl<'a> Layout<'a> {
                     .map_or_else(|| entry.from.clone(), |holder| holder.machine);
                 let here = &self.conversation.name;
                 let callout = self.chat.woke_callout(&woke, &nick, session, here);
-                if self.chat.ours(&nick) {
-                    self.woken = Some(Woken {
-                        key: line.key.clone(),
-                        nick,
-                        session: session.to_owned(),
-                        woke,
-                    });
+                let woken = Woken {
+                    key: line.key.clone(),
+                    nick,
+                    session: session.to_owned(),
+                    time_ms: line.time_ms,
+                    words: self.chat.woke_words(&woke, here),
+                    woke,
+                };
+                if self.chat.ours(&woken.nick) {
+                    self.woken = Some(woken.clone());
                 }
+                self.wakes.push(woken);
                 (RowShape::Woke, callout)
             }
             (_, Some(settled)) => {
@@ -1191,6 +1222,83 @@ impl<'a> Layout<'a> {
         line.shape = shape;
         line.callout = Some(callout);
         line
+    }
+
+    /// Folds each incident's wakes into one card, where its first wake was
+    /// ([`zirc_proto::incident`]): its other wakes' lines go, and so does each line its
+    /// coworker said about it, whose latest the card shows. A coworker's line about no
+    /// incident here stays a message of its own.
+    fn incidents(&mut self, lines: &mut Vec<Line>) {
+        if self.wakes.is_empty() {
+            return;
+        }
+        let mut incidents = zirc_proto::incident::Incidents::default();
+        // Each line's incident, and the first line of each, by key.
+        let mut of_line: HashMap<String, String> = HashMap::new();
+        let mut first: Vec<(String, String, Woken)> = Vec::new();
+        let mut spoken: HashMap<String, Option<LineSpeaker>> = HashMap::new();
+        let wakes = std::mem::take(&mut self.wakes);
+        let outcomes = std::mem::take(&mut self.outcomes);
+        let mut wakes_left = wakes.iter().peekable();
+        let mut outcomes_left = outcomes.iter().peekable();
+        loop {
+            let wake_next = match (wakes_left.peek(), outcomes_left.peek()) {
+                (Some(wake), Some(outcome)) => wake.time_ms <= outcome.1,
+                (Some(_), None) => true,
+                (None, Some(_)) => false,
+                (None, None) => break,
+            };
+            if wake_next {
+                let wake = wakes_left.next().expect("peeked");
+                let Some(key) = incidents.woke(wake.time_ms, &wake.woke, &wake.words) else {
+                    continue;
+                };
+                // A new incident's first wake, or one that closed and came again.
+                let count = incidents.all.len();
+                if first.len() < count {
+                    first.push((key.clone(), wake.key.clone(), wake.clone()));
+                }
+                of_line.insert(wake.key.clone(), key);
+            } else {
+                let (line, at, outcome, text) = outcomes_left.next().expect("peeked");
+                if incidents.outcome(*at, outcome, text) {
+                    let speaker = lines
+                        .iter()
+                        .find(|each| &each.key == line)
+                        .and_then(|each| each.speaker.clone());
+                    spoken.insert(outcome.about.clone(), speaker);
+                    of_line.insert(line.clone(), outcome.about.clone());
+                }
+            }
+        }
+        if first.is_empty() {
+            return;
+        }
+        let clock = |ms: i64| {
+            DateTime::from_timestamp_millis(ms)
+                .map(|time| self.clock(time))
+                .unwrap_or_default()
+        };
+        let firsts: HashMap<&str, usize> = first
+            .iter()
+            .enumerate()
+            .map(|(at, (_, line, _))| (line.as_str(), at))
+            .collect();
+        lines.retain_mut(|line| {
+            if let Some(&at) = firsts.get(line.key.as_str()) {
+                let (_, _, woken) = &first[at];
+                let incident = &incidents.all[at];
+                let who = self.chat.woke_agent(&woken.nick, &woken.session);
+                let speaker = spoken.get(&incident.key).cloned().flatten();
+                let card = IncidentCard::of(incident, &who, clock, speaker);
+                line.text = card.said();
+                line.callout = None;
+                line.shape = RowShape::Incident;
+                line.incident = Some(card);
+                return true;
+            }
+            !of_line.contains_key(&line.key)
+        });
     }
 
     /// Puts each one-time note our person hasn't seen under the newest line it's about: the
@@ -1258,6 +1366,7 @@ impl<'a> Layout<'a> {
             file: None,
             files: Vec::new(),
             callout: None,
+            incident: None,
             actions: LineActions::default(),
         }
     }

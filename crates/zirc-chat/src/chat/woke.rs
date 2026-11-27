@@ -116,6 +116,16 @@ pub fn woke_of(entry: &Entry) -> Option<Woke> {
     }
 }
 
+/// What `entry` says, when it's a coworker's line on an incident
+/// ([`zirc_proto::incident::Outcome`]), with the line.
+#[must_use]
+pub fn outcome_of(entry: &Entry) -> Option<(zirc_proto::incident::Outcome, String)> {
+    match &entry.kind {
+        EntryKind::Zirc(message) => zirc_proto::incident::Outcome::of(&message.event),
+        _ => None,
+    }
+}
+
 /// What `entry` says, when it's a settled overlap's line.
 #[must_use]
 pub fn settled_of(entry: &Entry) -> Option<Settled> {
@@ -228,15 +238,19 @@ impl Chat {
         }
     }
 
+    /// The agent `session` on the machine `nick` as its wakes name it: a session that holds
+    /// a role is called by it, as its row and header say, so a heading doesn't say it twice:
+    /// `oncall woke:` (the user's choice, 26 Nov 2026).
+    pub(super) fn woke_agent(&self, nick: &str, session: &str) -> String {
+        self.role_held(nick, session)
+            .unwrap_or_else(|| self.side_name(nick, Some(session)))
+    }
+
     /// What a wake's line draws, said by the agent `session` on the machine `nick`, in the
     /// conversation called `here`: who woke, and why, in bold ([`Woke::heading`]), then what.
     #[must_use]
     pub fn woke_callout(&self, woke: &Woke, nick: &str, session: &str, here: &str) -> Callout {
-        // A session that holds a role is called by it, as its row and header say, so the
-        // heading doesn't say it twice: `oncall woke:` (the user's choice, 26 Nov 2026).
-        let agent = self
-            .role_held(nick, session)
-            .unwrap_or_else(|| self.side_name(nick, Some(session)));
+        let agent = self.woke_agent(nick, session);
         Callout {
             label: woke.heading(&agent),
             spans: vec![text(self.woke_words(woke, here))],

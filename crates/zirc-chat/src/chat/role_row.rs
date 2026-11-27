@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 
 use super::Chat;
 use super::conversation::{Entry, EntryKind, Kind, agent, agent_channel, fold};
-use super::woke::woke_of;
+use super::woke::{outcome_of, woke_of};
 
 impl Chat {
     /// The role whose row the conversation called `name` folds into: the role the agent
@@ -31,7 +31,8 @@ impl Chat {
     }
 
     /// The wake lines the role `role`'s conversation shows, from every room, in their
-    /// rooms' order: those it was woken for, and its holder's own since it took the role;
+    /// rooms' order: those it was woken for, and its holder's own since it took the role,
+    /// and what the role's nick said of what it woke for ([`zirc_proto::incident::Outcome`]);
     /// never one a room's own message caused, which is that room's alone
     /// ([`zirc_proto::woke::Woke::in_its_chat`]).
     pub(super) fn role_wakes(&self, role: &str) -> Vec<&Entry> {
@@ -56,6 +57,8 @@ impl Chat {
                     !woke.in_its_chat(&room.name)
                         && (woke.role.as_deref().is_some_and(|of| fold(of) == role)
                             || holders(entry))
+                }) || outcome_of(entry).is_some_and(|(outcome, _)| {
+                    fold(&outcome.role) == role && fold(&entry.from) == role
                 })
             })
             .map(|(_, entry)| entry)
@@ -67,6 +70,9 @@ impl Chat {
     pub(super) fn wakes_shown(&self, name: &str) -> (usize, Option<DateTime<Utc>>) {
         let wakes: Vec<&Entry> = if self.is_role(name) {
             self.role_wakes(name)
+                .into_iter()
+                .filter(|entry| woke_of(entry).is_some())
+                .collect()
         } else if let Some((nick, session)) = agent(name) {
             self.conversations
                 .iter()

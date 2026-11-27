@@ -27,6 +27,7 @@ pub mod hints;
 pub mod home;
 pub mod images;
 pub mod inbound;
+pub mod incident;
 pub mod irc;
 pub mod join;
 pub mod leases;

@@ -70,6 +70,7 @@ pub use office::{
     AboutRow, CameRow, CoworkerCard, CoworkerPage, DeskState, EmptyDesk, HotDesk, NoCoworkers,
     Office, OfficeSpan, hire_page,
 };
+mod incident;
 mod org;
 mod people;
 mod plain;
@@ -165,6 +166,7 @@ pub use flat::{
 pub use forge::{branch_link, commit_link, link_blocks, link_words};
 pub use group::{GROUP_FACES, GROUP_PREFIX, is_group};
 pub use header_line::{HeaderLine, HeaderLineKind};
+pub use incident::{IncidentCard, IncidentOutcome, IncidentWake};
 pub use layout::{ClockAt, Heading, row_heading};
 pub use lines::{
     ANIMATION_PLAYS, CardAction, CardButtons, FileShape, LineActions, LineFile, LineKind, LineMore,
@@ -245,7 +247,7 @@ pub use waiting::{
     WAITING_FOR_YOU, WaitingAction, WaitingButton, WaitingCard, WaitingDoes, WaitingItem,
     WaitingKind,
 };
-pub use woke::{Callout, EXCERPT as WOKE_EXCERPT, settled_of, woke_of};
+pub use woke::{Callout, EXCERPT as WOKE_EXCERPT, outcome_of, settled_of, woke_of};
 pub use words::labels;
 pub use words::{
     ACTIVITY, ACTIVITY_HINT, ADD_REACTION, ADVANCED, ASKING_ZIRC_DEV, ATTACH, BACK,
