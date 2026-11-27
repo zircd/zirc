@@ -454,6 +454,10 @@ impl Daemon {
                 nick: nick.clone(),
                 paths: same_lines.keys().cloned().collect(),
                 worktree: Some(worktree),
+                desk: match &sessions[..] {
+                    [session] => self.presence.desk_of(nick.as_str(), session),
+                    _ => None,
+                },
                 sessions: sessions.clone(),
                 same_lines,
                 apart: Vec::new(),

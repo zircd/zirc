@@ -595,6 +595,14 @@ pub struct Message {
     /// person's line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repo: Option<String>,
+    /// The coworker whose desk its session sits at when it sent this, by nick, such as
+    /// `john` ([`crate::coworkers::Coworker::name`]): apps draw it as that coworker (its
+    /// shown name, picture and colour), not as the session, when the office has that
+    /// coworker ([`Message::desk_of`]). zircd fills it, with `name` the coworker's nick for
+    /// readers from before; the session id stays in `session` for the machine's plumbing.
+    /// It stays the coworker's after the session leaves the desk. Without it, a plain session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desk: Option<String>,
 }
 
 /// What a post that starts a task starts with ([`says_taking`]).
@@ -718,7 +726,16 @@ impl Message {
             level: None,
             task: None,
             repo: None,
+            desk: None,
         }
+    }
+
+    /// The coworker it was said as ([`Message::desk`]), if `known` says the office has one
+    /// of that name: a desk claimed for a coworker the office doesn't have is a plain
+    /// session's line.
+    #[must_use]
+    pub fn desk_of(&self, known: impl Fn(&str) -> bool) -> Option<&str> {
+        self.desk.as_deref().filter(|desk| known(desk))
     }
 
     /// What a search finds it by, for every search alike (the server's index, a

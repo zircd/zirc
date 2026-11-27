@@ -318,6 +318,11 @@ impl Chat {
             EntryKind::Zirc(message) => Some(message),
             _ => None,
         };
+        // Said at a coworker's desk: the coworker's line, as its own nick's are drawn, and
+        // still once the session has left the desk (the user's choices, 27 Nov 2026).
+        if let Some(desk) = message.and_then(|message| message.desk_of(|desk| self.is_role(desk))) {
+            return self.person_speaker(desk);
+        }
         // A machine as its host said when it spoke, though it's gone now.
         let kind = match (self.sender_kind(nick), &entry.owner) {
             (SenderKind::Person, Some(_)) => SenderKind::Agent,
@@ -372,18 +377,21 @@ impl Chat {
                     is_app: false,
                 }
             }
-            SenderKind::Person => {
-                let name = self.shown_name(nick);
-                Speaker {
-                    avatar: Avatar::Person {
-                        nick: nick.to_owned(),
-                    },
-                    label: name.clone(),
-                    name,
-                    detail: None,
-                    is_app: false,
-                }
-            }
+            SenderKind::Person => self.person_speaker(nick),
+        }
+    }
+
+    /// Someone who speaks as themselves, a person or a coworker, by `nick`.
+    fn person_speaker(&self, nick: &str) -> Speaker {
+        let name = self.shown_name(nick);
+        Speaker {
+            avatar: Avatar::Person {
+                nick: nick.to_owned(),
+            },
+            label: name.clone(),
+            name,
+            detail: None,
+            is_app: false,
         }
     }
 }

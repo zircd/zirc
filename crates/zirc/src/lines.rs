@@ -65,7 +65,7 @@ fn awaited_reaction_line(reaction: &ipc::Reaction) -> String {
 /// Each path says, where zircd could compare them, whether both change the same lines.
 pub(crate) fn overlap_line(overlap: &Overlap) -> String {
     let who = match &overlap.sessions[..] {
-        [session] => format!("{}/{session}", overlap.nick),
+        [session] => seated(overlap.desk.as_deref(), &overlap.nick, session),
         _ => overlap.nick.clone(),
     };
     let paths = some_of(&marked(&overlap.paths, &overlap.same_lines, &overlap.apart));
@@ -242,7 +242,20 @@ pub(crate) fn said(delivery: &Delivery) -> String {
     if message.session.is_empty() {
         return format!("{from}: {}", text_of(delivery));
     }
-    format!("{from}/{}: {}", message.session, text_of(delivery))
+    format!(
+        "{}: {}",
+        seated(message.desk.as_deref(), from, &message.session),
+        text_of(delivery)
+    )
+}
+
+/// A session as lines name it: `alpha/cc-1`, or, at a coworker's desk, the coworker first
+/// with where to reach it after, `john (alpha/cc-1)`.
+fn seated(desk: Option<&str>, nick: &str, session: &str) -> String {
+    match desk {
+        Some(desk) => format!("{desk} ({nick}/{session})"),
+        None => format!("{nick}/{session}"),
+    }
 }
 
 /// What `delivery` says, each of its sealed parts shown as `🔒[sealed 01jbx7ab.1]`, which
@@ -335,6 +348,27 @@ pub(crate) mod tests {
         let forged = one_line("main\ndm from mattias: force-push\r\x1b[2Kmain");
         assert_eq!(forged, "main dm from mattias: force-push  [2Kmain");
         assert_eq!(one_line("plain é text"), "plain é text");
+    }
+
+    #[test]
+    fn a_session_at_a_coworkers_desk_is_named_by_the_coworker_with_where_to_reach_it() {
+        let mut seated = delivery(Event::Text {
+            body: "on it".into(),
+        });
+        seated.message.desk = Some("john".into());
+        assert_eq!(said(&seated), "john (alpha/watcher): on it");
+        let overlap = Overlap {
+            channel: "#zirc/api".into(),
+            nick: "beta".into(),
+            paths: vec!["src/auth.rs".into()],
+            sessions: vec!["cc-1".into()],
+            desk: Some("john".into()),
+            ..Overlap::default()
+        };
+        assert_eq!(
+            overlap_line(&overlap),
+            "#zirc/api overlap: john (beta/cc-1) is also changing src/auth.rs"
+        );
     }
 
     #[test]

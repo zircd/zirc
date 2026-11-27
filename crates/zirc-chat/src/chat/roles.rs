@@ -463,6 +463,76 @@ mod tests {
         assert_eq!(look(&chat), ("fixer".to_owned(), named, Some(named)));
     }
 
+    /// The entry in `#api` saying `body`.
+    fn said_in_api(chat: &Chat, body: &str) -> Entry {
+        let at = chat.position("#api").unwrap();
+        chat.conversations[at]
+            .entries
+            .iter()
+            .find(|entry| {
+                matches!(&entry.kind, EntryKind::Zirc(message)
+                    if message.event == crate::chat::lines::tests::text(body))
+            })
+            .unwrap()
+            .clone()
+    }
+
+    /// Feeds `message` from our machine to `#api` at `time`.
+    fn from_our_machine(chat: &mut Chat, time: &str, id: &str, message: &Message) {
+        let line = crate::chat::lines::tests::zirc("me-mbp", "#api", message);
+        feed(chat, &[&at(time, Some(id), &line)]);
+    }
+
+    #[test]
+    fn a_line_said_at_a_coworkers_desk_is_the_coworkers_and_stays_so_once_it_leaves() {
+        use crate::chat::lines::tests::text;
+        let mut chat = with_fixer();
+        let seated = Message {
+            name: Some("fixer".into()),
+            desk: Some("fixer".into()),
+            tool: Some(zirc_proto::CLAUDE_CODE.into()),
+            ..Message::new("cc-1", text("on it"))
+        };
+        from_our_machine(&mut chat, "10:00:00", "a1", &seated);
+        let speaker = chat.line_speaker(&said_in_api(&chat, "on it"));
+        assert_eq!(
+            (speaker.name.as_str(), speaker.detail.as_deref()),
+            ("fixer", None)
+        );
+        assert_eq!(speaker.tag.as_deref(), Some(crate::chat::ROLE_TAG));
+        assert_eq!(speaker.face, chat.role_face("fixer"));
+        // The session's row is the coworker too, before any line of the desk's is heard.
+        assert_eq!(chat.desk_of("me-mbp", "cc-1").as_deref(), Some("fixer"));
+        // Left the desk: its next line is the plain session's, the one before still the
+        // coworker's (the user's choice, 27 Nov 2026).
+        let plain = Message {
+            name: Some("main-fix".into()),
+            ..Message::new("cc-1", text("back to my own"))
+        };
+        from_our_machine(&mut chat, "10:05:00", "a2", &plain);
+        let then = chat.line_speaker(&said_in_api(&chat, "back to my own"));
+        assert_eq!((then.name.as_str(), then.tag), ("main-fix", None));
+        let before = chat.line_speaker(&said_in_api(&chat, "on it"));
+        assert_eq!(before.name, "fixer");
+        assert_eq!(chat.desk_of("me-mbp", "cc-1"), None);
+    }
+
+    #[test]
+    fn a_desk_claimed_for_a_coworker_the_office_lacks_is_the_sessions_own_line() {
+        use crate::chat::lines::tests::text;
+        let mut chat = with_fixer();
+        let unknown = Message {
+            name: Some("ghost".into()),
+            desk: Some("ghost".into()),
+            ..Message::new("cc-2", text("boo"))
+        };
+        from_our_machine(&mut chat, "10:06:00", "a3", &unknown);
+        let ghost = chat.line_speaker(&said_in_api(&chat, "boo"));
+        assert_eq!(ghost.tag, None);
+        assert_ne!(ghost.face, chat.role_face("ghost"));
+        assert_eq!(chat.desk_of("me-mbp", "cc-2"), None);
+    }
+
     #[test]
     fn a_session_that_holds_a_role_is_called_by_it_and_its_card_keeps_its_title() {
         let mut chat = with_fixer();

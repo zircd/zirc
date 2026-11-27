@@ -31,6 +31,10 @@ pub struct Overlap {
     /// here.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sessions: Vec<String>,
+    /// The coworker whose desk the one session compared sits at, by nick, as its latest
+    /// message said ([`Message::desk`]): what the line names it by.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desk: Option<String>,
     /// Of the paths, the ones both change on the same or neighbouring lines, with those
     /// lines: likely to conflict.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -337,6 +341,9 @@ pub struct Presence {
     tools: BTreeMap<(String, String), String>,
     /// (nick, session) → the picture the session goes by, as its latest message said.
     avatars: BTreeMap<(String, String), String>,
+    /// (nick, session) → the coworker whose desk the session sits at, as its latest message
+    /// said ([`Message::desk`]): none once one says no desk.
+    desks: BTreeMap<(String, String), String>,
     /// channel → nick → session → the lines its work changes ([`zirc_proto::lines`]).
     lines: BTreeMap<String, BTreeMap<String, BTreeMap<String, zirc_proto::lines::Lines>>>,
     /// A room every repository shares (`#agents`), lowercase → the scopes of the repositories
@@ -346,6 +353,33 @@ pub struct Presence {
 }
 
 impl Presence {
+    /// What `message`, from `nick`, says of its session: what it's called, its tool, its
+    /// picture and the desk it sits at.
+    fn learn_session(&mut self, nick: &str, message: &Message) {
+        let session = &message.session;
+        if let Some(name) = &message.name {
+            self.names
+                .insert((nick.to_owned(), session.clone()), name.clone());
+        }
+        if let Some(tool) = &message.tool {
+            self.tools
+                .insert((nick.to_owned(), session.clone()), tool.clone());
+        }
+        if let Some(avatar) = &message.avatar {
+            self.avatars
+                .insert((nick.to_owned(), session.clone()), avatar.clone());
+        }
+        let key = (nick.to_owned(), session.clone());
+        match &message.desk {
+            Some(desk) => {
+                self.desks.insert(key, desk.clone());
+            }
+            None => {
+                self.desks.remove(&key);
+            }
+        }
+    }
+
     /// Takes in `message`, which `nick` sent to `channel` at `at`, in seconds since the Unix
     /// epoch: the line's server time when it has one. Working sets, `taking:`, `done:` and
     /// `dropped:` posts and intents change what's known; so does a push to `default_branch`,
@@ -378,18 +412,7 @@ impl Presence {
         }
         let channel = scope.as_str();
         let session = &message.session;
-        if let Some(name) = &message.name {
-            self.names
-                .insert((nick.to_owned(), session.clone()), name.clone());
-        }
-        if let Some(tool) = &message.tool {
-            self.tools
-                .insert((nick.to_owned(), session.clone()), tool.clone());
-        }
-        if let Some(avatar) = &message.avatar {
-            self.avatars
-                .insert((nick.to_owned(), session.clone()), avatar.clone());
-        }
+        self.learn_session(nick, message);
         match &message.event {
             Event::Working {
                 paths,
@@ -693,6 +716,15 @@ impl Presence {
     #[must_use]
     pub fn avatar_of(&self, nick: &str, session: &str) -> Option<String> {
         self.avatars
+            .get(&(nick.to_owned(), session.to_owned()))
+            .cloned()
+    }
+
+    /// The coworker whose desk the session `session` on `nick` sits at, as its latest message
+    /// said.
+    #[must_use]
+    pub fn desk_of(&self, nick: &str, session: &str) -> Option<String> {
+        self.desks
             .get(&(nick.to_owned(), session.to_owned()))
             .cloned()
     }

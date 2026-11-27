@@ -987,6 +987,7 @@ impl Brain {
                 name: message.name.clone(),
                 tool: message.tool.clone(),
                 avatar: message.avatar.clone(),
+                desk: message.desk.clone(),
                 repo: repo_of(role),
                 ..Message::new(
                     &message.session,

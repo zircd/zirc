@@ -114,8 +114,21 @@ impl Chat {
 
     /// [`Chat::agent_label`], the task it's on known as `task`.
     pub(super) fn agent_label_on(&self, nick: &str, session: &str, task: Option<&str>) -> String {
-        self.role_held(nick, session)
+        self.desk_of(nick, session)
             .unwrap_or_else(|| self.agent_title_on(session, task))
+    }
+
+    /// The coworker whose desk the agent session `session` on the machine `nick` sits at:
+    /// as the newest line of each coworker heard says ([`Chat::role_held`]), else, for a
+    /// coworker the office has whose desk no line has said yet, as the session's own latest
+    /// line says ([`zirc_proto::Message::desk`]).
+    #[must_use]
+    pub fn desk_of(&self, nick: &str, session: &str) -> Option<String> {
+        self.role_held(nick, session).or_else(|| {
+            self.presence
+                .desk_of(nick, session)
+                .filter(|desk| self.is_role(desk) && self.role_seat(desk).is_none())
+        })
     }
 
     /// What the agent session `session` on the machine `nick` is titled on its card, which

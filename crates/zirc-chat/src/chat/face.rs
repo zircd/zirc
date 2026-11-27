@@ -212,6 +212,8 @@ impl Chat {
             Avatar::Agent { session, .. } => session.clone(),
             _ => None,
         };
+        // A coworker's own line, or one said at its desk.
+        let role = matches!(&speaker.avatar, Avatar::Person { nick } if self.is_role(nick));
         let several = self.presence.repositories(zirc_proto::AGENTS_CHANNEL) > 1;
         let (detail, label) = match entry.repo().filter(|_| several) {
             Some(repo) => (
@@ -232,7 +234,7 @@ impl Chat {
             app: speaker.is_app,
             tag: if speaker.is_app {
                 Some(super::APP_TAG.to_owned())
-            } else if self.is_role(&entry.from) {
+            } else if role {
                 Some(super::ROLE_TAG.to_owned())
             } else {
                 None

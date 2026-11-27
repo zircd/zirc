@@ -605,11 +605,24 @@ impl Daemon {
     /// `event` from `session`, with what the session's called ([`Daemon::name_of`]), the
     /// tool it runs in and the picture it goes by.
     pub(super) fn signed(&self, session: &str, event: Event) -> Message {
-        Message {
+        let mut message = Message {
             name: self.name_of(session),
             tool: self.book.get(Field::Tool, session),
             avatar: self.book.get(Field::Avatar, session),
             ..Message::new(session, event)
+        };
+        self.as_seated(&mut message);
+        message
+    }
+
+    /// `message` said as the coworker its session sits at the desk of, if it sits at one:
+    /// the desk said ([`Message::desk`]), and its name the coworker's nick in place of the
+    /// session's own, with no picture of the session's, so every reader draws the coworker.
+    pub(super) fn as_seated(&self, message: &mut Message) {
+        if let Some(desk) = self.role_of(&message.session) {
+            message.name = Some(desk.clone());
+            message.avatar = None;
+            message.desk = Some(desk);
         }
     }
 
@@ -683,6 +696,7 @@ impl Daemon {
         if message.task.is_none() {
             message.task = self.tasks.on(&message.session).cloned();
         }
+        self.as_seated(&mut message);
         // A repository's scope goes out in `#agents`, saying the repository.
         let scope = channel;
         let channel = &self.on_wire(scope, &mut message);

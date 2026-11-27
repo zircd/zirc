@@ -1214,6 +1214,13 @@
             "null"
           ],
           "description": "The repository it's about, by name as zirc spells it (`monorepo` for\n`git@github.com:zircd/monorepo.git`): every repository's sessions and CI speak in the\norganisation's one [`AGENTS_CHANNEL`], so a reader tells them apart by this. Apps show\nit only where the organisation has more than one. Without it, it's about none, as a\nperson's line."
+        },
+        "desk": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The coworker whose desk its session sits at when it sent this, by nick, such as\n`john` ([`crate::coworkers::Coworker::name`]): apps draw it as that coworker (its\nshown name, picture and colour), not as the session, when the office has that\ncoworker ([`Message::desk_of`]). zircd fills it, with `name` the coworker's nick for\nreaders from before; the session id stays in `session` for the machine's plumbing.\nIt stays the coworker's after the session leaves the desk. Without it, a plain session."
         }
       },
       "required": [
@@ -2841,6 +2848,13 @@
             "type": "string"
           },
           "description": "That machine's sessions whose lines in those paths were compared with the\nworktree's, sorted: none when it said no lines, or what they're counted from isn't\nhere."
+        },
+        "desk": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The coworker whose desk the one session compared sits at, by nick, as its latest\nmessage said ([`Message::desk`]): what the line names it by."
         },
         "same_lines": {
           "type": "object",

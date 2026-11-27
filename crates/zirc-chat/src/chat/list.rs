@@ -509,12 +509,17 @@ impl Chat {
         Agent {
             latest: self.last_said(&name).max(claimed),
             label: self.agent_label_on(nick, session, task.as_deref()),
-            avatar: super::Avatar::Agent {
-                tool: self.session_tools.get(session).cloned(),
-                picture: self.session_pictures.get(session).cloned(),
-                hue: super::nick_degrees(session),
-                owner,
-                session: Some(session.to_owned()),
+            // At a coworker's desk, drawn as the coworker alone (the user's choice, 27 Nov
+            // 2026): its character and colour, no tool's mark.
+            avatar: match self.desk_of(nick, session) {
+                Some(desk) => super::Avatar::Person { nick: desk },
+                None => super::Avatar::Agent {
+                    tool: self.session_tools.get(session).cloned(),
+                    picture: self.session_pictures.get(session).cloned(),
+                    hue: super::nick_degrees(session),
+                    owner,
+                    session: Some(session.to_owned()),
+                },
             },
             name,
             machine: nick.to_owned(),

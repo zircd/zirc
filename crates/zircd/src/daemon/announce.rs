@@ -269,6 +269,9 @@ impl Daemon {
             for mut overlap in self.presence.overlaps(channel, &paths) {
                 overlap.worktree = Some(worktree.clone());
                 self.predictions.dress(&mut overlap);
+                if let [session] = &overlap.sessions[..] {
+                    overlap.desk = self.presence.desk_of(&overlap.nick, session);
+                }
                 if let Some(escalated) = self.told.remote_news(&mut overlap, self.clock.now()) {
                     alerts.push((Response::Overlap(overlap), escalated));
                 }
