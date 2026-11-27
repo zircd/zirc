@@ -16,6 +16,8 @@ zirc_rust_library(
     ] + glob([
         "art/android/**",
         "art/avatars/*.svg",
+        "art/characters/*-bust-256.png",
+        "art/characters/*-full-512.png",
         "glyphs/*.svg",
         "art/icons/*.icns",
         "art/icons/ios/*.png",
@@ -106,6 +108,24 @@ filegroup(
         "art/avatars/png/*-64.png",
         "art/avatars/png/*-128.png",
     ]),
+)
+
+# The coworker characters' stills on nothing, for apps to draw on a coworker's ground:
+# art/characters/<id>-bust-<side>.png, filling its rounded square, and <id>-full-<width>.png,
+# for the office's cards and the hiring gallery (zirc-proto's characters::CHARACTERS). The
+# phones and the Mac app take the 256 px busts and the 512 px figures.
+filegroup(
+    name = "characters_phone",
+    srcs = glob([
+        "art/characters/*-bust-256.png",
+        "art/characters/*-full-512.png",
+    ]),
+)
+
+# Every size of them, for the web apps.
+filegroup(
+    name = "characters",
+    srcs = glob(["art/characters/*.png"]),
 )
 
 # The agent avatars' gallery, art/avatars/<id>.svg: white line drawings an app draws on a

@@ -305,6 +305,8 @@
   --zirc-tag-ground: #E6E8EA;
   --zirc-name-saturation: 55%;
   --zirc-name-lightness: 27%;
+  --zirc-character-saturation: 55%;
+  --zirc-character-lightness: 70%;
   --zirc-elevation-e1: 0 2px 8px rgba(18, 22, 28, 0.1);
   --zirc-elevation-e2: 0 8px 24px rgba(18, 22, 28, 0.14);
 }
@@ -362,6 +364,8 @@
     --zirc-tag-ground: #292F38;
     --zirc-name-saturation: 55%;
     --zirc-name-lightness: 71%;
+    --zirc-character-saturation: 35%;
+    --zirc-character-lightness: 40%;
     --zirc-elevation-e1: 0 2px 8px rgba(0, 0, 0, 0.4);
     --zirc-elevation-e2: 0 8px 24px rgba(0, 0, 0, 0.5);
   }
@@ -419,6 +423,8 @@
   --zirc-tag-ground: #292F38;
   --zirc-name-saturation: 55%;
   --zirc-name-lightness: 71%;
+  --zirc-character-saturation: 35%;
+  --zirc-character-lightness: 40%;
   --zirc-elevation-e1: 0 2px 8px rgba(0, 0, 0, 0.4);
   --zirc-elevation-e2: 0 8px 24px rgba(0, 0, 0, 0.5);
 }

@@ -506,6 +506,7 @@ pub fn typescript() -> String {
         format!("const CI_TOKEN_NAME = {CI_TOKEN_NAME:?};"),
     ])
     .chain(crate::ci::typescript())
+    .chain(crate::characters::typescript())
     .chain(crate::names::typescript())
     .chain(crate::frame_typescript(&config))
     .chain(crate::irc::typescript(&config))

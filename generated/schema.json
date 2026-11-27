@@ -3122,7 +3122,7 @@
             "string",
             "null"
           ],
-          "description": "The picture its admins picked for it, one of [`crate::AGENT_AVATARS`]; without one,\nthe one its name tells ([`Definition::picture`])."
+          "description": "The picture its admins picked for it, one of [`crate::characters::CHARACTERS`] or [`crate::AGENT_AVATARS`]; without one,\nthe one its name tells ([`Definition::picture`])."
         },
         "hue": {
           "type": [
@@ -3481,7 +3481,7 @@
             "string",
             "null"
           ],
-          "description": "Its picture, one of [`crate::AGENT_AVATARS`]; without one, the one its name tells."
+          "description": "Its picture, one of [`crate::characters::CHARACTERS`] (or, picked before them, one of\n[`crate::AGENT_AVATARS`]' bots); without one, the bot its name tells."
         },
         "hue": {
           "type": [

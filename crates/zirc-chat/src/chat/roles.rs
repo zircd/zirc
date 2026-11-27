@@ -267,6 +267,14 @@ impl Chat {
             .cloned()
             .unwrap_or_default();
         let (picture, hue) = role_look(&fold(nick), &picked);
+        // A coworker picked a character: drawn as it, with its name's bot behind for an app
+        // that draws no characters.
+        let character = zirc_proto::characters::character(&picture).map(str::to_owned);
+        let picture = if character.is_some() {
+            zirc_proto::agent_picture(Some(&fold(nick)), Some(&fold(nick))).to_owned()
+        } else {
+            picture
+        };
         let holder = self.role_seat(nick).and_then(|seat| seat.holder);
         Face::Agent {
             tool: holder.and_then(|holder| holder.session.tool),
@@ -278,6 +286,7 @@ impl Chat {
             session: None,
             picture: Some(picture),
             ground: Some(hue),
+            character,
         }
     }
 
@@ -458,6 +467,13 @@ mod tests {
         assert_eq!(look(&chat), ("fixer".to_owned(), 210, Some(210)));
         said(&mut chat, &[r#"{"picture":"designer","hue":30}"#]);
         assert_eq!(look(&chat), ("designer".to_owned(), 30, Some(30)));
+        // A coworker's character: drawn as it, its name's bot behind for the terminal.
+        said(&mut chat, &[r#"{"picture":"char-07","hue":60}"#]);
+        assert!(matches!(
+            chat.role_face("Fixer"),
+            Face::Agent { picture: Some(picture), character: Some(character), ground: Some(60), .. }
+                if picture == "fixer" && character == "char-07"
+        ));
         // The key deleted: nothing's picked any more.
         said(&mut chat, &[]);
         assert_eq!(look(&chat), ("fixer".to_owned(), named, Some(named)));

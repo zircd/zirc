@@ -57,6 +57,12 @@ pub enum Face {
         /// The hue its square is drawn on, decided here for every app: `hue` for a session
         /// or a role; `None` for the machine itself, on the muted ground.
         ground: Option<u16>,
+        /// The coworker character it's drawn as, one of [`zirc_proto::characters::CHARACTERS`]
+        /// such as `char-07`, when its picture is one: every app then draws that character's
+        /// bust filling its square, edge to edge, on zirc-theme's character ground (lighter,
+        /// and dimmed in dark mode) in place of `picture`'s bot, which stays for an app that
+        /// draws no characters (the terminal's).
+        character: Option<String>,
     },
     /// One of zirc's apps, CI or Alerts, or a machine's thread: a square with a glyph, never
     /// initials.
@@ -182,6 +188,9 @@ impl Chat {
                 owner_hue: nick_degrees(owner),
                 owner_photo: self.photo(owner),
                 ground: session.is_some().then_some(*hue),
+                character: session
+                    .as_deref()
+                    .and_then(|session| self.agent_character(session, picture.as_deref())),
                 session: session.clone(),
                 picture: session
                     .as_deref()
@@ -199,6 +208,13 @@ impl Chat {
         let chosen = chosen.or_else(|| self.session_pictures.get(session).map(String::as_str));
         let name = self.session_names.get(session).map(String::as_str);
         zirc_proto::agent_picture(chosen, name).to_owned()
+    }
+
+    /// The coworker character the agent session `session` is drawn as, when the picture it
+    /// goes by, in `chosen` or its latest message, is one.
+    fn agent_character(&self, session: &str, chosen: Option<&str>) -> Option<String> {
+        let chosen = chosen.or_else(|| self.session_pictures.get(session).map(String::as_str))?;
+        zirc_proto::characters::character(chosen).map(str::to_owned)
     }
 
     /// Who `entry` is from, as a line's head shows them ([`Chat::speaker`]): with the
@@ -329,8 +345,24 @@ mod tests {
                 session: Some("cc-598aa1".into()),
                 picture: Some("reviewer".into()),
                 ground: Some(42),
+                character: None,
             }
         );
+        // A session that goes by a coworker's character is drawn as it.
+        let Face::Agent {
+            character, picture, ..
+        } = chat.face(&Avatar::Agent {
+            tool: None,
+            hue: 60,
+            owner: "ada".into(),
+            session: Some("cc-c07".into()),
+            picture: Some("char-07".into()),
+        })
+        else {
+            panic!("an agent's face");
+        };
+        assert_eq!(character.as_deref(), Some("char-07"));
+        assert_eq!(picture.as_deref(), Some(zirc_proto::DEFAULT_ROLE));
         assert_eq!(
             chat.face(&Chat::agents_avatar()),
             Face::App {
@@ -363,6 +395,7 @@ mod tests {
             session: None,
             picture: None,
             ground: None,
+            character: None,
         };
         let json = serde_json::to_value(&agent).unwrap();
         assert_eq!(json["kind"], "agent");

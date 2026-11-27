@@ -84,7 +84,7 @@ pub fn agent_avatar(entry: &Entry) -> Option<Avatar> {
         tool: message.and_then(|message| message.tool.clone()),
         picture: message
             .and_then(|message| message.avatar.as_deref())
-            .and_then(zirc_proto::agent_avatar)
+            .and_then(zirc_proto::characters::session_picture)
             .map(str::to_owned),
         hue: nick_degrees(session.as_deref().unwrap_or(nick)),
         owner: owner.to_owned(),

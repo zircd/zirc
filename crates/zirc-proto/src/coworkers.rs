@@ -370,7 +370,8 @@ pub struct Coworker {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub repository: Option<String>,
-    /// Its picture, one of [`crate::AGENT_AVATARS`]; without one, the one its name tells.
+    /// Its picture, one of [`crate::characters::CHARACTERS`] (or, picked before them, one of
+    /// [`crate::AGENT_AVATARS`]' bots); without one, the bot its name tells.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub picture: Option<String>,
@@ -417,7 +418,7 @@ impl Coworker {
             return Err("a coworker's repository has a name".to_owned());
         }
         if let Some(picture) = &self.picture
-            && !crate::AGENT_AVATARS.iter().any(|(id, _)| id == picture)
+            && !crate::characters::is_picture(picture)
         {
             return Err(format!("{picture} isn't a picture a coworker can have"));
         }

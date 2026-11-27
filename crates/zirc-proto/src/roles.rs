@@ -122,7 +122,7 @@ pub struct Definition {
     #[ts(as = "Vec<crate::role_report::Subject>")]
     #[schemars(with = "Vec<crate::role_report::Subject>")]
     pub reports: Vec<crate::role_report::Subject>,
-    /// The picture its admins picked for it, one of [`crate::AGENT_AVATARS`]; without one,
+    /// The picture its admins picked for it, one of [`crate::characters::CHARACTERS`] or [`crate::AGENT_AVATARS`]; without one,
     /// the one its name tells ([`Definition::picture`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -182,7 +182,7 @@ impl Look {
         Self {
             picture: look
                 .picture
-                .filter(|picture| crate::AGENT_AVATARS.iter().any(|(id, _)| id == picture)),
+                .filter(|picture| crate::characters::is_picture(picture)),
             hue: look.hue.filter(|hue| *hue < 360),
         }
     }
@@ -463,7 +463,7 @@ impl Definition {
             trigger.check()?;
         }
         if let Some(picture) = &self.picture
-            && !crate::AGENT_AVATARS.iter().any(|(id, _)| id == picture)
+            && !crate::characters::is_picture(picture)
         {
             return Err(format!("{picture} isn't a picture a role can have"));
         }

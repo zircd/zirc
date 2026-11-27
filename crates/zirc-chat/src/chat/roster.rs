@@ -79,7 +79,11 @@ impl Chat {
         if let Some(tool) = &message.tool {
             self.session_tools.insert(session.clone(), tool.clone());
         }
-        if let Some(picture) = message.avatar.as_deref().and_then(zirc_proto::agent_avatar) {
+        if let Some(picture) = message
+            .avatar
+            .as_deref()
+            .and_then(zirc_proto::characters::session_picture)
+        {
             self.session_pictures
                 .insert(session.clone(), picture.to_owned());
         }

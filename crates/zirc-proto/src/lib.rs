@@ -13,6 +13,7 @@
 pub mod activity;
 pub mod attached;
 pub mod card;
+pub mod characters;
 pub mod ci;
 pub mod colleagues;
 pub mod coworkers;

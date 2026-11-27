@@ -196,6 +196,135 @@ pub mod avatars {
     }
 }
 
+/// The coworker characters (zirc-proto's `characters::CHARACTERS`) as stills on nothing, for
+/// apps to draw on the coworker's ground ([`Character`]): `art/characters/<id>-bust-<side>.png`
+/// and `<id>-full-<width>.png`, made by zirc-theme-art. The phones and the web take the files.
+pub mod characters {
+    /// Each character's bust, 256 pixels a side, by id, in the gallery's order: what fills a
+    /// coworker's rounded square edge to edge.
+    pub const BUSTS: [(&str, &[u8]); 12] = [
+        (
+            "char-01",
+            include_bytes!("../art/characters/char-01-bust-256.png"),
+        ),
+        (
+            "char-02",
+            include_bytes!("../art/characters/char-02-bust-256.png"),
+        ),
+        (
+            "char-03",
+            include_bytes!("../art/characters/char-03-bust-256.png"),
+        ),
+        (
+            "char-04",
+            include_bytes!("../art/characters/char-04-bust-256.png"),
+        ),
+        (
+            "char-05",
+            include_bytes!("../art/characters/char-05-bust-256.png"),
+        ),
+        (
+            "char-06",
+            include_bytes!("../art/characters/char-06-bust-256.png"),
+        ),
+        (
+            "char-07",
+            include_bytes!("../art/characters/char-07-bust-256.png"),
+        ),
+        (
+            "char-08",
+            include_bytes!("../art/characters/char-08-bust-256.png"),
+        ),
+        (
+            "char-09",
+            include_bytes!("../art/characters/char-09-bust-256.png"),
+        ),
+        (
+            "char-10",
+            include_bytes!("../art/characters/char-10-bust-256.png"),
+        ),
+        (
+            "char-11",
+            include_bytes!("../art/characters/char-11-bust-256.png"),
+        ),
+        (
+            "char-12",
+            include_bytes!("../art/characters/char-12-bust-256.png"),
+        ),
+    ];
+
+    /// Each character's full figure, 512 by 640 pixels, by id: for the office's cards and
+    /// the hiring gallery.
+    pub const FULLS: [(&str, &[u8]); 12] = [
+        (
+            "char-01",
+            include_bytes!("../art/characters/char-01-full-512.png"),
+        ),
+        (
+            "char-02",
+            include_bytes!("../art/characters/char-02-full-512.png"),
+        ),
+        (
+            "char-03",
+            include_bytes!("../art/characters/char-03-full-512.png"),
+        ),
+        (
+            "char-04",
+            include_bytes!("../art/characters/char-04-full-512.png"),
+        ),
+        (
+            "char-05",
+            include_bytes!("../art/characters/char-05-full-512.png"),
+        ),
+        (
+            "char-06",
+            include_bytes!("../art/characters/char-06-full-512.png"),
+        ),
+        (
+            "char-07",
+            include_bytes!("../art/characters/char-07-full-512.png"),
+        ),
+        (
+            "char-08",
+            include_bytes!("../art/characters/char-08-full-512.png"),
+        ),
+        (
+            "char-09",
+            include_bytes!("../art/characters/char-09-full-512.png"),
+        ),
+        (
+            "char-10",
+            include_bytes!("../art/characters/char-10-full-512.png"),
+        ),
+        (
+            "char-11",
+            include_bytes!("../art/characters/char-11-full-512.png"),
+        ),
+        (
+            "char-12",
+            include_bytes!("../art/characters/char-12-full-512.png"),
+        ),
+    ];
+
+    /// The bust of `id`, as a PNG: `None` for one that isn't a character.
+    #[must_use]
+    pub fn bust(id: &str) -> Option<&'static [u8]> {
+        BUSTS
+            .iter()
+            .find(|(known, _)| *known == id)
+            .map(|(_, png)| *png)
+    }
+
+    /// The full figure of `id`, as a PNG: `None` for one that isn't a character.
+    #[must_use]
+    pub fn full(id: &str) -> Option<&'static [u8]> {
+        FULLS
+            .iter()
+            .find(|(known, _)| *known == id)
+            .map(|(_, png)| *png)
+    }
+}
+
 /// Small line icons for controls, as SVGs of strokes on nothing, 24 by 24, for apps to tint
 /// as they draw them: `glyphs/<name>.svg`, every app's by that name (web chat reads the files,
 /// the desktop these bytes), drawn by hand, outside `art/`, which zirc-theme-art makes.
@@ -884,6 +1013,52 @@ impl Name {
     }
 }
 
+/// A coworker's ground behind its character's still (zirc-proto's `characters`): its hue is the
+/// coworker's, lighter than an agent's so the drawn outline reads on it, and dimmed in dark
+/// mode (the user's choice, 27 Nov 2026).
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Character {
+    /// In light mode.
+    pub light: Ground,
+    /// In dark mode.
+    pub dark: Ground,
+}
+
+/// A ground's saturation and lightness, each from 0 to 1, on any hue.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Ground {
+    /// From 0 to 1.
+    pub saturation: f32,
+    /// From 0 to 1.
+    pub lightness: f32,
+}
+
+impl Character {
+    /// zirc's characters' ground.
+    #[must_use]
+    pub fn get() -> &'static Character {
+        &TOKENS_PARSED.character
+    }
+
+    /// The ground in `mode`.
+    #[must_use]
+    pub fn ground(&self, mode: Mode) -> Ground {
+        match mode {
+            Mode::Dark => self.dark,
+            Mode::Light => self.light,
+        }
+    }
+
+    /// The ground of a coworker whose hue is `hue` degrees, in `mode`.
+    #[must_use]
+    pub fn colour(&self, mode: Mode, hue: f32) -> Rgb {
+        let ground = self.ground(mode);
+        Rgb::hsl(hue, ground.saturation, ground.lightness)
+    }
+}
+
 /// The design system's scales, from `tokens.json`'s `design`: state layers, the UI typeface
 /// and type scale, spacing, radii, avatar sizes, presence dots, elevation, motion and
 /// buttons. The same in both modes, but for elevation's colours.
@@ -1264,6 +1439,7 @@ struct Tokens {
     r#type: Type,
     avatar: Avatar,
     name: Name,
+    character: Character,
     logo: Logo,
     design: Design,
 }
@@ -1394,6 +1570,27 @@ static THEMES: LazyLock<(Theme, Theme)> = LazyLock::new(|| {
     (theme(Mode::Dark), theme(Mode::Light))
 });
 
+/// The HSL parts a hue is drawn with in `mode`, a person's name's and a coworker's ground,
+/// as variables: `--zirc-name-saturation`, `-lightness`, and `--zirc-character-…`.
+fn hued_css(mode: Mode, indent: &str) -> String {
+    let name = Name::get();
+    let character = Character::get().ground(mode);
+    [
+        ("name", name.saturation, name.lightness(mode)),
+        ("character", character.saturation, character.lightness),
+    ]
+    .iter()
+    .fold(String::new(), |mut out, (what, saturation, lightness)| {
+        let _ = writeln!(
+            out,
+            "{indent}--zirc-{what}-saturation: {}%;\n{indent}--zirc-{what}-lightness: {}%;",
+            (saturation * 100.).round(),
+            (lightness * 100.).round(),
+        );
+        out
+    })
+}
+
 /// The web stylesheet: the fonts, type, and each role as a custom property such as
 /// `--zirc-signal`, light unless the system or `data-theme="dark"` on the root says dark.
 #[must_use]
@@ -1436,13 +1633,7 @@ pub fn css() -> String {
                 let _ = writeln!(out, "{indent}--zirc-{role}: {};", rgb.hex());
                 out
             });
-        let name = Name::get();
-        let _ = writeln!(
-            out,
-            "{indent}--zirc-name-saturation: {}%;\n{indent}--zirc-name-lightness: {}%;",
-            (name.saturation * 100.).round(),
-            (name.lightness(theme.mode) * 100.).round(),
-        );
+        out.push_str(&hued_css(theme.mode, indent));
         for (name, shadow) in design.elevation.all() {
             let colour = shadow.colour(theme.mode);
             let _ = writeln!(
