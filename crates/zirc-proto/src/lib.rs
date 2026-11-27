@@ -24,6 +24,7 @@ pub mod device_key;
 pub mod files;
 pub mod gotchas;
 pub mod hints;
+pub mod home;
 pub mod images;
 pub mod inbound;
 pub mod irc;
@@ -81,6 +82,12 @@ pub const NAME: &str = "Zirc";
 /// their versions, install, config and logs. Identifiers, the domain and the wordmark are
 /// lowercase too.
 pub const PROGRAM: &str = "zirc";
+
+/// Whose something is, by its owner's name: `Raj's`.
+#[must_use]
+pub fn possessive(owner: &str) -> String {
+    format!("{owner}'s")
+}
 
 /// How many times something happened, as every count of them is said: `once`, `3 times`.
 #[must_use]

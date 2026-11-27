@@ -38,16 +38,16 @@ pub const HOT_DESKS: &str = "Hot desks";
 pub const AT_DESK_IDLE: &str = "At desk, idle";
 
 /// A coworker's state while one of its questions waits for the person.
-pub const ASKED_YOU: &str = "Asked you";
+pub const ASKED_YOU: &str = zirc_proto::home::ASKED_YOU;
 
 /// A coworker's pill on its page while it's on something.
 pub const WORKING: &str = "Working";
 
 /// An office with no coworkers yet, in place of their cards (the user's choice, 27 Nov 2026).
-pub const NO_COWORKERS: &str = "No coworkers yet.";
+pub const NO_COWORKERS: &str = zirc_proto::home::NO_COWORKERS;
 
 /// The button under [`NO_COWORKERS`], which opens zirc.dev's hire page.
-pub const HIRE: &str = "Hire a coworker";
+pub const HIRE: &str = zirc_proto::home::HIRE_FIRST;
 
 /// What heads what a coworker's on, on its page.
 pub const NOW: &str = "Now";

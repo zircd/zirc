@@ -102,7 +102,7 @@ pub fn possessive(owner: &str) -> String {
     if owner == YOU {
         "your".to_owned()
     } else {
-        format!("{owner}'s")
+        zirc_proto::possessive(owner)
     }
 }
 
