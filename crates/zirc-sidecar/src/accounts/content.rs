@@ -49,7 +49,7 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post};
 use axum::{Extension, Json, Router};
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
@@ -236,6 +236,7 @@ pub(super) fn router(ergo: Arc<Ergo>) -> Router {
         .route(&at("/hints/{id}"), delete(remove_hint))
         .route(&at("/gotchas"), get(list_gotchas))
         .route(&at(zirc_proto::roles::PATH), get(roles_standing))
+        .route(&at(zirc_proto::coworkers::DESK_PATH), post(sit_at_desk))
         .route(&at("/playbook/usage"), get(playbook_usage))
         .route(&at("/playbook/uses"), get(playbook_uses));
     let owners = Router::new()
@@ -321,6 +322,21 @@ async fn cors(State(ergo): State<Arc<Ergo>>, request: Request, next: Next) -> Re
 /// `GET /roles`: how the organisation's roles stand ([`zirc_proto::roles::Standing`]).
 async fn roles_standing(State(ergo): State<Arc<Ergo>>) -> Response {
     Json(ergo.roles.standing()).into_response()
+}
+
+/// `POST /coworkers/<name>/desk`: a session sits at the coworker's desk for the first time
+/// ([`zirc_proto::coworkers::Sitting`]), in a checkout of the repository it says, the
+/// coworker's from now on if it had none. Answers the role the coworker amounts to; refused
+/// when it works in another repository.
+async fn sit_at_desk(
+    State(ergo): State<Arc<Ergo>>,
+    Path(name): Path<String>,
+    Json(sitting): Json<zirc_proto::coworkers::Sitting>,
+) -> Response {
+    match ergo.roles.sit(&name, &sitting.repository) {
+        Ok(role) => Json(role).into_response(),
+        Err(why) => error(StatusCode::CONFLICT, "desk", &why),
+    }
 }
 
 async fn list_hints(State(ergo): State<Arc<Ergo>>) -> Response {

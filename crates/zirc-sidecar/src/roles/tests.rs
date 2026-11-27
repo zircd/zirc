@@ -1,3 +1,4 @@
+use zirc_proto::coworkers::{Given, Staff};
 use zirc_proto::leases::Want;
 use zirc_proto::roles::{Address, Definition, Listing, SeatChange, Vacant, Wake};
 use zirc_proto::state::Level;
@@ -20,30 +21,41 @@ fn fixer() -> Definition {
     .unwrap()
 }
 
+fn listing() -> Listing {
+    Listing {
+        roles: vec![fixer()],
+        addresses: vec![Address {
+            role: "fixer".into(),
+            digest: Address::digest_of("k7Qp2vXe9LmR0aBcDeFgHiJk"),
+            signing: std::collections::BTreeMap::new(),
+        }],
+        version: "1".into(),
+    }
+}
+
 fn brain() -> Brain {
     let mut brain = Brain::new(Kept::default(), START);
-    brain
-        .set_listing(Listing {
-            roles: vec![fixer()],
-            addresses: vec![Address {
-                role: "fixer".into(),
-                digest: Address::digest_of("k7Qp2vXe9LmR0aBcDeFgHiJk"),
-                signing: std::collections::BTreeMap::new(),
-            }],
-            version: "1".into(),
-        })
-        .unwrap();
+    brain.set_listing(listing(), START).unwrap();
     brain
 }
 
 fn take(brain: &mut Brain, machine: &str, session: &str, at: u64) -> Vec<Out> {
+    sit_at(brain, "fixer", machine, session, at)
+}
+
+/// `session` on `machine` asks for coworker `name`'s desk at `at`.
+fn sit_at(brain: &mut Brain, name: &str, machine: &str, session: &str, at: u64) -> Vec<Out> {
     brain.heard(
         Input::Lease {
             from: machine.into(),
             owner: Some("henrik".into()),
             event: LeaseEvent::Want(Want {
-                id: format!("{machine}-{at}-1"),
-                name: roles::lease("fixer"),
+                // A machine's lease ids differ: its count of them, the name here.
+                id: format!(
+                    "{machine}-{at}-{}",
+                    if name == "fixer" { "1" } else { name }
+                ),
+                name: roles::lease(name),
                 nick: machine.into(),
                 session: session.into(),
                 at,
@@ -369,12 +381,8 @@ fn another_machine_cant_give_back_a_seat() {
 #[test]
 fn how_roles_stand_never_says_their_addresses() {
     let brain = brain();
-    assert!(
-        brain
-            .kept
-            .listing
-            .opens("fixer", "k7Qp2vXe9LmR0aBcDeFgHiJk")
-    );
+    assert!(brain.opened("fixer", "k7Qp2vXe9LmR0aBcDeFgHiJk").is_some());
+    assert!(brain.opened("fixer", "k7Qp2vXe9LmR0aBcDeFgHiJ0").is_none());
     assert!(brain.standing(LATER).listing.addresses.is_empty());
 }
 
@@ -396,19 +404,251 @@ fn a_closed_items_wake_no_longer_waits_for_the_next_holder() {
         let woke = zirc_proto::woke::Woke::reported(each, false);
         assert!(
             brain
-                .wake("fixer", woke, &each.told(false), LATER)
+                .wake_job("fixer", None, woke, &each.told(false), LATER)
                 .is_empty()
         );
     }
     assert_eq!(brain.standing(LATER).seats[0].waiting, 2);
-    brain.drop_waiting("fixer", &closed.id);
+    brain.drop_waiting(&closed.id);
     assert_eq!(brain.standing(LATER).seats[0].waiting, 1);
     assert_eq!(
-        brain.kept.waiting["fixer"][0]
+        brain.kept.pending[0]
+            .waiting
             .woke
             .report
             .as_ref()
             .map(|reported| reported.id.as_str()),
         Some(open.id.as_str())
     );
+}
+
+/// A staff of the fixer job, held by `ada` in web, `grace` in api and `hedy`, whom no session
+/// has sat at yet, and `linus`, who has no job.
+fn staffed() -> Brain {
+    let given: Given = serde_json::from_value(serde_json::json!({
+        "staff": {
+            "coworkers": [
+                {"name": "ada", "jobs": ["fixer"], "repository": "web"},
+                {"name": "grace", "jobs": ["fixer"], "repository": "api"},
+                {"name": "hedy", "jobs": ["fixer"]},
+                {"name": "linus"},
+            ],
+            "jobs": [{
+                "name": "fixer",
+                "brief": "Owns a broken master and flaky tests.",
+                "triggers": [{"state": "master", "level": "broken"}],
+                "reports": ["flaky"],
+            }],
+        },
+        "addresses": [{"role": "fixer", "digest": Address::digest_of("k7Qp2vXe9LmR0aBcDeFgHiJk")}],
+        "version": "1",
+    }))
+    .unwrap();
+    let mut brain = Brain::new(Kept::default(), START);
+    brain.set_staff(given, START).unwrap();
+    brain
+}
+
+/// A broken master said in `#ops` about `repository`, heard at `at`.
+fn master_broke(brain: &mut Brain, repository: Option<&str>, at: u64) -> Vec<Out> {
+    let state = zirc_proto::state::State {
+        repo: String::new(),
+        name: "master".into(),
+        level: Level::Broken,
+        why: None,
+        owner: None,
+        link: None,
+        until: None,
+    };
+    let message = Message {
+        repo: repository.map(str::to_owned),
+        ..Message::new("ci", state.event())
+    };
+    brain.heard(
+        Input::Said {
+            channel: zirc_proto::state::CHANNEL.into(),
+            from: "ci".into(),
+            sender: Sender::Integration,
+            id: None,
+            message: Some(message),
+            text: String::new(),
+        },
+        at,
+    )
+}
+
+#[test]
+fn todays_roles_are_kept_as_coworkers_and_jobs_of_their_names() {
+    // A file from a sidecar that kept roles has only the listing.
+    let before = Kept {
+        listing: listing(),
+        ..Kept::default()
+    };
+    let brain = Brain::new(before, START);
+    let standing = brain.standing(LATER);
+    assert_eq!(standing.listing.roles, [fixer()]);
+    assert_eq!(standing.staff, Staff::of_roles(&[fixer()]));
+    assert_eq!(standing.seats[0].repository, "monorepo");
+    assert!(brain.opened("fixer", "k7Qp2vXe9LmR0aBcDeFgHiJk").is_some());
+    // And what's kept still says the roles, for a sidecar rolled back to.
+    let mut brain = brain;
+    brain.set_listing(listing(), START).unwrap();
+    assert_eq!(brain.take_kept().unwrap().listing, listing());
+}
+
+#[test]
+fn the_first_session_to_sit_sets_a_coworkers_repository_and_zirc_devs_next_word_keeps_it() {
+    let mut brain = staffed();
+    let standing = brain.standing(LATER);
+    assert_eq!(standing.seats[2].role, "hedy");
+    assert_eq!(standing.seats[2].repository, "");
+    assert_eq!(standing.seats[2].status(""), "Vacant");
+    assert_eq!(standing.staff.coworkers[2].repository, None);
+    let (role, _) = brain.sit("hedy", "docs", LATER).unwrap();
+    assert_eq!(role.repository, "docs");
+    // Sitting again there is fine; from another repository it's refused, in words.
+    assert!(brain.sit("hedy", "docs", LATER).is_ok());
+    assert_eq!(
+        brain.sit("hedy", "web", LATER).unwrap_err(),
+        "hedy works in docs: run this in a checkout of it"
+    );
+    assert_eq!(
+        brain.sit("nobody", "web", LATER).unwrap_err(),
+        "there's no coworker named nobody"
+    );
+    // zirc.dev, which gave it none, says the staff again: it stays, and is said back.
+    let mut given = Given {
+        staff: brain.staff().clone(),
+        addresses: Vec::new(),
+        version: "2".into(),
+    };
+    given.staff.coworkers[2].repository = None;
+    brain.set_staff(given.clone(), LATER).unwrap();
+    assert_eq!(
+        brain.standing(LATER).staff.coworkers[2]
+            .repository
+            .as_deref(),
+        Some("docs")
+    );
+    // Its own word for one replaces it.
+    given.staff.coworkers[2].repository = Some("server".into());
+    brain.set_staff(given, LATER).unwrap();
+    assert_eq!(brain.standing(LATER).seats[2].repository, "server");
+}
+
+/// [`staffed`] with ada's and grace's desks taken, by `cc-1` and `cc-2`, and when it's so.
+fn seated() -> (Brain, u64) {
+    let mut brain = staffed();
+    sit_at(&mut brain, "ada", "henrik-mbp", "cc-1", LATER);
+    sit_at(&mut brain, "grace", "henrik-mbp", "cc-2", LATER);
+    brain.tick(LATER + zirc_proto::leases::SETTLE);
+    (brain, LATER + zirc_proto::leases::SETTLE + 1000)
+}
+
+#[test]
+fn what_comes_for_a_job_wakes_its_holder_in_that_repository_and_no_other() {
+    let (mut brain, at) = seated();
+    let outs = master_broke(&mut brain, Some("api"), at);
+    assert_eq!(outs.len(), 1);
+    assert_eq!(outs[0].role, "grace");
+    let (wake, _) = wake_of(&outs[0]);
+    assert_eq!(wake.session, "cc-2");
+    assert_eq!(wake.woke.role.as_deref(), Some("grace"));
+    // ada, who holds it in web, and linus, who has no job, aren't woken.
+    let counts: Vec<u32> = brain
+        .standing(at)
+        .seats
+        .iter()
+        .map(|seat| seat.woke_today)
+        .collect();
+    assert_eq!(counts, [0, 1, 0, 0]);
+}
+
+#[test]
+fn what_is_about_a_repository_no_holder_works_in_waits_for_one_to_sit_there() {
+    let (mut brain, at) = seated();
+    assert!(master_broke(&mut brain, Some("docs"), at).is_empty());
+    assert_eq!(brain.kept.pending.len(), 1);
+    assert!(
+        brain
+            .standing(at)
+            .seats
+            .iter()
+            .all(|seat| seat.waiting == 0)
+    );
+    // hedy's first session sets her repository: it's hers to take once one sits.
+    let (_, outs) = brain.sit("hedy", "docs", at).unwrap();
+    assert!(outs.is_empty());
+    assert_eq!(brain.standing(at).seats[2].waiting, 1);
+    sit_at(&mut brain, "hedy", "raj-mbp", "cc-3", at);
+    let outs = brain.tick(at + zirc_proto::leases::SETTLE);
+    let wakes: Vec<(&str, String)> = outs
+        .iter()
+        .filter_map(|out| Some((out.role.as_str(), Wake::of(&out.message.event)?.0.session)))
+        .collect();
+    assert_eq!(wakes, [("hedy", "cc-3".to_owned())]);
+    assert!(brain.kept.pending.is_empty());
+}
+
+#[test]
+fn of_several_holders_the_one_woken_longest_ago_takes_what_names_no_repository() {
+    let (mut brain, at) = seated();
+    // Neither woken yet: the first added. Then the other, then the first again.
+    let taker = |brain: &mut Brain, at| master_broke(brain, None, at)[0].role.clone();
+    assert_eq!(taker(&mut brain, at), "ada");
+    assert_eq!(taker(&mut brain, at + 1), "grace");
+    assert_eq!(taker(&mut brain, at + 2), "ada");
+    // A direct message is the coworker's alone, whoever is idle.
+    let outs = brain.heard(
+        Input::ToRole {
+            role: "ada".into(),
+            from: "henrik".into(),
+            account: "henrik".into(),
+            sender: Sender::Person,
+            id: Some("m1".into()),
+            message: None,
+            text: "hello".into(),
+        },
+        at + 3,
+    );
+    assert_eq!(outs[0].role, "ada");
+}
+
+#[test]
+fn a_report_is_taken_by_its_jobs_holder_and_said_by_someone() {
+    let mut brain = staffed();
+    sit_at(&mut brain, "grace", "henrik-mbp", "cc-2", LATER);
+    brain.tick(LATER + zirc_proto::leases::SETTLE);
+    let at = LATER + zirc_proto::leases::SETTLE + 1000;
+    let item = |repository: Option<&str>| {
+        zirc_proto::role_report::OpenItem::opened(
+            zirc_proto::role_report::RoleReport {
+                repository: repository.map(str::to_owned),
+                ..zirc_proto::role_report::RoleReport::new(
+                    "fixer",
+                    zirc_proto::role_report::Subject::Flaky,
+                    "//a:b",
+                )
+            },
+            0,
+        )
+    };
+    let wake = |item| crate::items::Wake {
+        role: "fixer".into(),
+        item,
+        reminder: false,
+    };
+    let outs = brain.reported(&wake(item(Some("api"))), at);
+    assert_eq!(outs.len(), 1);
+    assert_eq!(outs[0].role, "grace");
+    // ada holds it in web, with no session at her desk: it waits for her.
+    assert!(brain.reported(&wake(item(Some("web"))), at).is_empty());
+    assert_eq!(brain.standing(at).seats[0].waiting, 1);
+    // Who says a job's report: its holder there, else a holder, else anyone.
+    assert_eq!(
+        brain.speaker("fixer", Some("api")).as_deref(),
+        Some("grace")
+    );
+    assert_eq!(brain.speaker("fixer", Some("docs")).as_deref(), Some("ada"));
+    assert_eq!(brain.speaker("oncall", None).as_deref(), Some("ada"));
 }

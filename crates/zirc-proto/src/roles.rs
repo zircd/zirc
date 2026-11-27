@@ -362,6 +362,11 @@ pub struct Standing {
     pub listing: Listing,
     /// Each role's seat, in the same order.
     pub seats: Vec<Seat>,
+    /// The coworkers and jobs the roles are ([`crate::coworkers`]), each coworker's repository
+    /// as the server knows it: the listing is every coworker as a role
+    /// ([`crate::coworkers::Staff::desks`]). Empty from a server older than it.
+    #[serde(default)]
+    pub staff: crate::coworkers::Staff,
 }
 
 /// A role's seat as zirc.dev's Roles tab draws it, filled by the server as the apps fill
@@ -400,6 +405,9 @@ pub struct StandingShown {
     pub listing: Listing,
     /// Each role's seat, in the same order.
     pub seats: Vec<SeatShown>,
+    /// The coworkers and jobs the roles are ([`Standing::staff`]).
+    #[serde(default)]
+    pub staff: crate::coworkers::Staff,
     /// When the server last heard each of [`crate::role_report::Subject::reporters`], for
     /// every role that takes its kinds. Empty from a server older than it.
     #[serde(default)]
@@ -520,7 +528,8 @@ impl Holder {
 pub struct Seat {
     /// The role.
     pub role: String,
-    /// Its repository.
+    /// Its repository; empty for a coworker no session has sat at yet
+    /// ([`crate::coworkers::Coworker::repository`]).
     pub repository: String,
     /// Who holds it; vacant without.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -563,6 +572,7 @@ impl Seat {
     pub fn status(&self, machine: &str) -> String {
         match &self.holder {
             Some(holder) => format!("held by {} on {machine}", holder.session.who()),
+            None if self.repository.is_empty() => VACANT_NOWHERE.to_owned(),
             None => format!("Vacant in {}", self.repository),
         }
     }
@@ -576,6 +586,9 @@ impl Seat {
         }
     }
 }
+
+/// How a seat with no holder and no repository yet stands ([`Seat::status`]).
+pub const VACANT_NOWHERE: &str = "Vacant";
 
 /// A vacant role's member line.
 pub const VACANT: &str = "vacant";

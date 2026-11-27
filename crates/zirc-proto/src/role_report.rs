@@ -33,8 +33,10 @@ pub const CLOSED_KIND: &str = "x-zirc/report-closed";
 /// /v1/roles/<role>/items`.
 pub const ITEMS_PATH: &str = "/v1/roles/{role}/items";
 
-/// The role CI's and the cluster's reports go to: zirc's own fixer, as an organisation
-/// defines it on zirc.dev. `ops/lib.sh` has a copy, as a shell script can't read this.
+/// The job CI's and the cluster's reports go to: the fixer job, as an organisation defines it
+/// on zirc.dev, taken by whichever coworker holds it for the repository a report is about
+/// ([`crate::coworkers::Staff::takers`]), whatever the coworker is named. `ops/lib.sh` has a
+/// copy, as a shell script can't read this.
 pub const FIXER: &str = "fixer";
 
 /// What a `Fixes:` trailer says before an item's id to close it when the landing passes:
@@ -215,8 +217,15 @@ impl Subject {
 /// A report to a role: what an [`Event::Custom`] of [`KIND`] carries.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 pub struct RoleReport {
-    /// The role it's for, such as `fixer`.
+    /// The job it's for, such as `fixer`: whoever holds that job takes it
+    /// ([`crate::coworkers::Staff::takers`]). Named `role` since a role was its own job.
     pub role: String,
+    /// The repository it's about, by name as zirc spells it, where its sender says one: the
+    /// job's holder there takes it. Without, the repository its line was said for
+    /// ([`crate::Message::repo`]), or none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub repository: Option<String>,
     /// What it's about.
     pub kind: Subject,
     /// What makes it the same as an earlier one: a warning's line, a test, a workload.
@@ -262,6 +271,7 @@ impl RoleReport {
     pub fn new(role: &str, kind: Subject, key: &str) -> Self {
         Self {
             role: role.to_owned(),
+            repository: None,
             kind,
             key: key.to_owned(),
             summary: String::new(),
@@ -289,6 +299,7 @@ impl RoleReport {
         };
         Self {
             role: self.role.trim().to_lowercase(),
+            repository: some(self.repository, SUMMARY_MAX),
             kind: self.kind,
             summary,
             link: some(self.link, SUMMARY_MAX),

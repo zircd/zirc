@@ -174,6 +174,33 @@ impl Server {
         answer(response, "roles").await
     }
 
+    /// Sits a session at coworker `name`'s desk for the first time, in a checkout of
+    /// `repository`, the coworker's from now on if it had none
+    /// ([`zirc_proto::coworkers::DESK_PATH`]): the role the coworker amounts to.
+    ///
+    /// # Errors
+    ///
+    /// When the server can't be reached or refuses, saying why: the coworker works in
+    /// another repository, say.
+    pub async fn sit(
+        &self,
+        name: &str,
+        repository: &str,
+    ) -> Result<zirc_proto::roles::Definition, String> {
+        let path = zirc_proto::coworkers::DESK_PATH.replace("{name}", name);
+        let response = self
+            .http
+            .post(format!("{}{path}", self.base))
+            .bearer_auth(self.token()?)
+            .json(&zirc_proto::coworkers::Sitting {
+                repository: repository.to_owned(),
+            })
+            .send()
+            .await
+            .map_err(|err| format!("couldn't reach the server: {err}"))?;
+        answer(response, "coworkers' desks").await
+    }
+
     /// Adds `hint` for `scope`, for `session` when an agent's asking.
     ///
     /// # Errors

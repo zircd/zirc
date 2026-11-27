@@ -77,6 +77,8 @@ pub struct Closed {
     pub build: Option<String>,
     /// The branch that landed.
     pub branch: Option<String>,
+    /// The repository the items were about, if they said one: its holder there is told.
+    pub repository: Option<String>,
 }
 
 impl Closed {
@@ -164,7 +166,11 @@ impl Items {
         now: u64,
     ) -> bool {
         let ops = channel.eq_ignore_ascii_case(zirc_proto::state::CHANNEL);
-        if ops && let Some(report) = RoleReport::of(&message.event) {
+        if ops && let Some(mut report) = RoleReport::of(&message.event) {
+            // One that names no repository is about the one its line was said for.
+            if report.repository.is_none() {
+                report.repository.clone_from(&message.repo);
+            }
             return self.take(report, now);
         }
         if ops && let Some(closing) = Closing::of(&message.event) {
@@ -208,12 +214,18 @@ impl Items {
                     })
                     .cloned()
                     .collect();
+                let repository = self
+                    .items
+                    .iter()
+                    .filter(|item| item.report.role == role && closing.contains(&item.id))
+                    .find_map(|item| item.report.repository.clone());
                 changed |= self.close(&role, &ids, End::Landed, now);
                 self.closed.push(Closed {
                     role,
                     ids: closing,
                     build: data.build.clone(),
                     branch: data.branch.clone(),
+                    repository,
                 });
             }
             return changed;

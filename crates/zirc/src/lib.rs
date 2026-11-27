@@ -841,7 +841,9 @@ enum Command {
     /// session takes only by this command, in a checkout of the role's repository: its nick
     /// is then yours to answer for. What wakes it, a direct message to it among them, wakes
     /// your watch; you hold it while your watch runs. `zirc roles` says who holds each.
-    #[command(subcommand)]
+    ///
+    /// A role is a coworker's desk: `zirc desk take ada` sits your session at Ada's.
+    #[command(subcommand, visible_alias = "desk")]
     #[command(after_long_help = examples("role", ""))]
     Role(roles::RoleCommand),
     /// See or say how something shared stands, such as a broken master.

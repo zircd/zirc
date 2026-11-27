@@ -16,10 +16,18 @@
 //! ([`Staff::of_roles`]), each a coworker and a job of the role's name, so nothing is lost
 //! either way.
 //!
+//! A server keeps its organisation's staff itself: zirc.dev gives it whole ([`Given`], `PUT`
+//! [`ACCOUNTS_PATH`]), and the server sets a coworker's repository when a session first sits
+//! at its desk ([`Sitting`], [`DESK_PATH`]), saying the staff back with it filled in
+//! ([`crate::roles::Standing::staff`]). A coworker's desk is the seat a role had, held as a
+//! role's is ([`crate::roles::lease`] of its name), so a server and a machine of either age
+//! agree who sits there.
+//!
 //! The jobs zirc.dev offers ready-made are [`JobKind`]s: how each is pictured and what it says
 //! of itself, here so every app says it alike. What a ready-made job asks before it's added
 //! is still zirc.dev's (`web/src/lib/role-templates.ts`).
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -27,7 +35,7 @@ use std::collections::BTreeSet;
 
 use crate::inbound::Tool;
 use crate::role_report::Subject;
-use crate::roles::{self, Definition};
+use crate::roles::{self, Address, Definition};
 use crate::trigger::Trigger;
 
 /// The most coworkers an organisation has: as many as it had roles.
@@ -39,6 +47,87 @@ pub const MAX_JOBS: usize = roles::MAX_ROLES;
 /// How many jobs the product gives one coworker (the user's choice, 27 Nov 2026: "One only for
 /// now"). [`Staff::check`] allows more.
 pub const JOBS_OFFERED: usize = 1;
+
+/// Where zirc.dev gives a server its organisation's staff, whole ([`Given`], `PUT`), on the
+/// sidecar's accounts API, which only zirc.dev reaches. How it stands is read where roles'
+/// is ([`roles::ACCOUNTS_PATH`], `GET`), which says the staff too.
+pub const ACCOUNTS_PATH: &str = "/v1/staff";
+
+/// Where a session's machine says it sits at a coworker's desk for the first time
+/// ([`Sitting`], `POST`), under the server's content API: answered with the role the coworker
+/// amounts to now ([`Staff::role_of`]), or refused in words when it works elsewhere
+/// ([`works_elsewhere`]).
+pub const DESK_PATH: &str = "/coworkers/{name}/desk";
+
+/// The command that sits a session at a coworker's desk, before the coworker's name: `zirc
+/// desk take`. `zirc role take` is the same command.
+pub const DESK_COMMAND: &str = "zirc desk take";
+
+/// What a person tells a session to sit it at a coworker's desk, `{name}` the coworker's:
+/// what the agent guide teaches ([`tell_a_session`]). Provisional: the sentence isn't the
+/// user's own yet.
+pub const TELL_A_SESSION: &str = "You're {name}. Take your desk.";
+
+/// What a person tells a session to sit it at coworker `name`'s desk: `You're ada. Take your
+/// desk.`
+#[must_use]
+pub fn tell_a_session(name: &str) -> String {
+    TELL_A_SESSION.replace("{name}", name)
+}
+
+/// The command that sits a session at coworker `name`'s desk.
+#[must_use]
+pub fn desk_command(name: &str) -> String {
+    format!("{DESK_COMMAND} {name}")
+}
+
+/// Why a session in another checkout can't sit at coworker `name`'s desk, which works in
+/// `repository`.
+#[must_use]
+pub fn works_elsewhere(name: &str, repository: &str) -> String {
+    format!("{name} works in {repository}: run this in a checkout of it")
+}
+
+/// What a session says to sit at a coworker's desk for the first time ([`DESK_PATH`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Sitting {
+    /// The repository of the checkout the session is in, by name as zirc spells it: the
+    /// coworker's from now on, if it had none.
+    pub repository: String,
+}
+
+/// An organisation's staff as zirc.dev gives it to its server: whole each time, with each
+/// job's address and a version that changes whenever any of it does.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[ts(rename = "StaffGiven")]
+pub struct Given {
+    /// The coworkers and jobs. A coworker zirc.dev gives no repository keeps the one the
+    /// server set when a session first sat at its desk.
+    pub staff: Staff,
+    /// Each job's webhook address ([`roles::INBOUND_PATH`]), its [`Address::role`] the job's
+    /// name: a tool posts to the job, whoever holds it, so it isn't set up again when the job
+    /// moves. Never said back.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub addresses: Vec<Address>,
+    /// What it's at: anything that changes when it does, a new secret too.
+    pub version: String,
+}
+
+impl Given {
+    /// The rules it keeps: the staff's and each address's.
+    ///
+    /// # Errors
+    ///
+    /// What's wrong, in words for whoever changed it.
+    pub fn check(&self) -> Result<(), String> {
+        self.staff.check()?;
+        self.addresses.iter().try_for_each(|address| {
+            address
+                .check()
+                .map_err(|why| format!("{}: {why}", address.role))
+        })
+    }
+}
 
 /// What a coworker with no job does, as the brief of the role it amounts to
 /// ([`Staff::roles`]), which a role can't be without.
@@ -160,7 +249,7 @@ impl JobKind {
 }
 
 /// What a coworker does, and what wakes whoever holds it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(rename = "Job")]
 pub struct Job {
     /// Its name, unique among the organisation's jobs, which coworkers hold it by: `fixer`.
@@ -175,6 +264,7 @@ pub struct Job {
         with = "crate::lenient::known_ones"
     )]
     #[ts(as = "Vec<Trigger>")]
+    #[schemars(with = "Vec<Trigger>")]
     pub triggers: Vec<Trigger>,
     /// The kinds of report it takes. A kind this reader doesn't know is left out
     /// ([`crate::lenient`]).
@@ -184,6 +274,7 @@ pub struct Job {
         with = "crate::lenient::known_ones"
     )]
     #[ts(as = "Vec<Subject>")]
+    #[schemars(with = "Vec<Subject>")]
     pub reports: Vec<Subject>,
 }
 
@@ -236,7 +327,7 @@ impl Job {
 }
 
 /// A named agent with a desk.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(rename = "Coworker")]
 pub struct Coworker {
     /// Its name, which is its nick on the server: unique in the organisation, as whoever
@@ -296,7 +387,7 @@ impl Coworker {
 }
 
 /// An organisation's coworkers and the jobs they hold.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(rename = "Staff")]
 pub struct Staff {
     /// Every coworker, in the order they were added.
@@ -329,6 +420,54 @@ impl Staff {
     pub fn takes<'a>(&'a self, name: &'a str, repository: &str) -> Option<&'a Coworker> {
         self.holders(name)
             .find(|coworker| coworker.repository.as_deref() == Some(repository))
+    }
+
+    /// The coworkers that may take what comes for job `name`: those that hold it, in
+    /// `repository` when what came is about one, and every holder when it's about none, as a
+    /// time coming round is. Which of several takes it is the server's to say: the one
+    /// longest idle (the user's choice, 27 Nov 2026).
+    pub fn takers<'a>(
+        &'a self,
+        name: &'a str,
+        repository: Option<&'a str>,
+    ) -> impl Iterator<Item = &'a Coworker> {
+        self.holders(name).filter(move |coworker| {
+            repository.is_none_or(|repository| coworker.repository.as_deref() == Some(repository))
+        })
+    }
+
+    /// The coworker named `name`.
+    #[must_use]
+    pub fn coworker(&self, name: &str) -> Option<&Coworker> {
+        self.coworkers.iter().find(|coworker| coworker.name == name)
+    }
+
+    /// The role `coworker` amounts to, for a reader that knows roles: named as it is, doing
+    /// what its first job says, or [`NO_JOB_BRIEF`] with no job, in its repository, which is
+    /// empty until a session has sat at its desk.
+    #[must_use]
+    pub fn role_of(&self, coworker: &Coworker) -> Definition {
+        let job = coworker.jobs.first().and_then(|name| self.job(name));
+        Definition {
+            name: coworker.name.clone(),
+            repository: coworker.repository.clone().unwrap_or_default(),
+            brief: job.map_or_else(|| NO_JOB_BRIEF.to_owned(), |job| job.brief.clone()),
+            triggers: job.map(|job| job.triggers.clone()).unwrap_or_default(),
+            seats: roles::SEATS,
+            reports: job.map(|job| job.reports.clone()).unwrap_or_default(),
+            picture: coworker.picture.clone(),
+            hue: coworker.hue,
+        }
+    }
+
+    /// Every coworker as the role it amounts to ([`Staff::role_of`]), one nobody has sat at
+    /// too: what a server says to readers that know roles.
+    #[must_use]
+    pub fn desks(&self) -> Vec<Definition> {
+        self.coworkers
+            .iter()
+            .map(|coworker| self.role_of(coworker))
+            .collect()
     }
 
     /// The tools its jobs need, each once, in the order zirc.dev shows tools: those a held
@@ -395,20 +534,8 @@ impl Staff {
     pub fn roles(&self) -> Vec<Definition> {
         self.coworkers
             .iter()
-            .filter_map(|coworker| {
-                let repository = coworker.repository.clone()?;
-                let job = coworker.jobs.first().and_then(|name| self.job(name));
-                Some(Definition {
-                    name: coworker.name.clone(),
-                    repository,
-                    brief: job.map_or_else(|| NO_JOB_BRIEF.to_owned(), |job| job.brief.clone()),
-                    triggers: job.map(|job| job.triggers.clone()).unwrap_or_default(),
-                    seats: roles::SEATS,
-                    reports: job.map(|job| job.reports.clone()).unwrap_or_default(),
-                    picture: coworker.picture.clone(),
-                    hue: coworker.hue,
-                })
-            })
+            .filter(|coworker| coworker.repository.is_some())
+            .map(|coworker| self.role_of(coworker))
             .collect()
     }
 
@@ -449,6 +576,8 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Job::decl(config),
         Coworker::decl(config),
         Staff::decl(config),
+        Given::decl(config),
+        format!("const STAFF_ACCOUNTS_PATH = {ACCOUNTS_PATH:?};"),
         format!("const JOBS_OFFERED = {JOBS_OFFERED};"),
         format!("const MAX_COWORKERS = {MAX_COWORKERS};"),
         format!(
@@ -554,6 +683,35 @@ mod tests {
         for role in &roles {
             role.check().unwrap();
         }
+    }
+
+    #[test]
+    fn what_comes_for_a_job_is_for_its_holders_in_that_repository_or_all_of_them() {
+        let staff = Staff {
+            coworkers: vec![
+                coworker("ada", Some("fixer"), Some("web")),
+                coworker("grace", Some("fixer"), Some("api")),
+                coworker("hedy", Some("fixer"), None),
+                coworker("linus", None, Some("web")),
+            ],
+            jobs: vec![job("fixer", &[])],
+        };
+        let names = |repository| -> Vec<&str> {
+            staff
+                .takers("fixer", repository)
+                .map(|coworker| coworker.name.as_str())
+                .collect()
+        };
+        assert_eq!(names(Some("web")), ["ada"]);
+        assert_eq!(names(Some("docs")), [] as [&str; 0]);
+        assert_eq!(names(None), ["ada", "grace", "hedy"]);
+        // One nobody has sat at is a desk with no repository yet, and no role.
+        let desks = staff.desks();
+        assert_eq!(desks.len(), 4);
+        assert_eq!(desks[2].repository, "");
+        assert_eq!(staff.roles().len(), 3);
+        assert_eq!(tell_a_session("ada"), "You're ada. Take your desk.");
+        assert_eq!(desk_command("ada"), "zirc desk take ada");
     }
 
     #[test]

@@ -1,8 +1,13 @@
-//! The organisation's roles ([`zirc_proto::roles`]), each a nick of the server's own that
-//! stands for it: listed among the members, written to by anyone, and speaking for whichever
-//! session holds its one seat.
+//! The organisation's coworkers ([`zirc_proto::coworkers`]), each a nick of the server's own
+//! that stands for it: listed among the members, written to by anyone, and speaking for
+//! whichever session sits at its desk. What a coworker does is its job's, which several may
+//! hold, each in its own repository. A coworker is a role to every reader that knows roles
+//! ([`Staff::role_of`]), and so "role" below is a coworker as its desk stands.
 //!
-//! What a role is comes from zirc.dev, whole ([`Listing`], `PUT /v1/roles`); who holds it,
+//! Who they are comes from zirc.dev, whole: a staff ([`Given`], `PUT /v1/staff`), or the
+//! roles of before ([`Listing`], `PUT /v1/roles`), each read as a coworker and a job of its
+//! name ([`Staff::of_roles`]). A coworker's repository is set here when a session first sits
+//! at its desk ([`Brain::sit`]), and kept when zirc.dev gives none. Who sits at a desk comes
 //! from the lease events machines say in the organisation's channel ([`zirc_proto::leases`]),
 //! the seat being the lease [`roles::lease`], worked out here as every zircd works it out.
 //! When a seat is taken or left, the role's nick says so in the agents' room
@@ -12,8 +17,11 @@
 //! ([`roles::Wake`]), whose zircd takes it only from the role's own account for a session
 //! holding the role there: a direct message to the role, from a person, or what one of its
 //! triggers matches ([`zirc_proto::trigger`]): a state said, words said where it listens, a
-//! person's reaction, a landing's paths, a time coming round. Reports wake it too
-//! ([`Roles::wake`]). For a vacant role, what came waits for the next holder, and the person
+//! person's reaction, a landing's paths, a time coming round. Reports wake it too. What comes
+//! for a job, by a trigger, a report or a tool's post, wakes one coworker ([`Brain::wake_job`]):
+//! of those holding the job in the repository it's about, or anywhere when it's about none,
+//! the one at its desk that was woken longest ago; with none at a desk it waits for the first
+//! to sit. For a vacant role, what came waits for the next holder, and the person
 //! who wrote is answered, alone, with how to fill it ([`roles::Vacant`]). What the holder says
 //! as the role ([`roles::Say`]) goes out from the role's nick, as the holder's session.
 //!
@@ -29,9 +37,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
+use zirc_proto::coworkers::{Given, Staff};
 use zirc_proto::leases::{LeaseEvent, Leases};
 use zirc_proto::roles::{
-    self, Definition, Holder, Listing, Say, Seat, SeatChange, Standing, Vacant, Wake,
+    self, Address, Definition, Holder, Listing, Say, Seat, SeatChange, Standing, Vacant, Wake,
 };
 use zirc_proto::session::SessionCard;
 use zirc_proto::state::State;
@@ -67,12 +76,47 @@ pub struct Waiting {
     pub at: u64,
 }
 
+/// Something that came for a job while none of its holders was at a desk: what wakes the
+/// first of them to sit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pending {
+    /// The job.
+    pub job: String,
+    /// The repository it's about, if it's about one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    /// What came.
+    pub waiting: Waiting,
+}
+
 /// What's kept, beside the history.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Kept {
-    /// The roles, as zirc.dev last said them.
+    /// The roles the staff amounts to, with the addresses: what a sidecar from before it kept
+    /// a staff reads, so one rolled back to still has its roles. A file from such a sidecar
+    /// has only this, read as a staff ([`Brain::new`]).
     #[serde(default)]
     pub listing: Listing,
+    /// The coworkers and jobs, each coworker's repository as zirc.dev gave it or as set here.
+    #[serde(default)]
+    pub staff: Staff,
+    /// Each job's address, as zirc.dev last gave them.
+    #[serde(default)]
+    pub addresses: Vec<Address>,
+    /// What zirc.dev said the staff is at.
+    #[serde(default)]
+    pub version: String,
+    /// The repository set here for each coworker zirc.dev gave none, by coworker: from the
+    /// checkout of the session that first sat at its desk.
+    #[serde(default)]
+    pub sat: BTreeMap<String, String>,
+    /// What waits for the first holder of its job to sit, oldest first.
+    #[serde(default)]
+    pub pending: Vec<Pending>,
+    /// When each coworker was last woken, by coworker, in unix milliseconds: of several that
+    /// may take what comes for a job, the one woken longest ago does.
+    #[serde(default)]
+    pub woke_at: BTreeMap<String, u64>,
     /// Each role's holder, as last said, by role.
     #[serde(default)]
     pub held: BTreeMap<String, Holder>,
@@ -82,7 +126,7 @@ pub struct Kept {
     /// What waits for each vacant role's next holder, oldest first, by role.
     #[serde(default)]
     pub waiting: BTreeMap<String, Vec<Waiting>>,
-    /// When each role's trigger last came round and was dealt with, by role and trigger.
+    /// When each job's trigger last came round and was dealt with, by job and trigger.
     #[serde(default)]
     pub fired: BTreeMap<String, BTreeMap<usize, u64>>,
     /// How many times each role woke on the day it last did, by role: the day (days since
@@ -186,6 +230,8 @@ pub struct Out {
 #[derive(Debug, Default)]
 pub struct Brain {
     kept: Kept,
+    /// Every coworker as the role it amounts to ([`Staff::desks`]).
+    roles: Vec<Definition>,
     leases: Leases,
     /// Whose each machine is, by machine, as heard with its lease events.
     owners: BTreeMap<String, String>,
@@ -201,8 +247,14 @@ pub struct Brain {
 impl Brain {
     /// A brain that starts at `now` (unix milliseconds) from what was `kept`.
     #[must_use]
-    pub fn new(kept: Kept, now: u64) -> Self {
+    pub fn new(mut kept: Kept, now: u64) -> Self {
+        if kept.staff.coworkers.is_empty() && !kept.listing.roles.is_empty() {
+            kept.staff = Staff::of_roles(&kept.listing.roles);
+            kept.addresses.clone_from(&kept.listing.addresses);
+            kept.version.clone_from(&kept.listing.version);
+        }
         Self {
+            roles: kept.staff.desks(),
             kept,
             listens_from: now,
             ..Self::default()
@@ -214,32 +266,159 @@ impl Brain {
         std::mem::take(&mut self.changed).then(|| self.kept.clone())
     }
 
-    /// The roles.
+    /// Every coworker as the role it amounts to.
     #[must_use]
-    pub fn listing(&self) -> &Listing {
-        &self.kept.listing
+    pub fn roles(&self) -> &[Definition] {
+        &self.roles
     }
 
-    /// Takes zirc.dev's word for the roles, if they keep every rule.
+    /// The staff, each coworker's repository as it's known here.
+    #[must_use]
+    pub fn staff(&self) -> &Staff {
+        &self.kept.staff
+    }
+
+    /// The role coworker `name` amounts to.
+    fn role(&self, name: &str) -> Option<&Definition> {
+        self.roles.iter().find(|role| role.name == name)
+    }
+
+    /// The signing secrets of job `job`'s address, by tool, when `secret` opens it; `None`
+    /// when it doesn't, or the job has no address.
+    #[must_use]
+    pub fn opened(
+        &self,
+        job: &str,
+        secret: &str,
+    ) -> Option<BTreeMap<zirc_proto::inbound::Tool, String>> {
+        self.kept
+            .addresses
+            .iter()
+            .find(|address| address.role == job && address.opens(secret))
+            .map(|address| address.signing.clone())
+    }
+
+    /// Takes zirc.dev's word for the roles of before, if they keep every rule: each a
+    /// coworker and a job of its name ([`Staff::of_roles`]), its address its job's. What
+    /// waited and can now be taken is said.
     ///
     /// # Errors
     ///
     /// Why they don't.
-    pub fn set_listing(&mut self, listing: Listing) -> Result<(), String> {
+    pub fn set_listing(&mut self, listing: Listing, now: u64) -> Result<Vec<Out>, String> {
         listing.check()?;
-        let names: BTreeSet<&str> = listing.roles.iter().map(|r| r.name.as_str()).collect();
+        self.set_staff(
+            Given {
+                staff: Staff::of_roles(&listing.roles),
+                addresses: listing.addresses,
+                version: listing.version,
+            },
+            now,
+        )
+    }
+
+    /// Takes zirc.dev's word for the staff, if it keeps every rule. A coworker it gives no
+    /// repository keeps the one set here ([`Brain::sit`]). What waited and can now be taken
+    /// is said.
+    ///
+    /// # Errors
+    ///
+    /// Why it doesn't.
+    pub fn set_staff(&mut self, given: Given, now: u64) -> Result<Vec<Out>, String> {
+        given.check()?;
+        let Given {
+            mut staff,
+            addresses,
+            version,
+        } = given;
+        // zirc.dev's word for a repository is the one; where it says none, what a session
+        // sitting there set.
+        self.kept.sat.retain(|name, _| {
+            staff
+                .coworker(name)
+                .is_some_and(|coworker| coworker.repository.is_none())
+        });
+        for coworker in &mut staff.coworkers {
+            if coworker.repository.is_none() {
+                coworker.repository = self.kept.sat.get(&coworker.name).cloned();
+            }
+        }
+        let names: BTreeSet<&str> = staff.coworkers.iter().map(|c| c.name.as_str()).collect();
+        let jobs: BTreeSet<&str> = staff.jobs.iter().map(|job| job.name.as_str()).collect();
         self.kept
             .held
-            .retain(|role, _| names.contains(role.as_str()));
+            .retain(|name, _| names.contains(name.as_str()));
         self.kept
             .waiting
-            .retain(|role, _| names.contains(role.as_str()));
+            .retain(|name, _| names.contains(name.as_str()));
         self.kept
-            .fired
-            .retain(|role, _| names.contains(role.as_str()));
-        self.kept.listing = listing;
+            .woke_at
+            .retain(|name, _| names.contains(name.as_str()));
+        self.kept.fired.retain(|job, _| jobs.contains(job.as_str()));
+        self.kept
+            .pending
+            .retain(|pending| jobs.contains(pending.job.as_str()));
+        self.kept.staff = staff;
+        self.kept.addresses = addresses;
+        self.kept.version = version;
+        self.derive();
+        Ok(self.deliver_pending(now))
+    }
+
+    /// Sits a session at coworker `name`'s desk for the first time, in a checkout of
+    /// `repository`: the coworker's from now on, if it had none. Answers the role it amounts
+    /// to now, and what waited for it that it can now take.
+    ///
+    /// # Errors
+    ///
+    /// When there's no such coworker, or it works in another repository, in words for the
+    /// session.
+    pub fn sit(
+        &mut self,
+        name: &str,
+        repository: &str,
+        now: u64,
+    ) -> Result<(Definition, Vec<Out>), String> {
+        let repository = repository.trim();
+        let Some(coworker) = self
+            .kept
+            .staff
+            .coworkers
+            .iter_mut()
+            .find(|coworker| coworker.name == name)
+        else {
+            return Err(format!("there's no coworker named {name}"));
+        };
+        if repository.is_empty() {
+            return Err("a coworker's repository has a name".to_owned());
+        }
+        match coworker.repository.as_deref() {
+            Some(theirs) if theirs == repository => {}
+            Some(theirs) => return Err(zirc_proto::coworkers::works_elsewhere(name, theirs)),
+            None => {
+                coworker.repository = Some(repository.to_owned());
+                self.kept.sat.insert(name.to_owned(), repository.to_owned());
+                self.derive();
+            }
+        }
+        let outs = self.deliver_pending(now);
+        let role = self
+            .role(name)
+            .cloned()
+            .ok_or_else(|| format!("there's no coworker named {name}"))?;
+        Ok((role, outs))
+    }
+
+    /// Works out again what follows from the staff, which changed: the roles it amounts to,
+    /// and what an older sidecar reads.
+    fn derive(&mut self) {
+        self.roles = self.kept.staff.desks();
+        self.kept.listing = Listing {
+            roles: self.kept.staff.roles(),
+            addresses: self.kept.addresses.clone(),
+            version: self.kept.version.clone(),
+        };
         self.changed = true;
-        Ok(())
     }
 
     /// Who holds `role` at `now` (unix milliseconds), as the lease events say.
@@ -269,15 +448,14 @@ impl Brain {
     #[must_use]
     pub fn standing(&self, now: u64) -> Standing {
         Standing {
-            // Never its addresses' digests: what it answers reaches members and machines.
-            listing: self.kept.listing.clone().without_addresses(),
-            seats: self
-                .kept
-                .listing
-                .roles
-                .iter()
-                .map(|role| self.seat(role, now))
-                .collect(),
+            // Never the addresses' digests: what it answers reaches members and machines.
+            listing: Listing {
+                roles: self.roles.clone(),
+                addresses: Vec::new(),
+                version: self.kept.version.clone(),
+            },
+            seats: self.roles.iter().map(|role| self.seat(role, now)).collect(),
+            staff: self.kept.staff.clone(),
         }
     }
 
@@ -287,8 +465,16 @@ impl Brain {
             repository: role.repository.clone(),
             holder: self.holder(&role.name, now),
             last: self.kept.last.get(&role.name).cloned(),
-            waiting: u32::try_from(self.kept.waiting.get(&role.name).map_or(0, Vec::len))
-                .unwrap_or(u32::MAX),
+            waiting: u32::try_from(
+                self.kept.waiting.get(&role.name).map_or(0, Vec::len)
+                    + self
+                        .kept
+                        .pending
+                        .iter()
+                        .filter(|pending| self.may_take(&role.name, pending))
+                        .count(),
+            )
+            .unwrap_or(u32::MAX),
             wakes_on: role.wakes_on(),
             woke_today: self
                 .kept
@@ -359,6 +545,7 @@ impl Brain {
                         reaction: &reaction,
                     },
                     &woke,
+                    None,
                     now,
                 )
             }
@@ -370,12 +557,12 @@ impl Brain {
     pub fn tick(&mut self, now: u64) -> Vec<Out> {
         let mut outs = self.seats_moved(now);
         let seconds = now / 1000;
-        for role in self.kept.listing.roles.clone() {
-            for (i, trigger) in role.triggers.iter().enumerate() {
+        for job in self.held_jobs() {
+            for (i, trigger) in job.triggers.iter().enumerate() {
                 let Some(schedule) = trigger.schedule().ok().flatten() else {
                     continue;
                 };
-                let fired = self.kept.fired.entry(role.name.clone()).or_default();
+                let fired = self.kept.fired.entry(job.name.clone()).or_default();
                 let Some((at, act)) = came_round(schedule, fired.get(&i).copied(), seconds) else {
                     continue;
                 };
@@ -383,7 +570,8 @@ impl Brain {
                 self.changed = true;
                 if act {
                     let woke = Woke::new(What::Other, By::Zirc);
-                    outs.extend(self.wake(&role.name, woke, &trigger.words(), now));
+                    // A time is about no repository: any holder takes it.
+                    outs.extend(self.wake_job(&job.name, None, woke, &trigger.words(), now));
                 }
             }
         }
@@ -396,10 +584,10 @@ impl Brain {
     pub fn next_due(&self, now: u64) -> u64 {
         let seconds = now / 1000;
         self.kept
-            .listing
-            .roles
+            .staff
+            .jobs
             .iter()
-            .flat_map(|role| &role.triggers)
+            .flat_map(|job| &job.triggers)
             .filter_map(|trigger| trigger.schedule().ok().flatten())
             .map(|schedule| schedule.next(seconds) * 1000)
             .chain([now + zirc_proto::leases::SETTLE])
@@ -407,10 +595,33 @@ impl Brain {
             .unwrap_or(now + zirc_proto::leases::SETTLE)
     }
 
-    /// Wakes `role`'s holder with `woke` and `text`, or keeps it for the next one: what a
-    /// trigger, a report or a direct message does.
+    /// The jobs a coworker holds: what a trigger can wake someone for.
+    fn held_jobs(&self) -> Vec<zirc_proto::coworkers::Job> {
+        let staff = &self.kept.staff;
+        staff
+            .jobs
+            .iter()
+            .filter(|job| staff.holders(&job.name).next().is_some())
+            .cloned()
+            .collect()
+    }
+
+    /// Counts a wake of coworker `name` at `now`.
+    fn count(&mut self, name: &str, now: u64) {
+        let today = now / DAY_MS;
+        let count = self.kept.woke.entry(name.to_owned()).or_insert((today, 0));
+        if count.0 != today {
+            *count = (today, 0);
+        }
+        count.1 = count.1.saturating_add(1);
+        self.kept.woke_at.insert(name.to_owned(), now);
+        self.changed = true;
+    }
+
+    /// Wakes the session at coworker `role`'s desk with `woke` and `text`, or keeps it for
+    /// the next one: what a direct message does.
     pub fn wake(&mut self, role: &str, woke: Woke, text: &str, now: u64) -> Vec<Out> {
-        let Some(definition) = self.kept.listing.role(role) else {
+        let Some(definition) = self.role(role) else {
             return Vec::new();
         };
         let role = definition.name.clone();
@@ -418,13 +629,7 @@ impl Brain {
             role: Some(role.clone()),
             ..woke
         };
-        let today = now / DAY_MS;
-        let count = self.kept.woke.entry(role.clone()).or_insert((today, 0));
-        if count.0 != today {
-            *count = (today, 0);
-        }
-        count.1 = count.1.saturating_add(1);
-        self.changed = true;
+        self.count(&role, now);
         if let Some(holder) = self.holder(&role, now) {
             return vec![wake_out(&role, &holder, woke, text, now / 1000)];
         }
@@ -441,42 +646,155 @@ impl Brain {
         Vec::new()
     }
 
-    /// Forgets what waits for `role`'s next holder about its item `id`, which closed: its next
-    /// holder isn't woken for what's done.
-    pub fn drop_waiting(&mut self, role: &str, id: &str) {
-        let Some(waiting) = self.kept.waiting.get_mut(role) else {
-            return;
-        };
-        let before = waiting.len();
-        waiting.retain(|waited| {
+    /// The coworker that takes what comes for `job` about `repository` at `now`, with the
+    /// session at its desk: of the job's holders there ([`Staff::takers`]) with a session at
+    /// their desks, the one woken longest ago, the first added of those never woken.
+    fn taker(&self, job: &str, repository: Option<&str>, now: u64) -> Option<(String, Holder)> {
+        self.kept
+            .staff
+            .takers(job, repository)
+            .filter_map(|coworker| Some((coworker.name.clone(), self.holder(&coworker.name, now)?)))
+            .min_by_key(|(name, _)| self.kept.woke_at.get(name).copied().unwrap_or(0))
+    }
+
+    /// Whether coworker `name` may take `pending`: it holds the job, in the repository it's
+    /// about.
+    fn may_take(&self, name: &str, pending: &Pending) -> bool {
+        self.kept
+            .staff
+            .takers(&pending.job, pending.repository.as_deref())
+            .any(|coworker| coworker.name == name)
+    }
+
+    /// Wakes one holder of `job` with `woke` and `text`, which is about `repository` or about
+    /// none ([`Brain::taker`]); with none at a desk, keeps it for the first of them to sit:
+    /// what a trigger, a report or a tool's post does.
+    pub fn wake_job(
+        &mut self,
+        job: &str,
+        repository: Option<&str>,
+        woke: Woke,
+        text: &str,
+        now: u64,
+    ) -> Vec<Out> {
+        if self.kept.staff.job(job).is_none() {
+            return Vec::new();
+        }
+        if let Some((name, holder)) = self.taker(job, repository, now) {
+            self.count(&name, now);
+            let woke = Woke {
+                role: Some(name.clone()),
+                ..woke
+            };
+            return vec![wake_out(&name, &holder, woke, text, now / 1000)];
+        }
+        if repository.is_some() && self.kept.staff.takers(job, repository).next().is_none() {
+            info!(
+                "what came for a job waits: none of its holders works in the repository it's about"
+            );
+        }
+        self.kept.pending.push(Pending {
+            job: job.to_owned(),
+            repository: repository.map(str::to_owned),
+            waiting: Waiting {
+                woke,
+                text: text.to_owned(),
+                at: now / 1000,
+            },
+        });
+        let of_job = |pending: &Pending| pending.job == job;
+        if self.kept.pending.iter().filter(|p| of_job(p)).count() > MAX_WAITING
+            && let Some(oldest) = self.kept.pending.iter().position(of_job)
+        {
+            self.kept.pending.remove(oldest);
+        }
+        self.changed = true;
+        Vec::new()
+    }
+
+    /// Wakes whoever can now take what waited for a job: said when a session sits, and when
+    /// the staff or a coworker's repository changes.
+    fn deliver_pending(&mut self, now: u64) -> Vec<Out> {
+        let mut outs = Vec::new();
+        for pending in std::mem::take(&mut self.kept.pending) {
+            let Some((name, holder)) = self.taker(&pending.job, pending.repository.as_deref(), now)
+            else {
+                self.kept.pending.push(pending);
+                continue;
+            };
+            self.count(&name, now);
+            let woke = Woke {
+                role: Some(name.clone()),
+                ..pending.waiting.woke
+            };
+            outs.push(wake_out(
+                &name,
+                &holder,
+                woke,
+                &pending.waiting.text,
+                pending.waiting.at,
+            ));
+        }
+        outs
+    }
+
+    /// The coworker whose nick says what's said for `job` about `repository`: one that takes
+    /// it, else one that holds it, else any, as someone must say it.
+    #[must_use]
+    pub fn speaker(&self, job: &str, repository: Option<&str>) -> Option<String> {
+        let staff = &self.kept.staff;
+        staff
+            .takers(job, repository)
+            .next()
+            .or_else(|| staff.holders(job).next())
+            .or_else(|| staff.coworkers.first())
+            .map(|coworker| coworker.name.clone())
+    }
+
+    /// Forgets what waits about the item `id`, which closed: nobody is woken for what's done.
+    pub fn drop_waiting(&mut self, id: &str) {
+        let about = |waited: &Waiting| {
             waited
                 .woke
                 .report
                 .as_ref()
-                .is_none_or(|reported| reported.id != id)
-        });
-        if waiting.len() != before {
+                .is_some_and(|reported| reported.id == id)
+        };
+        let before =
+            self.kept.pending.len() + self.kept.waiting.values().map(Vec::len).sum::<usize>();
+        self.kept.pending.retain(|pending| !about(&pending.waiting));
+        for waiting in self.kept.waiting.values_mut() {
+            waiting.retain(|waited| !about(waited));
+        }
+        let after =
+            self.kept.pending.len() + self.kept.waiting.values().map(Vec::len).sum::<usize>();
+        if after != before {
             self.changed = true;
         }
     }
 
-    /// Wakes `wake`'s role for one of its items at `now`, or keeps it for the next holder;
-    /// for a tool's new report, the role's card in the agents' room too, saying whether it
-    /// woke the holder or waits ([`zirc_proto::inbound::card`]).
+    /// Wakes one holder of `wake`'s job for one of its items at `now`, or keeps it for the
+    /// first to sit; for a tool's new report, a card in the agents' room too, from whoever
+    /// takes it, saying whether it woke them or waits ([`zirc_proto::inbound::card`]).
     pub fn reported(&mut self, wake: &crate::items::Wake, now: u64) -> Vec<Out> {
-        let mut outs = self.wake(&wake.role, wake.woke(), &wake.text(), now);
+        let repository = wake.item.report.repository.as_deref();
+        let mut outs = self.wake_job(&wake.role, repository, wake.woke(), &wake.text(), now);
         if wake.reminder || wake.item.report.tool.is_none() {
             return outs;
         }
-        let Some(role) = self.kept.listing.role(&wake.role).cloned() else {
+        let woken = outs.first().map(|out| out.role.clone());
+        let held = woken.is_some();
+        let Some(role) = woken
+            .or_else(|| self.speaker(&wake.role, repository))
+            .and_then(|name| self.role(&name).cloned())
+        else {
             return outs;
         };
-        let held = self.holder(&role.name, now).is_some();
         outs.push(Out {
             role: role.name.clone(),
             to: zirc_proto::AGENTS_CHANNEL.to_owned(),
             message: Message {
-                repo: Some(role.repository.clone()),
+                repo: repo_of(&role),
                 ..Message::new(
                     &role.name,
                     zirc_proto::inbound::card_event(&wake.item, held),
@@ -493,7 +811,7 @@ impl Brain {
             return Vec::new();
         }
         let mut outs = Vec::new();
-        for role in self.kept.listing.roles.clone() {
+        for role in self.roles.clone() {
             let name = role.name.clone();
             // Held once settled: the lease model gives a want its turn only after SETTLE.
             let now_held = self.holder(&name, now);
@@ -549,6 +867,9 @@ impl Brain {
             }
             self.changed = true;
         }
+        if !self.kept.pending.is_empty() {
+            outs.extend(self.deliver_pending(now));
+        }
         outs
     }
 
@@ -564,7 +885,7 @@ impl Brain {
             role: role.name.clone(),
             to: zirc_proto::AGENTS_CHANNEL.to_owned(),
             message: Message {
-                repo: Some(role.repository.clone()),
+                repo: repo_of(role),
                 ..Message::new(&role.name, change.event())
             },
         }
@@ -580,7 +901,7 @@ impl Brain {
         text: String,
         now: u64,
     ) -> Vec<Out> {
-        let Some(definition) = self.kept.listing.role(role).cloned() else {
+        let Some(definition) = self.role(role).cloned() else {
             return Vec::new();
         };
         // The holder, speaking as the role, or saying it woke for a person's word to the role
@@ -605,7 +926,7 @@ impl Brain {
                                 role: definition.name.clone(),
                                 to: to.to_owned(),
                                 message: Message {
-                                    repo: Some(definition.repository.clone()),
+                                    repo: repo_of(&definition),
                                     ..message.clone()
                                 },
                             }),
@@ -666,7 +987,7 @@ impl Brain {
                 name: message.name.clone(),
                 tool: message.tool.clone(),
                 avatar: message.avatar.clone(),
-                repo: Some(role.repository.clone()),
+                repo: repo_of(role),
                 ..Message::new(
                     &message.session,
                     Event::Text {
@@ -705,7 +1026,8 @@ impl Brain {
                 name: &state.name,
                 level: state.level,
             };
-            return self.triggered(&happened, &woke, now);
+            let repository = about(message).or_else(|| named(&state.repo));
+            return self.triggered(&happened, &woke, repository.as_deref(), now);
         }
         if let Some(Event::Custom { kind, data, .. }) = event
             && kind == zirc_proto::ci::LANDING_KIND
@@ -722,7 +1044,12 @@ impl Brain {
                 ..Woke::new(What::Landed, By::Ci)
             };
             let changed = data.changed;
-            return self.triggered(&Happened::Landed { changed: &changed }, &woke, now);
+            return self.triggered(
+                &Happened::Landed { changed: &changed },
+                &woke,
+                about(message).as_deref(),
+                now,
+            );
         }
         // A person's or an integration's words, never an agent's.
         if !matches!(sender, Sender::Person | Sender::Integration) {
@@ -744,26 +1071,56 @@ impl Brain {
             line: id,
             ..Woke::new(What::Posted, by)
         };
-        self.triggered(&Happened::Said { text: words }, &woke, now)
+        self.triggered(
+            &Happened::Said { text: words },
+            &woke,
+            about(message).as_deref(),
+            now,
+        )
     }
 
-    /// Wakes each role with a trigger `happened` matches.
-    fn triggered(&mut self, happened: &Happened<'_>, woke: &Woke, now: u64) -> Vec<Out> {
+    /// Wakes one holder of each held job with a trigger `happened` matches, which is about
+    /// `repository` or about none.
+    fn triggered(
+        &mut self,
+        happened: &Happened<'_>,
+        woke: &Woke,
+        repository: Option<&str>,
+        now: u64,
+    ) -> Vec<Out> {
         let matched: Vec<(String, String)> = self
-            .kept
-            .listing
-            .roles
+            .held_jobs()
             .iter()
-            .filter_map(|role| {
-                let trigger = role.triggers.iter().find(|t| t.matches(happened))?;
-                Some((role.name.clone(), trigger.words()))
+            .filter_map(|job| {
+                let trigger = job.triggers.iter().find(|t| t.matches(happened))?;
+                Some((job.name.clone(), trigger.words()))
             })
             .collect();
         matched
             .into_iter()
-            .flat_map(|(role, words)| self.wake(&role, woke.clone(), &words, now))
+            .flat_map(|(job, words)| self.wake_job(&job, repository, woke.clone(), &words, now))
             .collect()
     }
+}
+
+/// The repository `role` works in, as a line it says is about; none before a session has sat
+/// at its desk.
+fn repo_of(role: &Definition) -> Option<String> {
+    named(&role.repository)
+}
+
+/// The repository `said` names, by name as zirc spells it, where it names one: a state names
+/// it as its channel was (`#monorepo`).
+fn named(said: &str) -> Option<String> {
+    let name = said.trim().trim_start_matches('#');
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+/// The repository `message` is about, where it says one.
+fn about(message: Option<&Message>) -> Option<String> {
+    message
+        .and_then(|message| message.repo.as_deref())
+        .and_then(named)
 }
 
 /// Role `role`'s nick waking `holder` with `woke` and `text`, which happened `at`.
@@ -820,12 +1177,7 @@ impl Roles {
     #[must_use]
     pub fn beside(history: &Path) -> (Self, mpsc::UnboundedReceiver<Vec<Out>>) {
         let brain = Brain::new(kept(history), crate::now_ms());
-        let names = brain
-            .listing()
-            .roles
-            .iter()
-            .map(|r| r.name.clone())
-            .collect();
+        let names = brain.roles().iter().map(|r| r.name.clone()).collect();
         let (outs, said) = mpsc::unbounded_channel();
         (
             Self {
@@ -858,82 +1210,130 @@ impl Roles {
         self.with(|brain| (brain.standing(crate::now_ms()), Vec::new()))
     }
 
-    /// Takes zirc.dev's word for the roles.
+    /// Runs `f` on the brain for what it has the nicks say, or why it won't, then connects
+    /// a nick for each coworker there now is.
+    fn changed<T>(
+        &self,
+        f: impl FnOnce(&mut Brain) -> Result<(T, Vec<Out>), String>,
+    ) -> Result<T, String> {
+        let (answer, names) = self.with(|brain| match f(brain) {
+            Ok((answer, outs)) => {
+                let names = brain.roles().iter().map(|r| r.name.clone()).collect();
+                ((Ok(answer), Some(names)), outs)
+            }
+            Err(why) => ((Err(why), None), Vec::new()),
+        });
+        if let Some(names) = names {
+            self.names
+                .send_if_modified(|current: &mut BTreeSet<String>| {
+                    let modified = *current != names;
+                    *current = names;
+                    modified
+                });
+        }
+        answer
+    }
+
+    /// Takes zirc.dev's word for the roles of before ([`Brain::set_listing`]).
     ///
     /// # Errors
     ///
     /// Why it won't do.
     pub fn set_listing(&self, listing: Listing) -> Result<(), String> {
-        let names = listing.roles.iter().map(|r| r.name.clone()).collect();
-        self.with(|brain| (brain.set_listing(listing), Vec::new()))?;
-        self.names.send_replace(names);
-        Ok(())
+        self.changed(|brain| Ok(((), brain.set_listing(listing, crate::now_ms())?)))
     }
 
-    /// Wakes `role`'s holder with `woke` and `text`, or keeps it for the next one: what a
-    /// report does, say.
-    pub fn wake(&self, role: &str, woke: Woke, text: &str) {
-        self.with(|brain| ((), brain.wake(role, woke, text, crate::now_ms())));
+    /// Takes zirc.dev's word for the staff ([`Brain::set_staff`]).
+    ///
+    /// # Errors
+    ///
+    /// Why it won't do.
+    pub fn set_staff(&self, given: Given) -> Result<(), String> {
+        self.changed(|brain| Ok(((), brain.set_staff(given, crate::now_ms())?)))
     }
 
-    /// The signing secrets of role `role`'s address, by tool, when `secret` opens it
-    /// ([`Listing::opens`]); `None` when it doesn't.
+    /// Sits a session at coworker `name`'s desk for the first time, in a checkout of
+    /// `repository` ([`Brain::sit`]).
+    ///
+    /// # Errors
+    ///
+    /// Why it can't, in words for the session.
+    pub fn sit(&self, name: &str, repository: &str) -> Result<Definition, String> {
+        self.changed(|brain| brain.sit(name, repository, crate::now_ms()))
+    }
+
+    /// Wakes one holder of `job` with `woke` and `text`, about `repository` or none, or
+    /// keeps it for the first to sit ([`Brain::wake_job`]): what a tool's post does, say.
+    pub fn wake_job(&self, job: &str, repository: Option<&str>, woke: Woke, text: &str) {
+        self.with(|brain| {
+            (
+                (),
+                brain.wake_job(job, repository, woke, text, crate::now_ms()),
+            )
+        });
+    }
+
+    /// The signing secrets of job `job`'s address, by tool, when `secret` opens it
+    /// ([`Brain::opened`]); `None` when it doesn't.
     #[must_use]
     pub fn opened(
         &self,
-        role: &str,
+        job: &str,
         secret: &str,
     ) -> Option<BTreeMap<zirc_proto::inbound::Tool, String>> {
-        self.with(|brain| {
-            let listing = brain.listing();
-            let signing = listing.opens(role, secret).then(|| {
-                listing
-                    .addresses
-                    .iter()
-                    .find(|address| address.role == role)
-                    .map(|address| address.signing.clone())
-                    .unwrap_or_default()
-            });
-            (signing, Vec::new())
+        self.with(|brain| (brain.opened(job, secret), Vec::new()))
+    }
+
+    /// Says `message` in `#ops` for `job` about `repository`, from a coworker's nick
+    /// ([`Brain::speaker`]): whether there was one to say it.
+    fn say_in_ops(
+        &self,
+        job: &str,
+        repository: Option<&str>,
+        message: impl FnOnce(&str) -> Message,
+    ) -> bool {
+        let Some(nick) = self.with(|brain| (brain.speaker(job, repository), Vec::new())) else {
+            return false;
+        };
+        let out = Out {
+            to: zirc_proto::state::CHANNEL.to_owned(),
+            message: message(&nick),
+            role: nick,
+        };
+        self.outs.send(vec![out]).is_ok()
+    }
+
+    /// Has a coworker's nick say `report` in `#ops`, where its job's items take it
+    /// ([`crate::items`]): whether there was one to say it.
+    #[must_use]
+    pub fn report(&self, report: &zirc_proto::role_report::RoleReport) -> bool {
+        self.say_in_ops(&report.role, report.repository.as_deref(), |nick| Message {
+            // Its kind's level, said by the sender (the user's choice, 25 Nov 2026).
+            level: Some(report.kind.level()),
+            ..Message::new(nick, report.event())
         })
     }
 
-    /// Has role `role`'s nick say `report` in `#ops`, where its items take it
-    /// ([`crate::items`]).
-    pub fn report(&self, report: &zirc_proto::role_report::RoleReport) {
-        let out = Out {
-            role: report.role.clone(),
-            to: zirc_proto::state::CHANNEL.to_owned(),
-            // Its kind's level, said by the sender (the user's choice, 25 Nov 2026).
-            message: Message {
-                level: Some(report.kind.level()),
-                ..Message::new(&report.role, report.event())
-            },
-        };
-        let _ = self.outs.send(vec![out]);
-    }
-
-    /// Has the role's nick say `closing` in `#ops`, where its items take it.
+    /// Has a coworker's nick say `closing` in `#ops`, where its job's items take it.
     pub fn close(&self, closing: &zirc_proto::role_report::Closing) {
-        let out = Out {
-            role: closing.role.clone(),
-            to: zirc_proto::state::CHANNEL.to_owned(),
-            message: Message::new(&closing.role, closing.event()),
-        };
-        let _ = self.outs.send(vec![out]);
+        let said = self.say_in_ops(&closing.role, None, |nick| {
+            Message::new(nick, closing.event())
+        });
+        if !said {
+            info!("a job's item closed with no coworker to say so: left open");
+        }
     }
 
-    /// Wakes a role's holder for one of its items, or keeps it for the next: and for a tool's
-    /// new report, has the role's nick say its card in the agents' room.
+    /// Wakes one holder of a job for one of its items, or keeps it for the first to sit: and
+    /// for a tool's new report, has a nick say its card in the agents' room.
     pub fn reported(&self, wake: &crate::items::Wake) {
         self.with(|brain| ((), brain.reported(wake, crate::now_ms())));
     }
 
-    /// Forgets what waits for `role`'s next holder about its item `id`, which closed
-    /// ([`Brain::drop_waiting`]).
-    pub fn drop_waiting(&self, role: &str, id: &str) {
+    /// Forgets what waits about the item `id`, which closed ([`Brain::drop_waiting`]).
+    pub fn drop_waiting(&self, id: &str) {
         self.with(|brain| {
-            brain.drop_waiting(role, id);
+            brain.drop_waiting(id);
             ((), Vec::new())
         });
     }

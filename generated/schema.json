@@ -113,7 +113,14 @@
       "properties": {
         "role": {
           "type": "string",
-          "description": "The role it's for, such as `fixer`."
+          "description": "The job it's for, such as `fixer`: whoever holds that job takes it\n([`crate::coworkers::Staff::takers`]). Named `role` since a role was its own job."
+        },
+        "repository": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The repository it's about, by name as zirc spells it, where its sender says one: the\njob's holder there takes it. Without, the repository its line was said for\n([`crate::Message::repo`]), or none."
         },
         "kind": {
           "$ref": "#/$defs/Subject",
@@ -3190,7 +3197,7 @@
         },
         "repository": {
           "type": "string",
-          "description": "Its repository."
+          "description": "Its repository; empty for a coworker no session has sat at yet\n([`crate::coworkers::Coworker::repository`])."
         },
         "holder": {
           "anyOf": [
@@ -3339,6 +3346,111 @@
       ],
       "description": "A role's webhook address ([`INBOUND_PATH`]) as its server is given it: the SHA-256 of its\nsecret, in lowercase hex, never the secret, which zirc.dev keeps for the role's admins. A\nnew secret (Rotate, on zirc.dev) is a new listing, which the server takes at once, and the\nold one opens nothing from then on."
     },
+    "Staff": {
+      "type": "object",
+      "properties": {
+        "coworkers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Coworker"
+          },
+          "description": "Every coworker, in the order they were added.",
+          "default": []
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Job"
+          },
+          "description": "Every job, held or not.",
+          "default": []
+        }
+      },
+      "description": "An organisation's coworkers and the jobs they hold."
+    },
+    "Coworker": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Its name, which is its nick on the server: unique in the organisation, as whoever\nadded it typed it."
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The jobs it holds, by name: none, or as the product offers, [`JOBS_OFFERED`]."
+        },
+        "repository": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The repository it works in, by name as zirc spells it: set when a session first sits\nat its desk, from the checkout that session is in. None until then."
+        },
+        "picture": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its picture, one of [`crate::AGENT_AVATARS`]; without one, the one its name tells."
+        },
+        "hue": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint16",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Its colour, a hue in degrees under 360, one of [`roles::HUES`] as zirc.dev offers\nthem; without one, its name's."
+        },
+        "added_by": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The account of the member who added it, who may change or remove it as an admin may\n(the user's choice, 27 Nov 2026). None for one that was a role before members could."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "description": "A named agent with a desk."
+    },
+    "Job": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Its name, unique among the organisation's jobs, which coworkers hold it by: `fixer`."
+        },
+        "brief": {
+          "type": "string",
+          "description": "What it does, given to whoever holds it."
+        },
+        "triggers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Trigger"
+          },
+          "description": "What wakes its holder, besides a direct message. A trigger this reader can't read is\nleft out ([`crate::lenient`])."
+        },
+        "reports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Subject"
+          },
+          "description": "The kinds of report it takes. A kind this reader doesn't know is left out\n([`crate::lenient`])."
+        }
+      },
+      "required": [
+        "name",
+        "brief"
+      ],
+      "description": "What a coworker does, and what wakes whoever holds it."
+    },
     "Standing": {
       "type": "object",
       "properties": {
@@ -3352,6 +3464,14 @@
             "$ref": "#/$defs/Seat"
           },
           "description": "Each role's seat, in the same order."
+        },
+        "staff": {
+          "$ref": "#/$defs/Staff",
+          "description": "The coworkers and jobs the roles are ([`crate::coworkers`]), each coworker's repository\nas the server knows it: the listing is every coworker as a role\n([`crate::coworkers::Staff::desks`]). Empty from a server older than it.",
+          "default": {
+            "coworkers": [],
+            "jobs": []
+          }
         }
       },
       "required": [

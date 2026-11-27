@@ -1,5 +1,7 @@
 //! A role's seat taken and left by this machine's sessions ([`zirc_proto::roles`]), and what
-//! comes to the holder from the role's nick.
+//! comes to the holder from the role's nick. A role here is a coworker as its desk stands
+//! ([`zirc_proto::coworkers`]): its seat is the coworker's desk, taken by the coworker's name,
+//! and the first session to sit there sets the coworker's repository, from its checkout.
 //!
 //! The seat is the lease [`roles::lease`], agreed as every lease is ([`zirc_core::leases`]):
 //! taken only when no session holds it, held as long as its session's watch lives (zircd
@@ -89,12 +91,22 @@ impl Daemon {
                 }
             );
         };
-        if repo != Some(definition.repository.as_str()) {
+        // A coworker nobody has sat at yet has no repository: this session's checkout sets it,
+        // once it's known the desk is free.
+        let unset = definition.repository.is_empty();
+        if unset && repo.is_none() {
             bail!(
-                "the {role} is taken in a checkout of {}: run this there",
-                definition.repository
+                "{role} works in the repository of whoever sits at its desk first: run this \
+                 in a checkout zirc watches"
             );
         }
+        if !unset && repo != Some(definition.repository.as_str()) {
+            bail!(
+                "{}",
+                zirc_proto::coworkers::works_elsewhere(role, &definition.repository)
+            );
+        }
+        let mut definition = definition.clone();
         let me = self.lease_nick()?;
         let now = now_ms();
         let name = roles::lease(role);
@@ -115,10 +127,13 @@ impl Daemon {
                 holder.session
             );
         }
+        if let (true, Some(repo)) = (unset, repo) {
+            definition = server.sit(role, repo).await.map_err(anyhow::Error::msg)?;
+        }
         if lease.holders.is_empty() && lease.waiting.is_empty() {
             self.want(&me, &name, session, leases::MAX_SECONDS, now);
         }
-        let seat = seat.cloned().unwrap_or_else(|| roles::Seat {
+        let mut seat = seat.cloned().unwrap_or_else(|| roles::Seat {
             role: role.to_owned(),
             repository: definition.repository.clone(),
             holder: None,
@@ -127,8 +142,9 @@ impl Daemon {
             wakes_on: definition.wakes_on(),
             woke_today: 0,
         });
+        seat.repository.clone_from(&definition.repository);
         Ok(Response::RoleTaken {
-            role: definition.clone(),
+            role: definition,
             seat,
         })
     }

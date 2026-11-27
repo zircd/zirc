@@ -278,9 +278,14 @@ pub async fn run(options: Options, api: Api, history: PathBuf) -> std::io::Resul
             roles.reported(&wake);
         },
         move |closed| {
-            closing.wake(&closed.role, closed.woke(), &closed.text());
+            closing.wake_job(
+                &closed.role,
+                closed.repository.as_deref(),
+                closed.woke(),
+                &closed.text(),
+            );
         },
-        move |role, id| ending.drop_waiting(role, id),
+        move |_job, id| ending.drop_waiting(id),
     ));
     // Ergo's logins: when the socket can't be had, passphrases still work, as Ergo checks
     // them itself when the sidecar doesn't answer, and everything else here goes on.
@@ -471,6 +476,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
             put(add_phone).delete(remove_phone),
         )
         .route("/v1/server", get(describe))
+        .route(zirc_proto::coworkers::ACCOUNTS_PATH, put(set_staff))
         .route(zirc_proto::role_report::ITEMS_PATH, get(role_items))
         .route(zirc_proto::inbound::HEARD_PATH, get(role_heard))
         .route("/v1/roles/{role}/heard/{tool}", delete(forget_heard))
@@ -623,22 +629,52 @@ async fn set_roles(
     State(ergo): State<Arc<Ergo>>,
     Json(listing): Json<zirc_proto::roles::Listing>,
 ) -> Response {
-    for role in &listing.roles {
-        if someones(&ergo, &role.name).await {
-            return error(
+    if let Some(refused) = someones_name(&ergo, listing.roles.iter().map(|r| &r.name), "role").await
+    {
+        return refused;
+    }
+    staff_set(ergo.clone(), ergo.roles.set_listing(listing))
+}
+
+/// `PUT /v1/staff`: the organisation's coworkers and jobs, whole
+/// ([`zirc_proto::coworkers::Given`]), as zirc.dev keeps them, in place of `PUT /v1/roles`.
+/// Refused when it breaks a rule, or a coworker is named as someone's account is: a
+/// coworker's nick is never a person's or a machine's.
+async fn set_staff(
+    State(ergo): State<Arc<Ergo>>,
+    Json(given): Json<zirc_proto::coworkers::Given>,
+) -> Response {
+    let names = given.staff.coworkers.iter().map(|c| &c.name);
+    if let Some(refused) = someones_name(&ergo, names, "coworker").await {
+        return refused;
+    }
+    staff_set(ergo.clone(), ergo.roles.set_staff(given))
+}
+
+/// The refusal when one of `names`, each a `what`'s, is someone's account here.
+async fn someones_name(
+    ergo: &Ergo,
+    names: impl Iterator<Item = &String>,
+    what: &str,
+) -> Option<Response> {
+    for name in names {
+        if someones(ergo, name).await {
+            return Some(error(
                 StatusCode::CONFLICT,
                 "taken",
-                format!(
-                    "{} is someone's name here: name the role another way",
-                    role.name
-                ),
-            );
+                format!("{name} is someone's name here: name the {what} another way"),
+            ));
         }
     }
-    match ergo.roles.set_listing(listing) {
+    None
+}
+
+/// The answer to zirc.dev's word for the staff, as it was `taken`.
+fn staff_set(ergo: Arc<Ergo>, taken: Result<(), String>) -> Response {
+    match taken {
         Ok(()) => {
-            // Apps hear a picture or colour picked as it's picked; a new role's nick isn't
-            // on yet, and is given its own as it connects (`spawn_roles`).
+            // Apps hear a picture or colour picked as it's picked; a new coworker's nick
+            // isn't on yet, and is given its own as it connects (`spawn_roles`).
             tokio::spawn(async move { say_role_looks(&ergo, None).await });
             StatusCode::NO_CONTENT.into_response()
         }
@@ -737,6 +773,7 @@ async fn roles_shown(State(ergo): State<Arc<Ergo>>) -> Response {
     drop(profiles);
     Json(zirc_proto::roles::StandingShown {
         listing: standing.listing,
+        staff: standing.staff,
         seats,
         reporters: reporters_heard(&ergo).await,
     })

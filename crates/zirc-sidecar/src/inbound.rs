@@ -1,5 +1,8 @@
 //! Tools reaching a role at its address ([`zirc_proto::inbound`]): `POST /in/<role>/<secret>`
-//! on the server's own host, so nothing a tool posts passes zirc.dev.
+//! on the server's own host, so nothing a tool posts passes zirc.dev. The address is a job's
+//! ([`zirc_proto::coworkers::Given::addresses`]), `<role>` being the job's name, as a role was
+//! its own job: whoever holds the job takes what's posted, and a tool isn't set up again when
+//! the job moves. "Role" below is that job.
 //!
 //! The secret opens the role's address when its digest is the one zirc.dev gave with the roles
 //! ([`zirc_proto::roles::Listing::opens`], compared in constant time); a rotated one stops at
@@ -276,9 +279,9 @@ pub fn take(
         })?;
     let outcome = match read {
         Read::Report(report) => {
-            if report.kind.in_ops() {
-                inbound.roles.report(&report);
-            } else {
+            // Said in `#ops` by a coworker's nick; with no coworker to say it, or for a kind
+            // never said there, straight to the job's items.
+            if !(report.kind.in_ops() && inbound.roles.report(&report)) {
                 let _ = inbound.items.send(report);
             }
             Outcome::Reported
@@ -294,7 +297,10 @@ pub fn take(
         Read::Test => Outcome::Test,
         Read::Ignored => Outcome::Ignored,
         Read::Message(text) => {
-            inbound.roles.wake(role, Woke::webhook(&text), &text);
+            // It names no repository: any of the job's holders takes it.
+            inbound
+                .roles
+                .wake_job(role, None, Woke::webhook(&text), &text);
             Outcome::Message
         }
     };

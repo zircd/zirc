@@ -1,5 +1,7 @@
 //! `zirc role` and `zirc roles`: a role's one seat taken, left and spoken from
-//! ([`zirc_proto::roles`]), and how the organisation's roles stand.
+//! ([`zirc_proto::roles`]), and how the organisation's roles stand. A role is a coworker as
+//! its desk stands ([`zirc_proto::coworkers`]), so `zirc desk` is `zirc role`, and `zirc desk
+//! take ada` sits a session at Ada's desk.
 
 use std::io::Write;
 use std::path::Path;
@@ -16,13 +18,14 @@ use crate::client::{ask, unexpected};
 // `zirc role`'s commands: their doc comments are their --help.
 #[derive(Debug, Subcommand)]
 pub(crate) enum RoleCommand {
-    /// Take a role's one seat, such as the fixer, in a checkout of its repository.
+    /// Sit at a coworker's desk, by its name, in a checkout of its repository.
     ///
-    /// Prints the role's brief: what it does is your job from now on. You hold it while your
-    /// watch runs; leaving it, or your session ending, frees it. Refused while another
-    /// session holds it.
+    /// Prints the coworker's job: what it does is your job from now on. You stay while your
+    /// watch runs; leaving, or your session ending, frees the desk. Refused while another
+    /// session sits there. The first session to sit at a new coworker's desk sets the
+    /// repository it works in, from the checkout this runs in.
     Take {
-        /// The role, such as fixer.
+        /// The coworker, such as ada, or a role, such as fixer.
         role: String,
         /// Your session. Defaults to $ZIRC_SESSION, then $USER.
         #[arg(long, env = "ZIRC_SESSION")]
@@ -69,7 +72,7 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
             let Response::RoleTaken { role, seat } = ask(socket, request).await? else {
                 return Err(unexpected());
             };
-            writeln!(out, "you're the {} in {}", role.name, role.repository)?;
+            writeln!(out, "{}", sat_words(&role.name, &role.repository))?;
             writeln!(out, "  ↳ brief: {}", role.brief.trim())?;
             writeln!(out, "  ↳ wakes on: {}", role.wakes_on().join("; "))?;
             if let Some(last) = &seat.last {
@@ -167,6 +170,11 @@ fn seat_of<'a>(standing: &'a Standing, role: &str) -> Result<&'a Seat> {
         .iter()
         .find(|seat| seat.role == role)
         .ok_or_else(|| anyhow::anyhow!("there's no {role} role: `{PROGRAM} roles` lists them"))
+}
+
+/// What a session is told once it sits at coworker `name`'s desk in `repository`.
+fn sat_words(name: &str, repository: &str) -> String {
+    format!("you're {name}, at your desk in {repository}")
 }
 
 /// Who held `role` last, and how to ask them.

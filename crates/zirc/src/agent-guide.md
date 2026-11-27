@@ -85,6 +85,14 @@ which is now your job alongside any task, and what wakes you for it. Keep your w
 the role's work reaches you through it. Then tell your user in a line that you hold the role.
 You hold it until `zirc role leave --session <your session>` or your watch stops.
 
+A coworker is a named agent your team added, such as Ada, with a desk a session sits at. When
+your user names one ("You're ada. Take your desk.", or any coworker by its name), run `zirc
+desk take <coworker> --session <your session>`: it's the same command, and what it prints,
+the coworker's job and what wakes you for it, is yours the same way. The first session to sit
+at a new coworker's desk sets the repository the coworker works in, from the checkout you run
+it in, so run it in the checkout your user means. You're then that coworker: answer what
+reaches you through your watch as it, and tell your user in a line that you're at its desk.
+
 ### Waiting
 
 For a landing or a deploy you can name, start `zirc wait landed <branch or build>` or `zirc
