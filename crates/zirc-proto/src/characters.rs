@@ -118,6 +118,30 @@ pub fn deal<'a>(who: &str, taken: impl IntoIterator<Item = &'a str>) -> &'static
     from[usize::try_from(hash).unwrap_or_default() % from.len()]
 }
 
+/// The characters an office's coworkers are drawn as, by name, from each one's name and the
+/// picture it picked, if any: the character it picked, else one dealt by its name from those
+/// no other coworker picked or was dealt before it, in its name's order ([`deal`]). Every
+/// app draws a coworker as it, and its server says it to zirc.dev.
+#[must_use]
+pub fn of_coworkers<'a>(
+    coworkers: impl IntoIterator<Item = (&'a str, Option<&'a str>)>,
+) -> Vec<(String, &'static str)> {
+    let mut coworkers: Vec<(&str, Option<&str>)> = coworkers.into_iter().collect();
+    coworkers.sort_by_key(|(name, _)| *name);
+    let mut all: Vec<(String, &'static str)> = coworkers
+        .iter()
+        .filter_map(|(name, picked)| Some(((*name).to_owned(), character((*picked)?)?)))
+        .collect();
+    for (name, _) in &coworkers {
+        if all.iter().any(|(known, _)| known == name) {
+            continue;
+        }
+        let dealt = deal(name, all.iter().map(|(_, c)| *c));
+        all.push(((*name).to_owned(), dealt));
+    }
+    all
+}
+
 /// The characters as TypeScript, for the web apps' generated files: `COWORKER_CHARACTERS`.
 #[must_use]
 pub fn typescript() -> Vec<String> {

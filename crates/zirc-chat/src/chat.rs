@@ -201,7 +201,7 @@ pub use rich::{
     breakable_words, chip_words, each_span, link_label, map_spans, media_link, rich, tables_in,
     unchipped,
 };
-pub use roles::{ROLES_SECTION, RoleMember, role_look, vacant_of};
+pub use roles::{ROLES_SECTION, RoleMember, role_hue, vacant_of};
 pub use row_menu::{LevelChoice, MuteChoice, RowMenu};
 pub use run::{Here, Ran};
 pub use scroll::{SCROLL_RULES, ScrollRules, Splice, splices};
@@ -628,7 +628,7 @@ pub struct Chat {
     session_names: HashMap<String, String>,
     /// Agent session id → the tool it runs in, as its messages say (`claude-code`).
     session_tools: HashMap<String, String>,
-    /// Agent session id → the gallery picture it chose, as its messages say (`rocket`).
+    /// Agent session id → the picture it goes by, as its messages say (`char-07`).
     session_pictures: HashMap<String, String>,
     /// Agent session id → its title card, as its machine last said it, and when
     /// ([`Chat::agent_card`]).

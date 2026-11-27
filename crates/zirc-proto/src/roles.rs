@@ -384,7 +384,8 @@ pub struct SeatShown {
     /// The seat.
     #[serde(flatten)]
     pub seat: Seat,
-    /// Its picture, one of [`crate::AGENT_AVATARS`] ([`crate::agent_picture`]).
+    /// Its character, one of [`crate::characters::CHARACTERS`], as every app draws it
+    /// ([`crate::characters::of_coworkers`]).
     pub picture: String,
     /// Its colour, a hue in degrees, as every app colours its nick.
     pub hue: u16,

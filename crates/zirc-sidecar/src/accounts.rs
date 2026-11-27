@@ -725,6 +725,14 @@ async fn roles_shown(State(ergo): State<Arc<Ergo>>) -> Response {
             &holder.machine,
         ))
     };
+    // Each coworker's character, as every app draws it.
+    let characters = zirc_proto::characters::of_coworkers(standing.seats.iter().map(|seat| {
+        let picked = standing.listing.role(&seat.role);
+        (
+            seat.role.as_str(),
+            picked.and_then(|role| role.picture.as_deref()),
+        )
+    }));
     let seats = standing
         .seats
         .into_iter()
@@ -741,7 +749,11 @@ async fn roles_shown(State(ergo): State<Arc<Ergo>>) -> Response {
                 .role(&seat.role)
                 .map(zirc_proto::roles::Definition::look)
                 .unwrap_or_default();
-            let (picture, hue) = zirc_chat::chat::role_look(&seat.role, &picked);
+            let hue = zirc_chat::chat::role_hue(&seat.role, &picked);
+            let picture = characters
+                .iter()
+                .find(|(name, _)| *name == seat.role)
+                .map_or_else(String::new, |(_, character)| (*character).to_owned());
             zirc_proto::roles::SeatShown {
                 picture,
                 hue,

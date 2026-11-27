@@ -15,7 +15,6 @@ zirc_rust_library(
         ":fonts",
     ] + glob([
         "art/android/**",
-        "art/avatars/*.svg",
         "art/characters/*-bust-256.png",
         "art/characters/*-full-512.png",
         "glyphs/*.svg",
@@ -99,17 +98,6 @@ filegroup(
     srcs = glob(["art/social-card-*"]),
 )
 
-# The agent avatar gallery's pictures, art/avatars/png/<id>-<size>.png, white on nothing,
-# for apps to draw on a session's colour: the phones and the Mac app take the 64 and 128 px
-# ones (oss/apps/ios/bazel/app.bzl, oss/apps/mac/BUILD.bazel).
-filegroup(
-    name = "agent_avatars_phone",
-    srcs = glob([
-        "art/avatars/png/*-64.png",
-        "art/avatars/png/*-128.png",
-    ]),
-)
-
 # The coworker characters' stills on nothing, for apps to draw on a coworker's ground:
 # art/characters/<id>-bust-<side>.png, filling its rounded square, and <id>-full-<width>.png,
 # for the office's cards and the hiring gallery (zirc-proto's characters::CHARACTERS). The
@@ -126,13 +114,6 @@ filegroup(
 filegroup(
     name = "characters",
     srcs = glob(["art/characters/*.png"]),
-)
-
-# The agent avatars' gallery, art/avatars/<id>.svg: white line drawings an app draws on a
-# session's colour, by the id an agent session picks (zirc-proto's AGENT_AVATARS).
-filegroup(
-    name = "avatars",
-    srcs = glob(["art/avatars/*.svg"]),
 )
 
 # Small line icons for controls, every app's by name (zirc_theme::glyphs): glyphs/<name>.svg,

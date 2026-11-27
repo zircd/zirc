@@ -21,8 +21,7 @@
 //! role's is ([`crate::roles::lease`] of its name), so a server and a machine of either age
 //! agree who sits there.
 //!
-//! The jobs zirc.dev offers ready-made are [`JobKind`]s: how each is pictured and what it says
-//! of itself, here so every app says it alike. What a ready-made job asks before it's added
+//! The jobs zirc.dev offers ready-made are [`JobKind`]s: what each says of itself, here so every app says it alike. What a ready-made job asks before it's added
 //! is still zirc.dev's (`web/src/lib/role-templates.ts`).
 
 use schemars::JsonSchema;
@@ -187,13 +186,6 @@ impl JobKind {
             Self::Reviewer => "Reviewer",
             Self::Release => "Release",
         }
-    }
-
-    /// The picture a coworker doing it starts with, one of [`crate::AGENT_AVATARS`]: the one
-    /// its name tells, as any agent's is ([`crate::agent_picture`]).
-    #[must_use]
-    pub fn picture(self) -> &'static str {
-        crate::agent_picture(None, Some(self.as_str()))
     }
 
     /// What it does, in a line.
@@ -673,13 +665,12 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const BADGE_HOT_DESK = {HOT_DESK:?};"),
         format!("const BADGE_HANDLE = {BADGE_HANDLE:?};"),
         format!(
-            "const JOB_KINDS: readonly {{ id: JobKind; label: string; picture: string; line: string; wakes: string; tools: readonly InboundTool[] }}[] = [{}];",
+            "const JOB_KINDS: readonly {{ id: JobKind; label: string; line: string; wakes: string; tools: readonly InboundTool[] }}[] = [{}];",
             JobKind::ALL
                 .map(|kind| format!(
-                    "{{ id: {:?}, label: {:?}, picture: {:?}, line: {:?}, wakes: {:?}, tools: [{}] }}",
+                    "{{ id: {:?}, label: {:?}, line: {:?}, wakes: {:?}, tools: [{}] }}",
                     kind.as_str(),
                     kind.label(),
-                    kind.picture(),
                     kind.line(),
                     kind.wakes(),
                     kind.tools()
@@ -824,14 +815,8 @@ mod tests {
     }
 
     #[test]
-    fn every_ready_made_job_is_pictured_and_named_as_a_job_may_be() {
+    fn every_ready_made_job_is_named_as_a_job_may_be() {
         for kind in JobKind::ALL {
-            assert!(
-                crate::AGENT_AVATARS
-                    .iter()
-                    .any(|(id, _)| *id == kind.picture()),
-                "{kind:?}"
-            );
             assert_eq!(JobKind::of_name(kind.as_str()), Some(kind));
             assert!(
                 crate::names::job_problem(kind.as_str()).is_none(),
@@ -849,8 +834,6 @@ mod tests {
             "master breaking, a flaky test, a new warning"
         );
         assert_eq!(JobKind::Triage.tools(), [Tool::Github, Tool::Linear]);
-        assert_eq!(JobKind::Oncall.picture(), "ops");
-        assert_eq!(JobKind::Triage.picture(), "coordinator");
     }
 
     #[test]

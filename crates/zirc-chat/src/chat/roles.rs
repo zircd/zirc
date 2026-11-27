@@ -45,16 +45,11 @@ impl RoleMember {
     }
 }
 
-/// The picture and the colour, a hue in degrees, the role named `role` is drawn with
-/// everywhere, in every app as on zirc.dev's Roles tab: what its admins `picked`, else the
-/// gem its name tells ([`zirc_proto::agent_picture`]) and its name's colour
-/// ([`nick_degrees`]).
+/// The colour, a hue in degrees, the coworker named `role` is drawn on everywhere, in every
+/// app as on zirc.dev: what was `picked`, else its name's ([`nick_degrees`]).
 #[must_use]
-pub fn role_look(role: &str, picked: &Look) -> (String, u16) {
-    (
-        picked.picture_of(role).to_owned(),
-        picked.hue.unwrap_or_else(|| nick_degrees(role)),
-    )
+pub fn role_hue(role: &str, picked: &Look) -> u16 {
+    picked.hue.unwrap_or_else(|| nick_degrees(role))
 }
 
 /// What `event` says of a role's seat, when it's one of a role's own lines.
@@ -255,35 +250,19 @@ impl Chat {
         };
     }
 
-    /// The characters the office's coworkers are drawn as, by name: the one each picked, else
-    /// one dealt by its name from those no other coworker picked or was dealt before it, in
-    /// its name's order ([`zirc_proto::characters::deal`]).
+    /// The characters the office's coworkers are drawn as, by name
+    /// ([`zirc_proto::characters::of_coworkers`]).
     fn coworker_characters(&self) -> Vec<(String, &'static str)> {
         let mut names: Vec<&String> = self.roles.iter().chain(self.role_looks.keys()).collect();
         names.sort();
         names.dedup();
-        let picked: Vec<(&String, &'static str)> = names
-            .iter()
-            .filter_map(|name| {
-                let look = self.role_looks.get(*name)?;
-                Some((
-                    *name,
-                    zirc_proto::characters::character(look.picture.as_deref()?)?,
-                ))
-            })
-            .collect();
-        let mut all: Vec<(String, &'static str)> = picked
-            .iter()
-            .map(|(name, character)| ((*name).clone(), *character))
-            .collect();
-        for name in names {
-            if all.iter().any(|(known, _)| known == name) {
-                continue;
-            }
-            let dealt = zirc_proto::characters::deal(name, all.iter().map(|(_, c)| *c));
-            all.push((name.clone(), dealt));
-        }
-        all
+        zirc_proto::characters::of_coworkers(names.into_iter().map(|name| {
+            let picked = self
+                .role_looks
+                .get(name)
+                .and_then(|look| look.picture.as_deref());
+            (name.as_str(), picked)
+        }))
     }
 
     /// The character the coworker `nick` is drawn as ([`Chat::coworker_characters`]).
@@ -304,8 +283,8 @@ impl Chat {
         zirc_proto::characters::deal(session, self.coworker_characters().iter().map(|(_, c)| *c))
     }
 
-    /// The role `nick`'s face: its gem and its colour, as its admins picked them or as its
-    /// name tells ([`role_look`]), and its holder's tool's. A role is nobody's, held or
+    /// The role `nick`'s face: its character and its colour, as picked or as its name tells
+    /// ([`Chat::coworker_characters`], [`role_hue`]), and its holder's tool's. A role is nobody's, held or
     /// vacant, so it has no owner and every app draws no owner's face on it (the user's
     /// choice, 26 Nov 2026: a vacant role's was a blank disc).
     #[must_use]
@@ -315,15 +294,8 @@ impl Chat {
             .get(&fold(nick))
             .cloned()
             .unwrap_or_default();
-        let (picture, hue) = role_look(&fold(nick), &picked);
-        // Drawn as its character, picked or dealt, with its name's bot behind for an app
-        // that draws no characters.
+        let hue = role_hue(&fold(nick), &picked);
         let character = Some(self.coworker_character(nick).to_owned());
-        let picture = if zirc_proto::characters::character(&picture).is_some() {
-            zirc_proto::agent_picture(Some(&fold(nick)), Some(&fold(nick))).to_owned()
-        } else {
-            picture
-        };
         let holder = self.role_seat(nick).and_then(|seat| seat.holder);
         Face::Agent {
             tool: holder.and_then(|holder| holder.session.tool),
@@ -333,7 +305,6 @@ impl Chat {
             owner_hue: 0,
             owner_photo: None,
             session: None,
-            picture: Some(picture),
             ground: Some(hue),
             character,
         }
@@ -462,7 +433,13 @@ mod tests {
             (members[0].line.as_str(), members[0].vacant),
             ("Desk empty", true)
         );
-        assert!(matches!(&members[0].face, Face::Agent { picture: Some(p), .. } if p == "fixer"));
+        assert!(matches!(
+            &members[0].face,
+            Face::Agent {
+                character: Some(_),
+                ..
+            }
+        ));
         // Vacant, its dot is away's ring, though its nick is always there.
         assert_eq!(
             chat.standing("fixer").presence(),
@@ -521,30 +498,25 @@ mod tests {
         };
         let look = |chat: &Chat| match chat.role_face("Fixer") {
             Face::Agent {
-                picture: Some(picture),
+                character: Some(character),
                 hue,
                 ground,
                 ..
-            } => (picture, hue, ground),
+            } => (character, hue, ground),
             other => panic!("{other:?}"),
         };
         let named = nick_degrees("fixer");
-        assert_eq!(look(&chat), ("fixer".to_owned(), named, Some(named)));
-        // A colour alone keeps its name's gem; a picture this reader can't draw, too.
+        let dealt = zirc_proto::characters::deal("fixer", []).to_owned();
+        assert_eq!(look(&chat), (dealt.clone(), named, Some(named)));
+        // A colour alone keeps its dealt character; a picture that's no character, too.
         said(&mut chat, &[r#"{"picture":"hologram","hue":210}"#]);
-        assert_eq!(look(&chat), ("fixer".to_owned(), 210, Some(210)));
-        said(&mut chat, &[r#"{"picture":"designer","hue":30}"#]);
-        assert_eq!(look(&chat), ("designer".to_owned(), 30, Some(30)));
-        // A coworker's character: drawn as it, its name's bot behind for the terminal.
+        assert_eq!(look(&chat), (dealt.clone(), 210, Some(210)));
+        // A coworker's character: drawn as it.
         said(&mut chat, &[r#"{"picture":"char-07","hue":60}"#]);
-        assert!(matches!(
-            chat.role_face("Fixer"),
-            Face::Agent { picture: Some(picture), character: Some(character), ground: Some(60), .. }
-                if picture == "fixer" && character == "char-07"
-        ));
+        assert_eq!(look(&chat), ("char-07".to_owned(), 60, Some(60)));
         // The key deleted: nothing's picked any more.
         said(&mut chat, &[]);
-        assert_eq!(look(&chat), ("fixer".to_owned(), named, Some(named)));
+        assert_eq!(look(&chat), (dealt, named, Some(named)));
     }
 
     /// The entry in `#api` saying `body`.

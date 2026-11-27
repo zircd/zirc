@@ -1600,10 +1600,6 @@ pub fn frame_typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const ZIRC_TAG = {TAG:?};"),
         format!("const ZIRC_VERSION = {VERSION};"),
         format!("const ZIRC_MAX_BODY_BYTES = {MAX_BODY_BYTES};"),
-        format!(
-            "const AGENT_AVATARS: readonly string[] = [{}];",
-            AGENT_AVATARS.map(|(id, _)| format!("{id:?}")).join(", ")
-        ),
         format!("const SESSION_CARD_KIND = {:?};", session::KIND),
         format!(
             "const TOOL_NAMES: Readonly<Record<string, string>> = {{ {} }};",

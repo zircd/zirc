@@ -151,51 +151,6 @@ pub mod icons {
     pub const IOS: &[u8] = include_bytes!("../art/icons/ios/zirc-1024.png");
 }
 
-/// The agent avatars, the bots an agent session is drawn as by its role (zirc-proto's
-/// `AGENT_AVATARS`), as SVGs in white on nothing, for apps to draw on the session's colour:
-/// `art/avatars/<id>.svg`, made by zirc-theme-art.
-pub mod avatars {
-    /// Each picture by its id, in the gallery's order. The Android app names them again, as
-    /// a genrule must (`AGENT_AVATARS` in oss/apps/android/BUILD.bazel), and checks they
-    /// match: change both together.
-    pub const SVGS: [(&str, &[u8]); 17] = [
-        ("agent", include_bytes!("../art/avatars/agent.svg")),
-        ("reviewer", include_bytes!("../art/avatars/reviewer.svg")),
-        ("fixer", include_bytes!("../art/avatars/fixer.svg")),
-        ("builder", include_bytes!("../art/avatars/builder.svg")),
-        ("tester", include_bytes!("../art/avatars/tester.svg")),
-        ("docs", include_bytes!("../art/avatars/docs.svg")),
-        ("designer", include_bytes!("../art/avatars/designer.svg")),
-        ("ops", include_bytes!("../art/avatars/ops.svg")),
-        ("security", include_bytes!("../art/avatars/security.svg")),
-        ("data", include_bytes!("../art/avatars/data.svg")),
-        ("release", include_bytes!("../art/avatars/release.svg")),
-        (
-            "researcher",
-            include_bytes!("../art/avatars/researcher.svg"),
-        ),
-        (
-            "coordinator",
-            include_bytes!("../art/avatars/coordinator.svg"),
-        ),
-        ("frontend", include_bytes!("../art/avatars/frontend.svg")),
-        ("backend", include_bytes!("../art/avatars/backend.svg")),
-        ("mobile", include_bytes!("../art/avatars/mobile.svg")),
-        (
-            "performance",
-            include_bytes!("../art/avatars/performance.svg"),
-        ),
-    ];
-
-    /// The picture with id `id`, as an SVG: `None` for one the gallery hasn't.
-    #[must_use]
-    pub fn svg(id: &str) -> Option<&'static [u8]> {
-        SVGS.iter()
-            .find(|(known, _)| *known == id)
-            .map(|(_, svg)| *svg)
-    }
-}
-
 /// The coworker characters (zirc-proto's `characters::CHARACTERS`) as stills on nothing, for
 /// apps to draw on the coworker's ground ([`Character`]): `art/characters/<id>-bust-<side>.png`
 /// and `<id>-full-<width>.png`, made by zirc-theme-art. The phones and the web take the files.
@@ -946,9 +901,6 @@ pub struct Avatar {
     /// The corner of an avatar that isn't a person's, an agent's or an app's rounded square,
     /// as a share of its side: only people are round (the user's choice, 26 Nov 2026).
     pub corner: f32,
-    /// How much of its square an agent's picture takes, as a share of its side: the white
-    /// bot, in the middle of its colour.
-    pub picture: f32,
 }
 
 impl Avatar {
@@ -959,13 +911,12 @@ impl Avatar {
     }
 
     /// Its tokens as `:root`'s variables, each a percentage: `--zirc-avatar-saturation`,
-    /// `-lightness`, `-corner` and `-picture`.
+    /// `-lightness` and `-corner`.
     fn css(&self) -> String {
         [
             ("saturation", self.saturation),
             ("lightness", self.lightness),
             ("corner", self.corner),
-            ("picture", self.picture),
         ]
         .iter()
         .fold(String::new(), |mut css, (name, share)| {
