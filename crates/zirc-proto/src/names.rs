@@ -104,6 +104,8 @@ pub fn shown_name_too_long() -> String {
 /// What's wrong with `shown` as the name a coworker is shown by, `John`, if anything: one
 /// line of at most [`SHOWN_NAME_MAX`] characters that a nick can be made from
 /// ([`nick_base`]).
+/// zirc.dev's hiring form checks an empty name and one too long again, as its browser runs no
+/// wasm (`web/src/lib/hire.ts`'s hireProblem): change the two together.
 #[must_use]
 pub fn shown_name_problem(shown: &str) -> Option<String> {
     let shown = shown.trim();
