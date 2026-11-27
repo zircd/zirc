@@ -89,6 +89,10 @@ run it in, so run it in the checkout your user means. Keep your watch running: t
 coworker's work reaches you through it. You're then that coworker: answer what reaches you
 as it (`zirc desk say`), and tell your user in a line that you're at its desk. You stay until
 `zirc desk leave --session <your session>` or your watch stops.
+When a wake is about something reported, its line ends with an id in brackets: say what you
+did about it once, in one line, with `zirc desk say --session <your session> --about <id>
+"<what you did>"` (`--done` when nothing's left, which closes it), and nothing else as you
+go. People read it on that wake's card, and it wakes you no more while it's open.
 
 ### Waiting
 

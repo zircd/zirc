@@ -5261,6 +5261,17 @@
               ],
               "description": "The message it answers, by id."
             },
+            "about": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The item a wake was about, when it says what the holder did about it\n([`zirc_proto::roles::Say::about`])."
+            },
+            "done": {
+              "type": "boolean",
+              "description": "With `about`, whether that's done, closing the item."
+            },
             "text": {
               "type": "string",
               "description": "What to say."

@@ -669,6 +669,13 @@ pub struct Say {
     /// The message it answers, by id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<String>,
+    /// The item a wake was about ([`crate::incident::Outcome`]), when what it says is what
+    /// the holder did about it: its sidecar says it in the agents' room, on the item's card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub about: Option<String>,
+    /// With [`Say::about`], whether that's done, closing the item.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub done: bool,
 }
 
 impl Say {

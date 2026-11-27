@@ -556,6 +556,7 @@ mod tests {
             role: "oncall".into(),
             item: zirc_proto::role_report::OpenItem::opened(report, 0),
             reminder: false,
+            quiet: false,
         };
         inbound.roles.reported(&wake);
         let outs = said.try_recv().unwrap();
@@ -570,6 +571,7 @@ mod tests {
         // A reminder wakes again but says no card.
         inbound.roles.reported(&crate::items::Wake {
             reminder: true,
+            quiet: false,
             ..wake
         });
         assert!(said.try_recv().is_err());

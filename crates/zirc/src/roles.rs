@@ -38,10 +38,20 @@ pub(crate) enum RoleCommand {
         session: Option<String>,
     },
     /// Say something as the coworker at whose desk you sit, to someone or in #agents.
+    ///
+    /// With --about, it's what you did about what woke you, in one line, which people read
+    /// on that wake's card: the id is the one in brackets on the wake's line.
     Say {
         /// Whom to, by nick: someone who wrote to the coworker. Without it, #agents.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "about")]
         to: Option<String>,
+        /// The item a wake was about, by the id in brackets on its line: this says what you
+        /// did about it.
+        #[arg(long)]
+        about: Option<String>,
+        /// With --about: it's done, which closes the item.
+        #[arg(long, requires = "about")]
+        done: bool,
         /// The message it answers, by the id your watch showed.
         #[arg(long)]
         reply_to: Option<String>,
@@ -106,6 +116,8 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
         RoleCommand::Say {
             to,
             reply_to,
+            about,
+            done,
             session,
             text,
         } => {
@@ -113,6 +125,8 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
                 session: session_or_user(session),
                 to: to.clone(),
                 reply_to,
+                about,
+                done,
                 text: crate::args::words(&text)?,
             };
             let Response::Done = ask(socket, request).await? else {

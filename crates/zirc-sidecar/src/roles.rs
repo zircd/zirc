@@ -894,6 +894,25 @@ impl Brain {
     /// takes it, saying whether it woke them or waits ([`zirc_proto::inbound::card`]).
     pub fn reported(&mut self, wake: &crate::items::Wake, now: u64) -> Vec<Out> {
         let repository = wake.item.report.repository.as_deref();
+        // A reminder of one its holder said it's on wakes nobody: it's said in the agents'
+        // room, from the coworker that takes it, for its card to count.
+        if wake.quiet {
+            let Some(name) = self.speaker(&wake.role, repository) else {
+                return Vec::new();
+            };
+            let quiet = Woke {
+                role: Some(name.clone()),
+                ..wake.woke()
+            };
+            return vec![Out {
+                role: name.clone(),
+                to: zirc_proto::AGENTS_CHANNEL.to_owned(),
+                message: Message {
+                    repo: self.role(&name).and_then(repo_of),
+                    ..Message::new(&name, quiet.event())
+                },
+            }];
+        }
         let mut outs = self.wake_job(&wake.role, repository, wake.woke(), &wake.text(), now);
         if wake.reminder || wake.item.report.tool.is_none() {
             return outs;
@@ -1104,23 +1123,33 @@ impl Brain {
 
     /// What the holder says as the role, from the role's nick, as its session.
     fn say_as(role: &Definition, message: &Message, say: Say, text: &str) -> Out {
+        // What the holder did about a wake goes on its item's card, which the agents' room
+        // has for every member and the items read ([`crate::items`]).
+        let event = match say.about {
+            Some(about) => zirc_proto::incident::Outcome {
+                role: role.name.clone(),
+                about,
+                done: say.done,
+            }
+            .event(text),
+            None => Event::Text {
+                body: text.to_owned(),
+            },
+        };
+        let to = match (&event, say.to) {
+            (Event::Text { .. }, Some(to)) => to,
+            _ => zirc_proto::AGENTS_CHANNEL.to_owned(),
+        };
         Out {
             role: role.name.clone(),
-            to: say
-                .to
-                .unwrap_or_else(|| zirc_proto::AGENTS_CHANNEL.to_owned()),
+            to,
             message: Message {
                 name: message.name.clone(),
                 tool: message.tool.clone(),
                 avatar: message.avatar.clone(),
                 desk: message.desk.clone(),
                 repo: repo_of(role),
-                ..Message::new(
-                    &message.session,
-                    Event::Text {
-                        body: text.to_owned(),
-                    },
-                )
+                ..Message::new(&message.session, event)
             },
         }
     }

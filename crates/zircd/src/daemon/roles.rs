@@ -204,8 +204,8 @@ impl Daemon {
     pub(super) fn role_say(
         &mut self,
         session: &str,
-        to: Option<String>,
-        reply_to: Option<String>,
+        (to, reply_to): (Option<String>, Option<String>),
+        (about, done): (Option<String>, bool),
         text: &str,
     ) -> Result<Response> {
         let role = self
@@ -216,6 +216,8 @@ impl Daemon {
             role: role.clone(),
             to,
             reply_to,
+            about,
+            done,
         };
         let event = say.event(text);
         let message = self.signed(session, event);

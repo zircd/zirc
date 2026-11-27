@@ -189,7 +189,7 @@ text = "Someone wrote to the coworker whose desk you sit at, not your user: its 
 [[hint]]
 kind = "role.woke"
 level = "act"
-text = "What the coworker whose desk you sit at wakes on happened: do its job, as its brief says. Speak as the coworker with zirc desk say --session <your session> \"…\" (in #agents) when people should hear it."
+text = "What the coworker whose desk you sit at wakes on happened: do its job, as its brief says. For a report (an id in brackets), say what you did about it once, in one line, as the coworker: zirc desk say --session <your session> --about <id> \"…\", with --done when it's finished. Say nothing else as you go; speak as the coworker with zirc desk say --session <your session> \"…\" (in #agents) when people should hear something else."
 
 [[hint]]
 kind = "decision"

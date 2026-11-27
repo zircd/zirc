@@ -562,6 +562,15 @@ pub struct OpenItem {
     /// How many times its holder was reminded.
     #[serde(default)]
     pub reminded: u32,
+    /// When its holder was first woken for it, in unix seconds; 0 until then. Reminders
+    /// count from it, so one that waited for a holder isn't said again at once.
+    #[serde(default)]
+    #[ts(type = "number")]
+    pub woke_at: u64,
+    /// Whether its holder said what it's doing about it ([`crate::incident::Outcome`]):
+    /// reminders then wake nobody, and are only counted on its card.
+    #[serde(default)]
+    pub answered: bool,
     /// When it closed, in unix seconds, and how; `None` while it's open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional, type = "number")]
@@ -585,6 +594,8 @@ impl OpenItem {
             reports: 1,
             woke: false,
             reminded: 0,
+            woke_at: 0,
+            answered: false,
             closed: None,
             end: None,
         }
@@ -608,13 +619,14 @@ impl OpenItem {
         )
     }
 
-    /// When its holder is next reminded, in unix seconds: its kind's time after it opened,
+    /// When its holder is next reminded, in unix seconds: its kind's time after the holder
+    /// was first woken for it (after it opened, for one kept from before that was known),
     /// then twice as long after each reminder.
     #[must_use]
     pub fn remind_at(&self) -> u64 {
         let after = self.report.kind.remind_after();
         let doubled = after.saturating_mul(1u64 << self.reminded.min(16));
-        self.opened.saturating_add(doubled)
+        self.opened.max(self.woke_at).saturating_add(doubled)
     }
 }
 

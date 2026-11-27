@@ -624,6 +624,7 @@ fn a_report_is_taken_by_its_jobs_holder_and_said_by_someone() {
         role: "fixer".into(),
         item,
         reminder: false,
+        quiet: false,
     };
     let outs = brain.reported(&wake(item(Some("api"))), at);
     assert_eq!(outs.len(), 1);
@@ -638,6 +639,69 @@ fn a_report_is_taken_by_its_jobs_holder_and_said_by_someone() {
     );
     assert_eq!(brain.speaker("fixer", Some("docs")).as_deref(), Some("ada"));
     assert_eq!(brain.speaker("oncall", None).as_deref(), Some("ada"));
+}
+
+#[test]
+fn a_quiet_reminder_is_said_in_the_agents_room_and_wakes_no_one() {
+    let mut brain = staffed();
+    sit_at(&mut brain, "grace", "henrik-mbp", "cc-2", LATER);
+    brain.tick(LATER + zirc_proto::leases::SETTLE);
+    let at = LATER + zirc_proto::leases::SETTLE + 1000;
+    let item = zirc_proto::role_report::OpenItem::opened(
+        zirc_proto::role_report::RoleReport {
+            repository: Some("api".into()),
+            ..zirc_proto::role_report::RoleReport::new(
+                "fixer",
+                zirc_proto::role_report::Subject::Flaky,
+                "//a:b",
+            )
+        },
+        0,
+    );
+    let wake = crate::items::Wake {
+        role: "fixer".into(),
+        item,
+        reminder: true,
+        quiet: true,
+    };
+    let outs = brain.reported(&wake, at);
+    assert_eq!(outs.len(), 1);
+    assert_eq!(outs[0].to, zirc_proto::AGENTS_CHANNEL);
+    let said = Woke::of(&outs[0].message.event).unwrap();
+    assert!(said.quiet);
+    assert_eq!(said.role.as_deref(), Some("grace"));
+}
+
+#[test]
+fn what_the_holder_did_about_a_wake_is_said_as_the_role_on_its_card() {
+    let (mut brain, at) = fixer_seated();
+    let say = zirc_proto::roles::Say {
+        role: "fixer".into(),
+        to: Some("henrik".into()),
+        reply_to: None,
+        about: Some("3f2a1b9c".into()),
+        done: true,
+    };
+    let outs = brain.heard(
+        Input::ToRole {
+            role: "fixer".into(),
+            from: "henrik-mbp".into(),
+            account: "henrik-mbp".into(),
+            sender: Sender::Machine,
+            id: None,
+            message: Some(Message::new("cc-1", say.event("nothing to fix"))),
+            text: "nothing to fix".into(),
+        },
+        at,
+    );
+    assert_eq!(outs.len(), 1);
+    // In the agents' room, whoever it named, as its card is there.
+    assert_eq!(outs[0].to, zirc_proto::AGENTS_CHANNEL);
+    let (outcome, text) = zirc_proto::incident::Outcome::of(&outs[0].message.event).unwrap();
+    assert_eq!(
+        (outcome.about.as_str(), outcome.done, text.as_str()),
+        ("3f2a1b9c", true, "nothing to fix")
+    );
 }
 
 /// What `session` on `machine` says in `#agents` at `at`, sitting at `desk` or at none.

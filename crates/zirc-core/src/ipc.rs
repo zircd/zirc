@@ -630,6 +630,13 @@ pub enum Request {
         /// The message it answers, by id.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reply_to: Option<String>,
+        /// The item a wake was about, when it says what the holder did about it
+        /// ([`zirc_proto::roles::Say::about`]).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        about: Option<String>,
+        /// With `about`, whether that's done, closing the item.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        done: bool,
         /// What to say.
         text: String,
     },

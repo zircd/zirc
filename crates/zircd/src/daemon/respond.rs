@@ -299,8 +299,10 @@ impl Daemon {
                 session,
                 to,
                 reply_to,
+                about,
+                done,
                 text,
-            } => self.role_say(&session, to, reply_to, &text)?,
+            } => self.role_say(&session, (to, reply_to), (about, done), &text)?,
             Request::RoleStanding => self.role_standing().await?,
             Request::Watch { .. } => anyhow::bail!("watching is its own kind of connection"),
             Request::Trim { .. } | Request::Read { .. } | Request::Conversations { .. } => {

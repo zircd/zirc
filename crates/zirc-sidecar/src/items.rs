@@ -48,6 +48,9 @@ pub struct Wake {
     pub item: OpenItem,
     /// Whether it's a reminder of one already said.
     pub reminder: bool,
+    /// Whether it's said without waking the holder, who said what it's doing about it
+    /// ([`zirc_proto::woke::Woke::quiet`]): its card counts it.
+    pub quiet: bool,
 }
 
 impl Wake {
@@ -55,7 +58,10 @@ impl Wake {
     /// flaky test, //a:b · build 612`.
     #[must_use]
     pub fn woke(&self) -> zirc_proto::woke::Woke {
-        zirc_proto::woke::Woke::reported(&self.item, self.reminder)
+        zirc_proto::woke::Woke {
+            quiet: self.quiet,
+            ..zirc_proto::woke::Woke::reported(&self.item, self.reminder)
+        }
     }
 
     /// What the holder's watch shows of it ([`zirc_proto::role_report::OpenItem::told`]).
@@ -190,6 +196,28 @@ impl Items {
             }
             return closed;
         }
+        // What a role's holder said it's doing about one, from the role's own nick: its
+        // reminders wake nobody from now on, and done closes it.
+        if channel.eq_ignore_ascii_case(zirc_proto::AGENTS_CHANNEL)
+            && let Some((outcome, _)) = zirc_proto::incident::Outcome::of(&message.event)
+        {
+            if !account.is_some_and(|account| account.eq_ignore_ascii_case(&outcome.role)) {
+                return false;
+            }
+            let Some(item) = self
+                .items
+                .iter_mut()
+                .find(|item| item.closed.is_none() && item.id == outcome.about)
+            else {
+                return false;
+            };
+            item.answered = true;
+            let role = item.report.role.clone();
+            if outcome.done {
+                self.close(&role, std::slice::from_ref(&outcome.about), End::Done, now);
+            }
+            return true;
+        }
         if channel.eq_ignore_ascii_case(zirc_proto::AGENTS_CHANNEL)
             && ci::speaks_for_ci(account)
             && let Event::Custom { kind, data, .. } = &message.event
@@ -283,12 +311,14 @@ impl Items {
                 true
             } else {
                 item.woke = true;
+                item.woke_at = now;
                 false
             };
             wakes.push(Wake {
                 role: item.report.role.clone(),
                 item: item.clone(),
                 reminder,
+                quiet: reminder && item.answered,
             });
         }
         wakes
@@ -491,6 +521,52 @@ mod tests {
         assert!(wakes[0].woke().words(None).starts_with("still open: "));
         assert!(items.due(60 * 60 - 1).is_empty());
         assert_eq!(items.due(60 * 60).len(), 1);
+    }
+
+    #[test]
+    fn reminders_count_from_the_first_wake_not_from_when_it_was_reported() {
+        // Reported while nobody held the job, woken for an hour later: a reminder waits its
+        // kind's time from then, where four came within minutes (27 Nov 2026).
+        let mut items = Items::default();
+        items.heard(OPS, None, &flaky("//a:b"), 0);
+        items.items[0].woke = false;
+        let hour = 60 * 60;
+        assert_eq!(items.due(hour).len(), 1);
+        assert!(items.due(hour + 15).is_empty());
+        assert!(items.due(hour + 30 * 60 - 1).is_empty());
+        assert!(items.due(hour + 30 * 60)[0].reminder);
+    }
+
+    /// The fixer's own nick saying what its holder did about `id`, done or not.
+    fn outcome(id: &str, done: bool) -> Message {
+        let outcome = zirc_proto::incident::Outcome {
+            role: "fixer".into(),
+            about: id.into(),
+            done,
+        };
+        said(outcome.event("looking into it"))
+    }
+
+    #[test]
+    fn once_its_holder_says_what_it_does_reminders_wake_nobody_and_done_closes_it() {
+        let mut items = Items::default();
+        items.heard(OPS, None, &flaky("//a:b"), 0);
+        items.due(0);
+        let id = items.items[0].id.clone();
+        // Only the role's own nick speaks for its holder.
+        assert!(!items.heard("#agents", Some("ada"), &outcome(&id, false), 1));
+        assert!(items.heard("#agents", Some("fixer"), &outcome(&id, false), 1));
+        let wakes = items.due(30 * 60);
+        assert!(wakes[0].reminder && wakes[0].quiet && wakes[0].woke().quiet);
+        assert!(items.heard("#agents", Some("fixer"), &outcome(&id, true), 2));
+        assert_eq!(
+            items.listing("fixer", 3).closed_today[0].end,
+            Some(End::Done)
+        );
+        // Reported again once closed, it wakes its holder again.
+        items.heard(OPS, None, &flaky("//a:b"), 4);
+        let wakes = items.due(4);
+        assert!(!wakes[0].reminder && !wakes[0].quiet);
     }
 
     #[test]

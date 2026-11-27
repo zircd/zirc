@@ -4,7 +4,7 @@
 //! came from (`ALERTS`, `CI`), a short title and detail worked out of the tool's words, how
 //! often and when, whether it's still open, and what the coworker said it did about it.
 //!
-//! A coworker says what it did about a wake in one line tied to it ([`Outcome`]): `zirc role
+//! A coworker says what it did about a wake in one line tied to it ([`Outcome`]): `zirc desk
 //! say --about <id>`, which its sidecar says from the coworker's nick in the agents' room,
 //! and which closes the item with `--done`. While it has said one, the sidecar wakes it no
 //! more for that item while it's open, and says each reminder quietly ([`crate::woke::Woke::quiet`]),
