@@ -71,9 +71,28 @@ fn handle_shaped(name: &str) -> bool {
 /// handle a role's name, the server's sidecar and zirc.dev check, as they know both.
 #[must_use]
 pub fn role_problem(name: &str) -> Option<String> {
+    nick_problem("role", name)
+}
+
+/// What's wrong with `name` as a coworker's name ([`crate::coworkers`]), if anything: a
+/// role's rules, as it's a nick as a role's is.
+#[must_use]
+pub fn coworker_problem(name: &str) -> Option<String> {
+    nick_problem("coworker", name)
+}
+
+/// What's wrong with `name` as a job's name ([`crate::coworkers`]), if anything: a role's
+/// rules, as a role is named after its job today.
+#[must_use]
+pub fn job_problem(name: &str) -> Option<String> {
+    nick_problem("job", name)
+}
+
+/// What's wrong with `name` as the name of a `what`, which is or may be a nick on the server.
+fn nick_problem(what: &str, name: &str) -> Option<String> {
     if !handle_shaped(name) {
         return Some(format!(
-            "Name a role with {HANDLE_MIN} to {HANDLE_MAX} lowercase letters, digits and \
+            "Name a {what} with {HANDLE_MIN} to {HANDLE_MAX} lowercase letters, digits and \
              underscores, starting with a letter."
         ));
     }

@@ -15,6 +15,7 @@ pub mod attached;
 pub mod card;
 pub mod ci;
 pub mod colleagues;
+pub mod coworkers;
 pub mod decision;
 pub mod desired;
 pub mod device_key;

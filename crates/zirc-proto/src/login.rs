@@ -495,6 +495,7 @@ pub fn typescript() -> String {
     .chain(crate::role_report::typescript(&config))
     .chain(crate::roles::typescript(&config))
     .chain(crate::inbound::typescript(&config))
+    .chain(crate::coworkers::typescript(&config))
     .chain(crate::hints::typescript(&config))
     .chain(crate::gotchas::typescript(&config))
     .chain(crate::push::typescript(&config))
