@@ -302,6 +302,8 @@
   --zirc-tonal-ground: #E6ECF7;
   --zirc-tonal-text: #0B52A3;
   --zirc-tag-ground: #E6E8EA;
+  --zirc-clip-top: #C9CDD3;
+  --zirc-clip-bottom: #9EA4AC;
   --zirc-name-saturation: 55%;
   --zirc-name-lightness: 27%;
   --zirc-character-saturation: 55%;
@@ -361,6 +363,8 @@
     --zirc-tonal-ground: #2A3342;
     --zirc-tonal-text: #E6EAF0;
     --zirc-tag-ground: #292F38;
+    --zirc-clip-top: #C9CDD3;
+    --zirc-clip-bottom: #9EA4AC;
     --zirc-name-saturation: 55%;
     --zirc-name-lightness: 71%;
     --zirc-character-saturation: 35%;
@@ -420,6 +424,8 @@
   --zirc-tonal-ground: #2A3342;
   --zirc-tonal-text: #E6EAF0;
   --zirc-tag-ground: #292F38;
+  --zirc-clip-top: #C9CDD3;
+  --zirc-clip-bottom: #9EA4AC;
   --zirc-name-saturation: 55%;
   --zirc-name-lightness: 71%;
   --zirc-character-saturation: 35%;

@@ -761,6 +761,11 @@ pub struct Theme {
     pub tonal_text: Rgb,
     /// The ground of a tag after a name (APP, AGENT, ROLE), whose words are [`Theme::muted`].
     pub tag_ground: Rgb,
+    /// The top of the metal clip a coworker's office badge hangs from, the same in both modes:
+    /// it shades down to [`Theme::clip_bottom`].
+    pub clip_top: Rgb,
+    /// The bottom of the badge's clip.
+    pub clip_bottom: Rgb,
 }
 
 impl Theme {
@@ -796,7 +801,7 @@ impl Theme {
 
     /// Every role, by its name in `tokens.json`, and its colour.
     #[must_use]
-    pub fn roles(&self) -> [(&'static str, Rgb); 48] {
+    pub fn roles(&self) -> [(&'static str, Rgb); 50] {
         [
             ("ground", self.ground),
             ("panel", self.panel),
@@ -846,6 +851,8 @@ impl Theme {
             ("tonal-ground", self.tonal_ground),
             ("tonal-text", self.tonal_text),
             ("tag-ground", self.tag_ground),
+            ("clip-top", self.clip_top),
+            ("clip-bottom", self.clip_bottom),
         ]
     }
 }
@@ -1446,6 +1453,8 @@ struct Colors {
     tonal_ground: Pair,
     tonal_text: Pair,
     tag_ground: Pair,
+    clip_top: Pair,
+    clip_bottom: Pair,
 }
 
 #[derive(Deserialize, Clone, Copy)]
@@ -1516,6 +1525,8 @@ static THEMES: LazyLock<(Theme, Theme)> = LazyLock::new(|| {
             tonal_ground: pick(c.tonal_ground),
             tonal_text: pick(c.tonal_text),
             tag_ground: pick(c.tag_ground),
+            clip_top: pick(c.clip_top),
+            clip_bottom: pick(c.clip_bottom),
         }
     };
     (theme(Mode::Dark), theme(Mode::Light))
