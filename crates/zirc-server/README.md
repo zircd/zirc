@@ -1,6 +1,6 @@
 # zirc-server
 
-A zirc server of your own, in one container, linked to your organisation on zirc.dev: people,
+A zirc server of your own, in one container, linked to your office on zirc.dev: people,
 invites, signing in and push notifications stay at zirc.dev, and what people say and share
 stays on the server. `compose.yaml` runs it, once its host name, email and join token are set.
 
@@ -16,7 +16,7 @@ side by side, as a hosted server's pod does:
   (`zirc_sidecar::environment` and `zirc_sidecar::config`): every connection logs in to an
   account, each app with a device key of its own, which the sidecar checks, and Ergo's push
   notifications go through zirc.dev to people's phones.
-- It joins the organisation with `ZIRC_JOIN_TOKEN` (`src/join.rs`, `zirc_proto::join`): it
+- It joins the office with `ZIRC_JOIN_TOKEN` (`src/join.rs`, `zirc_proto::join`): it
   says where it is and gives zirc.dev its tokens, once zirc.dev can reach it at its host, and
   notes it has in `joined.json`. A token zirc.dev refuses isn't tried again.
 - Its HTTPS side (`src/proxy.rs`, 443, or 8080 behind a proxy) is what a hosted server's edge
@@ -25,9 +25,9 @@ side by side, as a hosted server's pod does:
   endpoint, which zirc.dev and its tenant controller manage the server through, with the
   server's tokens.
 - Files people share in chat are kept on the server's disk, in `/data/media`, or in an S3
-  bucket of the organisation's own (`src/store.rs`), never at zirc.dev: the same API as
+  bucket of the office's own (`src/store.rs`), never at zirc.dev: the same API as
   zirc.dev's (`zirc_proto::media`), at `/api/media` on the HTTPS side, with the same rules
-  (`zirc_proto::uploads`, `files`, `images`), the organisation's files settings from
+  (`zirc_proto::uploads`, `files`, `images`), the office's files settings from
   zirc.dev's Files page (`src/media.rs`). Apps sign in with their account's name and password,
   which Ergo checks, upload to a link that lasts minutes and puts a file once (a bucket must
   take S3's `If-None-Match: *`, as S3, R2 and MinIO do), and download from `/m/<id>`, which
@@ -39,7 +39,7 @@ side by side, as a hosted server's pod does:
   which nothing publishes), and the server answers with what it makes. Without it, images
   are served as sent.
 - Video is read and made by the media worker (`crates/zirc-media-worker`), beside the
-  server too, as zirc.dev's is, once the organisation takes video: as it's uploaded it says
+  server too, as zirc.dev's is, once the office takes video: as it's uploaded it says
   how long and large it is, and the first time each is asked for it makes the poster
   (`/m/<id>?w=640`) and the copy people play (`?r=720`), which the server answers 202 for
   meanwhile, reading the original and putting what it makes through links the server signs.
@@ -87,10 +87,10 @@ Its settings, all from the environment:
 | Variable | What |
 |---|---|
 | `ZIRC_HOST` | The host name people connect to, a full one such as `irc.example.com` (required) |
-| `ZIRC_JOIN_TOKEN` | The join token zirc.dev gave when the organisation was made on your own server |
+| `ZIRC_JOIN_TOKEN` | The join token zirc.dev gave when the office was made on your own server |
 | `ZIRC_ACME_EMAIL` | The address Let's Encrypt writes to about the certificate |
 | `ZIRC_TLS` | `acme`, `self-signed` or `off` |
-| `ZIRC_NAME` | The organisation's name, which the network takes; the host's first label unless set |
+| `ZIRC_NAME` | The office's name, which the network takes; the host's first label unless set |
 | `ZIRC_IRC_LISTEN` | Where IRC listens: `:6697` with TLS, `:6667` without, unless set |
 | `ZIRC_PROXY_PROTOCOL`, `ZIRC_PROXY_FROM` | With `off`: the proxy sends a PROXY header, from these addresses |
 | `ZIRC_PUBLIC_IRC_PORT` | IRC's port as people reach it, 6697 unless set |

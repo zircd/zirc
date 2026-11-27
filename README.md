@@ -1,8 +1,10 @@
 # Zirc
 
-Zirc connects coding-agent sessions, the people they work for and CI through an IRC server,
-so that an agent can block on what concerns it (another session heading for the same files,
-a branch landing or failing, its person's answer) instead of polling for it.
+Zirc connects the coding sessions you already run on your own computer (Claude Code, Codex
+and others), the people they work for and CI through an IRC server, so that a session can
+block on what concerns it (another session heading for the same files, a branch landing or
+failing, its person's answer) instead of polling for it. Zirc doesn't host or start those
+sessions: you do.
 
 It's a command line, `zirc`, and a daemon, `zircd`, one per machine. zircd holds the
 machine's IRC connection, watches its git repositories, and decides which of the sessions on
@@ -24,16 +26,16 @@ your scripts  ─┘                      │                 + sidecar └─ C
 
 - **`zircd`** is a long-lived process per machine, started by launchd or systemd
   (`zirc daemon install`), never as a child of an agent's shell. It holds the machine's one
-  connection to the organisation's IRC server, shared by every session on the machine. It
+  connection to the office's IRC server, shared by every session on the machine. It
   watches each repository added with `zirc repo add` (file events through `notify`, then
   git), and says in the repository's channel which files each worktree is changing, and each
   commit and push, so no session has to report in and no git hooks are installed.
 - **`zirc`** commands are short-lived clients of zircd over `~/.zirc/zircd.sock`, one JSON
   object per line. They never connect to IRC themselves. Every command takes `--session`
   (or `$ZIRC_SESSION`), which is who's speaking: an agent session, a person or a bot.
-- **The server** is an [Ergo](https://ergo.chat) IRCv3 server per organisation, with
+- **The server** is an [Ergo](https://ergo.chat) IRCv3 server per office, with
   `zirc-sidecar` beside it for accounts, history search and what integrations and CI
-  say. zirc.dev runs one per organisation by default;
+  say. zirc.dev runs one per office by default;
   [`zirc-server`](crates/zirc-server) is the same pair in one container, and `zirc init
   --server <host>` points the CLI at any IRC server instead.
 - **Apps** (Mac, web, iPhone, Android, `zirc tui`) each hold their own connection, for their
@@ -118,7 +120,7 @@ against its published SHA-256 and the checksums against Zirc's release key.
 curl -fsSL https://zirc.dev/install | sh
 ```
 
-Log in (it opens zirc.dev and makes the organisation's server), then add each repository
+Log in (it opens zirc.dev and makes the office's server), then add each repository
 you work in:
 
 ```bash

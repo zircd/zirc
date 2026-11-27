@@ -3,7 +3,7 @@
 The longer tour of the CLI, zircd and the terminal client, after the [README](../README.md)'s
 first steps. [zirc.dev/docs](https://zirc.dev/docs) has the same by task, with the apps.
 
-Log in at zirc.dev, which sets this machine up for your organisation, then watch a repository from
+Log in at zirc.dev, which sets this machine up for your office, then watch a repository from
 inside it:
 
 ```bash
@@ -15,7 +15,7 @@ zirc repo add
 ```
 
 `zirc login` shows a code and opens the browser, where you sign up or sign in, pick your
-organisation and confirm it; it then writes your team's server to `~/.zirc/config.toml`,
+office and confirm it; it then writes your team's server to `~/.zirc/config.toml`,
 installs the Zirc skill for Claude Code, and runs zircd at login, waiting until it's
 connected. Where the server has accounts, the machine gets one of its own, named
 `<you>-<machine>` (such as `mattias-mbp`), with a passphrase for it alone; it logs in with
@@ -25,17 +25,17 @@ that's set up for another server keeps its setup unless you run `zirc login --fo
 the server refuses a machine's account, as after you change your handle, zircd asks
 zirc.dev for its current one.
 
-A machine can be signed in to several organisations at once, each with its own server,
+A machine can be signed in to several offices at once, each with its own server,
 account and channels: `config.toml` keeps the first as a machine in one does, and the
 others as `[[org]]` tables after it, each with its own nick and handle. `zirc login` signs
-the machine in to each organisation chosen on zirc.dev's page, keeping those it's in
+the machine in to each office chosen on zirc.dev's page, keeping those it's in
 already, and `zirc login --org <name>` adds one later. zircd holds a connection to each. Every repository
-belongs to exactly one organisation, and nothing about it (paths, branches, intents,
+belongs to exactly one office, and nothing about it (paths, branches, intents,
 pushes) is ever sent to another's server: `zirc repo add --org <name>` says which, or with
 another clone of the project watched already, it's that clone's. Commands act on the
-organisation of the repository they're run in, or `--org <name>` outside one; `zirc status`
-lists each organisation's connection, and one `zirc watch` covers them all, each line
-starting with its organisation. Releases before 0.1.18 can't read a `config.toml` with `[[org]]`
+office of the repository they're run in, or `--org <name>` outside one; `zirc status`
+lists each office's connection, and one `zirc watch` covers them all, each line
+starting with its office. Releases before 0.1.18 can't read a `config.toml` with `[[org]]`
 tables: to go back to one, remove them first, or log in again with it.
 
 A machine's agents hear only their own user. A message to the machine's nick, from any IRC
@@ -79,7 +79,7 @@ zirc init --server irc.example.com
 zirc daemon install
 ```
 
-Every organisation has a server of its own, and every clone of a project shares its
+Every office has a server of its own, and every clone of a project shares its
 channels, named after the remote's repository, so `git@github.com:zirc/api.git` is `#api`
 on every machine. From then on zircd tells `#api` which files you have uncommitted changes
 in, worktree by worktree and branch by branch, and about your commits and pushes, with no
@@ -121,7 +121,7 @@ with no build running under its holder (simulator and emulator leases excepted).
 
 And say something. It goes to the repository's channel, where every session working on it
 is; `--to branch` and `--to org` send it to your pushed branch's channel or the whole
-organisation's. Posts starting `taking:` show in `zirc who` until a `done:` or `dropped:`:
+office's. Posts starting `taking:` show in `zirc who` until a `done:` or `dropped:`:
 
 ```bash
 zirc post "taking: the login flow"
@@ -139,10 +139,10 @@ The channels, all predictable from where you work:
 
 | Channel | Joined | For |
 |---|---|---|
-| `#general` | by every machine | the organisation's people and announcements |
+| `#general` | by every machine | the office's people and announcements |
 | `#api` | by every watcher of the repository | working sets, overlaps, commits, pushes |
 | `#api/login` | by choice, `zirc join login` | branch `login`'s thread: the sessions on that feature, under `#api` in the apps |
-| `#api/auth`, `#auth` | by choice, `zirc join auth [--org]` | a topic, per repository or organisation-wide |
+| `#api/auth`, `#auth` | by choice, `zirc join auth [--org]` | a topic, per repository or office-wide |
 
 Post to a topic you've joined with `zirc post --topic auth …`, and leave it with
 `zirc leave auth`. A topic is the repository's unless you add `--org`, as for `#ops`:
@@ -164,7 +164,7 @@ channel's operators trim anything in it, where its operator allows trimming at a
 
 ## What's been said
 
-While an organisation's owners have debug logging on, on its Log tab at zirc.dev, its server's
+While an office's owners have debug logging on, on its Log tab at zirc.dev, its server's
 log keeps the messages sent in channels for 30 days, and direct messages too if they put them on
 the record. From an owner's machine, `zirc log` shows them: the last 12 hours, or as far back as
 `--since` says (`30m`, `12h`, `3d`, `2w`, `1mo`), with any text to look for. `--json` prints a line
@@ -265,7 +265,7 @@ zirc tui login
 zirc tui logout
 ```
 
-Signing in again to another organisation keeps the first: `zirc tui` then connects to each,
+Signing in again to another office keeps the first: `zirc tui` then connects to each,
 the status line names the one shown and what's unread in the others, and `/org [name]` or
 Alt-O switches between them. `zirc tui logout --org <name>` signs out of one alone.
 
@@ -301,7 +301,7 @@ Zirc's CLI, TUI and zircd send anonymous usage counts to [PostHog](https://posth
 region: the app and its version, the operating system, each command's name (not its
 arguments) and whether an agent ran it, which features are used (DMs, reactions, joins),
 how often agents say what they're about to change and are told of overlaps and conflicts
-ahead (counts only), connection failures by kind, and updates; an organisation's counts are
+ahead (counts only), connection failures by kind, and updates; an office's counts are
 grouped by its opaque id. Never message text, nicks, account, channel or
 repository names, paths or hostnames. The one exception: PostHog sees the IP address the
 counts come from, and records roughly where that is. Each install has a random id, linked
