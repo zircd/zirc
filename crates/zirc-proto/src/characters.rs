@@ -15,46 +15,62 @@ pub const CHARACTERS: [(&str, u16, &str); 12] = [
     (
         "char-01",
         210,
-        "short blond hair, round glasses, a blue collared shirt",
+        "short blond hair, round glasses, a blue collared shirt, a lanyard, a mug",
     ),
-    ("char-02", 30, "spiky black hair, an orange hoodie"),
+    (
+        "char-02",
+        30,
+        "spiky black hair, round glasses, an orange hoodie printed >_, headphones round his neck",
+    ),
     (
         "char-03",
         120,
-        "curly hair, a beard, headphones, a green T-shirt",
+        "curly hair, a beard, headphones, a green T-shirt printed { }, a laptop with stickers",
     ),
     (
         "char-04",
         270,
-        "a purple cap, a white shirt, purple overalls",
+        "a purple cap, round glasses, a white shirt, purple overalls printed #, a mug",
     ),
     (
         "char-05",
         330,
-        "red hair in a bun, freckles, a wine top, a gold scarf",
+        "a green beanie, red hair, freckles, round glasses, a wine top, a gold scarf, a lanyard",
     ),
-    ("char-06", 180, "long black hair, a headset, a teal top"),
+    (
+        "char-06",
+        180,
+        "short black hair, stubble, a headset, a teal top printed </>, a lanyard, a laptop with stickers",
+    ),
     (
         "char-07",
         60,
-        "curly auburn hair, round glasses, a yellow hoodie",
+        "curly auburn hair, round glasses, a yellow hoodie printed λ, headphones round his neck",
     ),
-    ("char-08", 240, "short black hair, a navy collared shirt"),
+    (
+        "char-08",
+        240,
+        "an orange beanie, round glasses, a navy hoodie printed &&",
+    ),
     (
         "char-09",
         150,
-        "white hair in a bun, round glasses, a green top, a gold scarf",
+        "short white hair, a white beard, round glasses, a green top, a gold scarf, a mug",
     ),
-    ("char-10", 0, "long dark hair, an orange T-shirt"),
+    (
+        "char-10",
+        0,
+        "curly dark hair, stubble, round glasses, an orange T-shirt printed $_, a lanyard, a laptop with stickers",
+    ),
     (
         "char-11",
         90,
-        "spiky red hair, a white T-shirt, teal overalls",
+        "spiky red hair, round glasses, a white T-shirt, teal overalls printed 01, headphones round his neck",
     ),
     (
         "char-12",
         300,
-        "an orange cap, a beard, a headset, a dark shirt",
+        "an orange cap, a beard, a headset, a dark shirt printed 0x, a mug",
     ),
 ];
 
