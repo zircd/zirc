@@ -64,8 +64,9 @@ pub const DESK: &str = "Desk";
 /// A coworker's page's row for who hired it.
 pub const HIRED_BY: &str = "Hired by";
 
-/// A coworker's job, on its page, while it has none.
-pub const NO_JOB: &str = "No job yet: does what it's asked in a direct message.";
+/// A coworker's job, on its page, while it has none: what such a coworker does, as the brief
+/// of the role it amounts to says it (zirc-proto's `coworkers::NO_JOB_BRIEF`).
+pub const NO_JOB: &str = zirc_proto::coworkers::NO_JOB_BRIEF;
 
 /// Whose a hot desk's session is when it's the person's own.
 pub const YOURS: &str = "Yours";
