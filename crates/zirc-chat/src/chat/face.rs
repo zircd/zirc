@@ -55,13 +55,16 @@ pub enum Face {
         /// tool's icon.
         picture: Option<String>,
         /// The hue its square is drawn on, decided here for every app: `hue` for a session
-        /// or a role; `None` for the machine itself, on the muted ground.
+        /// that goes by a character of its own or a role; `None`, on the muted ground, for a
+        /// session at a hot desk, drawn dimmer as its dealt character, and the machine itself.
         ground: Option<u16>,
-        /// The coworker character it's drawn as, one of [`zirc_proto::characters::CHARACTERS`]
-        /// such as `char-07`, when its picture is one: every app then draws that character's
-        /// bust filling its square, edge to edge, on zirc-theme's character ground (lighter,
-        /// and dimmed in dark mode) in place of `picture`'s bot, which stays for an app that
-        /// draws no characters (the terminal's).
+        /// The character it's drawn as, one of [`zirc_proto::characters::CHARACTERS`] such as
+        /// `char-07`: a coworker's, picked or dealt by its name, and a session's, its own or,
+        /// at a hot desk, dealt by its id from those no coworker has. Every app draws that
+        /// character's bust filling its square, edge to edge, on `ground`'s hue in
+        /// zirc-theme's character ground (lighter, dimmed in dark mode), or on the muted one
+        /// for none, in place of `picture`'s bot, which stays for an app that draws no
+        /// characters (the terminal's). `None` for the machine itself, drawn with its tool's.
         character: Option<String>,
     },
     /// One of zirc's apps, CI or Alerts, or a machine's thread: a square with a glyph, never
@@ -180,22 +183,33 @@ impl Chat {
                 owner,
                 session,
                 picture,
-            } => Face::Agent {
-                tool: tool.clone(),
-                hue: *hue,
-                owner: owner.clone(),
-                owner_initials: self.avatar_initials(owner),
-                owner_hue: nick_degrees(owner),
-                owner_photo: self.photo(owner),
-                ground: session.is_some().then_some(*hue),
-                character: session
+            } => {
+                // A character it goes by is its own, on its colour; else, at a hot desk, it's
+                // dealt one, on no colour: the muted ground every app draws for none (the
+                // user's choice, 27 Nov 2026: a dealt character, drawn dimmer).
+                let own = session
                     .as_deref()
-                    .and_then(|session| self.agent_character(session, picture.as_deref())),
-                session: session.clone(),
-                picture: session
-                    .as_deref()
-                    .map(|session| self.agent_picture(session, picture.as_deref())),
-            },
+                    .and_then(|session| self.agent_character(session, picture.as_deref()));
+                let dealt = own.is_none().then(|| {
+                    session
+                        .as_deref()
+                        .map(|session| self.hot_desk_character(session).to_owned())
+                });
+                Face::Agent {
+                    tool: tool.clone(),
+                    hue: *hue,
+                    owner: owner.clone(),
+                    owner_initials: self.avatar_initials(owner),
+                    owner_hue: nick_degrees(owner),
+                    owner_photo: self.photo(owner),
+                    ground: own.as_ref().and(session.as_ref()).map(|_| *hue),
+                    character: own.or(dealt.flatten()),
+                    session: session.clone(),
+                    picture: session
+                        .as_deref()
+                        .map(|session| self.agent_picture(session, picture.as_deref())),
+                }
+            }
             Avatar::App { glyph, .. } => Face::App {
                 glyph: glyph.clone(),
             },
@@ -344,8 +358,9 @@ mod tests {
                 owner_photo: Some("https://zirc.dev/m/zirc/@ada?v=7".into()),
                 session: Some("cc-598aa1".into()),
                 picture: Some("reviewer".into()),
-                ground: Some(42),
-                character: None,
+                // At a hot desk: dealt a character, drawn on no colour.
+                ground: None,
+                character: Some(zirc_proto::characters::deal("cc-598aa1", []).into()),
             }
         );
         // A session that goes by a coworker's character is drawn as it.

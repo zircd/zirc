@@ -255,6 +255,55 @@ impl Chat {
         };
     }
 
+    /// The characters the office's coworkers are drawn as, by name: the one each picked, else
+    /// one dealt by its name from those no other coworker picked or was dealt before it, in
+    /// its name's order ([`zirc_proto::characters::deal`]).
+    fn coworker_characters(&self) -> Vec<(String, &'static str)> {
+        let mut names: Vec<&String> = self.roles.iter().chain(self.role_looks.keys()).collect();
+        names.sort();
+        names.dedup();
+        let picked: Vec<(&String, &'static str)> = names
+            .iter()
+            .filter_map(|name| {
+                let look = self.role_looks.get(*name)?;
+                Some((
+                    *name,
+                    zirc_proto::characters::character(look.picture.as_deref()?)?,
+                ))
+            })
+            .collect();
+        let mut all: Vec<(String, &'static str)> = picked
+            .iter()
+            .map(|(name, character)| ((*name).clone(), *character))
+            .collect();
+        for name in names {
+            if all.iter().any(|(known, _)| known == name) {
+                continue;
+            }
+            let dealt = zirc_proto::characters::deal(name, all.iter().map(|(_, c)| *c));
+            all.push((name.clone(), dealt));
+        }
+        all
+    }
+
+    /// The character the coworker `nick` is drawn as ([`Chat::coworker_characters`]).
+    fn coworker_character(&self, nick: &str) -> &'static str {
+        let characters = self.coworker_characters();
+        characters
+            .iter()
+            .find(|(name, _)| *name == fold(nick))
+            .map_or_else(
+                || zirc_proto::characters::deal(&fold(nick), characters.iter().map(|(_, c)| *c)),
+                |(_, character)| *character,
+            )
+    }
+
+    /// A character for the agent session `session` at a hot desk: dealt by its id from those
+    /// none of the office's coworkers has (the user's choice, 27 Nov 2026).
+    pub(super) fn hot_desk_character(&self, session: &str) -> &'static str {
+        zirc_proto::characters::deal(session, self.coworker_characters().iter().map(|(_, c)| *c))
+    }
+
     /// The role `nick`'s face: its gem and its colour, as its admins picked them or as its
     /// name tells ([`role_look`]), and its holder's tool's. A role is nobody's, held or
     /// vacant, so it has no owner and every app draws no owner's face on it (the user's
@@ -267,10 +316,10 @@ impl Chat {
             .cloned()
             .unwrap_or_default();
         let (picture, hue) = role_look(&fold(nick), &picked);
-        // A coworker picked a character: drawn as it, with its name's bot behind for an app
+        // Drawn as its character, picked or dealt, with its name's bot behind for an app
         // that draws no characters.
-        let character = zirc_proto::characters::character(&picture).map(str::to_owned);
-        let picture = if character.is_some() {
+        let character = Some(self.coworker_character(nick).to_owned());
+        let picture = if zirc_proto::characters::character(&picture).is_some() {
             zirc_proto::agent_picture(Some(&fold(nick)), Some(&fold(nick))).to_owned()
         } else {
             picture
@@ -440,6 +489,25 @@ mod tests {
             chat.standing("fixer").presence(),
             super::super::Presence::Here
         );
+    }
+
+    #[test]
+    fn a_session_at_a_hot_desk_is_never_dealt_a_coworkers_character() {
+        let mut chat = with_fixer();
+        let dealt = chat.coworker_character("fixer");
+        assert!(zirc_proto::characters::character(dealt).is_some());
+        for n in 0..50 {
+            assert_ne!(chat.hot_desk_character(&format!("cc-{n}")), dealt);
+        }
+        // One it picked, too.
+        let params: Vec<String> = ["fixer", roles::LOOK_KEY, "*", r#"{"picture":"char-03"}"#]
+            .map(str::to_owned)
+            .to_vec();
+        chat.metadata(&params);
+        assert_eq!(chat.coworker_character("Fixer"), "char-03");
+        for n in 0..50 {
+            assert_ne!(chat.hot_desk_character(&format!("cc-{n}")), "char-03");
+        }
     }
 
     #[test]

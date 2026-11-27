@@ -94,6 +94,30 @@ pub fn hue(id: &str) -> Option<u16> {
         .find_map(|(character, hue, _)| (*character == id).then_some(*hue))
 }
 
+/// The character dealt to `who`, a session's id or a coworker's name, from those not in
+/// `taken`, or from all of them when every one is: the same for the same `who` and `taken`,
+/// so every app deals the same. A session at a hot desk is drawn as one (the user's choice,
+/// 27 Nov 2026: a dealt character, never one a coworker of the office has), and so is a
+/// coworker that hasn't picked one.
+#[must_use]
+pub fn deal<'a>(who: &str, taken: impl IntoIterator<Item = &'a str>) -> &'static str {
+    let taken: Vec<&str> = taken.into_iter().collect();
+    let free: Vec<&'static str> = CHARACTERS
+        .iter()
+        .map(|(character, ..)| *character)
+        .filter(|character| !taken.contains(character))
+        .collect();
+    let from = if free.is_empty() {
+        CHARACTERS.map(|(character, ..)| character).to_vec()
+    } else {
+        free
+    };
+    let hash = who.bytes().fold(2_166_136_261_u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(16_777_619)
+    });
+    from[usize::try_from(hash).unwrap_or_default() % from.len()]
+}
+
 /// The characters as TypeScript, for the web apps' generated files: `COWORKER_CHARACTERS`.
 #[must_use]
 pub fn typescript() -> Vec<String> {
@@ -138,6 +162,20 @@ mod tests {
         assert_eq!(session_picture("rocket"), Some("rocket"));
         assert_eq!(session_picture("unicorn"), None);
         assert!(!is_picture("CHAR-12") && !is_picture("unicorn"));
+    }
+
+    #[test]
+    fn deals_the_same_character_every_time_and_none_thats_taken() {
+        assert_eq!(deal("cc-598aa1", []), deal("cc-598aa1", []));
+        let all: Vec<&str> = CHARACTERS.iter().map(|(id, ..)| *id).collect();
+        let (taken, left) = all.split_at(11);
+        assert_eq!(deal("cc-598aa1", taken.iter().copied()), left[0]);
+        assert!(character(deal("cc-598aa1", all.iter().copied())).is_some());
+        let dealt: Vec<&str> = (0..40).map(|n| deal(&format!("cc-{n}"), [])).collect();
+        assert!(
+            dealt.iter().any(|id| *id != dealt[0]),
+            "spread over the twelve"
+        );
     }
 
     #[test]
