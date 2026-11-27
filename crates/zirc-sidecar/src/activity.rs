@@ -1236,6 +1236,8 @@ mod tests {
                 level: None,
                 line: None,
                 automatic: false,
+                desk: None,
+                wrote: None,
             }
             .event(),
         );
@@ -1453,6 +1455,8 @@ mod tests {
                 level: None,
                 line: Some("m1".into()),
                 automatic: false,
+                desk: None,
+                wrote: None,
             }
             .event(),
         );

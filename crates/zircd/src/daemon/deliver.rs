@@ -90,7 +90,7 @@ impl Daemon {
             .filter_map(|(watcher, why)| Some((watcher.session.clone()?, (*why)?)))
             .collect();
         let automatic = wakes::automatic(response);
-        let line = wakes::Line::of(response);
+        let line = wakes::Line::of(response, self.owner.as_deref());
         // Each wake's line where people see it, said once every watcher has heard what woke it.
         let mut wakes = Vec::new();
         for (session, why) in woken {

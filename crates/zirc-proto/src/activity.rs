@@ -76,6 +76,25 @@ pub struct Wake {
     /// For an intent, that zircd said it for a session by itself.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub automatic: bool,
+    /// The coworker whose desk the session sat at ([`crate::coworkers`]), when what woke it
+    /// came to that coworker: a direct message to it, or what came for its job.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desk: Option<String>,
+    /// For a wake at a desk, who wrote to the coworker directly, when a person did; none
+    /// for what came for its job. What onboarding's first signal reads: a session at a
+    /// coworker's desk woken by its own person's message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wrote: Option<Wrote>,
+}
+
+/// Who wrote the direct message that woke a session at a coworker's desk ([`Wake::wrote`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Wrote {
+    /// The person whose machine the session runs on.
+    Owner,
+    /// Another member of the organisation.
+    Member,
 }
 
 /// What a session did first after a wake, within the time zircd waits
@@ -308,6 +327,8 @@ mod tests {
             level: Some(Level::Info),
             line: Some("m1".into()),
             automatic: false,
+            desk: None,
+            wrote: None,
         };
         let message = Message::new("cc-1", wake.event());
         assert!(message.is_live(), "a record never enters history");

@@ -64,11 +64,17 @@ pub(super) struct Line {
     pub kind: String,
     pub level: Option<zirc_proto::Level>,
     pub msgid: Option<String>,
+    /// The coworker it came to, whose desk the woken session sits at
+    /// ([`activity::Wake::desk`]).
+    pub desk: Option<String>,
+    /// Who wrote it to that coworker, when a person did ([`activity::Wake::wrote`]).
+    pub wrote: Option<activity::Wrote>,
 }
 
 impl Line {
-    /// What `response` was, for the record of a wake on it.
-    pub(super) fn of(response: &Response) -> Self {
+    /// What `response` was, for the record of a wake on it; `owner` is this machine's
+    /// person, by account, who may have written it.
+    pub(super) fn of(response: &Response, owner: Option<&str>) -> Self {
         match response {
             Response::Delivery(delivery) => Self {
                 kind: match &delivery.message.event {
@@ -80,6 +86,7 @@ impl Line {
                 },
                 level: delivery.message.level(),
                 msgid: delivery.id.clone(),
+                ..Self::default()
             },
             // A direct message has an id too, so what a session was woken by can be looked
             // up afterwards by whoever may read it; and its kind says whether it was another
@@ -97,6 +104,16 @@ impl Line {
                 .into(),
                 level: None,
                 msgid: direct.id.clone(),
+                desk: direct.role.clone(),
+                // What came for the coworker's job says what woke it; a person's own words
+                // to the coworker say nothing but who wrote them.
+                wrote: (direct.role.is_some() && direct.woke.is_none()).then(|| {
+                    if owner.is_some_and(|owner| owner.eq_ignore_ascii_case(&direct.from)) {
+                        activity::Wrote::Owner
+                    } else {
+                        activity::Wrote::Member
+                    }
+                }),
             },
             other => Self {
                 kind: serde_json::to_value(other)
@@ -308,6 +325,8 @@ impl Daemon {
             level: line.level,
             line: line.msgid,
             automatic,
+            desk: line.desk,
+            wrote: line.wrote,
         };
         self.record(session, record.event());
         Some(id)
@@ -470,17 +489,57 @@ mod tests {
             said.as_object_mut()
                 .unwrap()
                 .extend(extra.as_object().unwrap().clone());
-            Line::of(&Response::Direct(serde_json::from_value(said).unwrap()))
+            Line::of(
+                &Response::Direct(serde_json::from_value(said).unwrap()),
+                Some("henrik"),
+            )
         };
         let line = |kind: &str| Line {
             kind: kind.into(),
             level: None,
             msgid: Some("m1".into()),
+            ..Line::default()
         };
         assert_eq!(direct(serde_json::json!({})), line("direct"));
         assert_eq!(direct(serde_json::json!({"query": "q1"})), line("query"));
         assert_eq!(direct(serde_json::json!({"answer": "q1"})), line("answer"));
         assert_eq!(direct(serde_json::json!({"note": true})), line("note"));
+    }
+
+    #[test]
+    fn a_wake_at_a_coworkers_desk_says_the_desk_and_whether_its_person_wrote() {
+        let at_desk = |from: &str, woke: Option<zirc_proto::woke::Woke>| {
+            let direct = zirc_core::ipc::Direct {
+                from: from.into(),
+                from_session: None,
+                session: Some("cc-1".into()),
+                text: "hello".into(),
+                query: None,
+                answer: None,
+                note: false,
+                colleague: false,
+                why: None,
+                id: Some("m1".into()),
+                org: None,
+                role: Some("ada".into()),
+                woke,
+            };
+            let line = Line::of(&Response::Direct(direct), Some("henrik"));
+            (line.desk, line.wrote)
+        };
+        let ada = Some("ada".to_owned());
+        // Its own person's message, another member's, and what came for its job.
+        assert_eq!(
+            at_desk("Henrik", None),
+            (ada.clone(), Some(activity::Wrote::Owner))
+        );
+        assert_eq!(
+            at_desk("raj", None),
+            (ada.clone(), Some(activity::Wrote::Member))
+        );
+        let job =
+            zirc_proto::woke::Woke::new(zirc_proto::woke::What::State, zirc_proto::woke::By::Ci);
+        assert_eq!(at_desk("ada", Some(job)), (ada, None));
     }
 
     #[test]
