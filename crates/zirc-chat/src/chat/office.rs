@@ -27,8 +27,8 @@ use super::{Chat, conversation::fold, profile};
 /// The Office tab's name, in the tab bar.
 pub const OFFICE: &str = "Office";
 
-/// What heads the coworkers' cards.
-pub const COWORKERS: &str = "Coworkers";
+/// What heads the coworkers' cards (zirc-proto's, as zirc.dev names its tab so).
+pub const COWORKERS: &str = zirc_proto::coworkers::COWORKERS;
 
 /// What heads everyone's sessions that sit at no coworker's desk.
 pub const HOT_DESKS: &str = "Hot desks";
@@ -62,7 +62,7 @@ pub const JOB: &str = "Job";
 pub const DESK: &str = "Desk";
 
 /// A coworker's page's row for who hired it.
-pub const HIRED_BY: &str = "Hired by";
+pub const HIRED_BY: &str = zirc_proto::coworkers::HIRED_BY;
 
 /// A coworker's job, on its page, while it has none: what such a coworker does, as the brief
 /// of the role it amounts to says it (zirc-proto's `coworkers::NO_JOB_BRIEF`).
@@ -404,7 +404,12 @@ impl Chat {
         match job {
             None => NO_JOB.to_owned(),
             Some(job) => match job.kind() {
-                Some(kind) => format!("{} Wakes on {}.", kind.line(), kind.wakes()),
+                Some(kind) => format!(
+                    "{} {} {}.",
+                    kind.line(),
+                    zirc_proto::coworkers::WAKES_ON,
+                    kind.wakes()
+                ),
                 None => job.brief.clone(),
             },
         }

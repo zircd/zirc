@@ -338,6 +338,16 @@ impl Job {
     }
 }
 
+/// What heads an office's coworkers: the Office tab's cards in the apps, and zirc.dev's tab.
+pub const COWORKERS: &str = "Coworkers";
+
+/// A coworker's page's row for who hired it, in the apps and on zirc.dev.
+pub const HIRED_BY: &str = "Hired by";
+
+/// What comes before what wakes a job (a ready-made job's [`JobKind::wakes`], a role's
+/// triggers'): `Wakes on master breaking, a flaky test`.
+pub const WAKES_ON: &str = "Wakes on";
+
 /// What a coworker's badge says it is, beside its office's name (the user's choice, 27 Nov
 /// 2026: a coworker's card is its office badge, clipped on).
 pub const STAFF: &str = "Staff";
@@ -662,6 +672,9 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const DESK_COMMAND = {DESK_COMMAND:?};"),
         format!("const TELL_A_SESSION = {TELL_A_SESSION:?};"),
         format!("const BADGE_STAFF = {STAFF:?};"),
+        format!("const COWORKERS_TITLE = {COWORKERS:?};"),
+        format!("const HIRED_BY = {HIRED_BY:?};"),
+        format!("const WAKES_ON = {WAKES_ON:?};"),
         format!("const BADGE_HOT_DESK = {HOT_DESK:?};"),
         format!("const BADGE_HANDLE = {BADGE_HANDLE:?};"),
         format!(

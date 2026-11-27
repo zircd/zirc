@@ -332,6 +332,7 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         Setup::decl(config),
         Home::decl(config),
         format!("const HOME_ASKED_YOU = {ASKED_YOU:?};"),
+        format!("const HOME_HIRE_FIRST = {HIRE_FIRST:?};"),
         format!("const HOME_SWITCH_OFFICE = {SWITCH_OFFICE:?};"),
         format!("const HOME_YOUR_OFFICE = {YOUR_OFFICE:?};"),
         format!("const HOME_NAME = {NAME:?};"),
