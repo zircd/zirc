@@ -118,8 +118,10 @@ impl Chat {
 
     /// [`Chat::agent_label`], the task it's on known as `task`.
     pub(super) fn agent_label_on(&self, nick: &str, session: &str, task: Option<&str>) -> String {
-        self.desk_of(nick, session)
-            .unwrap_or_else(|| self.agent_title_on(session, task))
+        self.desk_of(nick, session).map_or_else(
+            || self.agent_title_on(session, task),
+            |desk| self.coworker_name(&desk),
+        )
     }
 
     /// The coworker whose desk the agent session `session` on the machine `nick` sits at:

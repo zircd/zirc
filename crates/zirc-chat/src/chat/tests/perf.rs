@@ -212,6 +212,7 @@ fn phone(chat: &Chat, zone: FixedOffset) -> usize {
     rows + sidebar
         + chat.tabs().len()
         + usize::from(chat.waiting_card(Some(chat.tab()), zone).is_some())
+        + chat.office(zone).hot_desks.len()
         + chat.lines(OPEN, zone, false).len()
         + chat.activity().len()
         + usize::from(chat.badges().total > 0)

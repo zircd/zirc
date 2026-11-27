@@ -65,6 +65,11 @@ mod names;
 mod navigate;
 mod new_message;
 mod notify;
+mod office;
+pub use office::{
+    AboutRow, CameRow, CoworkerCard, CoworkerPage, DeskState, EmptyDesk, HotDesk, NoCoworkers,
+    Office, OfficeSpan, hire_page,
+};
 mod org;
 mod people;
 mod plain;
@@ -700,6 +705,8 @@ pub struct Chat {
     /// Each repository's forge and checkout, and the editor, that code links to
     /// ([`Chat::set_checkouts`]).
     code: code_ref::Known,
+    /// What the office knows of the coworkers beyond their lines ([`Chat::learn_standing`]).
+    office: office::Known,
 }
 
 impl Chat {
@@ -798,6 +805,7 @@ impl Chat {
             picture_site: face::PictureSite::default(),
             highlighter: None,
             code: code_ref::Known::default(),
+            office: office::Known::default(),
         }
     }
 

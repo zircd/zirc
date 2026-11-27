@@ -1,0 +1,374 @@
+//! The office ([`Chat::office`]): the coworkers at their desks, everyone's sessions at hot
+//! desks, a coworker's page and the sheet of an empty desk.
+
+use zirc_proto::coworkers::{Coworker, Job, Staff};
+use zirc_proto::desk::{Came, Handover};
+use zirc_proto::roles::{Holder, Listing, Seat, Standing};
+use zirc_proto::session::{Away, Live, SessionCard};
+use zirc_proto::woke::Woke;
+
+use super::*;
+
+fn utc() -> chrono::FixedOffset {
+    chrono::FixedOffset::east_opt(0).unwrap()
+}
+
+/// Seconds since the epoch, `minutes` past noon.
+fn past_noon(minutes: i64) -> u64 {
+    u64::try_from((noon() + chrono::Duration::minutes(minutes)).timestamp()).unwrap()
+}
+
+/// A wake, as its JSON says it.
+fn woke(json: serde_json::Value) -> Woke {
+    serde_json::from_value(json).unwrap()
+}
+
+fn coworker(name: &str, shown: &str, job: Option<&str>, picture: &str) -> Coworker {
+    Coworker {
+        name: name.into(),
+        shown_name: Some(shown.into()),
+        jobs: job.into_iter().map(str::to_owned).collect(),
+        repository: Some("web".into()),
+        picture: Some(picture.into()),
+        hue: Some(60),
+        added_by: Some("henrik".into()),
+    }
+}
+
+fn job(name: &str) -> Job {
+    Job {
+        name: name.into(),
+        brief: "Does it.".into(),
+        triggers: Vec::new(),
+        reports: Vec::new(),
+    }
+}
+
+/// John the fixer, at his desk on henrik's mbp as cc-1 since 08:02; Noor at triage, her desk
+/// empty with one waiting, its last session gone at 11:30.
+fn standing() -> Standing {
+    let john = Holder {
+        machine: "henrik-mbp".into(),
+        since: past_noon(-238),
+        session: SessionCard {
+            session: "cc-1".into(),
+            name: Some("john-desk".into()),
+            title: None,
+            tool: Some(zirc_proto::CLAUDE_CODE.into()),
+        },
+    };
+    let noor_last = Holder {
+        since: past_noon(-30),
+        ..john.clone()
+    };
+    Standing {
+        listing: Listing {
+            roles: Vec::new(),
+            addresses: Vec::new(),
+            version: "1".into(),
+        },
+        seats: vec![
+            Seat {
+                role: "john".into(),
+                repository: "web".into(),
+                holder: Some(john),
+                last: None,
+                waiting: 0,
+                wakes_on: Vec::new(),
+                woke_today: 0,
+            },
+            Seat {
+                role: "noor".into(),
+                repository: "web".into(),
+                holder: None,
+                last: Some(noor_last),
+                waiting: 1,
+                wakes_on: Vec::new(),
+                woke_today: 0,
+            },
+        ],
+        staff: Staff {
+            coworkers: vec![
+                coworker("john", "John", Some("fixer"), "char-03"),
+                coworker("noor", "Noor", Some("triage"), "char-07"),
+            ],
+            jobs: vec![job("fixer"), job("triage")],
+        },
+    }
+}
+
+/// What the machine `nick` says of its sessions: `live` watching, `away` not.
+fn live(nick: &str, live: &[&str], away: &[&str]) -> String {
+    let message = Message {
+        level: Some(zirc_proto::Level::Debug),
+        ..Message::new(
+            zirc_proto::NO_SESSION,
+            Live {
+                sessions: live.iter().map(|&s| s.to_owned()).collect(),
+                away: away
+                    .iter()
+                    .map(|&s| {
+                        let since = past_noon(-5);
+                        (s.to_owned(), Away { since, waiting: 0 })
+                    })
+                    .collect(),
+            }
+            .event(),
+        )
+    };
+    zirc(nick, &message)
+}
+
+/// `#api` with henrik's mbp and ours in it, and the server's standing learnt.
+fn office() -> Scene {
+    let mut scene = Scene::in_api();
+    scene.hears(&[
+        ":henrik-mbp!u@machine/henrik JOIN #api",
+        ":me-mbp!u@machine/me JOIN #api",
+    ]);
+    scene.learn_standing(standing());
+    scene
+}
+
+fn states(office: &Office) -> Vec<(&str, Option<&str>, &str, DeskState)> {
+    office
+        .coworkers
+        .iter()
+        .map(|c| (c.name.as_str(), c.job.as_deref(), c.state.as_str(), c.desk))
+        .collect()
+}
+
+#[test]
+fn each_coworker_has_a_card_saying_how_its_desk_stands_and_how_many_sit() {
+    let mut scene = office();
+    let office = scene.office(utc());
+    assert_eq!(
+        states(&office),
+        [
+            ("John", Some("Fixer"), "At desk, idle", DeskState::Idle),
+            (
+                "Noor",
+                Some("Triage"),
+                "Desk empty · 1 waiting",
+                DeskState::Empty
+            ),
+        ]
+    );
+    assert_eq!(office.coworkers_heading, "Coworkers");
+    assert_eq!(office.count.as_deref(), Some("1 of 2 at a desk"));
+    assert_eq!(office.coworkers[0].label, "John, Fixer, At desk, idle");
+    assert!(office.no_coworkers.is_none());
+    // Drawn as the character each was given.
+    let Face::Agent { character, .. } = &office.coworkers[1].face else {
+        panic!("a coworker is drawn as its character");
+    };
+    assert_eq!(character.as_deref(), Some("char-07"));
+    assert!(DeskState::Empty.wants_you() && !DeskState::Idle.wants_you());
+
+    // The session at John's desk takes something on: his card says it.
+    let taking = Message::new(
+        "cc-1",
+        Event::Text {
+            body: "taking: Fixing build 431".into(),
+        },
+    );
+    scene.hears(&[
+        &live("henrik-mbp", &["cc-1"], &[]),
+        &zirc("henrik-mbp", &taking),
+    ]);
+    assert_eq!(
+        states(&scene.office(utc()))[0],
+        (
+            "John",
+            Some("Fixer"),
+            "Fixing build 431",
+            DeskState::Working
+        )
+    );
+}
+
+#[test]
+fn everyones_sessions_at_no_coworkers_desk_are_hot_desks_online_first() {
+    let mut scene = office();
+    scene.hears(&[
+        &live("henrik-mbp", &["cc-1", "cc-2"], &[]),
+        &live("me-mbp", &[], &["cc-9"]),
+    ]);
+    let desks: Vec<(String, String, bool)> = scene
+        .office(utc())
+        .hot_desks
+        .into_iter()
+        .map(|desk| (desk.conversation, desk.line, desk.online))
+        .collect();
+    // cc-1 sits at John's desk, so it's John's card, not a hot desk.
+    assert_eq!(
+        desks,
+        [
+            ("henrik-mbp/cc-2".into(), "henrik's".into(), true),
+            ("me-mbp/cc-9".into(), "Yours".into(), false),
+        ]
+    );
+    let office = scene.office(utc());
+    assert_eq!(office.hot_desks_heading, "Hot desks");
+    // Each is dealt a character, drawn on no colour.
+    let Face::Agent {
+        character, ground, ..
+    } = &office.hot_desks[0].face
+    else {
+        panic!("a hot desk's session is an agent");
+    };
+    assert!(character.is_some() && ground.is_none());
+}
+
+#[test]
+fn an_office_with_no_coworkers_offers_to_hire_one() {
+    let scene = Scene::in_api();
+    let office = scene.office(utc());
+    assert!(office.coworkers.is_empty() && office.count.is_none());
+    let none = office.no_coworkers.unwrap();
+    assert_eq!(
+        (none.line.as_str(), none.hire.as_str()),
+        ("No coworkers yet.", "Hire a coworker")
+    );
+    assert_eq!(
+        hire_page("https://zirc.dev/", "acme"),
+        "https://zirc.dev/orgs/acme/hire"
+    );
+}
+
+/// The office, John's desk handing over what he was on and that build 431 woke him at 09:12.
+fn john_handed_over() -> Scene {
+    let mut scene = office();
+    scene.learn_handover(Handover {
+        coworker: "john".into(),
+        doing: Some("the flaky checkout wait".into()),
+        recent: vec![Came {
+            woke: woke(serde_json::json!({"what": "build", "by": "ci", "build": "431"})),
+            text: String::new(),
+            at: past_noon(-168),
+        }],
+        waiting: Vec::new(),
+    });
+    scene
+}
+
+#[test]
+fn a_coworkers_page_says_who_it_is_and_what_its_on() {
+    let scene = john_handed_over();
+    let page = scene.coworker_page("John", utc()).unwrap();
+    assert_eq!(
+        (
+            page.name.as_str(),
+            page.handle.as_str(),
+            page.job.as_deref()
+        ),
+        ("John", "@john", Some("Fixer"))
+    );
+    assert_eq!(page.pill, "At desk, idle");
+    assert_eq!(page.now.as_deref(), Some("the flaky checkout wait"));
+    assert!(page.now_under.unwrap().starts_with("Woke 09:12 · "));
+    assert_eq!(page.message, "Message John");
+    assert_eq!(
+        page.recent
+            .iter()
+            .map(|came| came.at.as_str())
+            .collect::<Vec<_>>(),
+        ["09:12"]
+    );
+    assert!(scene.coworker_page("nobody", utc()).is_none());
+}
+
+#[test]
+fn a_coworkers_page_says_its_job_desk_and_who_hired_it() {
+    let page = john_handed_over().coworker_page("john", utc()).unwrap();
+    let about: Vec<(&str, &str)> = page
+        .about
+        .iter()
+        .map(|row| (row.label.as_str(), row.text.as_str()))
+        .collect();
+    assert_eq!(about[0].0, "Job");
+    assert!(about[0].1.starts_with("Owns a red master"));
+    assert!(about[0].1.contains(" Wakes on master breaking"));
+    assert_eq!(
+        about[1],
+        ("Desk", "Claude Code on henrik's mbp, in web · since 08:02")
+    );
+    assert_eq!(about[2], ("Hired by", "henrik"));
+}
+
+/// The office, Raj's message waiting at Noor's empty desk since 07:55.
+fn noor_waits() -> Scene {
+    let mut scene = office();
+    scene.learn_handover(Handover {
+        coworker: "noor".into(),
+        doing: None,
+        recent: Vec::new(),
+        waiting: vec![Came {
+            woke: woke(serde_json::json!({"what": "wrote", "by": "person", "from": "raj"})),
+            text: "Checkout button overlaps the total".into(),
+            at: past_noon(-245),
+        }],
+    });
+    scene
+}
+
+#[test]
+fn an_empty_desk_says_what_waits_for_it() {
+    let scene = noor_waits();
+    assert!(scene.empty_desk("john", utc()).is_none());
+    let sheet = scene.empty_desk("noor", utc()).unwrap();
+    assert_eq!(sheet.title, "Noor's desk is empty");
+    assert_eq!(sheet.under, "Triage · last session ended 11:30");
+    assert_eq!(sheet.waiting_heading.as_deref(), Some("1 waiting for Noor"));
+    assert_eq!(
+        (sheet.waiting[0].at.as_str(), sheet.waiting[0].text.as_str()),
+        (
+            "07:55",
+            "raj wrote to it: Checkout button overlaps the total"
+        )
+    );
+    // Its page says so too.
+    let page = scene.coworker_page("noor", utc()).unwrap();
+    assert_eq!(page.pill, "Desk empty · 1 waiting");
+    assert_eq!(page.about[1].text, "Desk empty · 1 waiting · in web");
+}
+
+#[test]
+fn an_empty_desk_says_the_sentence_that_seats_a_session() {
+    let sheet = noor_waits().empty_desk("noor", utc()).unwrap();
+    let how: Vec<(&str, bool)> = sheet
+        .how
+        .iter()
+        .map(|span| (span.text.as_str(), span.mono))
+        .collect();
+    assert_eq!(
+        how,
+        [
+            (
+                "On your computer, start a Claude Code or Codex session in ",
+                false
+            ),
+            ("web", true),
+            (" and say:", false),
+        ]
+    );
+    assert_eq!(sheet.sentence, "You're Noor. Take your desk.");
+    assert_eq!((sheet.copy.as_str(), sheet.done.as_str()), ("Copy", "Done"));
+    assert_eq!(sheet.message, "Message Noor");
+    assert_eq!(
+        sheet.foot,
+        "A message waits too, and reaches Noor at the desk."
+    );
+}
+
+#[test]
+fn a_server_that_says_no_staff_shows_the_roles_its_lines_name() {
+    let mut scene = Scene::in_api();
+    let host = zirc_proto::names::role_host("fixer");
+    scene.hears(&[&format!(":fixer!u@{host} JOIN #api")]);
+    let office = scene.office(utc());
+    assert_eq!(
+        states(&office),
+        [("fixer", None, "Desk empty", DeskState::Empty)]
+    );
+}

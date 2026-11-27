@@ -228,6 +228,24 @@ impl Chat {
         items
     }
 
+    /// The agent sessions whose requests or questions wait for the person, as `(machine,
+    /// session)`: a coworker at whose desk one sits has asked them ([`Chat::office`]).
+    pub(super) fn asking(&self) -> Vec<(String, String)> {
+        let requests = request::waiting(self.requests_heard(), &self.me);
+        let mut asking: Vec<(String, String)> = requests
+            .iter()
+            .map(|waiting| {
+                let machine = self.asker(&waiting.msgid).unwrap_or_default().to_owned();
+                (machine, waiting.request.session.clone())
+            })
+            .collect();
+        asking.extend(self.questions().iter().filter_map(|item| {
+            let (nick, session) = agent(&item.key)?;
+            Some((nick.to_owned(), session.to_owned()))
+        }));
+        asking
+    }
+
     /// The requests heard in `#decisions` from the person's own machines, oldest first: only
     /// what the server says one of their machines sent ([`Chat::ours`]), never a card
     /// anyone else posted in its likeness.

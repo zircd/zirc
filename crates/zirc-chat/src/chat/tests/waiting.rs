@@ -433,3 +433,45 @@ fn an_answered_requests_card_and_preview_name_its_person_as_they_show() {
         "{preview}"
     );
 }
+
+#[test]
+fn a_coworker_whose_session_asks_us_says_so_on_its_office_card() {
+    // Our cc-1 sits at John's desk and asks us something in #decisions.
+    let mut scene = revoke_waits();
+    let holder = zirc_proto::roles::Holder {
+        machine: "me-mbp".into(),
+        since: 1,
+        session: zirc_proto::session::SessionCard {
+            session: "cc-1".into(),
+            name: None,
+            title: None,
+            tool: None,
+        },
+    };
+    scene.learn_standing(zirc_proto::roles::Standing {
+        listing: zirc_proto::roles::Listing {
+            roles: Vec::new(),
+            addresses: Vec::new(),
+            version: "1".into(),
+        },
+        seats: vec![zirc_proto::roles::Seat {
+            role: "john".into(),
+            repository: "web".into(),
+            holder: Some(holder),
+            last: None,
+            waiting: 0,
+            wakes_on: Vec::new(),
+            woke_today: 0,
+        }],
+        staff: zirc_proto::coworkers::Staff::default(),
+    });
+    let office = scene.office(utc());
+    let john = &office.coworkers[0];
+    assert_eq!(
+        (john.state.as_str(), john.desk),
+        ("Asked you", DeskState::Asked)
+    );
+    // The office's Waiting for you is the card Messages had.
+    assert_eq!(office.waiting, scene.waiting_card(None, utc()));
+    assert!(office.waiting.is_some());
+}

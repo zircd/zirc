@@ -595,6 +595,8 @@ pub struct Words {
     /// The page of what was said to the person, its tab and the bell that opens it:
     /// `Activity`.
     pub activity: String,
+    /// The office's tab, first in the phones' tab bar: `Office`.
+    pub office: String,
     /// Activity's empty page in one line: `nothing_yet`, a full stop and `activity_hint`.
     pub activity_empty: String,
     /// Under `nothing_yet` on Activity's empty page: `When someone mentions you, replies to you or
@@ -911,6 +913,7 @@ pub fn words() -> Words {
         search_everywhere: finder::SEARCH_EVERYWHERE.to_owned(),
         no_other_channels: plain::NO_OTHER_CHANNELS.to_owned(),
         activity: ACTIVITY.to_owned(),
+        office: super::office::OFFICE.to_owned(),
         activity_empty: activity_empty(),
         activity_hint: ACTIVITY_HINT.to_owned(),
         add_organisation: settings_list::ADD_ORGANISATION_NAME.to_owned(),

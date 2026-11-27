@@ -139,6 +139,23 @@ impl Chat {
             .collect()
     }
 
+    /// Every agent session any machine names, online or away, as `(machine, session)`: the
+    /// office's hot desks are those at no coworker's desk ([`Chat::office`]).
+    pub(super) fn named_sessions(&self) -> Vec<(String, String)> {
+        self.live
+            .values()
+            .flat_map(|known| {
+                known
+                    .live
+                    .sessions
+                    .iter()
+                    .chain(known.live.away.keys())
+                    .filter(|session| !session.is_empty() && *session != zirc_proto::NO_SESSION)
+                    .map(|session| (known.nick.clone(), session.clone()))
+            })
+            .collect()
+    }
+
     /// Whether the agent session `session` is known to run on the machine `nick`: the
     /// machine has listed it, live or ended, or it has spoken as from that machine.
     pub(super) fn known_on(&self, nick: &str, session: &str) -> bool {

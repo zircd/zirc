@@ -655,6 +655,33 @@ impl Client {
         ))
     }
 
+    /// What the organisation's own server answers at `path` on its content API, such as how
+    /// its coworkers stand ([`zirc_proto::roles::PATH`]), read straight from it with a token
+    /// zirc.dev gives `account` ([`login::CONTENT_TOKEN_PATH`]): what people wrote never
+    /// passes through zirc.dev. `None` where the server answers no content itself, or
+    /// refuses the token twice.
+    ///
+    /// # Errors
+    ///
+    /// When the server can't be reached or answers anything else.
+    pub async fn from_server<T: serde::de::DeserializeOwned>(
+        &self,
+        account: &Account,
+        path: &str,
+    ) -> Result<Option<T>, Error> {
+        // A token refused (it ended early, or the server's key changed) is asked for again once.
+        for _ in 0..2 {
+            let Some(access) = self.content_access(account).await else {
+                return Ok(None);
+            };
+            match self.get_from_server(&access, path, &[]).await? {
+                Some(answer) => return Ok(Some(answer)),
+                None => self.forget_content(account),
+            }
+        }
+        Ok(None)
+    }
+
     /// What the web app answers at `path` with `params`, signed in as `account`. History is
     /// read straight from the organisation's server where it answers content itself
     /// ([`login::CONTENT_TOKEN_PATH`]), so it never passes through zirc.dev; through zirc.dev
