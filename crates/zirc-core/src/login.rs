@@ -378,20 +378,6 @@ impl Client {
             .await
     }
 
-    /// What the person whose machine or app `account` is had their agents do today
-    /// ([`zirc_proto::onboarding::TODAY_PATH`]). `None` as [`Client::steps`] answers it.
-    ///
-    /// # Errors
-    ///
-    /// When the web app can't be reached or answers anything else.
-    pub async fn today(
-        &self,
-        account: &Account,
-    ) -> Result<Option<zirc_proto::onboarding::Today>, Error> {
-        self.read_me(account, zirc_proto::onboarding::TODAY_PATH)
-            .await
-    }
-
     /// What one of the web app's `/api/me/*` reads at `path` answers `account`, its machine or
     /// app: `None` when the web app doesn't know that account and passphrase (401), or doesn't
     /// serve `path` at all, as a self-hosted server's or an older one (404).

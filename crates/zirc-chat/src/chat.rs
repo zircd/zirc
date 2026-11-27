@@ -65,11 +65,6 @@ mod names;
 mod navigate;
 mod new_message;
 mod notify;
-mod onboarding;
-pub use onboarding::{
-    NEXT_STEP_LABEL, PROMPT_ACTION, Prompt, PromptAction, PromptButton, PromptContext, PromptLater,
-    PromptPlace, PutAway, wants_today,
-};
 mod org;
 mod people;
 mod plain;
@@ -565,10 +560,6 @@ pub struct Chat {
     /// The one-time notes our person has seen, in any of their apps, once an app said
     /// ([`Chat::set_notes_seen`]): `None` until then, and no note shows.
     notes_seen: Option<HashSet<zirc_proto::onboarding::Note>>,
-    /// The person's steps of getting started as zirc.dev last said they stand, and what the
-    /// app knows of them, once an app said ([`Chat::set_prompting`]): the next step's card
-    /// goes in the conversation its prompt is for.
-    prompting: Option<(zirc_proto::onboarding::Progress, PromptContext)>,
     /// Whether the channel shown was shown as the first joined, and nothing's been shown
     /// since: one earlier in the order takes its place, whichever the server joins first.
     first_shown: bool,
@@ -749,7 +740,6 @@ impl Chat {
             show_on_join: None,
             offline_joins: Vec::new(),
             notes_seen: None,
-            prompting: None,
             first_shown: false,
             divider: None,
             divider_seen: None,

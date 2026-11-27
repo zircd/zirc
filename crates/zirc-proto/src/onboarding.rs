@@ -526,21 +526,6 @@ fn progress_table() -> (Vec<StepProgress>, Vec<Vec<usize>>) {
     (rows, by_reached)
 }
 
-/// What a person's own agents did today, for the card that invites a teammate: counts only,
-/// from the organisation's activity store, as the dashboard's Today has them for the team.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
-#[ts(rename = "AgentsToday")]
-pub struct Today {
-    /// How many times their agents' watches woke, in the last 24 hours.
-    pub wakes: u32,
-    /// How many builds that failed for their agents then landed, in the last 24 hours.
-    pub fixed: u32,
-}
-
-/// Where a surface reads its person's [`Today`] in an organisation: `GET`, as
-/// [`STEPS_PATH`] is asked.
-pub const TODAY_PATH: &str = "/api/me/today";
-
 /// zirc.dev's page that invites someone to the organisation an app is signed in to, given
 /// its server as `?host=`: it finds the organisation and goes on to its people's invites, or
 /// says who may invite. A copy, as the web app's routes are its folders: the page is
@@ -671,8 +656,6 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const DONE_LABEL = {DONE_LABEL:?};"),
         format!("const NEXT_LABEL = {NEXT_LABEL:?};"),
         format!("const AVAILABLE_LABEL = {AVAILABLE_LABEL:?};"),
-        Today::decl(config),
-        format!("const TODAY_PATH = {TODAY_PATH:?};"),
         format!("const ONBOARDING_APP_PAGE = {APP_PAGE:?};"),
         format!(
             "const STEP_ID = {{ {} }} as const;",

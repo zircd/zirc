@@ -114,11 +114,6 @@ pub enum RowShape {
     /// A one-time note under the line before it: a dashed box, its [`Callout::label`] in
     /// bold, its words, and [`Callout::button`], which puts it away ([`Chat::see_note`]).
     Once,
-    /// Getting started's next step in a conversation ([`Chat::prompt`]): a solid box tinted
-    /// with [`Callout::tone`], its [`Callout::label`] in bold, its words, and
-    /// [`Callout::button`] filled, which takes the step. Never dashed, so a prompt and a
-    /// one-time note can't look alike (mocks `OnbPhoneHello`, `OnbPhoneTest`).
-    Prompt,
     /// A vacant role's answer ([`Chat::vacant_callout`]): a plain card of its own, no icon,
     /// its [`Callout::label`] in bold over its words, then [`Callout::command`] in a
     /// monospace box of its own with a Copy button, then [`Callout::footer`], muted (the
@@ -972,35 +967,7 @@ impl<'a> Layout<'a> {
         self.receipt(&mut lines);
         self.role_waiting(&mut lines);
         self.once(&mut lines);
-        self.next_step(&mut lines);
         lines
-    }
-
-    /// Puts getting started's next step's card under the message its prompt is about, when
-    /// it's this conversation's ([`Chat::next_step_card`]): a callout as a one-time note is.
-    fn next_step(&mut self, lines: &mut Vec<Line>) {
-        let Some((under, callout)) = self.chat.next_step_card(&self.conversation.name) else {
-            return;
-        };
-        let Some(at) = lines.iter().position(|line| line.key == under) else {
-            return;
-        };
-        let Some(time) = DateTime::from_timestamp_millis(lines[at].time_ms) else {
-            return;
-        };
-        let mut line = self.blank(format!("{under}-next"), None, time, LineKind::Note);
-        line.text = callout.said();
-        line.shape = RowShape::Prompt;
-        line.callout = Some(callout);
-        // Under a note already there, which is about the same line.
-        let below = at
-            + 1
-            + usize::from(
-                lines
-                    .get(at + 1)
-                    .is_some_and(|next| next.shape == RowShape::Once),
-            );
-        lines.insert(below, line);
     }
 
     /// Puts, under our latest message in a conversation with an agent session, what its

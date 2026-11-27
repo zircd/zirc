@@ -65,8 +65,8 @@ pub mod keys {
     pub const REGISTERED_AT: &str = "zirc-push-registered";
     /// The id zirc.dev gave its push endpoint, which every push for it carries as `ep`.
     pub const ENDPOINT: &str = "zirc-push-endpoint";
-    /// Getting started's prompts the person put away there, by step, as JSON
-    /// (`zirc_chat::chat::PutAway`).
+    /// Getting started's prompts the person put away there, which the apps kept until 27 Nov
+    /// 2026: none writes it now, and signing out still deletes it.
     pub const PUT_AWAY: &str = "zirc-prompts-put-away";
 }
 

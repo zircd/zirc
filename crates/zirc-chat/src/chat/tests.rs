@@ -10,7 +10,6 @@ mod finder;
 mod list_order;
 mod live;
 mod navigate;
-mod onboarding;
 mod perf;
 mod scene;
 mod sidebar;
