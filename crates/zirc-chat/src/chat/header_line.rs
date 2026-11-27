@@ -8,7 +8,8 @@ use super::Chat;
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub enum HeaderLineKind {
-    /// An agent session's ([`Chat::agent_header`]), while it's at work.
+    /// An agent session's ([`Chat::agent_header`]), or a coworker's whose session at its
+    /// desk is, while it's at work.
     AgentAtWork,
     /// An agent session's, idle: when it was heard, and whose it is.
     Agent,
@@ -54,7 +55,18 @@ impl Chat {
             return line(header.line, kind);
         }
         if let Some(role) = self.role_header(name) {
-            return line(role, HeaderLineKind::Topic);
+            // A coworker whose session at its desk is at work says so as a session does,
+            // after a green dot (mock FixerAfter, 27 Nov 2026).
+            let at_work = self
+                .holder_conversation(name)
+                .and_then(|holder| self.agent_header(&holder))
+                .is_some_and(|header| header.active);
+            let kind = if at_work {
+                HeaderLineKind::AgentAtWork
+            } else {
+                HeaderLineKind::Topic
+            };
+            return line(role, kind);
         }
         if !super::is_channel(name)
             && let Some(why) = self.away(name)

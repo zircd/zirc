@@ -857,6 +857,27 @@ mod tests {
     }
 
     #[test]
+    fn a_coworkers_header_says_it_is_at_work_while_its_session_is() {
+        use crate::chat::HeaderLineKind;
+        let mut chat = with_fixer();
+        let host = zirc_proto::names::machine_host("henrik");
+        feed(&mut chat, &[&format!(":henrik-mbp!u@{host} JOIN #api")]);
+        cc1_takes_the_fixer(&mut chat, "08:00:00");
+        let kind = |chat: &Chat| chat.header_line("fixer").map(|line| line.kind);
+        assert_eq!(kind(&chat), Some(HeaderLineKind::Topic));
+        let taking = Message::new(
+            "cc-1",
+            zirc_proto::Event::Text {
+                body: "taking: the web pod".into(),
+            },
+        );
+        let body = zirc_proto::encode(&taking).unwrap();
+        let line = format!(":henrik-mbp!u@{host} PRIVMSG #api :{body}");
+        feed(&mut chat, &[&at("08:30:00", Some("t1"), &line)]);
+        assert_eq!(kind(&chat), Some(HeaderLineKind::AgentAtWork));
+    }
+
+    #[test]
     fn a_rows_preview_skips_wakes_and_counts_them_when_theyre_all_there_is() {
         use zirc_proto::woke::Woke;
         let mut chat = with_fixer();
