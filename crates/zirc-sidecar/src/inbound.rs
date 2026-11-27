@@ -4,9 +4,9 @@
 //! its own job: whoever holds the job takes what's posted, and a tool isn't set up again when
 //! the job moves. "Role" below is that job.
 //!
-//! The secret opens the role's address when its digest is the one zirc.dev gave with the roles
-//! ([`zirc_proto::roles::Listing::opens`], compared in constant time); a rotated one stops at
-//! once, as the next listing replaces it. A post to a role that isn't one, or with a secret
+//! The secret opens the role's address when its digest is the one zirc.dev gave with the staff
+//! ([`zirc_proto::roles::Address::opens`], compared in constant time); a rotated one stops at
+//! once, as the next staff replaces it. A post to a role that isn't one, or with a secret
 //! that doesn't open it, is answered 404 alike, so the answer says nothing of which. Each role
 //! takes [`A_MINUTE`] posts a minute (429 beyond), each at most [`MAX_BODY`] bytes (413).
 //!
@@ -314,8 +314,9 @@ pub fn take(
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
+    use zirc_proto::coworkers::{Given, Staff};
     use zirc_proto::inbound::HEARD_FOR;
-    use zirc_proto::roles::{Address, Listing};
+    use zirc_proto::roles::Address;
 
     const SECRET: &str = "k7Qp2vXe9LmR0aBcDeFgHiJk";
 
@@ -327,15 +328,14 @@ mod tests {
     ) {
         let history = dir.join("history.db");
         let (roles, said) = Roles::beside(&history);
-        let role: zirc_proto::roles::Definition = serde_json::from_value(serde_json::json!({
-            "name": "oncall",
-            "repository": "server",
-            "brief": "Owns errors and incidents in production.",
+        let staff: Staff = serde_json::from_value(serde_json::json!({
+            "coworkers": [{"name": "oncall", "jobs": ["oncall"], "repository": "server"}],
+            "jobs": [{"name": "oncall", "brief": "Owns errors and incidents in production."}],
         }))
         .unwrap();
         roles
-            .set_listing(Listing {
-                roles: vec![role],
+            .set_staff(Given {
+                staff,
                 addresses: vec![Address {
                     role: "oncall".into(),
                     digest: Address::digest_of(SECRET),
@@ -386,13 +386,20 @@ mod tests {
         let (inbound, _said) = inbound(dir.path());
         let none = HeaderMap::new();
         assert!(take(&inbound, "oncall", SECRET, &none, b"hello", 0).is_ok());
-        let mut listing = inbound.roles.standing().listing;
-        listing.addresses = vec![Address {
+        let staff = inbound.roles.standing().staff;
+        let addresses = vec![Address {
             role: "oncall".into(),
             digest: Address::digest_of("aNewSecretAfterRotation0"),
             signing: BTreeMap::new(),
         }];
-        inbound.roles.set_listing(listing).unwrap();
+        inbound
+            .roles
+            .set_staff(Given {
+                staff,
+                addresses,
+                version: "2".into(),
+            })
+            .unwrap();
         assert_eq!(
             take(&inbound, "oncall", SECRET, &none, b"hello", 1),
             Err(StatusCode::NOT_FOUND)
@@ -612,14 +619,21 @@ mod tests {
     fn a_tool_whose_signing_secret_was_given_must_sign_with_it() {
         let dir = tempfile::tempdir().unwrap();
         let (inbound, _said) = inbound(dir.path());
-        let mut listing = inbound.roles.standing().listing;
+        let staff = inbound.roles.standing().staff;
         // What zirc.dev gives, which the standing leaves out.
-        listing.addresses = vec![Address {
+        let addresses = vec![Address {
             role: "oncall".into(),
             digest: Address::digest_of(SECRET),
             signing: BTreeMap::from([(Tool::Sentry, "sentry-client-secret".to_owned())]),
         }];
-        inbound.roles.set_listing(listing).unwrap();
+        inbound
+            .roles
+            .set_staff(Given {
+                staff,
+                addresses,
+                version: "2".into(),
+            })
+            .unwrap();
         let body = include_bytes!("inbound/testdata/sentry_issue_created.json");
         let unsigned = headers(&[("sentry-hook-resource", "issue")]);
         assert_eq!(

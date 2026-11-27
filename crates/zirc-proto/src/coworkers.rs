@@ -10,12 +10,9 @@
 //! any number of coworkers, each in the repository it works in. The product offers a coworker
 //! [`JOBS_OFFERED`] job; the data allows more, so offering more is no migration.
 //!
-//! An organisation's coworkers and jobs together are its [`Staff`]. Until servers keep
-//! coworkers themselves, a staff is given to one as the roles it amounts to
-//! ([`Staff::roles`]): a role for each coworker that has a repository, named as the coworker
-//! and doing what its job says. Today's roles read as a staff the other way
-//! ([`Staff::of_roles`]), each a coworker and a job of the role's name, so nothing is lost
-//! either way.
+//! An organisation's coworkers and jobs together are its [`Staff`]. To a reader that knows
+//! roles, a staff is the roles it amounts to ([`Staff::roles`]): a role for each coworker that
+//! has a repository, named as the coworker and doing what its job says.
 //!
 //! A server keeps its organisation's staff itself: zirc.dev gives it whole ([`Given`], `PUT`
 //! [`ACCOUNTS_PATH`]), and the server sets a coworker's repository when a session first sits
@@ -622,35 +619,6 @@ impl Staff {
             .map(|coworker| self.role_of(coworker))
             .collect()
     }
-
-    /// The staff `roles` amount to: each a coworker of its name, in its repository, holding
-    /// a job of its name that does what the role did.
-    #[must_use]
-    pub fn of_roles(roles: &[Definition]) -> Self {
-        Self {
-            coworkers: roles
-                .iter()
-                .map(|role| Coworker {
-                    name: role.name.clone(),
-                    shown_name: role.shown_name.clone(),
-                    jobs: vec![role.name.clone()],
-                    repository: Some(role.repository.clone()),
-                    picture: role.picture.clone(),
-                    hue: role.hue,
-                    added_by: None,
-                })
-                .collect(),
-            jobs: roles
-                .iter()
-                .map(|role| Job {
-                    name: role.name.clone(),
-                    brief: role.brief.clone(),
-                    triggers: role.triggers.clone(),
-                    reports: role.reports.clone(),
-                })
-                .collect(),
-        }
-    }
 }
 
 /// Whether `a` and `b` are one name to a person: alike but for case and the spaces around.
@@ -697,20 +665,6 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
 mod tests {
     use super::*;
 
-    fn role(name: &str, repository: &str) -> Definition {
-        Definition {
-            name: name.to_owned(),
-            shown_name: None,
-            repository: repository.to_owned(),
-            brief: format!("Does what {name} does."),
-            triggers: Vec::new(),
-            seats: roles::SEATS,
-            reports: Vec::new(),
-            picture: None,
-            hue: None,
-        }
-    }
-
     fn coworker(name: &str, job: Option<&str>, repository: Option<&str>) -> Coworker {
         Coworker {
             name: name.to_owned(),
@@ -729,25 +683,6 @@ mod tests {
             brief: format!("Does what {name} does."),
             triggers: Vec::new(),
             reports: reports.to_vec(),
-        }
-    }
-
-    #[test]
-    fn todays_roles_are_a_staff_and_back_with_nothing_lost() {
-        let roles = vec![
-            Definition {
-                reports: vec![Subject::Flaky],
-                picture: Some("fixer".to_owned()),
-                hue: Some(210),
-                ..role("fixer", "monorepo")
-            },
-            role("oncall", "monorepo"),
-        ];
-        let staff = Staff::of_roles(&roles);
-        staff.check().unwrap();
-        assert_eq!(staff.roles(), roles);
-        for role in &roles {
-            role.check().unwrap();
         }
     }
 

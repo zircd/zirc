@@ -1,6 +1,6 @@
-use zirc_proto::coworkers::{Given, Staff};
+use zirc_proto::coworkers::Given;
 use zirc_proto::leases::Want;
-use zirc_proto::roles::{Address, Definition, Listing, SeatChange, Vacant, Wake};
+use zirc_proto::roles::{Address, Definition, SeatChange, Vacant, Wake};
 use zirc_proto::state::Level;
 
 use super::*;
@@ -21,9 +21,15 @@ fn fixer() -> Definition {
     .unwrap()
 }
 
-fn listing() -> Listing {
-    Listing {
-        roles: vec![fixer()],
+/// zirc.dev's word: one coworker, the fixer, holding the job of its name, which [`fixer`] is.
+fn given() -> Given {
+    let fixer = fixer();
+    Given {
+        staff: serde_json::from_value(serde_json::json!({
+            "coworkers": [{"name": "fixer", "jobs": ["fixer"], "repository": fixer.repository}],
+            "jobs": [{"name": "fixer", "brief": fixer.brief, "triggers": fixer.triggers}],
+        }))
+        .unwrap(),
         addresses: vec![Address {
             role: "fixer".into(),
             digest: Address::digest_of("k7Qp2vXe9LmR0aBcDeFgHiJk"),
@@ -35,7 +41,7 @@ fn listing() -> Listing {
 
 fn brain() -> Brain {
     let mut brain = Brain::new(Kept::default(), START);
-    brain.set_listing(listing(), START).unwrap();
+    brain.set_staff(given(), START).unwrap();
     brain
 }
 
@@ -475,25 +481,6 @@ fn master_broke(brain: &mut Brain, repository: Option<&str>, at: u64) -> Vec<Out
         },
         at,
     )
-}
-
-#[test]
-fn todays_roles_are_kept_as_coworkers_and_jobs_of_their_names() {
-    // A file from a sidecar that kept roles has only the listing.
-    let before = Kept {
-        listing: listing(),
-        ..Kept::default()
-    };
-    let brain = Brain::new(before, START);
-    let standing = brain.standing(LATER);
-    assert_eq!(standing.listing.roles, [fixer()]);
-    assert_eq!(standing.staff, Staff::of_roles(&[fixer()]));
-    assert_eq!(standing.seats[0].repository, "monorepo");
-    assert!(brain.opened("fixer", "k7Qp2vXe9LmR0aBcDeFgHiJk").is_some());
-    // And what's kept still says the roles, for a sidecar rolled back to.
-    let mut brain = brain;
-    brain.set_listing(listing(), START).unwrap();
-    assert_eq!(brain.take_kept().unwrap().listing, listing());
 }
 
 #[test]

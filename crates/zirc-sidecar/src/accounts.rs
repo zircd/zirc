@@ -452,10 +452,7 @@ fn routes(ergo: Arc<Ergo>) -> Router {
             authorize_controller,
         ));
     Router::new()
-        .route(
-            zirc_proto::roles::ACCOUNTS_PATH,
-            put(set_roles).get(roles_shown),
-        )
+        .route(zirc_proto::roles::ACCOUNTS_PATH, get(roles_shown))
         .route("/v1/accounts", get(list))
         .route("/v1/accounts/{name}", put(upsert).delete(erase))
         .route("/v1/accounts/{name}/profile", put(set_profile))
@@ -622,22 +619,8 @@ async fn forget_heard(
     Json(json!({"forgot": forgot})).into_response()
 }
 
-/// `PUT /v1/roles`: the organisation's roles, whole ([`zirc_proto::roles::Listing`]), as
-/// zirc.dev keeps them, from its admins' changes and its sweep. Refused when one breaks a rule, or is named as someone's account is:
-/// a role's nick is never a person's or a machine's.
-async fn set_roles(
-    State(ergo): State<Arc<Ergo>>,
-    Json(listing): Json<zirc_proto::roles::Listing>,
-) -> Response {
-    if let Some(refused) = someones_name(&ergo, listing.roles.iter().map(|r| &r.name), "role").await
-    {
-        return refused;
-    }
-    staff_set(ergo.clone(), ergo.roles.set_listing(listing))
-}
-
 /// `PUT /v1/staff`: the organisation's coworkers and jobs, whole
-/// ([`zirc_proto::coworkers::Given`]), as zirc.dev keeps them, in place of `PUT /v1/roles`.
+/// ([`zirc_proto::coworkers::Given`]), as zirc.dev keeps them, from its changes and its sweep.
 /// Refused when it breaks a rule, or a coworker is named as someone's account is: a
 /// coworker's nick is never a person's or a machine's.
 async fn set_staff(

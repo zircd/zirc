@@ -4,10 +4,8 @@
 //! hold, each in its own repository. A coworker is a role to every reader that knows roles
 //! ([`Staff::role_of`]), and so "role" below is a coworker as its desk stands.
 //!
-//! Who they are comes from zirc.dev, whole: a staff ([`Given`], `PUT /v1/staff`), or the
-//! roles of before ([`Listing`], `PUT /v1/roles`), each read as a coworker and a job of its
-//! name ([`Staff::of_roles`]). A coworker's repository is set here when a session first sits
-//! at its desk ([`Brain::sit`]), and kept when zirc.dev gives none. Who sits at a desk comes
+//! Who they are comes from zirc.dev, whole: a staff ([`Given`], `PUT /v1/staff`). A
+//! coworker's repository is set here when a session first sits at its desk ([`Brain::sit`]), and kept when zirc.dev gives none. Who sits at a desk comes
 //! from the lease events machines say in the organisation's channel ([`zirc_proto::leases`]),
 //! the seat being the lease [`roles::lease`], worked out here as every zircd works it out.
 //! When a seat is taken or left, the role's nick says so in the agents' room
@@ -27,7 +25,7 @@
 //!
 //! [`Brain`] decides all of it from what's heard, with no connection, so it's tested on its
 //! own; [`Host`] keeps the nicks connected and carries out what it says. What's kept, beside
-//! Ergo's history ([`KEPT`]): the listing, each role's last holder, what waits for the next
+//! Ergo's history ([`KEPT`]): the staff, each role's last holder, what waits for the next
 //! one, and when each role's times last came round. Nothing anyone said is logged.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -93,11 +91,6 @@ pub struct Pending {
 /// What's kept, beside the history.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Kept {
-    /// The roles the staff amounts to, with the addresses: what a sidecar from before it kept
-    /// a staff reads, so one rolled back to still has its roles. A file from such a sidecar
-    /// has only this, read as a staff ([`Brain::new`]).
-    #[serde(default)]
-    pub listing: Listing,
     /// The coworkers and jobs, each coworker's repository as zirc.dev gave it or as set here.
     #[serde(default)]
     pub staff: Staff,
@@ -263,12 +256,7 @@ pub struct Brain {
 impl Brain {
     /// A brain that starts at `now` (unix milliseconds) from what was `kept`.
     #[must_use]
-    pub fn new(mut kept: Kept, now: u64) -> Self {
-        if kept.staff.coworkers.is_empty() && !kept.listing.roles.is_empty() {
-            kept.staff = Staff::of_roles(&kept.listing.roles);
-            kept.addresses.clone_from(&kept.listing.addresses);
-            kept.version.clone_from(&kept.listing.version);
-        }
+    pub fn new(kept: Kept, now: u64) -> Self {
         Self {
             roles: kept.staff.desks(),
             kept,
@@ -312,25 +300,6 @@ impl Brain {
             .iter()
             .find(|address| address.role == job && address.opens(secret))
             .map(|address| address.signing.clone())
-    }
-
-    /// Takes zirc.dev's word for the roles of before, if they keep every rule: each a
-    /// coworker and a job of its name ([`Staff::of_roles`]), its address its job's. What
-    /// waited and can now be taken is said.
-    ///
-    /// # Errors
-    ///
-    /// Why they don't.
-    pub fn set_listing(&mut self, listing: Listing, now: u64) -> Result<Vec<Out>, String> {
-        listing.check()?;
-        self.set_staff(
-            Given {
-                staff: Staff::of_roles(&listing.roles),
-                addresses: listing.addresses,
-                version: listing.version,
-            },
-            now,
-        )
     }
 
     /// Takes zirc.dev's word for the staff, if it keeps every rule. A coworker it gives no
@@ -425,15 +394,9 @@ impl Brain {
         Ok((role, outs))
     }
 
-    /// Works out again what follows from the staff, which changed: the roles it amounts to,
-    /// and what an older sidecar reads.
+    /// Works out again what follows from the staff, which changed: the roles it amounts to.
     fn derive(&mut self) {
         self.roles = self.kept.staff.desks();
-        self.kept.listing = Listing {
-            roles: self.kept.staff.roles(),
-            addresses: self.kept.addresses.clone(),
-            version: self.kept.version.clone(),
-        };
         self.changed = true;
     }
 
@@ -1407,15 +1370,6 @@ impl Roles {
                 });
         }
         answer
-    }
-
-    /// Takes zirc.dev's word for the roles of before ([`Brain::set_listing`]).
-    ///
-    /// # Errors
-    ///
-    /// Why it won't do.
-    pub fn set_listing(&self, listing: Listing) -> Result<(), String> {
-        self.changed(|brain| Ok(((), brain.set_listing(listing, crate::now_ms())?)))
     }
 
     /// Takes zirc.dev's word for the staff ([`Brain::set_staff`]).
