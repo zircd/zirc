@@ -201,6 +201,24 @@ impl Server {
         answer(response, "coworkers' desks").await
     }
 
+    /// What coworker `name`'s desk hands the next session to sit there
+    /// ([`zirc_proto::desk::HANDOVER_PATH`]).
+    ///
+    /// # Errors
+    ///
+    /// When the server can't be reached or refuses, saying why.
+    pub async fn handover(&self, name: &str) -> Result<zirc_proto::desk::Handover, String> {
+        let path = zirc_proto::desk::HANDOVER_PATH.replace("{name}", name);
+        let response = self
+            .http
+            .get(format!("{}{path}", self.base))
+            .bearer_auth(self.token()?)
+            .send()
+            .await
+            .map_err(|err| format!("couldn't reach the server: {err}"))?;
+        answer(response, "coworkers' desks").await
+    }
+
     /// Adds `hint` for `scope`, for `session` when an agent's asking.
     ///
     /// # Errors

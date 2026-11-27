@@ -69,7 +69,12 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
                 session: session_or_user(session),
                 repo: Some(repo.scope.trim_start_matches('#').to_owned()),
             };
-            let Response::RoleTaken { role, seat } = ask(socket, request).await? else {
+            let Response::RoleTaken {
+                role,
+                seat,
+                handover,
+            } = ask(socket, request).await?
+            else {
                 return Err(unexpected());
             };
             writeln!(out, "{}", sat_words(role.shown(), &role.repository))?;
@@ -77,6 +82,13 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
             writeln!(out, "  ↳ wakes on: {}", role.wakes_on().join("; "))?;
             if let Some(last) = &seat.last {
                 writeln!(out, "  ↳ {}", last_words(&role.name, last))?;
+            }
+            // What the last session at the desk left, so this one carries on as the coworker.
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| since.as_secs());
+            for line in handover.map(|h| h.lines(now)).unwrap_or_default() {
+                writeln!(out, "  ↳ {line}")?;
             }
             Ok(())
         }

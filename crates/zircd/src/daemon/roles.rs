@@ -148,9 +148,16 @@ impl Daemon {
             woke_today: 0,
         });
         seat.repository.clone_from(&definition.repository);
+        // What the last session at the desk left: a desk that can't say still seats it.
+        let handover = server
+            .handover(role)
+            .await
+            .inspect_err(|why| tracing::info!("no handover for a desk: {why}"))
+            .ok();
         Ok(Response::RoleTaken {
             role: definition,
             seat,
+            handover,
         })
     }
 

@@ -18,6 +18,7 @@ pub mod colleagues;
 pub mod coworkers;
 pub mod decision;
 pub mod desired;
+pub mod desk;
 pub mod device_key;
 pub mod files;
 pub mod gotchas;

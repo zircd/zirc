@@ -812,6 +812,10 @@ pub enum Response {
         role: zirc_proto::roles::Definition,
         /// Its seat.
         seat: zirc_proto::roles::Seat,
+        /// What its desk hands the session ([`zirc_proto::desk`]): none where the server
+        /// couldn't say.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        handover: Option<zirc_proto::desk::Handover>,
     },
     /// The answer to [`Request::RoleStanding`].
     RoleStanding(zirc_proto::roles::Standing),

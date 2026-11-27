@@ -38,6 +38,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 use zirc_proto::coworkers::{Given, Staff};
+use zirc_proto::desk::{self, Came, Handover};
 use zirc_proto::leases::{LeaseEvent, Leases};
 use zirc_proto::roles::{
     self, Address, Definition, Holder, Listing, Say, Seat, SeatChange, Standing, Vacant, Wake,
@@ -133,6 +134,13 @@ pub struct Kept {
     /// 1970, UTC) and the count.
     #[serde(default)]
     pub woke: BTreeMap<String, (u64, u32)>,
+    /// What woke each coworker lately, oldest first, at most [`desk::RECENT`], by
+    /// coworker: for the next session to sit at its desk ([`Brain::handover`]).
+    #[serde(default)]
+    pub recent: BTreeMap<String, Vec<Waiting>>,
+    /// What a session at each coworker's desk last said it was doing there, by coworker.
+    #[serde(default)]
+    pub doing: BTreeMap<String, String>,
 }
 
 /// Who sent something, as the server's accounts say.
@@ -618,6 +626,88 @@ impl Brain {
         self.changed = true;
     }
 
+    /// Keeps that `woke` and `text` woke coworker `name` at `at` (unix seconds), for the next
+    /// session to sit at its desk.
+    fn remember(&mut self, name: &str, woke: &Woke, text: &str, at: u64) {
+        let recent = self.kept.recent.entry(name.to_owned()).or_default();
+        recent.push(Waiting {
+            woke: woke.clone(),
+            text: text.to_owned(),
+            at,
+        });
+        if recent.len() > desk::RECENT {
+            recent.remove(0);
+        }
+        self.changed = true;
+    }
+
+    /// What coworker `name`'s desk hands the next session to sit there: what a session there
+    /// was doing, what woke the coworker lately and what waits for it. `None` when
+    /// there's no such coworker.
+    #[must_use]
+    pub fn handover(&self, name: &str) -> Option<Handover> {
+        let role = self.role(name)?;
+        let came = |waited: &Waiting| Came {
+            woke: waited.woke.clone(),
+            text: waited.text.clone(),
+            at: waited.at,
+        };
+        let waiting = self
+            .kept
+            .waiting
+            .get(&role.name)
+            .into_iter()
+            .flatten()
+            .chain(
+                self.kept
+                    .pending
+                    .iter()
+                    .filter(|pending| self.may_take(&role.name, pending))
+                    .map(|pending| &pending.waiting),
+            )
+            .map(came)
+            .collect();
+        Some(Handover {
+            coworker: role.name.clone(),
+            doing: self.kept.doing.get(&role.name).cloned(),
+            recent: self
+                .kept
+                .recent
+                .get(&role.name)
+                .into_iter()
+                .flatten()
+                .map(came)
+                .collect(),
+            waiting,
+        })
+    }
+
+    /// Keeps what `message`, said by a machine, says a session at a coworker's desk is doing
+    /// there: its `taking:`, `done:` or `dropped:`, or its intent, said as the coworker
+    /// ([`Message::desk`]).
+    fn note_doing(&mut self, message: &Message) {
+        let Some(desk) = message.desk.as_deref() else {
+            return;
+        };
+        let Some(name) = self.role(desk).map(|role| role.name.clone()) else {
+            return;
+        };
+        let doing = match &message.event {
+            Event::Intent { summary, .. } => summary,
+            Event::Text { body }
+                if zirc_proto::says_taking(body) || zirc_proto::says_finished(body) =>
+            {
+                body
+            }
+            _ => return,
+        };
+        let doing = zirc_proto::clip_line(doing, zirc_proto::session::MAX_TITLE);
+        if !doing.is_empty() {
+            self.kept.doing.insert(name, doing);
+            self.changed = true;
+        }
+    }
+
     /// Wakes the session at coworker `role`'s desk with `woke` and `text`, or keeps it for
     /// the next one: what a direct message does.
     pub fn wake(&mut self, role: &str, woke: Woke, text: &str, now: u64) -> Vec<Out> {
@@ -631,6 +721,7 @@ impl Brain {
         };
         self.count(&role, now);
         if let Some(holder) = self.holder(&role, now) {
+            self.remember(&role, &woke, text, now / 1000);
             return vec![wake_out(&role, &holder, woke, text, now / 1000)];
         }
         let waiting = self.kept.waiting.entry(role).or_default();
@@ -686,6 +777,7 @@ impl Brain {
                 role: Some(name.clone()),
                 ..woke
             };
+            self.remember(&name, &woke, text, now / 1000);
             return vec![wake_out(&name, &holder, woke, text, now / 1000)];
         }
         if repository.is_some() && self.kept.staff.takers(job, repository).next().is_none() {
@@ -727,6 +819,7 @@ impl Brain {
                 role: Some(name.clone()),
                 ..pending.waiting.woke
             };
+            self.remember(&name, &woke, &pending.waiting.text, pending.waiting.at);
             outs.push(wake_out(
                 &name,
                 &holder,
@@ -856,6 +949,7 @@ impl Brain {
                 }
                 outs.push(change);
                 for waited in waited {
+                    self.remember(&name, &waited.woke, &waited.text, waited.at);
                     outs.push(wake_out(
                         &name,
                         &holder,
@@ -1012,6 +1106,11 @@ impl Brain {
         text: &str,
         now: u64,
     ) -> Vec<Out> {
+        if sender == Sender::Machine
+            && let Some(message) = message
+        {
+            self.note_doing(message);
+        }
         let event = message.map(|m| &m.event);
         if let Some(state) = event.and_then(State::of) {
             // How something stands is the team's and its CI's to say.
@@ -1209,6 +1308,12 @@ impl Roles {
     #[must_use]
     pub fn standing(&self) -> Standing {
         self.with(|brain| (brain.standing(crate::now_ms()), Vec::new()))
+    }
+
+    /// What coworker `name`'s desk hands the next session to sit there ([`Brain::handover`]).
+    #[must_use]
+    pub fn handover(&self, name: &str) -> Option<Handover> {
+        self.with(|brain| (brain.handover(name), Vec::new()))
     }
 
     /// Runs `f` on the brain for what it has the nicks say, or why it won't, then connects

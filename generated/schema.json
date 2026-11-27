@@ -3314,6 +3314,65 @@
       ],
       "description": "A session holding a role, or that held it: its machine, and the session as its card says\nit ([`crate::session::SessionCard`]), so its name and tool are read one way."
     },
+    "Handover": {
+      "type": "object",
+      "properties": {
+        "coworker": {
+          "type": "string",
+          "description": "The coworker."
+        },
+        "doing": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "What a session at the desk last said it was doing there: its latest `taking:` or\nintent, said as the coworker."
+        },
+        "recent": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Came"
+          },
+          "description": "What woke the coworker lately, oldest first, at most [`RECENT`]."
+        },
+        "waiting": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Came"
+          },
+          "description": "What waits for it, oldest first: what reaches the new session's watch once it sits."
+        }
+      },
+      "required": [
+        "coworker"
+      ],
+      "description": "What a coworker's desk hands the next session to sit there."
+    },
+    "Came": {
+      "type": "object",
+      "properties": {
+        "woke": {
+          "$ref": "#/$defs/Woke",
+          "description": "What woke it, or will."
+        },
+        "text": {
+          "type": "string",
+          "description": "Its words: a direct message's, or what woke it."
+        },
+        "at": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "description": "When, unix seconds."
+        }
+      },
+      "required": [
+        "woke",
+        "text",
+        "at"
+      ],
+      "description": "Something that came for a coworker: what woke it, or waits to."
+    },
     "Listing": {
       "type": "object",
       "properties": {
@@ -5802,6 +5861,17 @@
             "seat": {
               "$ref": "#/$defs/Seat",
               "description": "Its seat."
+            },
+            "handover": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Handover"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "What its desk hands the session ([`zirc_proto::desk`]): none where the server\ncouldn't say."
             }
           },
           "required": [

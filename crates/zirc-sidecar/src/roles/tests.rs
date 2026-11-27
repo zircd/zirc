@@ -652,3 +652,108 @@ fn a_report_is_taken_by_its_jobs_holder_and_said_by_someone() {
     assert_eq!(brain.speaker("fixer", Some("docs")).as_deref(), Some("ada"));
     assert_eq!(brain.speaker("oncall", None).as_deref(), Some("ada"));
 }
+
+/// What `session` on `machine` says in `#agents` at `at`, sitting at `desk` or at none.
+fn says(brain: &mut Brain, machine: &str, session: &str, desk: Option<&str>, text: &str, at: u64) {
+    let message = Message {
+        desk: desk.map(str::to_owned),
+        ..Message::new(session, Event::Text { body: text.into() })
+    };
+    brain.heard(
+        Input::Said {
+            channel: zirc_proto::AGENTS_CHANNEL.into(),
+            from: machine.into(),
+            sender: Sender::Machine,
+            id: None,
+            message: Some(message),
+            text: text.into(),
+        },
+        at,
+    );
+}
+
+/// The fixer's desk with henrik-mbp's `cc-1` at it, and a moment after it sat.
+fn fixer_seated() -> (Brain, u64) {
+    let mut brain = brain();
+    take(&mut brain, "henrik-mbp", "cc-1", LATER);
+    brain.tick(LATER + zirc_proto::leases::SETTLE);
+    (brain, LATER + zirc_proto::leases::SETTLE + 1000)
+}
+
+#[test]
+fn a_desks_handover_says_what_its_session_was_on_and_what_woke_it() {
+    let (mut brain, at) = fixer_seated();
+    write(&mut brain, "main is red", at);
+    says(
+        &mut brain,
+        "henrik-mbp",
+        "cc-1",
+        Some("fixer"),
+        "taking: fix main",
+        at,
+    );
+    // Said by a session at no desk, or of other work: not the coworker's.
+    says(
+        &mut brain,
+        "henrik-mbp",
+        "cc-2",
+        None,
+        "taking: my own thing",
+        at,
+    );
+    says(
+        &mut brain,
+        "henrik-mbp",
+        "cc-1",
+        Some("fixer"),
+        "looking at the logs",
+        at,
+    );
+    let handover = brain.handover("fixer").unwrap();
+    assert_eq!(handover.doing.as_deref(), Some("taking: fix main"));
+    let recent: Vec<&str> = handover
+        .recent
+        .iter()
+        .map(|came| came.text.as_str())
+        .collect();
+    assert_eq!(recent, ["main is red"]);
+    assert!(handover.waiting.is_empty());
+    assert!(brain.handover("nobody").is_none());
+}
+
+#[test]
+fn a_desks_handover_says_what_waits_once_its_session_has_gone() {
+    let (mut brain, at) = fixer_seated();
+    brain.heard(
+        Input::Lease {
+            from: "henrik-mbp".into(),
+            owner: Some("henrik".into()),
+            event: LeaseEvent::Release {
+                id: format!("henrik-mbp-{LATER}-1"),
+                at,
+            },
+        },
+        at,
+    );
+    let later = at + zirc_proto::leases::SETTLE;
+    brain.tick(later);
+    write(&mut brain, "still red", later);
+    let handover = brain.handover("fixer").unwrap();
+    let waiting: Vec<&str> = handover
+        .waiting
+        .iter()
+        .map(|came| came.text.as_str())
+        .collect();
+    assert_eq!(waiting, ["still red"]);
+}
+
+#[test]
+fn a_desk_keeps_only_its_latest_wakes() {
+    let (mut brain, at) = fixer_seated();
+    for n in 0..=desk::RECENT {
+        write(&mut brain, &format!("wake {n}"), at + n as u64);
+    }
+    let handover = brain.handover("fixer").unwrap();
+    assert_eq!(handover.recent.len(), desk::RECENT);
+    assert_eq!(handover.recent[0].text, "wake 1");
+}

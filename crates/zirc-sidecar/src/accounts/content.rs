@@ -237,6 +237,7 @@ pub(super) fn router(ergo: Arc<Ergo>) -> Router {
         .route(&at("/gotchas"), get(list_gotchas))
         .route(&at(zirc_proto::roles::PATH), get(roles_standing))
         .route(&at(zirc_proto::coworkers::DESK_PATH), post(sit_at_desk))
+        .route(&at(zirc_proto::desk::HANDOVER_PATH), get(desk_handover))
         .route(&at("/playbook/usage"), get(playbook_usage))
         .route(&at("/playbook/uses"), get(playbook_uses));
     let owners = Router::new()
@@ -336,6 +337,20 @@ async fn sit_at_desk(
     match ergo.roles.sit(&name, &sitting.repository) {
         Ok(role) => Json(role).into_response(),
         Err(why) => error(StatusCode::CONFLICT, "desk", &why),
+    }
+}
+
+/// `GET /coworkers/<name>/handover`: what the coworker's desk hands the next session to sit
+/// there ([`zirc_proto::desk::Handover`]), on this server alone, as it holds what people
+/// wrote.
+async fn desk_handover(State(ergo): State<Arc<Ergo>>, Path(name): Path<String>) -> Response {
+    match ergo.roles.handover(&name) {
+        Some(handover) => Json(handover).into_response(),
+        None => error(
+            StatusCode::NOT_FOUND,
+            "coworker",
+            format!("there's no coworker named {name}"),
+        ),
     }
 }
 
