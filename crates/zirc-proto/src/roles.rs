@@ -87,6 +87,12 @@ pub struct Definition {
     /// Its name, which is its nick on the server: unique in the organisation ([`check_name`]),
     /// such as `fixer`.
     pub name: String,
+    /// For a coworker's desk, the name the coworker is shown by
+    /// ([`crate::coworkers::Coworker::shown_name`]): `John`. None for a role of before, shown
+    /// by its name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub shown_name: Option<String>,
     /// The repository its seat is taken from a checkout of, by name as zirc spells it
     /// ([`crate::Message::repo`]), such as `monorepo`.
     pub repository: String,
@@ -424,6 +430,12 @@ impl Standing {
 }
 
 impl Definition {
+    /// The name it's shown by: a coworker's (`John`), else its own.
+    #[must_use]
+    pub fn shown(&self) -> &str {
+        self.shown_name.as_deref().unwrap_or(&self.name)
+    }
+
     /// The rules a role keeps that need nothing but itself.
     ///
     /// # Errors

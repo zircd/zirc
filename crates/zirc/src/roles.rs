@@ -1,7 +1,7 @@
 //! `zirc role` and `zirc roles`: a role's one seat taken, left and spoken from
 //! ([`zirc_proto::roles`]), and how the organisation's roles stand. A role is a coworker as
 //! its desk stands ([`zirc_proto::coworkers`]), so `zirc desk` is `zirc role`, and `zirc desk
-//! take ada` sits a session at Ada's desk.
+//! take John` sits a session at John's desk.
 
 use std::io::Write;
 use std::path::Path;
@@ -25,7 +25,7 @@ pub(crate) enum RoleCommand {
     /// session sits there. The first session to sit at a new coworker's desk sets the
     /// repository it works in, from the checkout this runs in.
     Take {
-        /// The coworker, such as ada, or a role, such as fixer.
+        /// The coworker, by its name (John) or its nick (john), or a role, such as fixer.
         role: String,
         /// Your session. Defaults to $ZIRC_SESSION, then $USER.
         #[arg(long, env = "ZIRC_SESSION")]
@@ -72,7 +72,7 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
             let Response::RoleTaken { role, seat } = ask(socket, request).await? else {
                 return Err(unexpected());
             };
-            writeln!(out, "{}", sat_words(&role.name, &role.repository))?;
+            writeln!(out, "{}", sat_words(role.shown(), &role.repository))?;
             writeln!(out, "  ↳ brief: {}", role.brief.trim())?;
             writeln!(out, "  ↳ wakes on: {}", role.wakes_on().join("; "))?;
             if let Some(last) = &seat.last {
@@ -172,7 +172,8 @@ fn seat_of<'a>(standing: &'a Standing, role: &str) -> Result<&'a Seat> {
         .ok_or_else(|| anyhow::anyhow!("there's no {role} role: `{PROGRAM} roles` lists them"))
 }
 
-/// What a session is told once it sits at coworker `name`'s desk in `repository`.
+/// What a session is told once it sits at the desk of the coworker shown as `name`, in
+/// `repository`: `you're John, at your desk in web`.
 fn sat_words(name: &str, repository: &str) -> String {
     format!("you're {name}, at your desk in {repository}")
 }

@@ -149,7 +149,7 @@ mod tests {
     fn the_agent_guide_matches_what_the_cli_prints() {
         // The guide quotes the CLI's commands and output; keep them in step.
         let told = zirc_proto::roles::tell_an_agent("fixer");
-        let sat = zirc_proto::coworkers::tell_a_session("ada");
+        let sat = zirc_proto::coworkers::tell_a_session("John");
         let desk = zirc_proto::coworkers::desk_command("<coworker> --session <your session>");
         for quoted in [
             "zirc status",

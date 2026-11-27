@@ -62,6 +62,15 @@ impl Daemon {
         session: &str,
         repo: Option<&str>,
     ) -> Result<Response> {
+        let server = self
+            .content_server()
+            .context("this machine can't ask its organisation's server about roles")?;
+        let standing = server.roles().await.map_err(anyhow::Error::msg)?;
+        // A person names a coworker as it's shown ("You're John."): its desk is its nick's.
+        let role = standing
+            .staff
+            .called(role)
+            .map_or(role, |coworker| coworker.name.as_str());
         if let Some(held) = self.role_of(session)
             && held != role
         {
@@ -71,10 +80,6 @@ impl Daemon {
                 zirc_proto::PROGRAM
             );
         }
-        let server = self
-            .content_server()
-            .context("this machine can't ask its organisation's server about roles")?;
-        let standing = server.roles().await.map_err(anyhow::Error::msg)?;
         let Some((definition, seat)) = standing.role(role) else {
             let names: Vec<&str> = standing
                 .listing

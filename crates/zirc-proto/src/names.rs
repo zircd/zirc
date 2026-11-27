@@ -88,6 +88,115 @@ pub fn job_problem(name: &str) -> Option<String> {
     nick_problem("job", name)
 }
 
+/// The longest name a coworker is shown by ([`shown_name_problem`]), in characters.
+pub const SHOWN_NAME_MAX: usize = 32;
+
+/// What's wrong with `shown` as the name a coworker is shown by, `John`, if anything: one
+/// line of at most [`SHOWN_NAME_MAX`] characters that a nick can be made from
+/// ([`nick_base`]).
+#[must_use]
+pub fn shown_name_problem(shown: &str) -> Option<String> {
+    let shown = shown.trim();
+    if shown.is_empty() {
+        return Some("Name a coworker.".to_owned());
+    }
+    if shown.chars().count() > SHOWN_NAME_MAX {
+        return Some(format!(
+            "A coworker's name is {SHOWN_NAME_MAX} characters at most."
+        ));
+    }
+    if shown.chars().any(char::is_control) {
+        return Some("A coworker's name is one line.".to_owned());
+    }
+    nick_base(shown).is_none().then(|| {
+        format!(
+            "A coworker's name needs {HANDLE_MIN} letters from a to z or more: its handle in \
+             chat is made from them."
+        )
+    })
+}
+
+/// The letters Latin-1's and Latin Extended-A's letters fold to, from U+00C0, one each: a
+/// space for one that folds to none, or to two ([`fold`]).
+const FOLDED: &str = "aaaaaa ceeeeiiiidnooooo ouuuuy  aaaaaa ceeeeiiiidnooooo ouuuuy y\
+                      aaaaaaccccccccddddeeeeeeeeeegggggggghhhhiiiiiiiiii  jjkkklllllll\
+                      lllnnnnnnnnnoooooo  rrrrrrssssssssttttttuuuuuuuuuuuuwwyyyzzzzzzs";
+
+/// What `c` is written with in a nick, in lowercase a to z: `Zoë` and `Ærø` as `zoe` and
+/// `aero`. None for a character that's no Latin letter.
+fn fold(c: char) -> Option<&'static str> {
+    const ASCII: &str = "abcdefghijklmnopqrstuvwxyz";
+    let lower = c.to_ascii_lowercase();
+    if lower.is_ascii_lowercase() {
+        let at = usize::from(lower as u8 - b'a');
+        return Some(&ASCII[at..=at]);
+    }
+    match c {
+        'Æ' | 'æ' => Some("ae"),
+        'Œ' | 'œ' => Some("oe"),
+        'Þ' | 'þ' => Some("th"),
+        'ß' => Some("ss"),
+        'Ĳ' | 'ĳ' => Some("ij"),
+        _ => {
+            let at = usize::try_from(u32::from(c).checked_sub(0xC0)?).ok()?;
+            FOLDED.get(at..=at).filter(|folded| *folded != " ")
+        }
+    }
+}
+
+/// The nick a coworker shown as `shown` is given when no other has it: lowercase, accents
+/// folded (`Zoë` is `zoe`), spaces and hyphens as underscores (`Mary Jane` is `mary_jane`),
+/// anything else left out (`O'Brien` is `obrien`), starting with a letter and at most
+/// [`HANDLE_MAX`] long (the user's choice, 27 Nov 2026). None when that leaves fewer than
+/// [`HANDLE_MIN`] characters.
+#[must_use]
+pub fn nick_base(shown: &str) -> Option<String> {
+    let mut nick = String::new();
+    for c in shown.trim().chars() {
+        if c.is_whitespace() || c == '-' || c == '_' {
+            if !nick.is_empty() && !nick.ends_with('_') {
+                nick.push('_');
+            }
+        } else if c.is_ascii_digit() {
+            if !nick.is_empty() {
+                nick.push(c);
+            }
+        } else if let Some(folded) = fold(c) {
+            nick.push_str(folded);
+        }
+    }
+    nick.truncate(HANDLE_MAX);
+    let nick = nick.trim_end_matches('_');
+    (nick.len() >= HANDLE_MIN).then(|| nick.to_owned())
+}
+
+/// The nick a coworker shown as `shown` is hired with, where `taken` says which nicks are
+/// someone's already in the office (a member's, a machine's, another coworker's): its
+/// [`nick_base`], or that with the lowest number from 2 that's free after it (`john2`),
+/// shortened to fit. zirc's own names count as taken.
+///
+/// # Errors
+///
+/// Why `shown` can't be a coworker's name ([`shown_name_problem`]).
+pub fn nick_for(shown: &str, taken: impl Fn(&str) -> bool) -> Result<String, String> {
+    if let Some(why) = shown_name_problem(shown) {
+        return Err(why);
+    }
+    let base = nick_base(shown).unwrap_or_default();
+    let free = |nick: &str| !taken(nick) && nick_problem("coworker", nick).is_none();
+    if free(&base) {
+        return Ok(base);
+    }
+    (2..=u32::from(u16::MAX))
+        .map(|number| {
+            let number = number.to_string();
+            let stem = &base[..base.len().min(HANDLE_MAX - number.len())];
+            format!("{}{number}", stem.trim_end_matches('_'))
+        })
+        .find(|nick| free(nick))
+        .ok_or_else(|| format!("{base} is taken in this office: choose another name."))
+}
+
 /// What's wrong with `name` as the name of a `what`, which is or may be a nick on the server.
 fn nick_problem(what: &str, name: &str) -> Option<String> {
     if !handle_shaped(name) {
@@ -246,6 +355,7 @@ pub fn typescript() -> Vec<String> {
         format!("const HANDLE_MIN = {HANDLE_MIN};"),
         format!("const HANDLE_MAX = {HANDLE_MAX};"),
         format!("const HANDLE_PATTERN = {:?};", handle_pattern()),
+        format!("const SHOWN_NAME_MAX = {SHOWN_NAME_MAX};"),
         // A role's name is shaped as a handle is (role_problem).
         format!("const ROLE_PATTERN = {:?};", handle_pattern()),
         format!(
@@ -372,5 +482,50 @@ mod tests {
         assert!(!is_account_name("Ada") && !is_account_name(&"a".repeat(NICK_MAX + 1)));
         // No handle can be a machine's: handles have no hyphen.
         assert!(!is_handle("ada-mbp"));
+    }
+
+    #[test]
+    fn a_coworkers_nick_is_made_from_the_name_it_is_shown_by() {
+        assert_eq!(FOLDED.len(), 0x180 - 0xC0);
+        for (shown, nick) in [
+            ("John", "john"),
+            ("Mary Jane", "mary_jane"),
+            ("Jean-Luc", "jean_luc"),
+            ("  Zoë  ", "zoe"),
+            ("Ærø Łukasz", "aero_lukasz"),
+            ("Weiß", "weiss"),
+            ("O'Brien", "obrien"),
+            ("2Pac", "pac"),
+            ("R2 D2", "r2_d2"),
+            ("Ada 🤖", "ada"),
+            ("Alexandra Montgomery-Smith", "alexandra_montgomery_smi"),
+        ] {
+            assert_eq!(nick_base(shown).as_deref(), Some(nick), "{shown}");
+            assert_eq!(nick_for(shown, |_| false).as_deref(), Ok(nick), "{shown}");
+            assert!(handle_shaped(nick), "{nick}");
+        }
+        // No letters a to z to make one from, or too few: refused, saying why.
+        for shown in ["李明", "🤖", "Q", "42", ""] {
+            assert!(nick_base(shown).is_none(), "{shown}");
+            assert!(shown_name_problem(shown).is_some(), "{shown}");
+            assert!(nick_for(shown, |_| false).is_err(), "{shown}");
+        }
+        assert!(shown_name_problem(&"a".repeat(SHOWN_NAME_MAX + 1)).is_some());
+        assert!(shown_name_problem("Jo\nhn").is_some());
+    }
+
+    #[test]
+    fn a_nick_someone_has_gets_the_lowest_free_number() {
+        let taken = ["john", "john2"];
+        assert_eq!(
+            nick_for("John", |nick| taken.contains(&nick)).as_deref(),
+            Ok("john3")
+        );
+        // zirc's own names are taken everywhere.
+        assert_eq!(nick_for("Zirc", |_| false).as_deref(), Ok("zirc2"));
+        // A long one is shortened to fit its number.
+        let long = "a".repeat(HANDLE_MAX);
+        let nick = nick_for(&long, |nick| nick == long).unwrap();
+        assert_eq!(nick, format!("{}2", "a".repeat(HANDLE_MAX - 1)));
     }
 }

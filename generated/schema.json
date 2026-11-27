@@ -3080,6 +3080,13 @@
           "type": "string",
           "description": "Its name, which is its nick on the server: unique in the organisation ([`check_name`]),\nsuch as `fixer`."
         },
+        "shown_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "For a coworker's desk, the name the coworker is shown by\n([`crate::coworkers::Coworker::shown_name`]): `John`. None for a role of before, shown\nby its name."
+        },
         "repository": {
           "type": "string",
           "description": "The repository its seat is taken from a checkout of, by name as zirc spells it\n([`crate::Message::repo`]), such as `monorepo`."
@@ -3387,7 +3394,14 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Its name, which is its nick on the server: unique in the organisation, as whoever\nadded it typed it."
+          "description": "Its nick on the server, `john`: unique in the organisation, made from the name it's\nshown by when it was hired ([`Staff::nick_for`]), and kept when that changes, as what\nit said is said by it. What every reader keys it by."
+        },
+        "shown_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The name it's shown by, as whoever hired it typed it: `John`. None for one hired\nbefore coworkers had one, which is shown by its nick ([`Coworker::shown`])."
         },
         "jobs": {
           "type": "array",

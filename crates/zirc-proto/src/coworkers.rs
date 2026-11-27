@@ -1,6 +1,7 @@
 //! Coworkers and jobs: what a role ([`crate::roles`]) splits into (the user's choices, 26 and
-//! 27 Nov 2026). A [`Coworker`] is a named agent with a desk: its name, which is its nick on
-//! the server, its picture and colour, and the repository it works in. A [`Job`] is what a
+//! 27 Nov 2026). A [`Coworker`] is a named agent with a desk: the name it's shown by, `John`,
+//! and the nick made from it, `john` ([`crate::names::nick_for`]), its picture and colour, and
+//! the repository it works in. A [`Job`] is what a
 //! coworker does and what wakes it: a brief, triggers and the kinds of report it takes.
 //! A coworker holds jobs by name, and may hold none: it's then woken by a direct message
 //! alone, and still gets what every session does, such as being told of an overlap.
@@ -63,13 +64,13 @@ pub const DESK_PATH: &str = "/coworkers/{name}/desk";
 /// desk take`. `zirc role take` is the same command.
 pub const DESK_COMMAND: &str = "zirc desk take";
 
-/// What a person tells a session to sit it at a coworker's desk, `{name}` the coworker's:
-/// what the agent guide teaches ([`tell_a_session`]). Provisional: the sentence isn't the
+/// What a person tells a session to sit it at a coworker's desk, `{name}` the name it's shown
+/// by ([`Coworker::shown`]): what the agent guide teaches ([`tell_a_session`]). Provisional: the sentence isn't the
 /// user's own yet.
 pub const TELL_A_SESSION: &str = "You're {name}. Take your desk.";
 
-/// What a person tells a session to sit it at coworker `name`'s desk: `You're ada. Take your
-/// desk.`
+/// What a person tells a session to sit it at the desk of the coworker shown as `name`:
+/// `You're John. Take your desk.`
 #[must_use]
 pub fn tell_a_session(name: &str) -> String {
     TELL_A_SESSION.replace("{name}", name)
@@ -352,9 +353,15 @@ impl Job {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(rename = "Coworker")]
 pub struct Coworker {
-    /// Its name, which is its nick on the server: unique in the organisation, as whoever
-    /// added it typed it.
+    /// Its nick on the server, `john`: unique in the organisation, made from the name it's
+    /// shown by when it was hired ([`Staff::nick_for`]), and kept when that changes, as what
+    /// it said is said by it. What every reader keys it by.
     pub name: String,
+    /// The name it's shown by, as whoever hired it typed it: `John`. None for one hired
+    /// before coworkers had one, which is shown by its nick ([`Coworker::shown`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub shown_name: Option<String>,
     /// The jobs it holds, by name: none, or as the product offers, [`JOBS_OFFERED`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub jobs: Vec<String>,
@@ -380,6 +387,12 @@ pub struct Coworker {
 }
 
 impl Coworker {
+    /// The name it's shown by: `John`, or its nick for one with none.
+    #[must_use]
+    pub fn shown(&self) -> &str {
+        self.shown_name.as_deref().unwrap_or(&self.name)
+    }
+
     /// The rules a coworker keeps that need nothing but itself.
     ///
     /// # Errors
@@ -387,6 +400,13 @@ impl Coworker {
     /// What's wrong, in words for whoever added it.
     pub fn check(&self) -> Result<(), String> {
         if let Some(why) = crate::names::coworker_problem(&self.name) {
+            return Err(why);
+        }
+        if let Some(why) = self
+            .shown_name
+            .as_deref()
+            .and_then(crate::names::shown_name_problem)
+        {
             return Err(why);
         }
         if self
@@ -464,6 +484,39 @@ impl Staff {
         self.coworkers.iter().find(|coworker| coworker.name == name)
     }
 
+    /// The coworker a person means by `said`: the one whose nick it is, else the one shown by
+    /// it, whatever its case (`John` and `john`, as a person says the sentence
+    /// [`TELL_A_SESSION`] and a session runs [`DESK_COMMAND`] with it).
+    #[must_use]
+    pub fn called(&self, said: &str) -> Option<&Coworker> {
+        let said = said.trim();
+        self.coworker(said).or_else(|| {
+            self.coworkers
+                .iter()
+                .find(|coworker| same_name(coworker.shown(), said))
+        })
+    }
+
+    /// The nick a coworker shown as `shown` is hired with ([`crate::names::nick_for`]): free
+    /// among its coworkers and those `taken` says (the office's members and machines).
+    ///
+    /// # Errors
+    ///
+    /// Why it can't be hired so: a name it can't have, or one another coworker is shown by.
+    pub fn nick_for(&self, shown: &str, taken: impl Fn(&str) -> bool) -> Result<String, String> {
+        if let Some(other) = self
+            .coworkers
+            .iter()
+            .find(|coworker| same_name(coworker.shown(), shown))
+        {
+            return Err(format!(
+                "There's a coworker called {} already: choose another name.",
+                other.shown()
+            ));
+        }
+        crate::names::nick_for(shown, |nick| taken(nick) || self.coworker(nick).is_some())
+    }
+
     /// The role `coworker` amounts to, for a reader that knows roles: named as it is, doing
     /// what its first job says, or [`NO_JOB_BRIEF`] with no job, in its repository, which is
     /// empty until a session has sat at its desk.
@@ -472,6 +525,7 @@ impl Staff {
         let job = coworker.jobs.first().and_then(|name| self.job(name));
         Definition {
             name: coworker.name.clone(),
+            shown_name: coworker.shown_name.clone(),
             repository: coworker.repository.clone().unwrap_or_default(),
             brief: job.map_or_else(|| NO_JOB_BRIEF.to_owned(), |job| job.brief.clone()),
             triggers: job.map(|job| job.triggers.clone()).unwrap_or_default(),
@@ -529,10 +583,17 @@ impl Staff {
             }
         }
         let mut names = BTreeSet::new();
+        let mut shown = BTreeSet::new();
         for coworker in &self.coworkers {
             coworker.check()?;
             if !names.insert(coworker.name.as_str()) {
                 return Err(format!("there are two coworkers named {}", coworker.name));
+            }
+            if !shown.insert(coworker.shown().trim().to_lowercase()) {
+                return Err(format!(
+                    "there are two coworkers called {}",
+                    coworker.shown()
+                ));
             }
             if let Some(missing) = coworker
                 .jobs
@@ -570,6 +631,7 @@ impl Staff {
                 .iter()
                 .map(|role| Coworker {
                     name: role.name.clone(),
+                    shown_name: role.shown_name.clone(),
                     jobs: vec![role.name.clone()],
                     repository: Some(role.repository.clone()),
                     picture: role.picture.clone(),
@@ -588,6 +650,11 @@ impl Staff {
                 .collect(),
         }
     }
+}
+
+/// Whether `a` and `b` are one name to a person: alike but for case and the spaces around.
+fn same_name(a: &str, b: &str) -> bool {
+    a.trim().to_lowercase() == b.trim().to_lowercase()
 }
 
 /// The TypeScript the web app reads coworkers and jobs as.
@@ -632,6 +699,7 @@ mod tests {
     fn role(name: &str, repository: &str) -> Definition {
         Definition {
             name: name.to_owned(),
+            shown_name: None,
             repository: repository.to_owned(),
             brief: format!("Does what {name} does."),
             triggers: Vec::new(),
@@ -645,6 +713,7 @@ mod tests {
     fn coworker(name: &str, job: Option<&str>, repository: Option<&str>) -> Coworker {
         Coworker {
             name: name.to_owned(),
+            shown_name: None,
             jobs: job.into_iter().map(str::to_owned).collect(),
             repository: repository.map(str::to_owned),
             picture: None,
@@ -734,7 +803,7 @@ mod tests {
         assert_eq!(desks.len(), 4);
         assert_eq!(desks[2].repository, "");
         assert_eq!(staff.roles().len(), 3);
-        assert_eq!(tell_a_session("ada"), "You're ada. Take your desk.");
+        assert_eq!(tell_a_session("John"), "You're John. Take your desk.");
         assert_eq!(desk_command("ada"), "zirc desk take ada");
     }
 
@@ -813,5 +882,50 @@ mod tests {
         assert_eq!(JobKind::Triage.tools(), [Tool::Github, Tool::Linear]);
         assert_eq!(JobKind::Oncall.picture(), "ops");
         assert_eq!(JobKind::Triage.picture(), "coordinator");
+    }
+
+    #[test]
+    fn a_coworker_is_shown_by_its_name_and_found_by_it_or_its_nick() {
+        let john = Coworker {
+            shown_name: Some("John".to_owned()),
+            ..coworker("john", None, None)
+        };
+        let mut staff = Staff {
+            coworkers: vec![john, coworker("ada", None, None)],
+            jobs: Vec::new(),
+        };
+        staff.check().unwrap();
+        assert_eq!(staff.coworkers[0].shown(), "John");
+        assert_eq!(staff.coworkers[1].shown(), "ada");
+        for said in ["john", "John", " JOHN "] {
+            assert_eq!(staff.called(said).unwrap().name, "john", "{said}");
+        }
+        assert!(staff.called("grace").is_none());
+        // A second John is refused; another whose nick would be john gets the next.
+        assert_eq!(
+            staff.nick_for("john", |_| false).unwrap_err(),
+            "There's a coworker called John already: choose another name."
+        );
+        assert_eq!(staff.nick_for("Jöhn", |_| false).as_deref(), Ok("john2"));
+        assert_eq!(
+            staff
+                .nick_for("Mary Jane", |nick| nick == "mary_jane")
+                .as_deref(),
+            Ok("mary_jane2")
+        );
+        // Shown names are one per office whatever their case, as nicks are.
+        staff.coworkers[1].shown_name = Some("JOHN".to_owned());
+        assert_eq!(
+            staff.check().unwrap_err(),
+            "there are two coworkers called JOHN"
+        );
+        staff.coworkers[1].shown_name = Some("李明".to_owned());
+        assert!(staff.check().unwrap_err().contains("letters from a to z"));
+        // The role a coworker amounts to is shown by its name too.
+        staff.coworkers[1].shown_name = None;
+        assert_eq!(
+            staff.role_of(&staff.coworkers[0]).shown_name.as_deref(),
+            Some("John")
+        );
     }
 }
