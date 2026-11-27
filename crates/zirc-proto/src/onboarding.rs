@@ -1152,6 +1152,7 @@ mod tests {
                     picture: None,
                     hue: None,
                     added_by: None,
+                    hired: None,
                 })
                 .collect(),
             jobs: jobs

@@ -346,6 +346,30 @@ impl Job {
     }
 }
 
+/// What a coworker's badge says it is, beside its office's name (the user's choice, 27 Nov
+/// 2026: a coworker's card is its office badge, clipped on).
+pub const STAFF: &str = "Staff";
+
+/// What the badge of a session at a hot desk says it is, beside its office's name.
+pub const HOT_DESK: &str = "Hot desk";
+
+/// What a badge says under the job, `{nick}` the coworker's and `{hired}` the day it was
+/// hired, as each app words a day (`27 Nov`, `27 Nov 2025` before this year): `@john · hired
+/// 27 Nov`.
+pub const BADGE_HANDLE: &str = "@{nick} · hired {hired}";
+
+/// What a badge says under coworker `nick`'s job: [`BADGE_HANDLE`] with the day `hired`, as
+/// the app words it, or `@john` alone while it's unknown.
+#[must_use]
+pub fn badge_handle(nick: &str, hired: Option<&str>) -> String {
+    match hired {
+        Some(hired) => BADGE_HANDLE
+            .replace("{nick}", nick)
+            .replace("{hired}", hired),
+        None => format!("@{nick}"),
+    }
+}
+
 /// A named agent with a desk.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(rename = "Coworker")]
@@ -382,6 +406,11 @@ pub struct Coworker {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub added_by: Option<String>,
+    /// When it was hired, unix seconds, as zirc.dev keeps it: what its badge's `hired 27 Nov`
+    /// says. None for one zirc.dev hasn't said it of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hired: Option<u64>,
 }
 
 impl Coworker {
@@ -640,6 +669,9 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const MAX_COWORKERS = {MAX_COWORKERS};"),
         format!("const DESK_COMMAND = {DESK_COMMAND:?};"),
         format!("const TELL_A_SESSION = {TELL_A_SESSION:?};"),
+        format!("const BADGE_STAFF = {STAFF:?};"),
+        format!("const BADGE_HOT_DESK = {HOT_DESK:?};"),
+        format!("const BADGE_HANDLE = {BADGE_HANDLE:?};"),
         format!(
             "const JOB_KINDS: readonly {{ id: JobKind; label: string; picture: string; line: string; wakes: string; tools: readonly InboundTool[] }}[] = [{}];",
             JobKind::ALL
@@ -674,6 +706,7 @@ mod tests {
             picture: None,
             hue: None,
             added_by: None,
+            hired: None,
         }
     }
 
@@ -863,5 +896,17 @@ mod tests {
             staff.role_of(&staff.coworkers[0]).shown_name.as_deref(),
             Some("John")
         );
+    }
+
+    #[test]
+    fn a_badge_says_its_coworkers_handle_and_the_day_it_was_hired() {
+        assert_eq!(badge_handle("john", Some("27 Nov")), "@john · hired 27 Nov");
+        assert_eq!(badge_handle("john", None), "@john");
+        let hired: Coworker =
+            serde_json::from_str(r#"{"name": "john", "hired": 1795800000}"#).unwrap();
+        assert_eq!(hired.hired, Some(1_795_800_000));
+        let before: Coworker = serde_json::from_str(r#"{"name": "john"}"#).unwrap();
+        assert_eq!(before.hired, None);
+        assert!(!serde_json::to_string(&before).unwrap().contains("hired"));
     }
 }

@@ -32,7 +32,18 @@ fn coworker(name: &str, shown: &str, job: Option<&str>, picture: &str) -> Cowork
         picture: Some(picture.into()),
         hue: Some(60),
         added_by: Some("henrik".into()),
+        hired: None,
     }
+}
+
+/// Unix seconds at 09:00 UTC on `day` `month` `year`.
+fn day(year: i32, month: u32, day: u32) -> u64 {
+    u64::try_from(
+        Utc.with_ymd_and_hms(year, month, day, 9, 0, 0)
+            .unwrap()
+            .timestamp(),
+    )
+    .unwrap()
 }
 
 fn job(name: &str) -> Job {
@@ -89,8 +100,14 @@ fn standing() -> Standing {
         ],
         staff: Staff {
             coworkers: vec![
-                coworker("john", "John", Some("fixer"), "char-03"),
-                coworker("noor", "Noor", Some("triage"), "char-07"),
+                Coworker {
+                    hired: Some(day(2026, 10, 27)),
+                    ..coworker("john", "John", Some("fixer"), "char-03")
+                },
+                Coworker {
+                    hired: Some(day(2025, 12, 3)),
+                    ..coworker("noor", "Noor", Some("triage"), "char-07")
+                },
             ],
             jobs: vec![job("fixer"), job("triage")],
         },
@@ -194,18 +211,18 @@ fn everyones_sessions_at_no_coworkers_desk_are_hot_desks_online_first() {
         &live("henrik-mbp", &["cc-1", "cc-2"], &[]),
         &live("me-mbp", &[], &["cc-9"]),
     ]);
-    let desks: Vec<(String, String, bool)> = scene
+    let desks: Vec<(String, String, Option<String>, bool)> = scene
         .office(utc())
         .hot_desks
         .into_iter()
-        .map(|desk| (desk.conversation, desk.line, desk.online))
+        .map(|desk| (desk.conversation, desk.whose, desk.doing, desk.online))
         .collect();
     // cc-1 sits at John's desk, so it's John's card, not a hot desk.
     assert_eq!(
         desks,
         [
-            ("henrik-mbp/cc-2".into(), "henrik's".into(), true),
-            ("me-mbp/cc-9".into(), "Yours".into(), false),
+            ("henrik-mbp/cc-2".into(), "henrik's".into(), None, true),
+            ("me-mbp/cc-9".into(), "Yours".into(), None, false),
         ]
     );
     let office = scene.office(utc());
@@ -254,7 +271,8 @@ fn john_handed_over() -> Scene {
 
 #[test]
 fn a_coworkers_page_says_who_it_is_and_what_its_on() {
-    let scene = john_handed_over();
+    let mut scene = john_handed_over();
+    scene.set_org_name(Some("Home"));
     let page = scene.coworker_page("John", utc()).unwrap();
     assert_eq!(
         (
@@ -262,7 +280,12 @@ fn a_coworkers_page_says_who_it_is_and_what_its_on() {
             page.handle.as_str(),
             page.job.as_deref()
         ),
-        ("John", "@john", Some("Fixer"))
+        ("John", "@john · hired 27 Oct", Some("Fixer"))
+    );
+    // Its page is headed as its badge is.
+    assert_eq!(
+        (page.office.as_str(), page.staff.as_str()),
+        ("Home", "Staff")
     );
     assert_eq!(page.pill, "At desk, idle");
     assert_eq!(page.now.as_deref(), Some("the flaky checkout wait"));
@@ -370,5 +393,60 @@ fn a_server_that_says_no_staff_shows_the_roles_its_lines_name() {
     assert_eq!(
         states(&office),
         [("fixer", None, "Desk empty", DeskState::Empty)]
+    );
+}
+
+#[test]
+fn a_coworkers_card_is_its_office_badge() {
+    let mut scene = office();
+    scene.set_org_name(Some("Home"));
+    let office = scene.office(utc());
+    assert_eq!(
+        (
+            office.name.as_str(),
+            office.staff.as_str(),
+            office.hot_desk.as_str()
+        ),
+        ("Home", "Staff", "Hot desk")
+    );
+    let handles: Vec<&str> = office.coworkers.iter().map(|c| c.handle.as_str()).collect();
+    // Hired this year says the day; another year says it too.
+    assert_eq!(
+        handles,
+        ["@john · hired 27 Oct", "@noor · hired 3 Dec 2025"]
+    );
+    // Noor's empty desk says what waits, in the warning tone.
+    let noor = &office.coworkers[1];
+    assert_eq!(noor.state, "Desk empty · 1 waiting");
+    assert!(noor.desk.wants_you());
+}
+
+#[test]
+fn a_hot_desks_badge_says_whose_it_is_its_tool_and_what_its_doing() {
+    let mut scene = office();
+    let taking = Message {
+        name: Some("checkout-form".into()),
+        tool: Some(zirc_proto::CLAUDE_CODE.into()),
+        ..Message::new(
+            "cc-2",
+            Event::Text {
+                body: "taking: Changing the payment form".into(),
+            },
+        )
+    };
+    scene.hears(&[
+        &live("henrik-mbp", &["cc-1", "cc-2"], &[]),
+        &zirc("henrik-mbp", &taking),
+    ]);
+    let office = scene.office(utc());
+    let desk = &office.hot_desks[0];
+    assert_eq!(
+        (desk.name.as_str(), desk.whose.as_str()),
+        ("checkout-form", "henrik's · Claude Code")
+    );
+    assert_eq!(desk.doing.as_deref(), Some("Changing the payment form"));
+    assert_eq!(
+        desk.label,
+        "checkout-form, a session at a hot desk, henrik's · Claude Code, Changing the payment form"
     );
 }

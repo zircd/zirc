@@ -70,6 +70,9 @@ pub const NO_JOB: &str = "No job yet: does what it's asked in a direct message."
 /// Whose a hot desk's session is when it's the person's own.
 pub const YOURS: &str = "Yours";
 
+/// What a screen reader says a hot desk's badge is, after its session's name.
+pub const HOT_DESK_LABEL: &str = "a session at a hot desk";
+
 /// What copies the sentence that seats a session.
 pub const COPY: &str = "Copy";
 
@@ -117,6 +120,14 @@ impl DeskState {
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub struct Office {
+    /// The office's name, atop every badge: `Home`, the organisation's ([`Chat::org_title`]),
+    /// or [`OFFICE`] before it's known.
+    pub name: String,
+    /// What a coworker's badge says it is, beside the office's name:
+    /// [`zirc_proto::coworkers::STAFF`].
+    pub staff: String,
+    /// What a hot desk's badge says it is: [`zirc_proto::coworkers::HOT_DESK`].
+    pub hot_desk: String,
     /// What waits for the person's answer, as Messages had it: `None` while nothing does.
     pub waiting: Option<WaitingCard>,
     /// What heads the cards: [`COWORKERS`].
@@ -144,7 +155,11 @@ pub struct NoCoworkers {
     pub hire: String,
 }
 
-/// A coworker's card in the office.
+/// A coworker's card in the office, drawn as its office badge (the user's choice, 27 Nov 2026):
+/// clipped on, [`Office::name`] and [`Office::staff`] across the top, its character on its
+/// colour, its name large, its job in small capitals, [`CoworkerCard::handle`] and a strip of
+/// its state at the bottom, toned by [`CoworkerCard::desk`]: green working, amber asked or
+/// empty, an empty desk's badge edged amber with its character faded, plain idle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
@@ -155,6 +170,8 @@ pub struct CoworkerCard {
     pub name: String,
     /// Its job, as people read it: `Fixer`. `None` with none.
     pub job: Option<String>,
+    /// Under the job, in mono: `@john · hired 27 Nov` ([`zirc_proto::coworkers::badge_handle`]).
+    pub handle: String,
     /// Its character on its colour: the full figure on a card, dimmed while its desk is
     /// empty.
     pub face: Face,
@@ -167,7 +184,9 @@ pub struct CoworkerCard {
     pub label: String,
 }
 
-/// A session at a hot desk, in the office.
+/// A session at a hot desk, in the office, drawn as a temporary badge: as a coworker's, but
+/// dashed, [`Office::hot_desk`] atop it, its dealt character dimmed on grey, its name in mono,
+/// [`HotDesk::whose`] under it and [`HotDesk::doing`] in the strip.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
@@ -176,8 +195,14 @@ pub struct HotDesk {
     pub conversation: String,
     /// The name it goes by, in mono: `checkout-form`, or its id.
     pub name: String,
-    /// Whose it is and what it's doing: `Henrik's · Changing the payment form`, `Yours`.
-    pub line: String,
+    /// Whose it is and its tool: `Henrik's · Claude Code`, `Yours · Codex`.
+    pub whose: String,
+    /// What it's doing, in the badge's strip: `Changing the payment form`. `None` while
+    /// nothing's said.
+    pub doing: Option<String>,
+    /// What a screen reader says of the badge: `checkout-form, a session at a hot desk,
+    /// Henrik's · Claude Code, Changing the payment form`.
+    pub label: String,
     /// Its dealt character, on the muted ground.
     pub face: Face,
     /// Whether a watch of its is open: its dot.
@@ -226,9 +251,14 @@ pub struct OfficeSpan {
 pub struct CoworkerPage {
     /// Its nick, `john`.
     pub nick: String,
+    /// Atop the page, as atop its badge: the office's name, `Home`.
+    pub office: String,
+    /// Beside it: [`zirc_proto::coworkers::STAFF`].
+    pub staff: String,
     /// The name it's shown by, large: `John`.
     pub name: String,
-    /// Its nick as it's written to, in mono beside the name: `@john`.
+    /// Its nick as it's written to and when it was hired, in mono under the name, as its
+    /// badge says it: `@john · hired 27 Nov`.
     pub handle: String,
     /// Its job, in a pill: `Fixer`.
     pub job: Option<String>,
@@ -421,7 +451,23 @@ impl Chat {
         }
     }
 
-    fn coworker_card(&self, nick: &str, now: DateTime<Utc>) -> CoworkerCard {
+    /// What coworker `nick`'s badge says under its job, the day it was hired on a clock
+    /// `offset` from UTC: `@john · hired 27 Nov`.
+    fn badge_handle(&self, nick: &str, offset: FixedOffset, now: DateTime<Utc>) -> String {
+        let hired = self
+            .coworker_of(nick)
+            .and_then(|c| c.hired)
+            .and_then(|at| DateTime::from_timestamp(i64::try_from(at).ok()?, 0))
+            .map(|at| {
+                profile::day_when(
+                    at.with_timezone(&offset).naive_local(),
+                    now.with_timezone(&offset).naive_local(),
+                )
+            });
+        zirc_proto::coworkers::badge_handle(&fold(nick), hired.as_deref())
+    }
+
+    fn coworker_card(&self, nick: &str, offset: FixedOffset, now: DateTime<Utc>) -> CoworkerCard {
         let name = self.coworker_name(nick);
         let job = self.coworker_job(nick);
         let (desk, state) = self.desk_state(nick, now);
@@ -434,6 +480,7 @@ impl Chat {
             nick: fold(nick),
             name,
             job,
+            handle: self.badge_handle(nick, offset, now),
             face: self.role_face(nick),
             state,
             desk,
@@ -460,11 +507,25 @@ impl Chat {
                 });
                 let title = self.agent_title(&nick, &session);
                 let doing = self.agent_handle(&session, &title).map(|_| title);
-                let line = [whose, doing]
+                let tool = self
+                    .session_tools
+                    .get(&session)
+                    .map(|t| zirc_proto::tool_name(t));
+                let whose = [whose, tool]
                     .into_iter()
                     .flatten()
                     .collect::<Vec<_>>()
                     .join(" · ");
+                let name = self.session_label(&session);
+                let label = [
+                    Some(format!("{name}, {HOT_DESK_LABEL}")),
+                    (!whose.is_empty()).then(|| whose.clone()),
+                    doing.clone(),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(", ");
                 let avatar = super::Avatar::Agent {
                     tool: self.session_tools.get(&session).cloned(),
                     picture: self.session_pictures.get(&session).cloned(),
@@ -476,8 +537,10 @@ impl Chat {
                 };
                 HotDesk {
                     conversation: super::agent_channel(&nick, &session),
-                    name: self.session_label(&session),
-                    line,
+                    name,
+                    whose,
+                    doing,
+                    label,
                     face: self.face(&avatar),
                     online,
                 }
@@ -487,6 +550,14 @@ impl Chat {
         desks
     }
 
+    /// The office's name atop its badges: the organisation's, or [`OFFICE`] before it's
+    /// known.
+    fn office_name(&self) -> String {
+        Some(self.org_title())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| OFFICE.to_owned())
+    }
+
     /// The Office tab, times on a clock `offset` from UTC: see [`Office`].
     #[must_use]
     pub fn office(&self, offset: FixedOffset) -> Office {
@@ -494,13 +565,16 @@ impl Chat {
         let coworkers: Vec<CoworkerCard> = self
             .coworker_nicks()
             .iter()
-            .map(|nick| self.coworker_card(nick, now))
+            .map(|nick| self.coworker_card(nick, offset, now))
             .collect();
         let seated = coworkers
             .iter()
             .filter(|c| c.desk != DeskState::Empty)
             .count();
         Office {
+            name: self.office_name(),
+            staff: zirc_proto::coworkers::STAFF.to_owned(),
+            hot_desk: zirc_proto::coworkers::HOT_DESK.to_owned(),
             waiting: self.waiting_card(None, offset),
             coworkers_heading: COWORKERS.to_owned(),
             count: (!coworkers.is_empty())
@@ -540,7 +614,7 @@ impl Chat {
             return None;
         }
         let now = (self.clock)();
-        let card = self.coworker_card(nick, now);
+        let card = self.coworker_card(nick, offset, now);
         let seat = self.role_seat(nick);
         let handover = self.office.handovers.get(&fold(nick));
         let pill = match card.desk {
@@ -584,7 +658,9 @@ impl Chat {
             .unwrap_or_default();
         Some(CoworkerPage {
             nick: card.nick,
-            handle: format!("@{}", fold(nick)),
+            office: self.office_name(),
+            staff: zirc_proto::coworkers::STAFF.to_owned(),
+            handle: card.handle,
             message: format!("Message {}", card.name),
             name: card.name,
             job: card.job,

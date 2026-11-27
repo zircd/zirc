@@ -104,6 +104,16 @@ impl Chat {
         self.org_name = name.map(str::to_owned);
     }
 
+    /// The organisation's name, `Zirc`: as the app signed in to it says, or else as the
+    /// server calls its network, `zirc`. What heads the channel list and tops every badge.
+    #[must_use]
+    pub fn org_title(&self) -> String {
+        self.org_name
+            .clone()
+            .or_else(|| self.network.clone())
+            .unwrap_or_default()
+    }
+
     /// The channel list's header: the organisation's name and its people.
     #[must_use]
     pub fn org_header(&self) -> OrgHeader {
@@ -115,11 +125,7 @@ impl Chat {
             .map(|nick| fold(&nick))
             .collect();
         people.insert(fold(&self.me));
-        let name = self
-            .org_name
-            .clone()
-            .or_else(|| self.network.clone())
-            .unwrap_or_default();
+        let name = self.org_title();
         OrgHeader {
             initials: crate::orgs::org_initials(&name),
             name,

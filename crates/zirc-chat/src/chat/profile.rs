@@ -437,6 +437,20 @@ pub fn card_time(at: NaiveDateTime, now: NaiveDateTime) -> String {
     }
 }
 
+/// The day `at` was, beside `now`, as a badge says when a coworker was hired: `27 Nov` in
+/// `now`'s year, `27 Nov 2025` before it. Both are wall times in the app's time zone. zirc.dev
+/// says the same of its Coworkers page's badges (web/src/lib/coworker-words.ts's hiredDay),
+/// as it runs no Rust.
+#[must_use]
+pub fn day_when(at: NaiveDateTime, now: NaiveDateTime) -> String {
+    use chrono::Datelike as _;
+    if at.date().year() == now.date().year() {
+        at.format("%-d %b").to_string()
+    } else {
+        at.format("%-d %b %Y").to_string()
+    }
+}
+
 /// When `at` was, on an app's clock, as a list of things from several days says it, an
 /// Activity row or a search result in every app (the user's choice, 17 Nov 2026): `14:05` on
 /// the day of `now`, `Mon 14:05` within the six days before, `3 Nov` earlier in its year and

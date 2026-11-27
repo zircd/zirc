@@ -3499,6 +3499,15 @@
             "null"
           ],
           "description": "The account of the member who added it, who may change or remove it as an admin may\n(the user's choice, 27 Nov 2026). None for one that was a role before members could."
+        },
+        "hired": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "description": "When it was hired, unix seconds, as zirc.dev keeps it: what its badge's `hired 27 Nov`\nsays. None for one zirc.dev hasn't said it of."
         }
       },
       "required": [
