@@ -48,6 +48,7 @@ pub mod roles;
 pub mod sealed;
 pub mod search;
 pub mod session;
+pub mod setup;
 pub mod state;
 pub mod suggestions;
 pub mod telemetry;

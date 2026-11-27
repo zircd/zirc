@@ -129,6 +129,7 @@ pub fn typescript() -> Vec<String> {
         format!("const CI_SECRET_NAME = {SECRET_NAME:?};"),
         format!("const CI_STEP_NAME = {STEP_NAME:?};"),
         format!("const CI_TEST_FAILURE_ASK = {:?};", test_failure_ask()),
+        format!("const CI_CONNECT_ASK = {CONNECT_ASK:?};"),
         format!(
             "const CI_ACTIONS_STEP = {:?};",
             actions_step("https://zirc.dev", "<repository>")

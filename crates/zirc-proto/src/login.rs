@@ -512,6 +512,7 @@ pub fn typescript() -> String {
     .chain(crate::irc::typescript(&config))
     .chain(crate::desired::typescript(&config))
     .chain(crate::onboarding::typescript(&config))
+    .chain(crate::setup::typescript(&config))
     .chain(crate::working::typescript(&config))
     {
         out.push_str("\nexport ");
