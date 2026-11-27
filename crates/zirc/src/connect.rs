@@ -572,7 +572,7 @@ pub async fn connect(
     writeln!(out, "{}", bold("CI is connected."))?;
     let (org, did) = (
         args.org.org.as_deref(),
-        Some(zirc_proto::onboarding::id::CI),
+        Some(zirc_proto::onboarding::id::TOOLS),
     );
     Ok(crate::next::say(home, socket, org, did, out).await?)
 }

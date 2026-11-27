@@ -20,6 +20,7 @@ use anyhow::{Context, Result, bail};
 use zirc_core::ipc::{Direct, Response};
 use zirc_core::leases::{self, LeaseEvent};
 use zirc_proto::Message;
+use zirc_proto::activity::{self, Record as _};
 use zirc_proto::roles::{self, Say, Wake};
 
 use super::Daemon;
@@ -148,6 +149,7 @@ impl Daemon {
             woke_today: 0,
         });
         seat.repository.clone_from(&definition.repository);
+        self.seated(session, role);
         // What the last session at the desk left: a desk that can't say still seats it.
         let handover = server
             .handover(role)
@@ -159,6 +161,15 @@ impl Daemon {
             seat,
             handover,
         })
+    }
+
+    /// Tells the recorder that `session` sat at coworker `desk`'s desk, for onboarding's seat
+    /// step ([`activity::Seated`]).
+    fn seated(&self, session: &str, desk: &str) {
+        let seated = activity::Seated {
+            desk: desk.to_owned(),
+        };
+        self.record(session, seated.event());
     }
 
     /// [`zirc_core::ipc::Request::RoleLeave`].

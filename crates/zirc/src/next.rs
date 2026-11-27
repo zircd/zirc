@@ -28,8 +28,12 @@ pub(crate) async fn step(
         let org = crate::search::one_org(home, socket, org).await.ok()?;
         let team = crate::search::team(&org)?;
         let progress = team.client.steps(&team.account).await.ok()??;
-        // By its number in this zirc's own list: its words are declared there.
-        let step = zirc_proto::onboarding::step(progress.next?)?;
+        // By its id in this zirc's own list, where its words are declared: a step this zirc
+        // doesn't know, from a zirc.dev newer than it, says nothing.
+        let next = progress.steps.iter().find(|step| step.next)?;
+        let step = zirc_proto::onboarding::STEPS
+            .iter()
+            .find(|step| step.id == next.id)?;
         Some((step, team, progress))
     };
     tokio::time::timeout(WITHIN, asked).await.ok()?
@@ -37,7 +41,13 @@ pub(crate) async fn step(
 
 /// `Next: <what to do>`, bold where a terminal reads it.
 pub(crate) fn line(step: &Step) -> String {
-    let line = format!("{} {}", zirc_proto::onboarding::NEXT_PREFIX, step.next_line);
+    // The command line doesn't know which coworker setup is about: the step says "your
+    // coworker".
+    let line = format!(
+        "{} {}",
+        zirc_proto::onboarding::NEXT_PREFIX,
+        zirc_proto::onboarding::words(step.next_line, None)
+    );
     if crate::paint::wanted() {
         format!("\x1b[1m{line}\x1b[0m")
     } else {
@@ -99,7 +109,7 @@ pub(crate) async fn repo(
             home,
             socket,
             None,
-            Some(zirc_proto::onboarding::id::COMPUTER),
+            Some(zirc_proto::onboarding::id::SEAT),
             out,
         )
         .await?;
@@ -122,48 +132,30 @@ mod tests {
         home
     }
 
-    #[tokio::test]
-    async fn says_the_step_zirc_dev_says_is_next_and_that_it_was_shown() {
+    /// What `say` writes, for a person who reached steps 1 and 2, the command having done
+    /// `did`, and the requests zirc.dev's stand-in was sent.
+    async fn said_after(did: Option<&str>) -> (String, String, Vec<String>) {
         let progress = serde_json::to_string(&zirc_proto::onboarding::progress(&[1, 2])).unwrap();
         let (web, served) = zirc_test_ergo::web::serve(vec![(200, progress), (204, String::new())]);
         let home = signed_in(&web);
         let mut out = Vec::new();
-        say(
-            home.path(),
-            &home.path().join("no-socket"),
-            None,
-            None,
-            &mut out,
-        )
-        .await
-        .unwrap();
-        let out = String::from_utf8(out).unwrap();
-        let agent = zirc_proto::onboarding::step(3).unwrap();
-        assert_eq!(out, format!("\nNext: {}\n", agent.next_line));
-        // Said by the command that did step 2, it says the page ticked it off.
-        let progress = serde_json::to_string(&zirc_proto::onboarding::progress(&[1, 2])).unwrap();
-        let (web, _served) =
-            zirc_test_ergo::web::serve(vec![(200, progress), (204, String::new())]);
-        let home = signed_in(&web);
-        let mut out = Vec::new();
-        let did = Some(zirc_proto::onboarding::id::COMPUTER);
-        say(
-            home.path(),
-            &home.path().join("no-socket"),
-            None,
-            did,
-            &mut out,
-        )
-        .await
-        .unwrap();
-        let out = String::from_utf8(out).unwrap();
+        let socket = home.path().join("no-socket");
+        say(home.path(), &socket, None, did, &mut out)
+            .await
+            .unwrap();
+        (String::from_utf8(out).unwrap(), web, served.join().unwrap())
+    }
+
+    #[tokio::test]
+    async fn says_the_step_zirc_dev_says_is_next_and_that_it_was_shown() {
+        let (out, _, requests) = said_after(None).await;
+        let seat = zirc_proto::onboarding::step(3).unwrap();
+        let said = zirc_proto::onboarding::words(seat.next_line, None);
+        assert_eq!(out, format!("\nNext: {said}\n"));
         assert!(
-            out.ends_with(&format!(
-                "  Your Get started page has ticked this step off: {web}/orgs/zirc\n"
-            )),
-            "{out}"
+            said.contains("your coworker") && !said.contains(zirc_proto::onboarding::SENTENCE),
+            "{said}"
         );
-        let requests = served.join().unwrap();
         assert!(
             requests[0].to_lowercase().starts_with("get /api/me/steps "),
             "{}",
@@ -177,17 +169,27 @@ mod tests {
             requests[1]
         );
         assert!(
-            requests[1].contains(r#"{"prompt":"agent","surface":"terminal","outcome":"shown"}"#),
+            requests[1].contains(r#""prompt":"seat","surface":"terminal","outcome":"shown""#),
             "{}",
             requests[1]
         );
     }
 
     #[tokio::test]
+    async fn says_the_page_ticked_off_the_step_the_command_did() {
+        let (out, web, _) = said_after(Some(zirc_proto::onboarding::id::SIGN_UP)).await;
+        assert!(
+            out.ends_with(&format!(
+                "  Your Get started page has ticked this step off: {web}/orgs/zirc\n"
+            )),
+            "{out}"
+        );
+    }
+
+    #[tokio::test]
     async fn says_nothing_when_every_step_is_reached_or_nobody_answers() {
         let done =
-            serde_json::to_string(&zirc_proto::onboarding::progress(&[1, 2, 3, 4, 5, 6, 7, 8]))
-                .unwrap();
+            serde_json::to_string(&zirc_proto::onboarding::progress(&[1, 2, 3, 4, 5, 6])).unwrap();
         let (web, _served) = zirc_test_ergo::web::serve(vec![(200, done)]);
         let home = signed_in(&web);
         let mut out = Vec::new();

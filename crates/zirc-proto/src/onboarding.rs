@@ -1,5 +1,6 @@
-//! Getting started with zirc, declared once: the eight steps a person or an organisation
-//! takes ([`STEPS`]), what each waits for, and the signals that prove each was done
+//! Getting started with zirc, declared once: the seven steps a person or an office takes
+//! ([`STEPS`]: hire, sign up, install and seat, say hi, connect tools, phone, done, the user's
+//! order of 27 Nov 2026), what each waits for, and the signals that prove each was done
 //! ([`Signal`]). zirc.dev records each step the first time it's reached (its `step_reached`
 //! event), from what it sees itself and from what the tenant's recorder saw
 //! ([`First`], at [`FIRSTS_PATH`]); the apps and the dashboard show the next step from the
@@ -9,11 +10,18 @@
 //! done early ticks off all the same. The next step is the lowest-numbered one not reached
 //! whose needs are.
 //!
+//! The apps show no prompt for them (the user's choice, 27 Nov 2026): zirc.dev's setup page
+//! and the command line's `Next:` line do. What an office still has to connect is
+//! [`missing`]'s to say, for setup's tools step and whenever a job needs a tool again.
+//!
 //! Metadata only: which signal, whose account and when, never what anyone said.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+
+use crate::coworkers::Staff;
+use crate::inbound::Tool;
 
 /// Whose a step is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS, JsonSchema)]
@@ -53,13 +61,24 @@ pub enum Signal {
     /// The recorder: zircd told a session on a member's machine that another changes what it
     /// changes ([`crate::activity::Notice`], an overlap).
     Overlap,
-    /// zirc.dev: a second member joined the organisation.
+    /// zirc.dev: a second member joined the organisation. No step reads it since 27 Nov 2026.
     Teammate,
+    /// zirc.dev: the office hired a coworker ([`crate::coworkers::Coworker`]).
+    Hired,
+    /// The recorder: a session on a member's machine sat at a coworker's desk
+    /// ([`crate::activity::Seated`]).
+    Seated,
+    /// The recorder: a session at a coworker's desk was woken by a direct message from the
+    /// person whose machine it runs on ([`crate::activity::Wake::wrote`]), which it answers.
+    Answered,
+    /// zirc.dev: the tools the office's jobs need were each heard, a test or a post
+    /// ([`missing`] had nothing left but CI).
+    Tools,
 }
 
 impl Signal {
     /// Every signal.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 13] = [
         Self::ServerReady,
         Self::Machine,
         Self::Agent,
@@ -69,6 +88,10 @@ impl Signal {
         Self::Wake,
         Self::Overlap,
         Self::Teammate,
+        Self::Hired,
+        Self::Seated,
+        Self::Answered,
+        Self::Tools,
     ];
 
     /// How it's written, as serde writes it.
@@ -84,6 +107,10 @@ impl Signal {
             Self::Wake => "wake",
             Self::Overlap => "overlap",
             Self::Teammate => "teammate",
+            Self::Hired => "hired",
+            Self::Seated => "seated",
+            Self::Answered => "answered",
+            Self::Tools => "tools",
         }
     }
 
@@ -99,14 +126,22 @@ impl Signal {
     pub const fn recorded(self) -> bool {
         matches!(
             self,
-            Self::Agent | Self::AgentDirect | Self::Ci | Self::Wake | Self::Overlap
+            Self::Agent
+                | Self::AgentDirect
+                | Self::Ci
+                | Self::Wake
+                | Self::Overlap
+                | Self::Seated
+                | Self::Answered
         )
     }
 
     /// The signal a row of the tenant's activity store gives, if any: its `kind`, whether its
     /// `account` is a machine's (`agent`), whether it's a `direct` message's, and its kept
     /// `data`. What the recorder keeps the first of ([`First`]), and what a backfill reads
-    /// history with.
+    /// history with. A row gives one signal: a wake at a desk its person's message caused is
+    /// [`Signal::Answered`], not [`Signal::Wake`] as well, which the recorder keeps from the
+    /// first wake of another kind.
     #[must_use]
     pub fn of_row(
         kind: &str,
@@ -122,7 +157,9 @@ impl Signal {
             return None;
         }
         match kind {
+            crate::activity::WAKE_KIND if answered(data) => Some(Self::Answered),
             crate::activity::WAKE_KIND => Some(Self::Wake),
+            crate::activity::SEATED_KIND => Some(Self::Seated),
             crate::activity::NOTICE_KIND => {
                 let notice = data.and_then(|data| {
                     serde_json::from_value::<crate::activity::Notice>(data.clone()).ok()
@@ -143,27 +180,37 @@ impl Signal {
     }
 }
 
+/// Whether a wake's record says a session at a coworker's desk was woken by its own person's
+/// direct message.
+fn answered(data: Option<&serde_json::Value>) -> bool {
+    data.and_then(|data| serde_json::from_value::<crate::activity::Wake>(data.clone()).ok())
+        .is_some_and(|wake| {
+            wake.desk.is_some() && wake.wrote == Some(crate::activity::Wrote::Owner)
+        })
+}
+
 /// One step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[ts(rename = "OnboardingStep")]
 pub struct Step {
     /// Its number, from 1, which suggests the order.
     pub number: u8,
-    /// Its id, for prompts about it and the apps' words: `server`, `computer` and so on.
+    /// Its id, for prompts about it and the apps' words: `hire`, `seat` and so on.
     pub id: &'static str,
     /// Whose it is.
     pub scope: Scope,
     /// The steps that must be reached before it can be done, by number.
     pub needs: &'static [u8],
     /// What proves it: every one of these, and it's reached when the last of them was seen.
+    /// None for one that's reached once what it needs is ([`progress`]): done.
     pub signals: &'static [Signal],
     /// Whether the dashboard's Get started lists it; the others tick off when they happen.
     pub get_started: bool,
     /// Whether it can be begun before what it needs is reached, so it's offered any time: the
-    /// phone's app installs while the computer is being set up, though the step is reached
-    /// only once an agent answers there.
+    /// phone's app installs while the computer is being set up.
     pub early: bool,
-    /// What it's called, wherever it's listed or suggested.
+    /// What it's called, wherever it's listed or suggested. [`COWORKER`] stands for the
+    /// coworker it's about, and [`SENTENCE`] for what seats it ([`words`] fills them in).
     pub title: &'static str,
     /// What it's for, in a line under its title.
     pub about: &'static str,
@@ -181,130 +228,139 @@ pub const NEXT_PREFIX: &str = "Next:";
 /// Where the apps are had, as a prompt names it.
 pub const APP_PAGE: &str = "zirc.dev/app";
 
+/// What a step's words write for the coworker they're about ([`words`]).
+pub const COWORKER: &str = "{coworker}";
+
+/// What a step's words write for the sentence that seats that coworker
+/// ([`crate::coworkers::tell_a_session`]).
+pub const SENTENCE: &str = "{sentence}";
+
+/// What a step's words say of a coworker when nobody knows which: setup hires one.
+pub const SOME_COWORKER: &str = "your coworker";
+
+/// What the sentence that seats a coworker says for its name when nobody knows it.
+pub const NO_NAME: &str = "<name>";
+
+/// A step's `text` for the coworker shown as `coworker` ([`crate::coworkers::Coworker::shown`]),
+/// or [`SOME_COWORKER`] when there's none to name: `Say hi to John`. zirc.dev, which runs no
+/// Rust, says it again in `web/src/lib/onboarding.ts` (`stepWords`), from the generated
+/// constants: keep the two alike.
+#[must_use]
+pub fn words(text: &str, coworker: Option<&str>) -> String {
+    let sentence = crate::coworkers::tell_a_session(coworker.unwrap_or(NO_NAME));
+    text.replace(SENTENCE, &sentence)
+        .replace(COWORKER, coworker.unwrap_or(SOME_COWORKER))
+}
+
 /// Each step's id ([`Step::id`]), for whoever tells one step from another.
 pub mod id {
     /// Step 1.
-    pub const SERVER: &str = "server";
+    pub const HIRE: &str = "hire";
     /// Step 2.
-    pub const COMPUTER: &str = "computer";
+    pub const SIGN_UP: &str = "sign_up";
     /// Step 3.
-    pub const AGENT: &str = "agent";
+    pub const SEAT: &str = "seat";
     /// Step 4.
-    pub const PHONE: &str = "phone";
+    pub const SAY_HI: &str = "say_hi";
     /// Step 5.
-    pub const CI: &str = "ci";
+    pub const TOOLS: &str = "tools";
     /// Step 6.
-    pub const FIRST_WAKE: &str = "first_wake";
+    pub const PHONE: &str = "phone";
     /// Step 7.
-    pub const FIRST_OVERLAP: &str = "first_overlap";
-    /// Step 8.
-    pub const TEAMMATE: &str = "teammate";
+    pub const DONE: &str = "done";
 }
 
 /// The steps, in number order.
-pub const STEPS: [Step; 8] = [
+pub const STEPS: [Step; 7] = [
     Step {
         number: 1,
-        id: id::SERVER,
+        id: id::HIRE,
+        scope: Scope::Organisation,
+        needs: &[],
+        signals: &[Signal::Hired],
+        get_started: true,
+        early: false,
+        title: "Hire your first coworker",
+        about: "One is enough to start; hire more once they're at work.",
+        next_line: "hire your first coworker at zirc.dev.",
+        agent_hint: None,
+    },
+    Step {
+        number: 2,
+        id: id::SIGN_UP,
         scope: Scope::Organisation,
         needs: &[],
         signals: &[Signal::ServerReady],
         get_started: true,
         early: false,
-        title: "Your server",
-        about: "Made when you signed up.",
-        next_line: "your server is starting: zirc.dev says when it's ready.",
-        agent_hint: None,
-    },
-    Step {
-        number: 2,
-        id: id::COMPUTER,
-        scope: Scope::Person,
-        needs: &[1],
-        signals: &[Signal::Machine],
-        get_started: true,
-        early: false,
-        title: "Your computer",
-        about: "In your repository, on the computer your agents run on.",
-        next_line: "in a repository you work in, run `zirc repo add`.",
+        title: "Sign up your office",
+        about: "Keeps your coworker and starts your office's server.",
+        next_line: "your office's server is starting: zirc.dev says when it's ready.",
         agent_hint: None,
     },
     Step {
         number: 3,
-        id: id::AGENT,
+        id: id::SEAT,
         scope: Scope::Person,
-        needs: &[2],
-        signals: &[Signal::Agent],
+        needs: &[1, 2],
+        signals: &[Signal::Machine, Signal::Seated],
         get_started: true,
         early: false,
-        title: "Your agent",
-        about: "Start Claude Code or Codex in that repository. It joins Zirc on its own.",
-        next_line: "start your agent here (or restart it) and give it a task. It joins Zirc by itself and tells you how to reach it from your phone.",
+        title: "Install Zirc and seat {coworker}",
+        about: "In the repository {coworker} works in, install Zirc, then start a new Claude Code or Codex session for {coworker} alone.",
+        next_line: "start a new Claude Code or Codex session here for {coworker}, and tell it: {sentence}",
         agent_hint: None,
     },
     Step {
         number: 4,
-        id: id::PHONE,
+        id: id::SAY_HI,
         scope: Scope::Person,
         needs: &[3],
-        signals: &[Signal::Phone, Signal::AgentDirect],
+        signals: &[Signal::Answered],
         get_started: true,
-        early: true,
-        title: "Your phone",
-        about: "Get the app now; this ticks off when your agent answers you from it.",
-        next_line: "message your agent from the Zirc app: zirc.dev/app",
-        agent_hint: Some(crate::hints::kind::NEXT_PHONE),
+        early: false,
+        title: "Say hi to {coworker}",
+        about: "Say hello, or give {coworker} something real to do: the session at the desk wakes and answers.",
+        next_line: "say hi to {coworker} from zirc.dev or the Zirc app: the session at the desk wakes and answers.",
+        agent_hint: None,
     },
     Step {
         number: 5,
-        id: id::CI,
+        id: id::TOOLS,
         scope: Scope::Organisation,
-        needs: &[2],
-        signals: &[Signal::Ci],
+        needs: &[3],
+        signals: &[Signal::Ci, Signal::Tools],
         get_started: true,
         early: false,
-        title: "CI",
-        about: "So your agent wakes when a build fails.",
-        next_line: "connect CI, so your agent wakes when a build fails: `zirc ci connect`",
+        title: "Connect their tools",
+        about: "So {coworker} wakes by itself when something needs them, not only when you write: CI first, for the whole office.",
+        next_line: "connect CI, so your coworkers wake when a build fails: `zirc ci connect`",
         agent_hint: Some(crate::hints::kind::NEXT_CI),
     },
     Step {
         number: 6,
-        id: id::FIRST_WAKE,
+        id: id::PHONE,
         scope: Scope::Person,
-        needs: &[3, 5],
-        signals: &[Signal::Wake],
+        needs: &[3],
+        signals: &[Signal::Phone],
         get_started: true,
-        early: false,
-        title: "Your first wake",
-        about: "See it happen, without waiting for a real failure.",
-        next_line: "see a wake without waiting for a failure: `zirc ci test-failure`",
-        agent_hint: Some(crate::hints::kind::NEXT_FIRST_WAKE),
+        early: true,
+        title: "Get the phone app",
+        about: "Hear from {coworker} wherever you are. Skip it if you like.",
+        next_line: "get the Zirc app on your phone: zirc.dev/app",
+        agent_hint: Some(crate::hints::kind::NEXT_PHONE),
     },
     Step {
         number: 7,
-        id: id::FIRST_OVERLAP,
+        id: id::DONE,
         scope: Scope::Person,
-        needs: &[3],
-        signals: &[Signal::Overlap],
-        get_started: false,
+        needs: &[1, 2, 3, 4, 5],
+        signals: &[],
+        get_started: true,
         early: false,
-        title: "Your first overlap",
-        about: "Two agents changing the same files settle it between them.",
-        next_line: "nothing to do: two of your agents changing the same files settle it between them.",
-        agent_hint: None,
-    },
-    Step {
-        number: 8,
-        id: id::TEAMMATE,
-        scope: Scope::Organisation,
-        needs: &[1],
-        signals: &[Signal::Teammate],
-        get_started: false,
-        early: false,
-        title: "A teammate",
-        about: "Teammates' agents hear yours.",
-        next_line: "invite a teammate at zirc.dev: their agents hear yours.",
+        title: "Done",
+        about: "Your office is set up: this is its overview from now on.",
+        next_line: "nothing left: your office is set up.",
         agent_hint: None,
     },
 ];
@@ -325,13 +381,13 @@ impl Step {
 pub const INSTALL_COMMAND: &str = "curl -fsSL https://zirc.dev/install | sh";
 
 /// What connects a computer, run in a repository once zirc is installed: it signs the
-/// computer in the first time, and watches the repository. Step 2's command.
+/// computer in the first time, and watches the repository. Step 3's first command.
 pub const REPO_ADD_COMMAND: &str = "zirc repo add";
 
-/// From when zirc.dev records steps as they're reached, in RFC 3339: one reached before then is
-/// history, which a backfill records as filled in, so the funnel counts only those who went
-/// through getting started.
-pub const RECORDED_FROM: &str = "2026-11-24T00:00:00Z";
+/// From when zirc.dev records the seven steps as they're reached, in RFC 3339: one reached
+/// before then is history, which zirc.dev's sweep and the backfill record as filled in, so the
+/// funnel counts only those who went through getting started.
+pub const RECORDED_FROM: &str = "2026-11-27T00:00:00Z";
 
 /// The step numbered `number`, if there's one.
 #[must_use]
@@ -462,7 +518,10 @@ pub fn progress(reached: &[u8]) -> Progress {
                 .copied()
                 .filter(|need| !reached.contains(need))
                 .collect();
-            let state = if reached.contains(&step.number) {
+            // A step nothing proves but what it needs, done, is reached with the last of them.
+            let state = if reached.contains(&step.number)
+                || (step.signals.is_empty() && after.is_empty())
+            {
                 State::Done
             } else if after.is_empty() || step.early {
                 State::Available
@@ -524,6 +583,87 @@ fn progress_table() -> (Vec<StepProgress>, Vec<Vec<usize>>) {
         })
         .collect();
     (rows, by_reached)
+}
+
+/// The tools an office is offered beside those its jobs need: office-wide, each with a Skip,
+/// whether or not a job needs it (the user's choice, 27 Nov 2026: Linear optional).
+pub const OPTIONAL_TOOLS: [Tool; 1] = [Tool::Linear];
+
+/// A job someone holds that no tool wakes yet: none of those it could be woken by has been
+/// heard. It's kept all the same, and waits ([`missing`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct JobWaiting {
+    /// The job, by name.
+    pub job: String,
+    /// The tools any one of which wakes it, in the order zirc.dev shows tools.
+    pub tools: Vec<Tool>,
+    /// What it says of itself meanwhile: `waiting for Sentry or PagerDuty`.
+    pub words: String,
+}
+
+/// What an office still has to connect, as setup's tools step and a job that needs a tool
+/// again both show it ([`missing`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct Missing {
+    /// Whether CI is still to connect: every office's, as any coworker waits for builds, and a
+    /// fixer can't work without it (the user's words, 27 Nov 2026).
+    pub ci: bool,
+    /// Each held job no tool wakes yet.
+    pub jobs: Vec<JobWaiting>,
+    /// The [`OPTIONAL_TOOLS`] not heard yet, offered with a Skip and never waited for.
+    pub optional: Vec<Tool>,
+}
+
+impl Missing {
+    /// Whether nothing is still to connect, what's optional aside: setup's tools step is done
+    /// ([`Signal::Tools`] and [`Signal::Ci`]).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        !self.ci && self.jobs.is_empty()
+    }
+}
+
+/// `waiting for Sentry or PagerDuty`.
+fn waiting_for(tools: &[Tool]) -> String {
+    let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
+    match names.split_last() {
+        Some((last, [])) => format!("waiting for {last}"),
+        Some((last, rest)) => format!("waiting for {} or {last}", rest.join(", ")),
+        None => String::new(),
+    }
+}
+
+/// What `staff`'s office still has to connect, given whether its CI was heard and the tools
+/// that were, a test or a post (a known tool is heard for the office, whichever job's address
+/// it posted to: [`Tool::org_wide`]): the one rule for what an office is missing. CI always;
+/// for each job someone holds, one of the tools that wake it, unless one was heard; and the
+/// optional tools, offered. A job with no tools needs only CI. Setup's tools step reads it,
+/// and so does every later hire whose job needs a tool the office hasn't connected.
+#[must_use]
+pub fn missing(staff: &Staff, ci_heard: bool, heard: &[Tool]) -> Missing {
+    let jobs = staff
+        .jobs
+        .iter()
+        .filter(|job| staff.holders(&job.name).next().is_some())
+        .filter_map(|job| {
+            let tools = job.tools();
+            (!tools.is_empty() && !tools.iter().any(|tool| heard.contains(tool))).then(|| {
+                JobWaiting {
+                    job: job.name.clone(),
+                    words: waiting_for(&tools),
+                    tools,
+                }
+            })
+        })
+        .collect();
+    Missing {
+        ci: !ci_heard,
+        jobs,
+        optional: OPTIONAL_TOOLS
+            .into_iter()
+            .filter(|tool| !heard.contains(tool))
+            .collect(),
+    }
 }
 
 /// zirc.dev's page that invites someone to the organisation an app is signed in to, given
@@ -657,17 +797,32 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const NEXT_LABEL = {NEXT_LABEL:?};"),
         format!("const AVAILABLE_LABEL = {AVAILABLE_LABEL:?};"),
         format!("const ONBOARDING_APP_PAGE = {APP_PAGE:?};"),
+        format!("const STEP_COWORKER = {COWORKER:?};"),
+        format!("const STEP_SENTENCE = {SENTENCE:?};"),
+        format!("const STEP_SOME_COWORKER = {SOME_COWORKER:?};"),
+        format!("const STEP_NO_NAME = {NO_NAME:?};"),
+        format!(
+            "const STEP_SENTENCE_WORDS = {:?};",
+            crate::coworkers::tell_a_session(COWORKER)
+        ),
+        Missing::decl(config),
+        JobWaiting::decl(config),
+        format!(
+            "const OPTIONAL_TOOLS: readonly InboundTool[] = [{}];",
+            OPTIONAL_TOOLS
+                .map(|tool| format!("{:?}", tool.as_str()))
+                .join(", ")
+        ),
         format!(
             "const STEP_ID = {{ {} }} as const;",
             [
-                ("SERVER", id::SERVER),
-                ("COMPUTER", id::COMPUTER),
-                ("AGENT", id::AGENT),
+                ("HIRE", id::HIRE),
+                ("SIGN_UP", id::SIGN_UP),
+                ("SEAT", id::SEAT),
+                ("SAY_HI", id::SAY_HI),
+                ("TOOLS", id::TOOLS),
                 ("PHONE", id::PHONE),
-                ("CI", id::CI),
-                ("FIRST_WAKE", id::FIRST_WAKE),
-                ("FIRST_OVERLAP", id::FIRST_OVERLAP),
-                ("TEAMMATE", id::TEAMMATE),
+                ("DONE", id::DONE),
             ]
             .map(|(name, id)| format!("{name}: {id:?}"))
             .join(", ")
@@ -716,17 +871,27 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::coworkers::{Coworker, Job};
+    use crate::role_report::Subject;
     use serde_json::json;
 
     #[test]
     fn steps_are_numbered_in_order_and_need_only_earlier_ones() {
         for (at, step) in STEPS.iter().enumerate() {
             assert_eq!(usize::from(step.number), at + 1, "{}", step.id);
-            assert!(!step.signals.is_empty(), "{}", step.id);
+            // Only done is proved by what it needs alone.
+            assert_eq!(step.signals.is_empty(), step.id == id::DONE, "{}", step.id);
             for need in step.needs {
                 assert!(*need < step.number, "{} needs {need}", step.id);
             }
         }
+        let ids: Vec<&str> = STEPS.iter().map(|step| step.id).collect();
+        assert_eq!(
+            ids,
+            [
+                "hire", "sign_up", "seat", "say_hi", "tools", "phone", "done"
+            ]
+        );
     }
 
     #[test]
@@ -738,89 +903,100 @@ mod tests {
                 step.id
             );
         }
-        assert!(
-            step(5)
-                .unwrap()
-                .next_line
-                .contains(crate::ci::CONNECT_COMMAND)
-        );
-        assert!(
-            step(6)
-                .unwrap()
-                .next_line
-                .contains(crate::ci::TEST_FAILURE_COMMAND)
-        );
-        assert!(step(2).unwrap().next_line.contains(REPO_ADD_COMMAND));
-        assert!(step(4).unwrap().next_line.contains(APP_PAGE));
-        // An agent has something to say of the phone, CI and a first wake, by kinds that are.
+        let by = |id| STEPS.iter().find(|step| step.id == id).unwrap();
+        assert!(by(id::TOOLS).next_line.contains(crate::ci::CONNECT_COMMAND));
+        assert!(by(id::PHONE).next_line.contains(APP_PAGE));
+        // An agent has something to say of CI and the phone, by kinds that are.
         let hinted: Vec<&str> = STEPS.iter().filter_map(|step| step.agent_hint).collect();
-        assert_eq!(hinted.len(), 3);
+        assert_eq!(hinted.len(), 2);
         for kind in hinted {
             assert!(crate::hints::kind::ALL.contains(&kind), "{kind}");
         }
     }
 
     #[test]
+    fn a_steps_words_name_the_coworker_and_the_sentence_that_seats_it() {
+        let seat = step(3).unwrap();
+        assert_eq!(
+            words(seat.title, Some("John")),
+            "Install Zirc and seat John"
+        );
+        assert_eq!(
+            words(seat.next_line, Some("John")),
+            "start a new Claude Code or Codex session here for John, and tell it: You're John. \
+             Take your desk."
+        );
+        assert_eq!(
+            words(step(4).unwrap().title, None),
+            "Say hi to your coworker"
+        );
+        for step in &STEPS {
+            for text in [step.title, step.about, step.next_line] {
+                let said = words(text, Some("John"));
+                assert!(!said.contains('{') && !said.contains('}'), "{said}");
+            }
+        }
+    }
+
+    #[test]
     fn next_is_the_lowest_whose_needs_are_met() {
-        assert_eq!(next(&[]).map(|s| s.id), Some("server"));
-        assert_eq!(next(&[1]).map(|s| s.id), Some("computer"));
-        // CI first: the agent is still next, and CI stays done.
-        assert_eq!(next(&[1, 2, 5]).map(|s| s.id), Some("agent"));
-        assert_eq!(next(&[1, 2, 3]).map(|s| s.id), Some("phone"));
-        assert_eq!(next(&[1, 2, 3, 4, 5, 6, 7, 8]), None);
+        assert_eq!(next(&[]).map(|s| s.id), Some("hire"));
+        assert_eq!(next(&[1]).map(|s| s.id), Some("sign_up"));
+        assert_eq!(next(&[1, 2]).map(|s| s.id), Some("seat"));
+        // CI connected before the hello: it just ticks, and saying hi is still next.
+        assert_eq!(next(&[1, 2, 3, 5]).map(|s| s.id), Some("say_hi"));
+        assert_eq!(next(&[1, 2, 3, 4]).map(|s| s.id), Some("tools"));
+        // The phone is suggested last, and can be skipped: done doesn't wait for it.
+        assert_eq!(next(&[1, 2, 3, 4, 5]).map(|s| s.id), Some("phone"));
+        assert_eq!(next(&[1, 2, 3, 4, 5, 6]), None);
     }
 
     fn labels(reached: &[u8]) -> Vec<String> {
         progress(reached)
             .steps
             .into_iter()
-            .filter(|step| super::step(step.number).is_some_and(|s| s.get_started))
             .map(|step| step.label)
             .collect()
     }
 
     #[test]
     fn each_steps_state_in_words() {
-        // Just signed up: the server came with the account, and the phone's app can go on now.
+        // Hired and signed up: seating is next, the phone's app can go on now.
         assert_eq!(
-            labels(&[1]),
+            labels(&[1, 2]),
             [
                 "Done",
+                "Done",
                 "Waiting for it",
-                "After step 2",
+                "After step 3",
+                "After step 3",
                 "Any time",
-                "After step 2",
-                "After steps 3 and 5"
+                "After steps 3, 4 and 5"
             ]
         );
-        // CI connected before the phone: it just ticks, the phone is next, the wake any time.
+        // Everything but the phone: done is done, and the phone still offered.
         assert_eq!(
-            labels(&[1, 2, 3, 5]),
-            ["Done", "Done", "Done", "Waiting for it", "Done", "Any time"]
-        );
-        // CI not heard yet: the wake waits for it alone.
-        assert_eq!(
-            labels(&[1, 2, 3, 4]),
+            labels(&[1, 2, 3, 4, 5]),
             [
                 "Done",
                 "Done",
                 "Done",
                 "Done",
+                "Done",
                 "Waiting for it",
-                "After step 5"
+                "Done"
             ]
         );
-        let all = progress(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        let all = progress(&[1, 2, 3, 4, 5, 6]);
         assert_eq!(all.next, None);
         assert!(all.steps.iter().all(|step| step.state == State::Done));
     }
 
     #[test]
     fn the_next_is_never_one_begun_early() {
-        // The phone is offered any time, but suggested only once an agent can answer there.
-        let just_signed_up = progress(&[1]);
-        assert_eq!(just_signed_up.next, Some(2));
-        let phone = &just_signed_up.steps[3];
+        let signed_up = progress(&[1, 2]);
+        assert_eq!(signed_up.next, Some(3));
+        let phone = &signed_up.steps[5];
         assert_eq!((phone.state, phone.next), (State::Available, false));
         assert!(phone.after.is_empty());
     }
@@ -828,7 +1004,7 @@ mod tests {
     #[test]
     fn the_web_apps_table_says_what_progress_says() {
         let (rows, by_reached) = progress_table();
-        assert_eq!(by_reached.len(), 256);
+        assert_eq!(by_reached.len(), 128);
         // Steps 1, 2 and 5 reached: bits 0, 1 and 4.
         let steps: Vec<StepProgress> = by_reached[0b1_0011]
             .iter()
@@ -839,17 +1015,19 @@ mod tests {
 
     #[test]
     fn a_step_is_reached_when_the_last_of_its_signals_was() {
-        let phone = step(4).unwrap();
-        let seen = |phone_at, direct_at| {
+        let seat = step(3).unwrap();
+        let seen = |machine_at, seated_at| {
             move |signal| match signal {
-                Signal::Phone => phone_at,
-                Signal::AgentDirect => direct_at,
+                Signal::Machine => machine_at,
+                Signal::Seated => seated_at,
                 _ => None,
             }
         };
-        assert_eq!(phone.reached_at(seen(Some(3), Some(5))), Some(5));
-        assert_eq!(phone.reached_at(seen(Some(7), Some(5))), Some(7));
-        assert_eq!(phone.reached_at(seen(Some(7), None)), None);
+        assert_eq!(seat.reached_at(seen(Some(3), Some(5))), Some(5));
+        assert_eq!(seat.reached_at(seen(Some(7), Some(5))), Some(7));
+        assert_eq!(seat.reached_at(seen(Some(7), None)), None);
+        // Done is never reached by a signal: progress says it, from what it needs.
+        assert_eq!(step(7).unwrap().reached_at(|_| Some(1)), None);
         assert!(chrono_like(RECORDED_FROM));
     }
 
@@ -872,58 +1050,35 @@ mod tests {
         let of = |kind, account, agent, direct, data: Option<serde_json::Value>| {
             Signal::of_row(kind, account, agent, direct, data.as_ref())
         };
+        let machine = Some("ada-mbp");
         assert_eq!(
-            of(
-                crate::activity::WATCHING_KIND,
-                Some("ada-mbp"),
-                true,
-                false,
-                None
-            ),
+            of(crate::activity::WATCHING_KIND, machine, true, false, None),
             Some(Signal::Agent)
         );
         assert_eq!(
-            of("intent", Some("ada-mbp"), true, false, None),
+            of("intent", machine, true, false, None),
             Some(Signal::Agent)
         );
         assert_eq!(
-            of("text", Some("ada-mbp"), true, true, None),
+            of("text", machine, true, true, None),
             Some(Signal::AgentDirect)
         );
         assert_eq!(of("text", Some("ada"), false, true, None), None);
         assert_eq!(
-            of(
-                crate::activity::WAKE_KIND,
-                Some("ada-mbp"),
-                true,
-                false,
-                None
-            ),
+            of(crate::activity::WAKE_KIND, machine, true, false, None),
             Some(Signal::Wake)
         );
         let overlap = Some(json!({"what": "overlap"}));
         assert_eq!(
-            of(
-                crate::activity::NOTICE_KIND,
-                Some("ada-mbp"),
-                true,
-                false,
-                overlap
-            ),
+            of(crate::activity::NOTICE_KIND, machine, true, false, overlap),
             Some(Signal::Overlap)
         );
         let ahead = Some(json!({"what": "conflict-ahead"}));
         assert_eq!(
-            of(
-                crate::activity::NOTICE_KIND,
-                Some("ada-mbp"),
-                true,
-                false,
-                ahead
-            ),
+            of(crate::activity::NOTICE_KIND, machine, true, false, ahead),
             None
         );
-        assert_eq!(of("working", Some("ada-mbp"), true, false, None), None);
+        assert_eq!(of("working", machine, true, false, None), None);
         assert_eq!(
             of(
                 crate::ci::LANDING_KIND,
@@ -936,21 +1091,104 @@ mod tests {
         );
         // A machine saying a landing landed isn't CI.
         assert_eq!(
-            of(crate::ci::LANDING_KIND, Some("ada-mbp"), true, false, None),
+            of(crate::ci::LANDING_KIND, machine, true, false, None),
             Some(Signal::Agent)
         );
     }
 
     #[test]
-    fn a_first_and_a_prompt_read_as_sent() {
-        let first: First =
-            serde_json::from_value(json!({"signal": "wake", "account": "ada-mbp", "at": 5}))
-                .unwrap();
-        assert_eq!(first.signal, Signal::Wake);
-        let seen: PromptSeen = serde_json::from_value(
-            json!({"prompt": "agent", "surface": "dashboard", "outcome": "dismissed"}),
-        )
-        .unwrap();
-        assert_eq!(seen.outcome, Outcome::Dismissed);
+    fn a_desk_taken_and_a_hello_answered_are_signals_of_their_own() {
+        let of = |kind, data: serde_json::Value| {
+            Signal::of_row(kind, Some("ada-mbp"), true, false, Some(&data))
+        };
+        let seated = json!({"desk": "john"});
+        assert_eq!(
+            of(crate::activity::SEATED_KIND, seated),
+            Some(Signal::Seated)
+        );
+        let wake = |desk: Option<&str>, wrote: Option<&str>| {
+            json!({
+                "id": "w1",
+                "why": "direct",
+                "kind": "text",
+                "desk": desk,
+                "wrote": wrote,
+            })
+        };
+        let signal_of = |data| {
+            Signal::of_row(
+                crate::activity::WAKE_KIND,
+                Some("ada-mbp"),
+                true,
+                false,
+                Some(&data),
+            )
+        };
+        let shape =
+            serde_json::from_value::<crate::activity::Wake>(wake(Some("john"), Some("owner")));
+        assert!(shape.is_ok(), "{shape:?}");
+        assert_eq!(
+            signal_of(wake(Some("john"), Some("owner"))),
+            Some(Signal::Answered)
+        );
+        // Another member writing, or a wake for the job, is a wake like any.
+        assert_eq!(
+            signal_of(wake(Some("john"), Some("member"))),
+            Some(Signal::Wake)
+        );
+        assert_eq!(signal_of(wake(Some("john"), None)), Some(Signal::Wake));
+        assert_eq!(signal_of(wake(None, None)), Some(Signal::Wake));
+    }
+
+    fn staff(jobs: &[(&str, &[Subject])], held: &[&str]) -> Staff {
+        Staff {
+            coworkers: held
+                .iter()
+                .map(|job| Coworker {
+                    name: format!("{job}_holder"),
+                    shown_name: None,
+                    jobs: vec![(*job).to_owned()],
+                    repository: None,
+                    picture: None,
+                    hue: None,
+                    added_by: None,
+                })
+                .collect(),
+            jobs: jobs
+                .iter()
+                .map(|(name, reports)| Job {
+                    name: (*name).to_owned(),
+                    brief: "Does it.".to_owned(),
+                    triggers: Vec::new(),
+                    reports: reports.to_vec(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn an_office_misses_ci_and_a_tool_for_each_held_job_that_needs_one() {
+        let fixer = ("fixer", &[Subject::Flaky][..]);
+        let oncall = ("oncall", &[Subject::Error, Subject::Incident][..]);
+        // A fixer needs CI alone; Linear is offered beside, never waited for.
+        let office = staff(&[fixer, oncall], &["fixer"]);
+        let missing_now = missing(&office, false, &[]);
+        assert!(missing_now.ci && missing_now.jobs.is_empty());
+        assert_eq!(missing_now.optional, [Tool::Linear]);
+        assert!(!missing_now.is_empty());
+        assert!(missing(&office, true, &[]).is_empty());
+        // On-call held: it waits for either of its tools until one is heard.
+        let office = staff(&[fixer, oncall], &["fixer", "oncall"]);
+        let waits = missing(&office, true, &[]);
+        assert_eq!(
+            waits.jobs,
+            [JobWaiting {
+                job: "oncall".to_owned(),
+                tools: vec![Tool::Sentry, Tool::Pagerduty],
+                words: "waiting for Sentry or PagerDuty".to_owned(),
+            }]
+        );
+        let heard = missing(&office, true, &[Tool::Pagerduty, Tool::Linear]);
+        assert!(heard.is_empty() && heard.optional.is_empty());
     }
 }

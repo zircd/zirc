@@ -40,8 +40,11 @@ pub const GOTCHA_TOLD_KIND: &str = "x-zirc/gotcha-told";
 /// A session's watch started, the first time since zircd did ([`Watching`]).
 pub const WATCHING_KIND: &str = "x-zirc/watching";
 
+/// A session sat at a coworker's desk ([`Seated`]).
+pub const SEATED_KIND: &str = "x-zirc/seated";
+
 /// Every kind here: each is live ([`crate::live`]).
-pub const KINDS: [&str; 7] = [
+pub const KINDS: [&str; 8] = [
     WAKE_KIND,
     WAKE_OUTCOME_KIND,
     PROMPT_KIND,
@@ -49,6 +52,7 @@ pub const KINDS: [&str; 7] = [
     HINT_SHOWN_KIND,
     GOTCHA_TOLD_KIND,
     WATCHING_KIND,
+    SEATED_KIND,
 ];
 
 /// The nick a tenant's recorder goes by, to which machines send these events directly
@@ -251,6 +255,14 @@ pub struct GotchaTold {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Watching {}
 
+/// A session sat at a coworker's desk, the session being the message's: zircd sends it each
+/// time one takes a desk, for onboarding's seat step ([`crate::onboarding::Signal::Seated`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Seated {
+    /// The coworker, by nick.
+    pub desk: String,
+}
+
 /// One of these records as the event it goes as.
 pub trait Record: Serialize + for<'de> Deserialize<'de> {
     /// Its kind, one of [`KINDS`].
@@ -308,6 +320,10 @@ impl Record for GotchaTold {
 
 impl Record for Watching {
     const KIND: &'static str = WATCHING_KIND;
+}
+
+impl Record for Seated {
+    const KIND: &'static str = SEATED_KIND;
 }
 
 #[cfg(test)]

@@ -752,7 +752,6 @@ mod tests {
         };
         assert!(text(kind::NEXT_PHONE).contains(zirc_proto::onboarding::APP_PAGE));
         assert!(text(kind::NEXT_CI).contains(zirc_proto::ci::CONNECT_COMMAND));
-        assert!(text(kind::NEXT_FIRST_WAKE).contains(zirc_proto::ci::TEST_FAILURE_COMMAND));
     }
 
     #[test]
@@ -775,13 +774,12 @@ mod tests {
         // A later watch of the session says the phone's no more, but the next step's once.
         let mut again = Watch::load(home.path(), Some("cc-1"), &[]).0;
         assert_eq!(again.at_next(id::PHONE), None);
-        assert_eq!(again.at_next(id::TEAMMATE), None, "nothing to say of it");
+        assert_eq!(again.at_next(id::SAY_HI), None, "nothing to say of it");
+        assert!(again.nexts_left(), "the tools' is still to come");
         assert_eq!(
-            again.at_next(id::CI).map(|it| it.kind),
+            again.at_next(id::TOOLS).map(|it| it.kind),
             Some(kind::NEXT_CI.to_owned())
         );
-        assert!(again.nexts_left(), "the first wake's is still to come");
-        assert!(again.at_next(id::FIRST_WAKE).is_some());
         // Once each has been shown, there's nothing left to ask zirc.dev for.
         assert!(!Watch::load(home.path(), Some("cc-1"), &[]).0.nexts_left());
     }

@@ -122,11 +122,6 @@ level = "tell"
 text = "Tell your user that CI isn't connected to Zirc yet: once it is, you wake when a build of your branch fails. `zirc ci connect` in this repository does it; offer to run it for them."
 
 [[hint]]
-kind = "next.first-wake"
-level = "tell"
-text = "Offer your user to see you wake without waiting for a real failure: `zirc ci test-failure --session <your session>` fails a run of your branch on purpose, as a test."
-
-[[hint]]
 kind = "landing.awaited"
 level = "act"
 text = "What you were waiting on moved: carry on with what it unblocks."
