@@ -25,26 +25,19 @@ for_wasm = rule(
     },
 )
 
-def _optimized_impl(_settings, _attr):
-    return {"//command_line_option:compilation_mode": "opt"}
-
-_optimized = transition(
-    implementation = _optimized_impl,
-    inputs = [],
-    outputs = ["//command_line_option:compilation_mode"],
-)
-
-def _optimized_files_impl(ctx):
-    return [DefaultInfo(files = depset(transitive = [src[DefaultInfo].files for src in ctx.attr.src]))]
+def _optimized_impl(ctx):
+    return [DefaultInfo(files = ctx.attr.src[DefaultInfo].files)]
 
 optimized = rule(
-    implementation = _optimized_files_impl,
-    doc = "`src`'s files, built with -c opt whatever the build asks: the web client's wasm, " +
-          "which unoptimised is several times the size.",
+    implementation = _optimized_impl,
+    doc = """`src`'s files, built with -c opt whatever the build asks: the web client's wasm,
+which unoptimised is several times the size.
+
+Built in the exec configuration, which is -c opt, rather than the build's own with -c opt:
+zirc.dev builds the web client in exec (web/BUILD.bazel's chat_site), and a second
+configuration compiled zirc-web's crates for wasm twice in every build of both, six crates
+from zirc-proto up (build 10792). Wasm is the same whatever machine builds it.""",
     attrs = {
-        "src": attr.label(cfg = _optimized, mandatory = True),
-        "_allowlist_function_transition": attr.label(
-            default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
-        ),
+        "src": attr.label(cfg = "exec", mandatory = True),
     },
 )
