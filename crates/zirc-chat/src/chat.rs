@@ -1008,6 +1008,14 @@ enum Outgoing {
     Line(String),
 }
 
+/// `text` as the bodies of the PRIVMSGs that say it, a line each, as the apps send it to a
+/// server without multiline messages: what the office's server sends for a page that writes
+/// as a person (zirc-sidecar's content API, [`zirc_proto::conversation`]).
+#[must_use]
+pub fn line_bodies(text: &str) -> Vec<String> {
+    pieces(text, &str::to_owned)
+}
+
 /// `text` as the bodies of PRIVMSGs of a line each, for a server without multiline
 /// messages: each line on its own, cut where it's too long for one.
 fn pieces(text: &str, body: &dyn Fn(&str) -> String) -> Vec<String> {

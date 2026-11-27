@@ -29,12 +29,25 @@ use crate::run::Inside;
 const LARGEST_BODY: usize = 4 * 1024 * 1024;
 
 /// The headers passed on each way: what the sidecar reads and answers with, never the hop's.
-const PASSED: [header::HeaderName; 5] = [
+const PASSED: [header::HeaderName; 16] = [
     header::AUTHORIZATION,
     header::CONTENT_TYPE,
     header::ACCEPT,
     header::CACHE_CONTROL,
     header::ETAG,
+    // A browser's ask across origins, zirc.dev's pages', and the sidecar's answer to it
+    // (zirc-sidecar's accounts::content): without them every preflight was refused.
+    header::ORIGIN,
+    header::ACCESS_CONTROL_REQUEST_METHOD,
+    header::ACCESS_CONTROL_REQUEST_HEADERS,
+    header::ACCESS_CONTROL_ALLOW_ORIGIN,
+    header::ACCESS_CONTROL_ALLOW_METHODS,
+    header::ACCESS_CONTROL_ALLOW_HEADERS,
+    header::ACCESS_CONTROL_EXPOSE_HEADERS,
+    header::ACCESS_CONTROL_MAX_AGE,
+    header::VARY,
+    header::RETRY_AFTER,
+    header::CONTENT_DISPOSITION,
 ];
 
 struct Backends {

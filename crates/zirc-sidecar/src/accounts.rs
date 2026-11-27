@@ -1787,6 +1787,37 @@ async fn integration_account(ergo: &Ergo, nick: &str, reset: bool) -> Result<(),
     }
 }
 
+/// Person `name`'s account, made now when the server has none yet, as for someone whose only
+/// sign-in so far is a machine's: what a page that writes as them signs in to
+/// (`content::write_to`). Its passphrase is random and kept nowhere, as the server signs in to
+/// it with a pass of its own; zirc.dev sets the person's own at their first sign-in from an app.
+/// An account there already is never touched.
+async fn person_account(ergo: &Ergo, name: &str) -> Result<(), Box<Response>> {
+    if unsettable(name).is_some() || exists(ergo, name).await? {
+        return Ok(());
+    }
+    let mut bytes = [0u8; 24];
+    ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut bytes)
+        .map_err(|_| Box::new(ergo_failed("no random numbers")))?;
+    let request = json!({"accountName": name, "passphrase": zirc_proto::hex(&bytes)});
+    let registered: Outcome = ergo
+        .api
+        .call("ns/saregister", request)
+        .await
+        .map_err(|e| Box::new(api_failed(e)))?;
+    if !registered.success && registered.error_code.as_deref() != Some("ACCOUNT_EXISTS") {
+        return Err(Box::new(ergo_failed(
+            registered
+                .error
+                .unwrap_or_else(|| "registration failed".into()),
+        )));
+    }
+    stays_on(ergo, name).await?;
+    admit(ergo, name).await;
+    info!(account = name, "registered, for a page to write as");
+    Ok(())
+}
+
 /// `POST /v1/say`: an integration's post, as `crate::say` says.
 async fn say(State(ergo): State<Arc<Ergo>>, Json(body): Json<say::Say>) -> Response {
     let message = match body.message() {

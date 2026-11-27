@@ -26,7 +26,11 @@
 //!   /playbook/usage` how often each hint and gotcha was used lately, by id, and `GET
 //!   /playbook/uses?hint=<id>` (or `gotcha=<message id>`) one's uses: how many each day,
 //!   and a page of them. `GET /roles` says how the organisation's roles stand
-//!   (`zirc_proto::roles::Standing`, `crate::roles`).
+//!   (`zirc_proto::roles::Standing`, `crate::roles`). `GET /conversations/<nick>` is the
+//!   person's direct conversation with `nick`, whole, for a page that shows one
+//!   (`zirc_proto::conversation`), and `POST` to it (`{"text"}`) says what they wrote there,
+//!   as them: the server signs in to its own Ergo as the person with a pass of its own, good
+//!   once, never a machine's.
 //! - owners: `GET /messages?q=`, `DELETE /messages/<msgid>`, `GET /export` (newline-delimited
 //!   JSON: a header, every message the owner may read, newest first, and an end line) and `GET
 //!   /log` (`{"logins", "access"}`: the login log and this API's access log, newest first).
@@ -57,8 +61,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
-    Ergo, error, find_messages, list_conversations, list_gotchas, playbook_usage, playbook_uses,
-    read_history, remove_message, valid_name, viewer,
+    Ergo, busy, ergo_failed, error, find_messages, list_conversations, list_gotchas,
+    person_account, playbook_usage, playbook_uses, read_history, remove_message, valid_name,
+    viewer,
 };
 use crate::{history, signin, teams};
 
@@ -231,6 +236,10 @@ pub(super) fn router(ergo: Arc<Ergo>) -> Router {
         .route(&at("/me"), get(me))
         .route(&at("/history"), get(read_history))
         .route(&at("/conversations"), get(list_conversations))
+        .route(
+            &at(zirc_proto::conversation::PATH),
+            get(one_conversation).post(write_to),
+        )
         .route(&at("/hints"), get(list_hints).post(add_hint))
         .route(&at("/hints/log"), get(hints_log))
         .route(&at("/hints/{id}"), delete(remove_hint))
@@ -351,6 +360,130 @@ async fn desk_handover(State(ergo): State<Arc<Ergo>>, Path(name): Path<String>) 
             "coworker",
             format!("there's no coworker named {name}"),
         ),
+    }
+}
+
+/// `GET /conversations/<nick>`: the person's direct conversation with `nick`, whole, as a page
+/// that shows it draws it ([`zirc_proto::conversation::Conversation`]): its newest messages,
+/// from the history the person may read, and the composer's words. A coworker is called by
+/// their shown name.
+async fn one_conversation(
+    State(ergo): State<Arc<Ergo>>,
+    Extension(caller): Extension<Caller>,
+    headers: axum::http::HeaderMap,
+    Path(nick): Path<String>,
+) -> Response {
+    use zirc_proto::conversation::{self, Conversation, Said};
+    let nick = nick.to_lowercase();
+    if !valid_name(&nick) {
+        return error(StatusCode::BAD_REQUEST, "invalid", "not a nick");
+    }
+    let Ok(_running) = ergo.searches.try_acquire() else {
+        return busy();
+    };
+    let viewer = match viewer(&ergo, &headers).await {
+        Ok(viewer) => viewer,
+        Err(response) => return *response,
+    };
+    let until = i64::try_from(jiff::Timestamp::now().as_nanosecond()).unwrap_or(i64::MAX);
+    let query = history::Query {
+        conversation: Some(
+            history::Conversation::parse(&format!("@{nick}"), &caller.person)
+                .expect("an account names a direct conversation"),
+        ),
+        since: 0,
+        until,
+        limit: conversation::SHOWN,
+        ..history::Query::default()
+    };
+    let path = ergo.history.clone();
+    let page =
+        match tokio::task::spawn_blocking(move || history::search(&path, &viewer, &query)).await {
+            Ok(Ok(page)) => page,
+            Ok(Err(failure)) => return ergo_failed(failure),
+            Err(failure) => return ergo_failed(failure),
+        };
+    let shown = ergo.roles.shown(&nick).unwrap_or_else(|| nick.clone());
+    let entries = conversation::entries(&page.messages, |message| {
+        let mine = message
+            .sender
+            .account
+            .as_deref()
+            .is_some_and(|account| account.eq_ignore_ascii_case(&caller.person));
+        let theirs = message.sender.nick.eq_ignore_ascii_case(&nick);
+        Said {
+            id: message.msgid.clone(),
+            at: message.time.clone(),
+            mine,
+            who: if mine {
+                zirc_chat::chat::YOU_PAGE.to_owned()
+            } else if theirs {
+                shown.clone()
+            } else {
+                message.sender.nick.clone()
+            },
+            text: message.text.clone(),
+        }
+    });
+    Json(Conversation {
+        placeholder: zirc_chat::orgs::composer_placeholder(&shown, None),
+        send: zirc_chat::chat::SEND.to_owned(),
+        empty: conversation::empty(&shown),
+        label: conversation::label(&shown),
+        with: nick,
+        shown,
+        entries,
+    })
+    .into_response()
+}
+
+/// `POST /conversations/<nick>`: says what the person wrote on a page to `nick`, as the person
+/// ([`zirc_proto::conversation::Write`]): the server signs in to its own Ergo as them, with a
+/// pass of its own good once (`signin::Signin::pass`), sends it in as many lines as it needs
+/// and leaves. A machine writes as itself, with zirc, never as its person. What was said is
+/// never logged.
+async fn write_to(
+    State(ergo): State<Arc<Ergo>>,
+    Extension(caller): Extension<Caller>,
+    Path(nick): Path<String>,
+    Json(write): Json<zirc_proto::conversation::Write>,
+) -> Response {
+    if caller.machine {
+        return error(
+            StatusCode::FORBIDDEN,
+            "role",
+            "a machine writes as itself, with zirc",
+        );
+    }
+    let nick = nick.to_lowercase();
+    if !valid_name(&nick) || nick.eq_ignore_ascii_case(&caller.person) {
+        return error(StatusCode::BAD_REQUEST, "invalid", "not a nick to write to");
+    }
+    let text = match write.checked() {
+        Ok(text) => text,
+        Err(why) => return error(StatusCode::BAD_REQUEST, "invalid", why),
+    };
+    let Ok(_permit) = ergo.says.try_acquire() else {
+        return busy();
+    };
+    if let Err(response) = person_account(&ergo, &caller.person).await {
+        return *response;
+    }
+    let pass = ergo.signin.pass(&caller.person, crate::now());
+    let mut config =
+        zirc_irc::Config::new(ergo.irc.ip().to_string(), ergo.irc.port(), &caller.person);
+    config.tls = false;
+    config.server_password.clone_from(&ergo.gate);
+    config.bearer = Some(Arc::new(move || Some(pass.clone())));
+    match crate::say::tell(&config, &nick, &zirc_chat::chat::line_bodies(text)).await {
+        Ok(()) => {
+            tracing::info!(to = nick, "a page wrote to someone, as its person");
+            Json(json!({ "sent": true })).into_response()
+        }
+        Err(failure) => {
+            tracing::warn!(to = nick, %failure, "a page's message couldn't be sent");
+            error(StatusCode::BAD_GATEWAY, "say", failure.to_string())
+        }
     }
 }
 

@@ -1371,6 +1371,25 @@ impl Roles {
         self.with(|brain| (brain.standing(crate::now_ms()), Vec::new()))
     }
 
+    /// Coworker `nick`'s name as people see it, when `nick` is a coworker's.
+    #[must_use]
+    pub fn shown(&self, nick: &str) -> Option<String> {
+        self.with(|brain| {
+            let shown = brain
+                .staff()
+                .coworkers
+                .iter()
+                .find(|coworker| coworker.name.eq_ignore_ascii_case(nick))
+                .map(|coworker| {
+                    coworker
+                        .shown_name
+                        .clone()
+                        .unwrap_or_else(|| coworker.name.clone())
+                });
+            (shown, Vec::new())
+        })
+    }
+
     /// What coworker `name`'s desk hands the next session to sit there ([`Brain::handover`]).
     #[must_use]
     pub fn handover(&self, name: &str) -> Option<Handover> {

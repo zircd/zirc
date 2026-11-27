@@ -16,6 +16,7 @@ pub mod card;
 pub mod characters;
 pub mod ci;
 pub mod colleagues;
+pub mod conversation;
 pub mod coworkers;
 pub mod decision;
 pub mod desired;

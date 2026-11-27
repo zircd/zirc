@@ -245,6 +245,33 @@ pub async fn post(config: &Config, channel: &str, message: &Message) -> Result<(
     result
 }
 
+/// Connects as `config`'s account, says each of `bodies` to `nick` in a direct message, and
+/// leaves: what a person wrote on a page, as `crate::accounts::content` sends it.
+///
+/// # Errors
+///
+/// [`Failed`], saying where it went wrong.
+pub async fn tell(config: &Config, nick: &str, bodies: &[String]) -> Result<(), Failed> {
+    let (client, mut incoming) = tokio::time::timeout(WITHIN, zirc_irc::connect(config))
+        .await
+        .map_err(|_| Failed::Connect("timed out".into()))?
+        .map_err(|e| match e {
+            zirc_irc::Error::Sasl(why) => Failed::Auth(why),
+            other => Failed::Connect(other.to_string()),
+        })?;
+    let result = bodies.iter().try_for_each(|body| {
+        client
+            .privmsg(nick, body)
+            .map_err(|e| Failed::Send(e.to_string()))
+    });
+    let _ = client.quit("done");
+    let _ = tokio::time::timeout(Duration::from_secs(3), async {
+        while incoming.recv().await.is_some() {}
+    })
+    .await;
+    result
+}
+
 async fn deliver(
     client: &Client,
     incoming: &mut Incoming,

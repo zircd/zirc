@@ -50,6 +50,12 @@ pub const ACCOUNT_CHARS: usize = 64;
 /// next look for machines come on (`crate::profiles::EVERY`) catches them.
 const LOGINS_HELD: usize = 256;
 
+/// How a pass the server makes itself begins ([`Signin::pass`]), never a device's token.
+pub const PASS_PREFIX: &str = "zirc-pass.";
+
+/// How long such a pass is good for, in seconds: the moment it takes to sign in.
+pub const PASS_SECONDS: u64 = 30;
+
 /// Where Ergo reaches the sidecar, beside its history on the disk they share.
 #[must_use]
 pub fn socket_beside(history: &Path) -> PathBuf {
@@ -370,6 +376,9 @@ pub struct Signin {
     pub keys: tokio::sync::Mutex<Keys>,
     /// The tokens used, by key and `jti`, until they expire.
     used: std::sync::Mutex<HashMap<String, u64>>,
+    /// The passes the server made itself to sign in as a person once ([`Self::pass`]): the
+    /// account each is for, and when it ends.
+    passes: std::sync::Mutex<HashMap<String, (String, u64)>>,
     /// The login log.
     pub log: Log,
     /// Each account logging in, as Ergo asks: let in by a device key, or by a passphrase
@@ -385,6 +394,7 @@ impl Signin {
             server_name: server_name.filter(|n| !n.is_empty()),
             keys: tokio::sync::Mutex::new(Keys::beside(history)),
             used: std::sync::Mutex::default(),
+            passes: std::sync::Mutex::default(),
             log: Log::beside(history, now),
             logins: tokio::sync::broadcast::channel(LOGINS_HELD).0,
         }
@@ -396,6 +406,39 @@ impl Signin {
     #[must_use]
     pub fn logins(&self) -> tokio::sync::broadcast::Receiver<String> {
         self.logins.subscribe()
+    }
+
+    /// A pass for `account`, good once within [`PASS_SECONDS`] of `now`: how the server signs in
+    /// to its own Ergo as a person whose token the content API checked, to send what they wrote
+    /// on a page (`crate::accounts::content`), with no credential of theirs kept or passed on.
+    /// It comes to Ergo as `OAUTHBEARER`, as a device's token does, and goes in the login log.
+    ///
+    /// # Panics
+    ///
+    /// When the system has no random numbers to give, as nothing safe can be done then.
+    #[must_use]
+    pub fn pass(&self, account: &str, now: u64) -> String {
+        let mut bytes = [0u8; 24];
+        ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut bytes)
+            .expect("the system's random numbers");
+        let pass = format!("{PASS_PREFIX}{}", zirc_proto::hex(&bytes));
+        let mut passes = self
+            .passes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        passes.retain(|_, (_, ends)| *ends > now);
+        passes.insert(pass.clone(), (account.to_lowercase(), now + PASS_SECONDS));
+        pass
+    }
+
+    /// The account a pass of [`Self::pass`] is for, once, while it's good.
+    fn passed(&self, pass: &str, now: u64) -> Option<String> {
+        self.passes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(pass)
+            .filter(|(_, ends)| *ends > now)
+            .map(|(account, _)| account)
     }
 
     /// Answers one of Ergo's questions at `now` (seconds since the epoch), and logs it.
@@ -416,7 +459,24 @@ impl Signin {
             .as_ref()
             .and_then(|o| o["token"].as_str())
             .map(str::to_owned);
-        let output = if let Some(token) = token {
+        let passed = token
+            .as_deref()
+            .filter(|token| token.starts_with(PASS_PREFIX))
+            .map(|pass| self.passed(pass, now));
+        let output = if let Some(passed) = passed {
+            attempt.method = "a page, through the server".into();
+            if let Some(account) = passed {
+                attempt.account = Some(account.clone());
+                attempt.result = "accepted".into();
+                Output {
+                    success: true,
+                    account_name: Some(account),
+                }
+            } else {
+                attempt.reason = Some("not a pass this server made, or used before".into());
+                refused()
+            }
+        } else if let Some(token) = token {
             attempt.method = "device key".into();
             match self.check(&token, now).await {
                 Ok((account, device, jti)) => {
@@ -622,6 +682,32 @@ mod tests {
             ip: Some("203.0.113.9".into()),
             ..Input::default()
         }
+    }
+
+    #[tokio::test]
+    async fn a_pass_the_server_made_signs_its_person_in_once_and_only_while_good() {
+        let dir = tempfile::tempdir().unwrap();
+        let signin = signin(&dir);
+        let pass = signin.pass("Ada", NOW);
+        let late = signin.pass("ada", NOW);
+
+        let first = signin.answer(&with(&pass), NOW + 1).await;
+        let again = signin.answer(&with(&pass), NOW + 2).await;
+        let expired = signin.answer(&with(&late), NOW + PASS_SECONDS).await;
+        let made_up = signin.answer(&with(&format!("{PASS_PREFIX}00")), NOW).await;
+
+        assert_eq!(
+            first,
+            Output {
+                success: true,
+                account_name: Some("ada".into())
+            }
+        );
+        assert!(!again.success && !expired.success && !made_up.success);
+        let log = signin.log.read();
+        assert_eq!(log[0].method, "a page, through the server");
+        assert_eq!(log[0].result, "accepted");
+        assert_eq!(log[1].result, "refused");
     }
 
     #[tokio::test]
