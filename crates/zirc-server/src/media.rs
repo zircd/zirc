@@ -217,6 +217,19 @@ const fn denied(status: u16, why: &'static str) -> Denied {
     (status, why)
 }
 
+/// The 503 for when `part` of the server couldn't say whether `account` signed in, with why in
+/// the log, as the answer doesn't say it: a flake of zirc-server_media_test said only "The
+/// server couldn't check that." (build 10837), which any of four failures answers.
+fn unchecked<'a, E: std::fmt::Display>(
+    account: &'a str,
+    part: &'static str,
+) -> impl FnOnce(E) -> Denied + 'a {
+    move |err| {
+        tracing::warn!(account, "{part} couldn't check a sign-in: {err}");
+        denied(503, "The server couldn't check that.")
+    }
+}
+
 /// An answer saying what's wrong, as zirc.dev's do.
 fn refused(status: u16, why: &str) -> Response {
     let status = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_REQUEST);
@@ -335,10 +348,10 @@ impl Media {
                 .send()
                 .await
                 .and_then(reqwest::Response::error_for_status)
-                .map_err(|_| denied(503, "The server couldn't check that."))?
+                .map_err(unchecked(&account, "Ergo"))?
                 .json()
                 .await
-                .map_err(|_| denied(503, "The server couldn't check that."))?;
+                .map_err(unchecked(&account, "Ergo"))?;
             if !checked.success {
                 self.missed(named);
                 return Err(unknown());
@@ -354,7 +367,7 @@ impl Media {
             .bearer_auth(&secrets.accounts_token)
             .send()
             .await
-            .map_err(|_| denied(503, "The server couldn't check that."))?;
+            .map_err(unchecked(&account, "The account endpoint"))?;
         if answer.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(denied(
                 403,
@@ -363,10 +376,10 @@ impl Media {
         }
         let mut who: Who = answer
             .error_for_status()
-            .map_err(|_| denied(503, "The server couldn't check that."))?
+            .map_err(unchecked(&account, "The account endpoint"))?
             .json()
             .await
-            .map_err(|_| denied(503, "The server couldn't check that."))?;
+            .map_err(unchecked(&account, "The account endpoint"))?;
         who.account = account;
         Ok(who)
     }

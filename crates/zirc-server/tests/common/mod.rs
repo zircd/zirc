@@ -51,6 +51,19 @@ pub async fn start() -> Option<Running> {
     start_with(|_| {}).await
 }
 
+/// The server's warnings in the test's log, beside Ergo's, where a part of it that failed says
+/// why: an answer such as "The server couldn't check that." doesn't (build 10837). Straight to
+/// stderr, as the test harness keeps what it captures only for a failed test's own thread, not
+/// the server's tasks. The first test of a file to start a server sets it for the file's others,
+/// which share its process.
+fn log() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("warn")
+        .with_ansi(false)
+        .with_writer(std::io::stderr)
+        .try_init();
+}
+
 /// How many times a server is started on fresh ports: one Ergo found it couldn't listen
 /// on (`bind: address already in use`, build 3569), and one the sidecar did (build 3587), as
 /// another process can take a free port before a part of the server listens on it.
@@ -59,6 +72,7 @@ const ATTEMPTS: usize = 3;
 
 /// The same, its options changed by `change` first.
 pub async fn start_with(change: impl Fn(&mut Options)) -> Option<Running> {
+    log();
     let Some((ergo, ergo_config)) = ergo() else {
         eprintln!("ZIRC_ERGO isn't set, so there's no Ergo to start: run it with Bazel");
         return None;
