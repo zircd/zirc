@@ -602,6 +602,8 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const STAFF_ACCOUNTS_PATH = {ACCOUNTS_PATH:?};"),
         format!("const JOBS_OFFERED = {JOBS_OFFERED};"),
         format!("const MAX_COWORKERS = {MAX_COWORKERS};"),
+        format!("const DESK_COMMAND = {DESK_COMMAND:?};"),
+        format!("const TELL_A_SESSION = {TELL_A_SESSION:?};"),
         format!(
             "const JOB_KINDS: readonly {{ id: JobKind; label: string; picture: string; line: string; wakes: string; tools: readonly InboundTool[] }}[] = [{}];",
             JobKind::ALL
