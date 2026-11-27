@@ -91,6 +91,16 @@ pub fn job_problem(name: &str) -> Option<String> {
 /// The longest name a coworker is shown by ([`shown_name_problem`]), in characters.
 pub const SHOWN_NAME_MAX: usize = 32;
 
+/// What [`shown_name_problem`] says of no name at all, as zirc.dev's hiring form says it too.
+pub const SHOWN_NAME_NONE: &str = "Name a coworker.";
+
+/// What [`shown_name_problem`] says of a name over [`SHOWN_NAME_MAX`] characters, as zirc.dev's
+/// hiring form says it too.
+#[must_use]
+pub fn shown_name_too_long() -> String {
+    format!("A coworker's name is {SHOWN_NAME_MAX} characters at most.")
+}
+
 /// What's wrong with `shown` as the name a coworker is shown by, `John`, if anything: one
 /// line of at most [`SHOWN_NAME_MAX`] characters that a nick can be made from
 /// ([`nick_base`]).
@@ -98,12 +108,10 @@ pub const SHOWN_NAME_MAX: usize = 32;
 pub fn shown_name_problem(shown: &str) -> Option<String> {
     let shown = shown.trim();
     if shown.is_empty() {
-        return Some("Name a coworker.".to_owned());
+        return Some(SHOWN_NAME_NONE.to_owned());
     }
     if shown.chars().count() > SHOWN_NAME_MAX {
-        return Some(format!(
-            "A coworker's name is {SHOWN_NAME_MAX} characters at most."
-        ));
+        return Some(shown_name_too_long());
     }
     if shown.chars().any(char::is_control) {
         return Some("A coworker's name is one line.".to_owned());
@@ -356,6 +364,10 @@ pub fn typescript() -> Vec<String> {
         format!("const HANDLE_MAX = {HANDLE_MAX};"),
         format!("const HANDLE_PATTERN = {:?};", handle_pattern()),
         format!("const SHOWN_NAME_MAX = {SHOWN_NAME_MAX};"),
+        // The browser checks a name before the server does, and runs no wasm (lib/files.ts):
+        // what it says of one is these.
+        format!("const SHOWN_NAME_NONE = {SHOWN_NAME_NONE:?};"),
+        format!("const SHOWN_NAME_TOO_LONG = {:?};", shown_name_too_long()),
         // A role's name is shaped as a handle is (role_problem).
         format!("const ROLE_PATTERN = {:?};", handle_pattern()),
         format!(
