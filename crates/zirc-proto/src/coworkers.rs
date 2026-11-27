@@ -191,16 +191,11 @@ impl JobKind {
         }
     }
 
-    /// The picture a coworker doing it starts with, one of [`crate::AGENT_AVATARS`].
+    /// The picture a coworker doing it starts with, one of [`crate::AGENT_AVATARS`]: the one
+    /// its name tells, as any agent's is ([`crate::agent_picture`]).
     #[must_use]
-    pub const fn picture(self) -> &'static str {
-        match self {
-            Self::Fixer => "fixer",
-            Self::Oncall => "ops",
-            Self::Triage => "coordinator",
-            Self::Reviewer => "reviewer",
-            Self::Release => "release",
-        }
+    pub fn picture(self) -> &'static str {
+        crate::agent_picture(None, Some(self.as_str()))
     }
 
     /// What it does, in a line.
@@ -221,31 +216,64 @@ impl JobKind {
         }
     }
 
-    /// The tools it's woken by, any one of which makes it useful; none for a kind CI wakes.
+    /// The kinds of report it takes as it's offered, before its questions change them.
     #[must_use]
-    pub const fn tools(self) -> &'static [Tool] {
+    pub const fn reports(self) -> &'static [Subject] {
         match self {
-            Self::Oncall => &[Tool::Sentry, Tool::Pagerduty],
-            Self::Triage => &[Tool::Github, Tool::Linear],
-            Self::Fixer | Self::Reviewer | Self::Release => &[],
+            Self::Fixer => &[Subject::Flaky, Subject::Warning],
+            Self::Oncall => &[Subject::Error, Subject::Incident],
+            Self::Triage => &[Subject::Issue],
+            Self::Reviewer | Self::Release => &[],
         }
     }
 
-    /// What wakes it, in a line: its tools' own words where it has tools.
+    /// The tools it's woken by, any one of which makes it useful: those that send what it
+    /// takes ([`tools_of`]); none for a kind CI wakes.
     #[must_use]
-    pub fn wakes(self) -> String {
+    pub fn tools(self) -> Vec<Tool> {
+        tools_of(self.reports())
+    }
+
+    /// What wakes it that no report is, said first.
+    const fn wakes_first(self) -> Option<&'static str> {
         match self {
-            Self::Fixer => "master breaking, a flaky test, a new warning".to_owned(),
-            Self::Reviewer => "a landing".to_owned(),
-            Self::Release => "a message, or a schedule".to_owned(),
-            Self::Oncall | Self::Triage => self
-                .tools()
-                .iter()
-                .map(|tool| tool.wakes_on())
-                .collect::<Vec<_>>()
-                .join(", "),
+            Self::Fixer => Some("master breaking"),
+            Self::Reviewer => Some("a landing"),
+            Self::Release => Some("a message, or a schedule"),
+            Self::Oncall | Self::Triage => None,
         }
     }
+
+    /// What wakes it, in a line: its tools' own words where it has tools, else its reports'.
+    #[must_use]
+    pub fn wakes(self) -> String {
+        let tools = self.tools();
+        let reported: Vec<&str> = if tools.is_empty() {
+            self.reports()
+                .iter()
+                .map(|subject| subject.label())
+                .collect()
+        } else {
+            tools.iter().map(|tool| tool.wakes_on()).collect()
+        };
+        self.wakes_first()
+            .into_iter()
+            .chain(reported)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// The tools that send reports of the kinds `reports` names, in the order zirc.dev shows tools.
+#[must_use]
+pub fn tools_of(reports: &[Subject]) -> Vec<Tool> {
+    Tool::ALL
+        .into_iter()
+        .filter(|tool| {
+            tool.subject()
+                .is_some_and(|subject| reports.contains(&subject))
+        })
+        .collect()
 }
 
 /// What a coworker does, and what wakes whoever holds it.
@@ -290,13 +318,7 @@ impl Job {
     /// jobs need).
     #[must_use]
     pub fn tools(&self) -> Vec<Tool> {
-        Tool::ALL
-            .into_iter()
-            .filter(|tool| {
-                tool.subject()
-                    .is_some_and(|subject| self.reports.contains(&subject))
-            })
-            .collect()
+        tools_of(&self.reports)
     }
 
     /// The rules a job keeps that need nothing but itself.
@@ -494,10 +516,10 @@ impl Staff {
     /// What's wrong, in words for whoever changed it.
     pub fn check(&self) -> Result<(), String> {
         if self.coworkers.len() > MAX_COWORKERS {
-            return Err(format!("a team has at most {MAX_COWORKERS} coworkers"));
+            return Err(format!("an office has at most {MAX_COWORKERS} coworkers"));
         }
         if self.jobs.len() > MAX_JOBS {
-            return Err(format!("a team has at most {MAX_JOBS} jobs"));
+            return Err(format!("an office has at most {MAX_JOBS} jobs"));
         }
         let mut jobs = BTreeSet::new();
         for job in &self.jobs {
@@ -518,7 +540,7 @@ impl Staff {
                 .find(|job| !jobs.contains(job.as_str()))
             {
                 return Err(format!(
-                    "{} holds {missing}, which isn't one of the team's jobs",
+                    "{} holds {missing}, which isn't one of the office's jobs",
                     coworker.name
                 ));
             }
@@ -744,7 +766,7 @@ mod tests {
         };
         assert_eq!(
             missing.check().unwrap_err(),
-            "ada holds fixer, which isn't one of the team's jobs"
+            "ada holds fixer, which isn't one of the office's jobs"
         );
         let unnamed = Staff {
             coworkers: vec![coworker("Ada Lovelace", None, None)],
@@ -782,5 +804,12 @@ mod tests {
             JobKind::Oncall.wakes(),
             "a Sentry error, a PagerDuty incident"
         );
+        assert_eq!(
+            JobKind::Fixer.wakes(),
+            "master breaking, a flaky test, a new warning"
+        );
+        assert_eq!(JobKind::Triage.tools(), [Tool::Github, Tool::Linear]);
+        assert_eq!(JobKind::Oncall.picture(), "ops");
+        assert_eq!(JobKind::Triage.picture(), "coordinator");
     }
 }
