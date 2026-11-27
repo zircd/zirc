@@ -10,6 +10,11 @@
 //! never leaves the server.
 //!
 //! Every word `zirc desk take` prints of it is here ([`Handover::lines`]).
+//!
+//! A desk nobody sits at keeps what comes for its coworker, and says how much ([`empty`]):
+//! the person who hired the coworker is told once each time it empties with work waiting, or
+//! work comes to it empty, by a direct message from the coworker ([`Emptied`]), which their
+//! phone is pushed as any direct message is.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -104,6 +109,71 @@ impl Handover {
             );
         }
         lines
+    }
+}
+
+/// What a coworker's card and row say while nobody sits at its desk, with how many things
+/// wait for it: `Desk empty`, `Desk empty · 1 waiting` (the user's words, 27 Nov 2026).
+#[must_use]
+pub fn empty(waiting: u32) -> String {
+    match waiting {
+        0 => EMPTY.to_owned(),
+        n => format!("{EMPTY} · {n} waiting"),
+    }
+}
+
+/// A desk nobody sits at, as [`empty`] starts.
+pub const EMPTY: &str = "Desk empty";
+
+/// The kind of the event a coworker's nick sends the person who hired it when its desk
+/// empties with work waiting, or work comes to it empty ([`Emptied`]).
+pub const EMPTIED_KIND: &str = "x-zirc/desk-empty";
+
+/// A coworker's desk emptied with work waiting: what an [`EMPTIED_KIND`] event carries, a
+/// direct message from the coworker to whoever hired it, so their phone is told once (the
+/// user's choice, 27 Nov 2026: one notification, the next session to sit picks it up).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Emptied {
+    /// The coworker.
+    pub coworker: String,
+    /// How many things wait for it.
+    pub waiting: u32,
+}
+
+impl Emptied {
+    /// What it says, as the notification and the conversation show it: `Desk empty · 1
+    /// waiting. To seat a session, tell it: "You're john. Take your desk."`.
+    #[must_use]
+    pub fn text(&self) -> String {
+        format!(
+            "{}. To seat a session, tell it: \"{}\"",
+            empty(self.waiting),
+            crate::coworkers::tell_a_session(&self.coworker)
+        )
+    }
+
+    /// Its event.
+    ///
+    /// # Panics
+    /// Never: it always serialises.
+    #[must_use]
+    pub fn event(&self) -> crate::Event {
+        crate::Event::Custom {
+            kind: EMPTIED_KIND.to_owned(),
+            data: serde_json::to_value(self).expect("an emptied desk serialises"),
+            text: self.text(),
+        }
+    }
+
+    /// The emptied desk `event` says, if it's one.
+    #[must_use]
+    pub fn of(event: &crate::Event) -> Option<Self> {
+        match event {
+            crate::Event::Custom { kind, data, .. } if kind == EMPTIED_KIND => {
+                serde_json::from_value(data.clone()).ok()
+            }
+            _ => None,
+        }
     }
 }
 

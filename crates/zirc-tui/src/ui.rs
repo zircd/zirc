@@ -3193,8 +3193,9 @@ mod tests {
         app.handle(format!(":fixer!u@{host} JOIN #api").parse().unwrap());
         let (rows, _) = draw(&app, 120, 20);
         assert!(row_with(&rows, ROLES_SECTION).ends_with(&format!("│ {ROLES_SECTION}")));
-        // Before it's said who holds it, it's vacant, in zirc-chat's word.
-        assert!(row_with(&rows, "fixer · vacant").ends_with("│ fixer · vacant"));
+        // Before it's said who holds it, its desk is empty, in zirc-chat's words, its name cut
+        // to fit the column.
+        assert!(row_with(&rows, "· Desk empty").ends_with("│ f… · Desk empty"));
     }
 
     #[test]

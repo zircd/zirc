@@ -397,7 +397,7 @@ pub struct SeatShown {
     /// Its day in words ([`Seat::day`]).
     pub day: String,
     /// Who holds it, as a member row's second line says ([`Seat::member_line`]): `main-fix ·
-    /// Henrik's mbp`, or `vacant`. Empty from a server older than it.
+    /// Henrik's mbp`, or `Desk empty · 1 waiting`. Empty from a server older than it.
     #[serde(default)]
     pub held: String,
 }
@@ -589,21 +589,19 @@ impl Seat {
         }
     }
 
-    /// A member row's second line: `main-fix · Henrik's MacBook`, or `vacant`.
+    /// A member row's second line: `main-fix · Henrik's MacBook`, or, with nobody at its
+    /// desk, `Desk empty · 1 waiting` ([`crate::desk::empty`]).
     #[must_use]
     pub fn member_line(&self, machine: &str) -> String {
         match &self.holder {
             Some(holder) => format!("{} · {machine}", holder.session.who()),
-            None => VACANT.to_owned(),
+            None => crate::desk::empty(self.waiting),
         }
     }
 }
 
 /// How a seat with no holder and no repository yet stands ([`Seat::status`]).
 pub const VACANT_NOWHERE: &str = "Vacant";
-
-/// A vacant role's member line.
-pub const VACANT: &str = "vacant";
 
 /// The private conversation's header line before the seat's status ([`Seat::status`]).
 pub const PRIVATE: &str = "Private to you";
@@ -951,6 +949,9 @@ mod tests {
             woke_today,
         };
         assert_eq!(seat(0, 0).day(), "Not woken today");
+        // Nobody at its desk: its row says so, and how much waits.
+        assert_eq!(seat(0, 0).member_line(""), "Desk empty");
+        assert_eq!(seat(0, 2).member_line(""), "Desk empty · 2 waiting");
         assert_eq!(seat(1, 1).day(), "Woke once today · 1 message waiting");
         assert_eq!(seat(3, 2).day(), "Woke 3 times today · 2 messages waiting");
     }

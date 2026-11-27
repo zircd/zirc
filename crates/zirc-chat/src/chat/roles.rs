@@ -29,7 +29,7 @@ pub struct RoleMember {
     pub nick: String,
     /// What it's called: its name.
     pub label: String,
-    /// Its row's second line: `main-fix · Henrik's mbp`, or `vacant` ([`Seat::member_line`]).
+    /// Its row's second line: `main-fix · Henrik's mbp`, or `Desk empty · 1 waiting` ([`Seat::member_line`]).
     pub line: String,
     /// Whether nobody holds it, which apps draw muted.
     pub vacant: bool,
@@ -232,7 +232,7 @@ impl Chat {
                     .unwrap_or_default();
                 RoleMember {
                     line: seat.as_ref().map_or_else(
-                        || roles::VACANT.to_owned(),
+                        || zirc_proto::desk::empty(0),
                         |seat| seat.member_line(&machine),
                     ),
                     vacant: holder.is_none(),
@@ -411,7 +411,7 @@ mod tests {
         assert_eq!(members.len(), 1);
         assert_eq!(
             (members[0].line.as_str(), members[0].vacant),
-            ("vacant", true)
+            ("Desk empty", true)
         );
         assert!(matches!(&members[0].face, Face::Agent { picture: Some(p), .. } if p == "fixer"));
         // Vacant, its dot is away's ring, though its nick is always there.

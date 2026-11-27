@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 use zirc_proto::coworkers::{Given, Staff};
-use zirc_proto::desk::{self, Came, Handover};
+use zirc_proto::desk::{self, Came, Emptied, Handover};
 use zirc_proto::leases::{LeaseEvent, Leases};
 use zirc_proto::roles::{
     self, Address, Definition, Holder, Listing, Say, Seat, SeatChange, Standing, Vacant, Wake,
@@ -141,6 +141,14 @@ pub struct Kept {
     /// What a session at each coworker's desk last said it was doing there, by coworker.
     #[serde(default)]
     pub doing: BTreeMap<String, String>,
+    /// The coworkers whose hirer was told their desk is empty with work waiting, since a
+    /// session last asked for it ([`Brain::tell_hirer`]).
+    #[serde(default)]
+    pub told: BTreeSet<String>,
+    /// The coworkers a session has ever asked for the desk of: one nobody has sat at doesn't
+    /// empty.
+    #[serde(default)]
+    pub seated: BTreeSet<String>,
 }
 
 /// Who sent something, as the server's accounts say.
@@ -473,16 +481,7 @@ impl Brain {
             repository: role.repository.clone(),
             holder: self.holder(&role.name, now),
             last: self.kept.last.get(&role.name).cloned(),
-            waiting: u32::try_from(
-                self.kept.waiting.get(&role.name).map_or(0, Vec::len)
-                    + self
-                        .kept
-                        .pending
-                        .iter()
-                        .filter(|pending| self.may_take(&role.name, pending))
-                        .count(),
-            )
-            .unwrap_or(u32::MAX),
+            waiting: self.waiting_for(&role.name),
             wakes_on: role.wakes_on(),
             woke_today: self
                 .kept
@@ -507,6 +506,15 @@ impl Brain {
                     }
                 };
                 if theirs {
+                    // A session asking for a desk sits there, as far as telling its hirer
+                    // goes, at once: seats are said only after listening first.
+                    if let LeaseEvent::Want(want) = &event
+                        && let Some(desk) = roles::of_lease(&want.name)
+                    {
+                        let new = self.kept.seated.insert(desk.to_owned());
+                        let untold = self.kept.told.remove(desk);
+                        self.changed |= new || untold;
+                    }
                     self.leases.apply(event);
                 }
                 self.seats_moved(now)
@@ -626,6 +634,49 @@ impl Brain {
         self.changed = true;
     }
 
+    /// How many things wait for coworker `name`: messages to it, and what came for a job it
+    /// may take.
+    fn waiting_for(&self, name: &str) -> u32 {
+        u32::try_from(
+            self.kept.waiting.get(name).map_or(0, Vec::len)
+                + self
+                    .kept
+                    .pending
+                    .iter()
+                    .filter(|pending| self.may_take(name, pending))
+                    .count(),
+        )
+        .unwrap_or(u32::MAX)
+    }
+
+    /// The direct message from coworker `name` telling whoever hired it, at `now`, that its
+    /// desk is empty with work waiting, once per emptying (the user's choice, 27 Nov 2026):
+    /// when a session has left it and something waits. None while a session sits there, for
+    /// a desk nobody has sat at, when nothing waits, when told already since a session last
+    /// asked for it, or when nobody's said to have hired it.
+    fn tell_hirer(&mut self, name: &str, now: u64) -> Option<Out> {
+        if !self.kept.seated.contains(name)
+            || self.kept.told.contains(name)
+            || self.holder(name, now).is_some()
+            || self.waiting_for(name) == 0
+        {
+            return None;
+        }
+        let waiting = self.waiting_for(name);
+        self.kept.told.insert(name.to_owned());
+        self.changed = true;
+        let hirer = self.kept.staff.coworker(name)?.added_by.clone()?;
+        let emptied = Emptied {
+            coworker: name.to_owned(),
+            waiting,
+        };
+        Some(Out {
+            role: name.to_owned(),
+            to: hirer,
+            message: Message::new(name, emptied.event()),
+        })
+    }
+
     /// Keeps that `woke` and `text` woke coworker `name` at `at` (unix seconds), for the next
     /// session to sit at its desk.
     fn remember(&mut self, name: &str, woke: &Woke, text: &str, at: u64) {
@@ -724,7 +775,7 @@ impl Brain {
             self.remember(&role, &woke, text, now / 1000);
             return vec![wake_out(&role, &holder, woke, text, now / 1000)];
         }
-        let waiting = self.kept.waiting.entry(role).or_default();
+        let waiting = self.kept.waiting.entry(role.clone()).or_default();
         waiting.push(Waiting {
             woke,
             text: text.to_owned(),
@@ -734,7 +785,7 @@ impl Brain {
             waiting.remove(0);
         }
         self.changed = true;
-        Vec::new()
+        self.tell_hirer(&role, now).into_iter().collect()
     }
 
     /// The coworker that takes what comes for `job` about `repository` at `now`, with the
@@ -801,7 +852,16 @@ impl Brain {
             self.kept.pending.remove(oldest);
         }
         self.changed = true;
-        Vec::new()
+        let takers: Vec<String> = self
+            .kept
+            .staff
+            .takers(job, repository)
+            .map(|coworker| coworker.name.clone())
+            .collect();
+        takers
+            .iter()
+            .filter_map(|name| self.tell_hirer(name, now))
+            .collect()
     }
 
     /// Wakes whoever can now take what waited for a job: said when a session sits, and when
@@ -921,7 +981,16 @@ impl Brain {
                 self.kept.last.insert(name.clone(), before.clone());
                 self.kept.held.remove(&name);
                 let left = Self::seat_said(&role, before.clone(), false);
-                if let Some(owner) = self.owners.get(&before.machine.to_lowercase()) {
+                // Left empty: whoever hired it is told now if work waits, else once some
+                // comes; told so, the machine's owner isn't also told it left.
+                let mut told = None;
+                if let Some(out) = self.tell_hirer(&name, now) {
+                    told = Some(out.to.clone());
+                    outs.push(out);
+                }
+                if let Some(owner) = self.owners.get(&before.machine.to_lowercase())
+                    && told.as_deref() != Some(owner.as_str())
+                {
                     outs.push(Out {
                         to: owner.clone(),
                         ..left.clone()

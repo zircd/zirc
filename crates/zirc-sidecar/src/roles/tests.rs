@@ -428,7 +428,7 @@ fn staffed() -> Brain {
     let given: Given = serde_json::from_value(serde_json::json!({
         "staff": {
             "coworkers": [
-                {"name": "ada", "jobs": ["fixer"], "repository": "web"},
+                {"name": "ada", "jobs": ["fixer"], "repository": "web", "added_by": "henrik"},
                 {"name": "grace", "jobs": ["fixer"], "repository": "api"},
                 {"name": "hedy", "jobs": ["fixer"]},
                 {"name": "linus"},
@@ -756,4 +756,52 @@ fn a_desk_keeps_only_its_latest_wakes() {
     let handover = brain.handover("fixer").unwrap();
     assert_eq!(handover.recent.len(), desk::RECENT);
     assert_eq!(handover.recent[0].text, "wake 1");
+}
+
+/// What ada's nick sends whoever hired her about her empty desk, among `outs`.
+fn emptied(outs: &[Out]) -> Vec<(String, Emptied)> {
+    outs.iter()
+        .filter_map(|out| Some((out.to.clone(), Emptied::of(&out.message.event)?)))
+        .collect()
+}
+
+#[test]
+fn whoever_hired_a_coworker_is_told_once_when_work_comes_to_its_empty_desk() {
+    let (mut brain, at) = seated();
+    brain.heard(
+        Input::Lease {
+            from: "henrik-mbp".into(),
+            owner: Some("henrik".into()),
+            event: LeaseEvent::Release {
+                id: format!("henrik-mbp-{LATER}-ada"),
+                at,
+            },
+        },
+        at,
+    );
+    let later = at + zirc_proto::leases::SETTLE;
+    // Left with nothing waiting: nobody's told yet.
+    assert!(emptied(&brain.tick(later)).is_empty());
+    let told = emptied(&master_broke(&mut brain, Some("web"), later));
+    let expected = Emptied {
+        coworker: "ada".into(),
+        waiting: 1,
+    };
+    assert_eq!(told, [("henrik".to_owned(), expected.clone())]);
+    assert_eq!(
+        expected.text(),
+        "Desk empty · 1 waiting. To seat a session, tell it: \"You're ada. Take your desk.\""
+    );
+    // Once per emptying: more work tells nobody again.
+    assert!(emptied(&master_broke(&mut brain, Some("web"), later + 1)).is_empty());
+    assert_eq!(
+        brain.standing(later).seats[0].member_line(""),
+        "Desk empty · 2 waiting"
+    );
+}
+
+#[test]
+fn a_coworker_nobody_has_left_tells_nobody_of_work_waiting() {
+    let mut brain = staffed();
+    assert!(emptied(&master_broke(&mut brain, Some("web"), LATER)).is_empty());
 }
