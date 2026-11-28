@@ -1897,6 +1897,9 @@ fn watch(
     let touched = root.to_path_buf();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         let Ok(event) = event else { return };
+        if !changes(event.kind) {
+            return;
+        }
         if let Some(path) = event.paths.iter().find(|path| matters(path, &git_dirs)) {
             tracing::trace!("{} changed", path.display());
             let _ = inputs.send(Input::Touched(touched.clone()));
@@ -1907,6 +1910,20 @@ fn watch(
         watcher.watch(dir, RecursiveMode::Recursive)?;
     }
     Ok(watcher)
+}
+
+/// Whether an event of `kind` can change what's on disk. Linux's watcher also says when a file
+/// or directory is opened or read, and a scan's own `git status` opens every directory of the
+/// working tree: taken as changes, each scan set off the next, and an idle repository was
+/// scanned again and again, about 2% of a core on CI's Linux agents (28 Nov 2026). A file
+/// closed after writing is a change, as its writes are.
+fn changes(kind: notify::EventKind) -> bool {
+    use notify::event::{AccessKind, AccessMode};
+    match kind {
+        notify::EventKind::Access(AccessKind::Close(AccessMode::Write)) => true,
+        notify::EventKind::Access(_) => false,
+        _ => true,
+    }
 }
 
 /// Whether a change at `path` can change a snapshot. In a Git directory only refs and HEAD
@@ -1931,6 +1948,29 @@ fn matters(path: &Path, git_dirs: &[PathBuf]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opening_or_reading_a_file_changes_nothing_but_writing_one_does() {
+        use notify::EventKind::{Access, Create, Modify, Remove};
+        use notify::event::{
+            AccessKind, AccessMode, CreateKind, DataChange, ModifyKind, RemoveKind,
+        };
+        for read in [
+            Access(AccessKind::Open(AccessMode::Any)),
+            Access(AccessKind::Read),
+            Access(AccessKind::Close(AccessMode::Read)),
+        ] {
+            assert!(!changes(read), "{read:?}");
+        }
+        for write in [
+            Access(AccessKind::Close(AccessMode::Write)),
+            Create(CreateKind::File),
+            Modify(ModifyKind::Data(DataChange::Any)),
+            Remove(RemoveKind::File),
+        ] {
+            assert!(changes(write), "{write:?}");
+        }
+    }
 
     #[tokio::test]
     async fn says_how_it_is_while_restoring_and_holds_the_rest_till_after() {
