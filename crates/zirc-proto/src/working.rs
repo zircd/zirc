@@ -57,6 +57,11 @@ pub struct Session {
     pub online: bool,
     /// How many messages from people wait for it, when it's away.
     pub waiting: u32,
+    /// When its last watch closed, in seconds since the epoch, while it's away: what the
+    /// office's hot desks fold it by ([`crate::hot_desks::in_office`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub away_since: Option<u64>,
     /// Whether a request of its waits for its person's answer ([`crate::request::waiting`]).
     pub asking: bool,
     /// How it stands in words: [`ONLINE`], [`AWAY`], or, away with messages waiting, what
@@ -141,6 +146,7 @@ pub fn standing(
                         handle: None,
                         online: true,
                         waiting: 0,
+                        away_since: None,
                         asking: asks(machine, session),
                         says: if asks(machine, session) {
                             WAITING_FOR_ANSWER
@@ -171,6 +177,7 @@ pub fn standing(
                     handle: None,
                     online: false,
                     waiting: away.waiting,
+                    away_since: Some(away.since),
                     asking: asks(machine, session),
                     says,
                     line: String::new(),

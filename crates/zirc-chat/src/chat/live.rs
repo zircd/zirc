@@ -139,8 +139,9 @@ impl Chat {
             .collect()
     }
 
-    /// Every agent session any machine names, online or away, as `(machine, session)`: the
-    /// office's hot desks are those at no coworker's desk ([`Chat::office`]).
+    /// Every agent session any machine names, online or away, as `(machine, session)`, once
+    /// each, though a machine names one away within its grace in both lists: the office's
+    /// hot desks are those at no coworker's desk ([`Chat::office`]).
     pub(super) fn named_sessions(&self) -> Vec<(String, String)> {
         self.live
             .values()
@@ -151,6 +152,8 @@ impl Chat {
                     .iter()
                     .chain(known.live.away.keys())
                     .filter(|session| !session.is_empty() && *session != zirc_proto::NO_SESSION)
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
                     .map(|session| (known.nick.clone(), session.clone()))
             })
             .collect()

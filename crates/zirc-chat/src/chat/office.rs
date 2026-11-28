@@ -31,7 +31,7 @@ pub const OFFICE: &str = "Office";
 pub const COWORKERS: &str = zirc_proto::coworkers::COWORKERS;
 
 /// What heads everyone's sessions that sit at no coworker's desk.
-pub const HOT_DESKS: &str = "Hot desks";
+pub const HOT_DESKS: &str = zirc_proto::hot_desks::HEADING;
 
 /// A coworker's state while a session sits at its desk with nothing in progress (the user's
 /// choice, 27 Nov 2026).
@@ -67,12 +67,6 @@ pub const HIRED_BY: &str = zirc_proto::coworkers::HIRED_BY;
 /// A coworker's job, on its page, while it has none: what such a coworker does, as the brief
 /// of the role it amounts to says it (zirc-proto's `coworkers::NO_JOB_BRIEF`).
 pub const NO_JOB: &str = zirc_proto::coworkers::NO_JOB_BRIEF;
-
-/// Whose a hot desk's session is when it's the person's own.
-pub const YOURS: &str = "Yours";
-
-/// What a screen reader says a hot desk's badge is, after its session's name.
-pub const HOT_DESK_LABEL: &str = "a session at a hot desk";
 
 /// What copies the sentence that seats a session.
 pub const COPY: &str = "Copy";
@@ -141,8 +135,14 @@ pub struct Office {
     pub no_coworkers: Option<NoCoworkers>,
     /// What heads the hot desks: [`HOT_DESKS`].
     pub hot_desks_heading: String,
-    /// Everyone's sessions at hot desks, online first.
+    /// Everyone's sessions at hot desks while they're in the office: online, or away less
+    /// than five minutes ([`zirc_proto::hot_desks::in_office`]), online first.
     pub hot_desks: Vec<HotDesk>,
+    /// The line the rest fold under, `29 away`, which opens to show them; `None` while none
+    /// are.
+    pub hot_desks_away: Option<String>,
+    /// The rest, by name, shown once [`Office::hot_desks_away`] is opened.
+    pub hot_desks_folded: Vec<HotDesk>,
 }
 
 /// What an office with no coworkers shows in place of their cards.
@@ -495,45 +495,30 @@ impl Chat {
     }
 
     /// Everyone's agent sessions their machines name, online or away, that sit at no
-    /// coworker's desk, online first, then by name.
-    fn hot_desks(&self) -> Vec<HotDesk> {
-        let mut desks: Vec<HotDesk> = self
+    /// coworker's desk, split as [`zirc_proto::hot_desks::hot_desks`] decides: those in the
+    /// office, online first, then by name; the line the rest fold under; and the rest.
+    fn hot_desks(&self) -> (Vec<HotDesk>, Option<String>, Vec<HotDesk>) {
+        let now = (self.clock)();
+        let mut faces = HashMap::new();
+        let seen: Vec<zirc_proto::hot_desks::Seen> = self
             .named_sessions()
             .into_iter()
             .filter(|(nick, session)| self.desk_of(nick, session).is_none())
             .map(|(nick, session)| {
-                let online = self.listening(&nick, &session) == Some(super::Listening::Online);
-                let whose = self.whose(&nick).map(|(owner, _)| {
-                    let name = self.owner_name(&owner);
-                    if name == super::speaker::YOU {
-                        YOURS.to_owned()
-                    } else {
-                        super::speaker::possessive(&name)
+                let (online, away_since) = match self.listening(&nick, &session) {
+                    Some(super::Listening::Online) => (true, None),
+                    Some(super::Listening::Away { since, .. }) => {
+                        (false, u64::try_from(since.timestamp()).ok())
                     }
-                });
+                    Some(super::Listening::Ended { .. }) | None => (false, None),
+                };
+                let owner = self.whose(&nick).map(|(owner, _)| self.owner_name(&owner));
+                let mine = owner.as_deref() == Some(super::speaker::YOU);
                 let title = self.agent_title(&nick, &session);
                 let doing = self.agent_handle(&session, &title).map(|_| title);
-                let tool = self
-                    .session_tools
-                    .get(&session)
-                    .map(|t| zirc_proto::tool_name(t));
-                let whose = [whose, tool]
-                    .into_iter()
-                    .flatten()
-                    .collect::<Vec<_>>()
-                    .join(" · ");
-                let name = self.session_label(&session);
-                let label = [
-                    Some(format!("{name}, {HOT_DESK_LABEL}")),
-                    (!whose.is_empty()).then(|| whose.clone()),
-                    doing.clone(),
-                ]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-                .join(", ");
+                let tool = self.session_tools.get(&session);
                 let avatar = super::Avatar::Agent {
-                    tool: self.session_tools.get(&session).cloned(),
+                    tool: tool.cloned(),
                     picture: self.session_pictures.get(&session).cloned(),
                     hue: super::nick_degrees(&session),
                     owner: self
@@ -541,19 +526,44 @@ impl Chat {
                         .map_or_else(|| nick.clone(), |(owner, _)| owner),
                     session: Some(session.clone()),
                 };
-                HotDesk {
-                    conversation: super::agent_channel(&nick, &session),
-                    name,
-                    whose,
+                let key = super::agent_channel(&nick, &session);
+                faces.insert(key.clone(), self.face(&avatar));
+                zirc_proto::hot_desks::Seen {
+                    key,
+                    session: session.clone(),
+                    name: self.session_label(&session),
+                    owner: owner.filter(|_| !mine),
+                    mine,
+                    tool: tool.map(|t| zirc_proto::tool_name(t)),
                     doing,
-                    label,
-                    face: self.face(&avatar),
                     online,
+                    away_since,
                 }
             })
             .collect();
-        desks.sort_by(|a, b| b.online.cmp(&a.online).then_with(|| a.name.cmp(&b.name)));
-        desks
+        let desks = zirc_proto::hot_desks::hot_desks(&zirc_proto::hot_desks::Facts {
+            seen,
+            // Its face is dealt as every session's ([`Chat::face`]); the badge's own isn't read.
+            taken: Vec::new(),
+            now: u64::try_from(now.timestamp()).unwrap_or_default(),
+        });
+        let drawn = |badges: Vec<zirc_proto::hot_desks::Badge>| -> Vec<HotDesk> {
+            badges
+                .into_iter()
+                .filter_map(|badge| {
+                    Some(HotDesk {
+                        face: faces.get(&badge.key)?.clone(),
+                        conversation: badge.key,
+                        name: badge.name,
+                        whose: badge.whose,
+                        doing: badge.doing,
+                        label: badge.label,
+                        online: badge.online,
+                    })
+                })
+                .collect()
+        };
+        (drawn(desks.shown), desks.away, drawn(desks.folded))
     }
 
     /// The office's name atop its badges: the organisation's, or [`OFFICE`] before it's
@@ -573,6 +583,7 @@ impl Chat {
             .iter()
             .map(|nick| self.coworker_card(nick, offset, now))
             .collect();
+        let (hot_desks, hot_desks_away, hot_desks_folded) = self.hot_desks();
         let seated = coworkers
             .iter()
             .filter(|c| c.desk != DeskState::Empty)
@@ -591,7 +602,9 @@ impl Chat {
             }),
             coworkers,
             hot_desks_heading: HOT_DESKS.to_owned(),
-            hot_desks: self.hot_desks(),
+            hot_desks,
+            hot_desks_away,
+            hot_desks_folded,
         }
     }
 

@@ -26,6 +26,7 @@ pub mod files;
 pub mod gotchas;
 pub mod hints;
 pub mod home;
+pub mod hot_desks;
 pub mod images;
 pub mod inbound;
 pub mod incident;

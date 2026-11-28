@@ -514,6 +514,7 @@ pub fn typescript() -> String {
     .chain(crate::onboarding::typescript(&config))
     .chain(crate::setup::typescript(&config))
     .chain(crate::home::typescript(&config))
+    .chain(crate::hot_desks::typescript(&config))
     .chain(crate::conversation::typescript(&config))
     .chain(crate::working::typescript(&config))
     {

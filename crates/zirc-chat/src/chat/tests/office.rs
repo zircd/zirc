@@ -116,6 +116,13 @@ fn standing() -> Standing {
 
 /// What the machine `nick` says of its sessions: `live` watching, `away` not.
 fn live(nick: &str, live: &[&str], away: &[&str]) -> String {
+    let away: Vec<(&str, i64)> = away.iter().map(|&s| (s, -2)).collect();
+    live_away(nick, live, &away)
+}
+
+/// What machine `nick` says of its sessions: `live` online, and each of `away` away since its
+/// minutes past noon.
+fn live_away(nick: &str, live: &[&str], away: &[(&str, i64)]) -> String {
     let message = Message {
         level: Some(zirc_proto::Level::Debug),
         ..Message::new(
@@ -124,8 +131,8 @@ fn live(nick: &str, live: &[&str], away: &[&str]) -> String {
                 sessions: live.iter().map(|&s| s.to_owned()).collect(),
                 away: away
                     .iter()
-                    .map(|&s| {
-                        let since = past_noon(-5);
+                    .map(|&(s, minutes)| {
+                        let since = past_noon(minutes);
                         (s.to_owned(), Away { since, waiting: 0 })
                     })
                     .collect(),
@@ -235,6 +242,49 @@ fn everyones_sessions_at_no_coworkers_desk_are_hot_desks_online_first() {
         panic!("a hot desk's session is an agent");
     };
     assert!(character.is_some() && ground.is_none());
+}
+
+#[test]
+fn hot_desks_show_who_is_in_the_office_and_fold_the_rest_under_one_line() {
+    let mut scene = office();
+    // Online, away a minute, away ten minutes, away three hours; cc-7 was named once and
+    // then left out of its machine's list: ended.
+    scene.hears(&[
+        &live_away("me-mbp", &["cc-7"], &[]),
+        &live_away(
+            "henrik-mbp",
+            &["cc-1", "cc-2"],
+            &[("cc-3", -1), ("cc-4", -10), ("cc-5", -180)],
+        ),
+        &live_away("me-mbp", &[], &[]),
+    ]);
+    let office = scene.office(utc());
+    let conversations = |desks: &[HotDesk]| {
+        desks
+            .iter()
+            .map(|d| d.conversation.clone())
+            .collect::<Vec<_>>()
+    };
+    // cc-1 sits at John's desk; the rest are hot desks.
+    assert_eq!(
+        conversations(&office.hot_desks),
+        ["henrik-mbp/cc-2", "henrik-mbp/cc-3"]
+    );
+    assert_eq!(office.hot_desks_away.as_deref(), Some("2 away"));
+    assert_eq!(
+        conversations(&office.hot_desks_folded),
+        ["henrik-mbp/cc-4", "henrik-mbp/cc-5"]
+    );
+    assert!(office.hot_desks_folded.iter().all(|d| !d.online));
+    // Back online, it's in the office again, and nothing's folded.
+    scene.hears(&[&live_away("henrik-mbp", &["cc-2", "cc-4"], &[("cc-3", -1)])]);
+    let office = scene.office(utc());
+    assert_eq!(
+        conversations(&office.hot_desks),
+        ["henrik-mbp/cc-2", "henrik-mbp/cc-4", "henrik-mbp/cc-3"]
+    );
+    assert_eq!(office.hot_desks_away, None);
+    assert!(office.hot_desks_folded.is_empty());
 }
 
 #[test]
