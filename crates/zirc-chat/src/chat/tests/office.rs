@@ -499,6 +499,13 @@ fn a_hot_desks_badge_says_whose_it_is_its_tool_and_what_its_doing() {
         desk.label,
         "checkout-form, a session at a hot desk, henrik's · Claude Code, Changing the payment form"
     );
+    // Whose it is is that line, not the owner's small face on its picture (the user, 28 Nov
+    // 2026: "the owner picture in the bottom right corner doesn't look good").
+    assert!(
+        matches!(&desk.face, Face::Agent { owner, owner_photo: None, .. } if owner.is_empty()),
+        "{:?}",
+        desk.face
+    );
 }
 
 #[test]

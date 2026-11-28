@@ -204,7 +204,8 @@ pub struct HotDesk {
     /// What a screen reader says of the badge: `checkout-form, a session at a hot desk,
     /// Henrik's · Claude Code, Changing the payment form`.
     pub label: String,
-    /// Its dealt character, on the muted ground.
+    /// Its dealt character, on the muted ground, without its owner's small face: whose it is
+    /// is [`HotDesk::whose`].
     pub face: Face,
     /// Whether a watch of its is open: its dot.
     pub online: bool,
@@ -527,7 +528,16 @@ impl Chat {
                     session: Some(session.clone()),
                 };
                 let key = super::agent_channel(&nick, &session);
-                faces.insert(key.clone(), self.face(&avatar));
+                // Without its owner's small face: whose it is is the badge's own line.
+                let mut face = self.face(&avatar);
+                if let Face::Agent {
+                    owner, owner_photo, ..
+                } = &mut face
+                {
+                    owner.clear();
+                    *owner_photo = None;
+                }
+                faces.insert(key.clone(), face);
                 zirc_proto::hot_desks::Seen {
                     key,
                     session: session.clone(),
