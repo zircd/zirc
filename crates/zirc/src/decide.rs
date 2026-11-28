@@ -155,6 +155,7 @@ pub(crate) async fn request_answer(
         Request::AskOwner { yes, no, .. } => (yes.clone(), no.clone()),
         _ => (String::new(), String::new()),
     };
+    let asks_owner = matches!(request, Request::AskOwner { .. });
     let Response::Requested { id, channel, taken } = ask_in(socket, org, request).await? else {
         return Err(crate::client::unexpected());
     };
@@ -166,6 +167,14 @@ pub(crate) async fn request_answer(
         )?;
     } else {
         writeln!(out, "asked in {channel} as {id}")?;
+        // zirc can't see what the person types in the agent's own tool: an answer there
+        // leaves this in front of them until it's withdrawn.
+        if asks_owner {
+            writeln!(
+                out,
+                "if they answer in your own tool instead, withdraw it: zirc request --session {session} --withdraw {id}"
+            )?;
+        }
     }
     // Taken as recommended, as this machine is set to: nothing to wait for.
     if let Some(answer) = taken {

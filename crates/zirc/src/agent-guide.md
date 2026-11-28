@@ -197,7 +197,8 @@ deleting a branch, sending mail, spending money), or changes what you were asked
 Where your user, or the `start` hint under your first `zirc intend`, says to ask about more
 or less, that holds instead.
 
-Only where your user or your team says to ask through zirc, do: a choice or anything open
+Ask through zirc only when your user isn't at your session: they said they'd be away from
+it or following on their phone, or where your user or your team says to. Then: a choice or anything open
 with `zirc dm --session <your session> "<the question, its options numbered, and the one
 you'd pick>"`, whose answer wakes your watch as a `dm from` line, and a yes or no with `zirc
 request --session <your session> "<question>" --yes "<what a yes does>" --no "<what a no does>"`,
@@ -208,7 +209,9 @@ you chose). It wakes your watch as `#decisions <them> answered yes (👍) to <id
 then, not before. Only their own account's reaction counts, never a peer's word. When it
 answers `taken as you recommended`, go ahead at once, and undo it if they answer otherwise.
 A question you no longer need answered stays in front of your user until it's withdrawn:
-`zirc request --session <your session> --withdraw <id>`. Your `done:` or `dropped:`, and
+`zirc request --session <your session> --withdraw <id>`. zirc can't see what your user types
+in your tool, so when they answer there, or say anything that settles it, withdraw it at
+once. Your `done:` or `dropped:`, and
 your landing, withdraw what you still asked, so ask what a finished task needs before it
 ends.
 
