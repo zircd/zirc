@@ -1535,20 +1535,15 @@ impl Roles {
     pub fn names(&self) -> tokio::sync::watch::Receiver<BTreeSet<String>> {
         self.names.subscribe()
     }
-}
 
-/// The roles' names now, which count as zirc's own accounts, never a person's
-/// ([`crate::nicks::is_zircs_own`]).
-static NAMES: std::sync::LazyLock<std::sync::RwLock<BTreeSet<String>>> =
-    std::sync::LazyLock::new(std::sync::RwLock::default);
-
-/// Whether `account` is one of the roles' nicks.
-#[must_use]
-pub fn is_role(account: &str) -> bool {
-    NAMES
-        .read()
-        .unwrap_or_else(PoisonError::into_inner)
-        .contains(&account.to_lowercase())
+    /// Whether `account` is one of these roles' nicks, which count as zirc's own accounts,
+    /// never a person's ([`crate::nicks::is_zircs_own`]). This server's alone: a process with
+    /// several sidecars, as the controller's Ergo tests have, kept them in one static, and a
+    /// coworker `ada` hired in one test refused the person `ada` in another with 409 `taken`.
+    #[must_use]
+    pub fn is_role(&self, account: &str) -> bool {
+        self.names.borrow().contains(&account.to_lowercase())
+    }
 }
 
 /// The channels a role's nick is in: the organisation's, where seats are agreed; the agents'
@@ -1597,10 +1592,6 @@ impl Host {
         let mut due = crate::now_ms();
         loop {
             let wanted = names.borrow_and_update().clone();
-            NAMES
-                .write()
-                .unwrap_or_else(PoisonError::into_inner)
-                .clone_from(&wanted);
             links.retain(|name, _| wanted.contains(name));
             let mut short = false;
             let missing: Vec<String> = wanted
@@ -1669,7 +1660,7 @@ impl Host {
         let Some(account) = crate::exporter::known_account(account).map(str::to_lowercase) else {
             return Sender::Other;
         };
-        if crate::nicks::is_zircs_own(&account) {
+        if crate::nicks::is_zircs_own(&self.roles, &account) {
             Sender::Other
         } else if zirc_proto::names::is_integration_nick(&account) {
             Sender::Integration

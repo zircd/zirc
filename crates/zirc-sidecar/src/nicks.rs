@@ -13,10 +13,10 @@ pub(crate) const WITHIN: Duration = Duration::from_secs(8);
 
 pub mod connection;
 
-/// Whether `account` is zirc's own, not a person's or a machine's: the recorder, or a role's
-/// nick. Each is always connected and counts as nobody (`crate::accounts::sessions`).
+/// Whether `account` is zirc's own, not a person's or a machine's: the recorder, or one of
+/// `roles`' nicks. Each is always connected and counts as nobody (`crate::accounts::sessions`).
 #[must_use]
-pub fn is_zircs_own(account: &str) -> bool {
+pub fn is_zircs_own(roles: &crate::roles::Roles, account: &str) -> bool {
     let account = account.to_lowercase();
-    account == zirc_proto::activity::RECORDER || crate::roles::is_role(&account)
+    account == zirc_proto::activity::RECORDER || roles.is_role(&account)
 }

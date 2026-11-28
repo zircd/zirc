@@ -383,7 +383,7 @@ async fn note_connected(ergo: Arc<Ergo>) {
     let mut every = tokio::time::interval(usage::SAMPLE);
     loop {
         every.tick().await;
-        match sessions(&ergo.api).await {
+        match sessions(&ergo).await {
             Ok(accounts) => {
                 let connected = accounts.iter().filter(|(_, n)| *n > 0).map(|(a, _)| a);
                 let now = jiff::Timestamp::now().as_second();
@@ -952,7 +952,7 @@ async fn viewer(ergo: &Ergo, headers: &axum::http::HeaderMap) -> Result<Viewer, 
         policy: ergo.visibility.lock().await.unwrap_or_default(),
     };
     // Their channels, and their machines', whose agents act for them.
-    let accounts = sessions(&ergo.api)
+    let accounts = sessions(ergo)
         .await
         .map_err(|failure| Box::new(api_failed(failure)))?;
     let theirs: Vec<String> = accounts
@@ -1502,7 +1502,7 @@ async fn read_firsts(State(ergo): State<Arc<Ergo>>) -> Response {
 /// the machines connected now last told the recorder ([`zirc_proto::working`]). A machine
 /// that isn't connected says nothing here, whatever it said last.
 async fn sessions_standing(State(ergo): State<Arc<Ergo>>) -> Response {
-    let connected: std::collections::BTreeSet<String> = match sessions(&ergo.api).await {
+    let connected: std::collections::BTreeSet<String> = match sessions(&ergo).await {
         Ok(accounts) => accounts
             .into_iter()
             .filter(|(_, clients)| *clients > 0)
@@ -1793,7 +1793,7 @@ async fn integration_account(ergo: &Ergo, nick: &str, reset: bool) -> Result<(),
 /// it with a pass of its own; zirc.dev sets the person's own at their first sign-in from an app.
 /// An account there already is never touched.
 async fn person_account(ergo: &Ergo, name: &str) -> Result<(), Box<Response>> {
-    if unsettable(name).is_some() || exists(ergo, name).await? {
+    if unsettable(ergo, name).is_some() || exists(ergo, name).await? {
         return Ok(());
     }
     let mut bytes = [0u8; 24];
@@ -1863,7 +1863,7 @@ async fn say(State(ergo): State<Arc<Ergo>>, Json(body): Json<say::Say>) -> Respo
 }
 
 /// Why zirc.dev may not set an account called `name`, if it may not.
-fn unsettable(name: &str) -> Option<Response> {
+fn unsettable(ergo: &Ergo, name: &str) -> Option<Response> {
     if !valid_name(name) {
         return Some(error(
             StatusCode::BAD_REQUEST,
@@ -1874,7 +1874,7 @@ fn unsettable(name: &str) -> Option<Response> {
     // A name zirc's own account has, the recorder's or a role's, made by the server: never
     // taken for a person or a machine, whose messages would then be zirc's and whose sign-ins
     // would join its connection.
-    crate::nicks::is_zircs_own(name).then(|| {
+    crate::nicks::is_zircs_own(&ergo.roles, name).then(|| {
         error(
             StatusCode::CONFLICT,
             "taken",
@@ -1888,7 +1888,7 @@ async fn upsert(
     Path(name): Path<String>,
     Json(body): Json<Registering>,
 ) -> Response {
-    if let Some(refused) = unsettable(&name) {
+    if let Some(refused) = unsettable(&ergo, &name) {
         return refused;
     }
     // Whose it is, first: what lets it into its owner's team channels (`admit`), and what it
@@ -2296,7 +2296,7 @@ async fn list_keys(State(ergo): State<Arc<Ergo>>, Path(name): Path<String>) -> R
 }
 
 async fn list(State(ergo): State<Arc<Ergo>>) -> Response {
-    match sessions(&ergo.api).await {
+    match sessions(&ergo).await {
         Ok(accounts) => {
             let last = ergo.seen.lock().await.last();
             let accounts: Vec<Value> = accounts
@@ -2642,7 +2642,7 @@ async fn describe(State(ergo): State<Arc<Ergo>>) -> Response {
         Ok(status) => status,
         Err(failure) => return api_failed(failure),
     };
-    let accounts = match sessions(&ergo.api).await {
+    let accounts = match sessions(&ergo).await {
         Ok(accounts) => accounts,
         Err(failure) => return api_failed(failure),
     };
@@ -2699,7 +2699,7 @@ fn used(dir: &std::path::Path) -> u64 {
 
 /// The server's usage, in counts only (`usage`), for the controller.
 async fn count_usage(State(ergo): State<Arc<Ergo>>) -> Response {
-    match sessions(&ergo.api).await {
+    match sessions(&ergo).await {
         Ok(accounts) => {
             let seen = ergo.seen.lock().await;
             let now = jiff::Timestamp::now();
@@ -2716,7 +2716,7 @@ async fn count_usage(State(ergo): State<Arc<Ergo>>) -> Response {
 /// # Errors
 ///
 /// When Ergo's API doesn't answer.
-pub(crate) async fn sessions(api: &Api) -> Result<Vec<(String, i64)>, reqwest::Error> {
+async fn sessions(ergo: &Ergo) -> Result<Vec<(String, i64)>, reqwest::Error> {
     #[derive(Deserialize)]
     struct Whois {
         #[serde(default)]
@@ -2726,12 +2726,13 @@ pub(crate) async fn sessions(api: &Api) -> Result<Vec<(String, i64)>, reqwest::E
         #[serde(default)]
         session_count: Option<i64>,
     }
+    let api = &ergo.api;
     // A nick is its account's (force-nick-equals-account), so whois by name says who's on.
     let lookups = registered(api)
         .await?
         .into_iter()
         // zirc's own, always connected, are nobody: the recorder, and the roles'.
-        .filter(|name| !crate::nicks::is_zircs_own(name))
+        .filter(|name| !crate::nicks::is_zircs_own(&ergo.roles, name))
         .map(|name| async move {
             let whois: Option<Whois> = api.call("whois", json!({"nickname": name})).await.ok();
             let sessions = whois
