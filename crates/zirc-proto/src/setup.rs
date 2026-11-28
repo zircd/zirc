@@ -76,6 +76,9 @@ pub struct Facts {
     #[serde(default)]
     #[ts(as = "Option<CiFacts>", optional)]
     pub ci: CiFacts,
+    /// The person's phone that signed in first, by its name: `Pixel 10`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
 }
 
 /// One part of a checklist that ticks itself off.
@@ -147,6 +150,19 @@ pub struct Setup {
     /// Whether CI's part is done: the server heard CI, as the tools step reads it. Its test
     /// failure is offered after, never waited for.
     pub ci_done: bool,
+    /// Install and seat's first part folded to one line once all of it happened: `Installed,
+    /// and watching web`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed: Option<String>,
+    /// What say hi offers to write, each put in the composer for the person to send or change.
+    pub suggestions: Vec<String>,
+    /// Done's title: `John is at work`.
+    pub at_work: String,
+    /// Done's lines: at the desk, CI, the phone, each ticked once it happened.
+    pub summary: Vec<Item>,
+    /// Under them, what the person does from here (the user's choice, 28 Nov 2026: watch, and
+    /// step in).
+    pub watch: String,
 }
 
 /// Why CI comes first, under its name on the tools step.
@@ -293,7 +309,40 @@ pub fn setup(facts: &Facts) -> Setup {
     .filter_map(|(at, text, woke)| at.map(|at| Event { at, text, woke }))
     .collect();
     events.sort_by_key(|event| event.at);
-    let ci_ask = if ci.connected.is_none() && ci.heard.is_none() {
+    let ci_ask = ci_ask(ci, coworker, named);
+    let who = capital(coworker);
+    let installed = installed(facts);
+    let summary = summary(facts, coworker);
+    Setup {
+        install: format!("In a terminal, in the repository {coworker} will work in"),
+        start: format!("Then start a new Claude Code or Codex session for {coworker}, and tell it"),
+        alone: format!(
+            "{who}'s session is {coworker}'s alone: what wakes {coworker} goes there, never into the session you work in. Keep your own tasks in other sessions; they still coordinate with {coworker}."
+        ),
+        seat,
+        sentence: words(crate::onboarding::SENTENCE, named),
+        desk,
+        answered,
+        ci_done: ci.heard.is_some(),
+        ci: events,
+        ci_ask,
+        installed,
+        suggestions: vec![
+            format!("Hi {who}! What can you do?"),
+            "What are you working on?".to_owned(),
+            "What's changed in this repository lately?".to_owned(),
+        ],
+        at_work: format!("{who} is at work"),
+        summary,
+        watch: format!(
+            "From here you mostly watch: your office shows what {coworker} is doing, and you can step in any time."
+        ),
+    }
+}
+
+/// The button CI's part shows now, for `coworker` (`named`, where it has a name).
+fn ci_ask(ci: &CiFacts, coworker: &str, named: Option<&str>) -> Option<Ask> {
+    if ci.connected.is_none() && ci.heard.is_none() {
         Some(Ask {
             label: format!("Ask {coworker} to connect CI"),
             message: CONNECT_ASK.to_owned(),
@@ -314,22 +363,51 @@ pub fn setup(facts: &Facts) -> Setup {
         })
     } else {
         None
-    };
-    let who = capital(coworker);
-    Setup {
-        install: format!("In a terminal, in the repository {coworker} will work in"),
-        start: format!("Then start a new Claude Code or Codex session for {coworker}, and tell it"),
-        alone: format!(
-            "{who}'s session is {coworker}'s alone: what wakes {coworker} goes there, never into the session you work in. Keep your own tasks in other sessions; they still coordinate with {coworker}."
-        ),
-        seat,
-        sentence: words(crate::onboarding::SENTENCE, named),
-        desk,
-        answered,
-        ci_done: ci.heard.is_some(),
-        ci: events,
-        ci_ask,
     }
+}
+
+/// Install and seat's first part as one line, once the computer is in and the repository watched.
+fn installed(facts: &Facts) -> Option<String> {
+    (facts.machine.is_some() && facts.watching).then(|| match facts.repository.as_deref() {
+        Some(repo) => format!("Installed, and watching {repo}"),
+        None => "Installed, and watching your repository".to_owned(),
+    })
+}
+
+/// Done's lines for `coworker`: at the desk, CI, the phone.
+fn summary(facts: &Facts, coworker: &str) -> Vec<Item> {
+    let who = capital(coworker);
+    let ci = &facts.ci;
+    vec![
+        Item {
+            done: facts.seated,
+            text: match (facts.seated, facts.repository.as_deref()) {
+                (true, Some(repo)) => format!("At the desk in {repo}"),
+                (true, None) => "At the desk".to_owned(),
+                (false, _) => format!("Waiting for {coworker} to sit down"),
+            },
+            detail: facts.machine.clone(),
+        },
+        Item {
+            done: ci.heard.is_some(),
+            text: if ci.woke.is_some() {
+                format!("Wakes when CI fails: {who} woke on the test build")
+            } else if ci.heard.is_some() {
+                "Wakes when CI fails".to_owned()
+            } else {
+                "CI isn't connected yet".to_owned()
+            },
+            detail: None,
+        },
+        Item {
+            done: facts.phone.is_some(),
+            text: match &facts.phone {
+                Some(phone) => format!("On your {phone}, to watch and step in from anywhere"),
+                None => "No phone yet: the app is at zirc.dev/app".to_owned(),
+            },
+            detail: None,
+        },
+    ]
 }
 
 /// `text` with its first letter a capital: "your coworker" as "Your coworker".
@@ -474,6 +552,43 @@ mod tests {
             "Waiting for PagerDuty's test"
         );
         assert_eq!(get_working("Grace"), "Get Grace working");
+    }
+
+    #[test]
+    fn done_says_what_was_set_up_and_install_folds_once_it_happened() {
+        let start = setup(&john());
+        assert_eq!(start.installed, None);
+        assert_eq!(start.at_work, "John is at work");
+        assert!(start.summary.iter().all(|item| !item.done));
+        assert_eq!(start.suggestions[0], "Hi John! What can you do?");
+        let all = setup(&Facts {
+            machine: Some("henriks-mac".to_owned()),
+            watching: true,
+            seated: true,
+            repository: Some("web".to_owned()),
+            phone: Some("Pixel 10".to_owned()),
+            ci: CiFacts {
+                heard: Some(30),
+                woke: Some(41),
+                ..CiFacts::default()
+            },
+            ..john()
+        });
+        assert_eq!(
+            all.installed.as_deref(),
+            Some("Installed, and watching web")
+        );
+        assert!(all.summary.iter().all(|item| item.done));
+        let said: Vec<&str> = all.summary.iter().map(|item| item.text.as_str()).collect();
+        assert_eq!(
+            said,
+            [
+                "At the desk in web",
+                "Wakes when CI fails: John woke on the test build",
+                "On your Pixel 10, to watch and step in from anywhere",
+            ]
+        );
+        assert_eq!(all.summary[0].detail.as_deref(), Some("henriks-mac"));
     }
 
     #[test]
