@@ -7,4 +7,6 @@ zirc_rust_binary(
     # Its unit tests take under 10s; each file in tests/ starts Ergo, and takes 35s at most
     # with the Mac's load over 100: medium.
     test_size = "small",
+    # Restarting Ergo, in 6 s on the Mac: a hang fails in a minute (build 1807).
+    short_tests = ["restarts"],
 )

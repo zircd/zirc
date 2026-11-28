@@ -26,7 +26,7 @@ ERGO_ENV = {
 # And what says where a Bus error in one of them struck (bus_error.c).
 ERGO_DEPS = ["//bazel:bus_error"]
 
-def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, test_size, test_tags = [], lean_tests = []):
+def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, test_size, test_tags = [], lean_tests = [], short_tests = []):
     """The crate's unit tests, and each file in tests/ as an integration test of its own,
     as Cargo builds them. Those that start Ergo are medium-sized: a server and the daemons
     talking to it, besides the test. A crate whose tests start Ergo may start it in a unit
@@ -39,7 +39,12 @@ def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, tes
 
     A file named in lean_tests is built on its crate's own dependencies alone, without its
     dev-dependencies, so that a change to one of those leaves its binary, and its cached
-    result, as they were: even unused, a dependency changes the binary."""
+    result, as they were: even unused, a dependency changes the binary.
+
+    A file named in short_tests fails at Bazel's short timeout, a minute, rather than a
+    medium test's five: for one starting Ergo that takes seconds, so a hang costs a minute
+    of each attempt, not five. On 15 Nov 2026 six reconnect tests, each restarting Ergo,
+    hung to 300 s twice over in one landing (build 1807)."""
     whole = "kind:end-to-end" if ergo or "e2e" in test_tags else "kind:integration"
     rust_test(
         name = name + "_test",
@@ -69,10 +74,11 @@ def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, tes
             data = (ERGO_DATA if ergo else []) + test_data,
             env = (ERGO_ENV if ergo else {}) | test_env,
             size = "medium" if ergo else test_size,
+            timeout = "short" if test in short_tests else None,
             tags = test_tags + ["surface:" + surface, whole],
         )
 
-def zirc_rust_library(name, surface, ergo = False, wasm = False, wasm_bindgen = False, test_data = [], test_env = {}, test_size = None, test_tags = [], compile_data = [], **kwargs):
+def zirc_rust_library(name, surface, ergo = False, wasm = False, wasm_bindgen = False, test_data = [], test_env = {}, test_size = None, test_tags = [], compile_data = [], short_tests = [], **kwargs):
     """A library crate, its unit tests and its integration tests.
 
     Args:
@@ -95,6 +101,7 @@ def zirc_rust_library(name, surface, ergo = False, wasm = False, wasm_bindgen = 
             master's schedule rather than in each landing.
         compile_data: more files it includes with include_str! or include_bytes!, besides
             the Markdown in src.
+        short_tests: files in tests/, by name without .rs, that fail at a minute (_tests).
         **kwargs: passed to rust_library.
     """
     deps, test_deps = ZIRC_DEPS[name]["deps"], ZIRC_DEPS[name]["test_deps"]
@@ -109,7 +116,7 @@ def zirc_rust_library(name, surface, ergo = False, wasm = False, wasm_bindgen = 
         visibility = ["//visibility:public"],
         **kwargs
     )
-    _tests(name, surface, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size, test_tags)
+    _tests(name, surface, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size, test_tags, short_tests = short_tests)
     if wasm:
         for_wasm(name = name + "_wasm", crate = ":" + name)
     if wasm_bindgen:
@@ -137,7 +144,7 @@ def zirc_rust_library(name, surface, ergo = False, wasm = False, wasm_bindgen = 
             visibility = ["//visibility:public"],
         )
 
-def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {}, test_size = None, compile_data = [], lean_tests = [], **kwargs):
+def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {}, test_size = None, compile_data = [], lean_tests = [], short_tests = [], **kwargs):
     """A binary crate and its tests. When it has a src/lib.rs, as Cargo allows, the library
     is `<name>_lib` and the binary is built from src/main.rs on top of it.
 
@@ -156,6 +163,7 @@ def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {},
             the Markdown in src.
         lean_tests: files in tests/, by name without .rs, built without its dev-dependencies,
             so a change to one of those doesn't rerun them (_tests).
+        short_tests: files in tests/, by name without .rs, that fail at a minute (_tests).
         **kwargs: passed to rust_binary.
     """
     deps, test_deps = ZIRC_DEPS[name]["deps"], ZIRC_DEPS[name]["test_deps"]
@@ -183,7 +191,7 @@ def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {},
             visibility = ["//visibility:public"],
             **(common | kwargs)
         )
-        _tests(name, surface, ":" + name + "_lib", deps, test_deps, ergo, test_data, test_env, test_size, lean_tests = lean_tests)
+        _tests(name, surface, ":" + name + "_lib", deps, test_deps, ergo, test_data, test_env, test_size, lean_tests = lean_tests, short_tests = short_tests)
     else:
         rust_binary(
             name = name,
@@ -193,4 +201,4 @@ def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {},
             visibility = ["//visibility:public"],
             **(common | kwargs)
         )
-        _tests(name, surface, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size, lean_tests = lean_tests)
+        _tests(name, surface, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size, lean_tests = lean_tests, short_tests = short_tests)

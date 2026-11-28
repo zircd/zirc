@@ -9,6 +9,8 @@ zirc_rust_library(
     # Killed, `serve` takes its Ergo with it (tests/tether.rs).
     test_data = [":serve"],
     test_env = {"ZIRC_SERVE": "$(rootpath :serve)"},
+    # The scenario restarts Ergo, in under 2 s on the Mac: a hang fails in a minute (build 1807).
+    short_tests = ["scenario"],
 )
 
 # The apps' end-to-end path for a driver in shell (src/scenario.rs, src/control.rs).

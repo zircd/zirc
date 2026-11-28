@@ -4,4 +4,6 @@ zirc_rust_library(
     name = "zirc-irc",
     surface = "server",
     ergo = True,
+    # Under 1 s on the Mac, restarting Ergo once: a hang fails in a minute (build 1807).
+    short_tests = ["ergo"],
 )
