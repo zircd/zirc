@@ -1,5 +1,5 @@
-//! zircd's command line: little to set, since `zirc daemon` runs it, but `--help` says what
-//! it is and how it's run.
+//! zircd's command line: little to set, as it's run in a terminal as it is, or at login by
+//! `zirc daemon install`, but `--help` says what it is and how it's run.
 
 use std::path::PathBuf;
 
@@ -10,10 +10,9 @@ const RUNNING: &str = "\
 zircd watches the repositories that zirc repo add names, tells their channels about
 edits, commits and pushes, and serves the zirc commands over a socket in zirc's directory.
 
-It's usually run for you:
-  zirc daemon install   Run zircd at login, and keep it running
-  zirc daemon start     Run zircd until it's stopped
-  zirc daemon stop      Stop it; so do SIGINT and SIGTERM";
+Run it in a terminal tab of its own to watch it work: a line for each thing it does, its
+log in zircd.log in zirc's directory. Ctrl-C stops it, as SIGTERM and zirc daemon stop do.
+  zirc daemon install   Run zircd at login instead, and keep it running";
 
 /// The zirc daemon: this machine's one connection to the team's IRC server.
 // The doc comments here are --help text, where backticks would show.

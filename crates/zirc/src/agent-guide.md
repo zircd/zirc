@@ -31,8 +31,10 @@ squash onto it: another session's fetch may have moved `origin/<default>`, and `
      this session, as when `zirc` isn't installed. If they do say so, `zirc repo add
      --session <your session>` starts watching it; when it asks which organisation, ask
      the user, then add `--org <name>`; never guess.
-   - If zircd isn't running, run `zirc daemon start`. If the watch itself says this machine
-     isn't set up, or its account was renamed or revoked, tell the user once (they set a
+   - If zircd isn't running, never start it yourself: tell your user once how, as the watch
+     says (`zircd` in a terminal tab of its own, or `zirc daemon install` to keep it
+     running), and carry on without zirc until they say it's up. If the watch says this
+     machine isn't set up, or its account was renamed or revoked, tell the user once (they set a
      machine up with `zirc login`) and leave zirc out of the rest of the session. Another
      command failing (a search, a question refused) is that command's alone: say so in a
      line, keep your watch running and carry on with the rest. Never

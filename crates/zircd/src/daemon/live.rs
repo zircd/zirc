@@ -23,6 +23,7 @@ use zirc_proto::session::{self, AWAY_FOLD_SECS, Away, LIVE_GRACE_SECS, NOT_LISTE
 use zirc_proto::{AGENTS_CHANNEL, Level, Message};
 
 use super::{Daemon, WATCHER_SESSION, read_saved};
+use crate::activity;
 
 /// Every machine's live sessions, as each last said its list in the organisation's channels,
 /// and every session seen live since zircd started: whose watch is gone ([`Request::LiveSessions`]).
@@ -74,6 +75,8 @@ pub(super) struct Live {
     /// The sessions whose owner was told they aren't listening, each with since when it's
     /// been away then: told once for each time it's away.
     told: BTreeMap<String, u64>,
+    /// The live sessions last said to have joined, in zircd's own lines ([`crate::activity`]).
+    joined: BTreeSet<String>,
 }
 
 impl Live {
@@ -192,6 +195,7 @@ impl Daemon {
             self.live.save(now);
         }
         let live = self.live.sessions(now);
+        self.say_joined(&live);
         let away = self.live.away(&watching, |session| self.waiting(session));
         for (session, away) in self.live.due_to_tell(&away, now) {
             self.tell_not_listening(&session, now.saturating_sub(away.since), away.waiting);
@@ -248,6 +252,25 @@ impl Daemon {
                 Err(err) => tracing::warn!("couldn't say the live sessions in {channel}: {err}"),
             }
         }
+    }
+
+    /// Says which sessions joined since the last tick and which left, as `live` has them.
+    fn say_joined(&mut self, live: &[String]) {
+        let live: BTreeSet<String> = live.iter().cloned().collect();
+        if live == self.live.joined {
+            return;
+        }
+        let joined: Vec<String> = live.difference(&self.live.joined).cloned().collect();
+        let left: Vec<String> = self.live.joined.difference(&live).cloned().collect();
+        for session in joined {
+            let who = activity::who(&session, self.name_of(&session).as_deref());
+            self.activity.say(&activity::joined(&who));
+        }
+        for session in left {
+            let who = activity::who(&session, self.name_of(&session).as_deref());
+            self.activity.say(&activity::left(&who));
+        }
+        self.live.joined = live;
     }
 
     /// Saves when each session last watched, as zircd stops.

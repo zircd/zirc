@@ -78,7 +78,7 @@ pub const ASKING: &str = "Asking zircd…";
 
 /// What an app says when zircd doesn't answer, as the setting is zircd's to keep.
 pub const UNANSWERED: &str = "zircd isn't answering on this machine; its sessions' queries are \
-    its to allow. Start it with zirc daemon start.";
+    its to allow. Start it in a terminal tab of its own with zircd.";
 
 /// The buttons under [`ANYONE_WARNING`], before an app lets anyone query: allow, or keep.
 pub const ALLOW_ANYONE: &str = "Allow anyone";

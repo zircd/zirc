@@ -5549,6 +5549,7 @@ version = "0.1.73"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "chrono",
  "clap",
  "notify",
  "rustix",

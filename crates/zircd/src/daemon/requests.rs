@@ -34,6 +34,7 @@ use zirc_proto::request::{self, Answer, CHANNEL, Request, State, Withdrawal};
 use zirc_proto::session::AWAY_FOLD_SECS;
 
 use super::{Ask, Daemon, read_saved};
+use crate::activity;
 
 /// The requests this machine has asked and not had a yes or no to, saved across restarts.
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -178,6 +179,9 @@ impl Daemon {
         if let Some(answer) = taken {
             self.take_recommended(&mut open, answer);
         }
+        let who = activity::who(session, self.name_of(session).as_deref());
+        self.activity
+            .say(&activity::asked(&who, &open.request.by, &id));
         self.requests.open.insert(id.clone(), open);
         self.save_requests();
         Ok(Response::Requested {
@@ -219,6 +223,8 @@ impl Daemon {
                 ..open.request
             };
             self.publish(CHANNEL, &request.session, request.event());
+            let who = activity::who(&request.session, self.name_of(&request.session).as_deref());
+            self.activity.say(&activity::withdrawn(&who, id, why));
         }
         if !ids.is_empty() {
             self.save_requests();

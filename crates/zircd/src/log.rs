@@ -7,17 +7,38 @@
 //! and never look at it again. Its lines are copied, then the file emptied in place (as
 //! logrotate's `copytruncate`), rather than renamed: the open file is the one launchd
 //! gave, which zircd can't swap for another without `unsafe`. Both open it to append, so
-//! what's written after it's emptied starts at its beginning. Under systemd, or in a
-//! terminal, zircd's output isn't the file, and it's left alone: the journal keeps its own
-//! size.
+//! what's written after it's emptied starts at its beginning. In a terminal, zircd
+//! opens the file itself ([`open`]) and keeps it small the same way. Under systemd its
+//! output isn't the file, and it's left alone: the journal keeps its own size.
 
 use std::fs::{File, Metadata, OpenOptions};
 use std::os::fd::AsFd as _;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use zirc_core::paths;
+
+/// Whether this zircd writes its log itself ([`open`]), as it does in a terminal: then it's
+/// kept small as when it's the output.
+static OPENED: AtomicBool = AtomicBool::new(false);
+
+/// Opens the log in `home` for zircd to write its log to itself, to append, as it does when
+/// run in a terminal, whose output is for what it does ([`crate::activity`]).
+///
+/// # Errors
+///
+/// When `home` can't be made, or the file opened.
+pub fn open(home: &Path) -> std::io::Result<File> {
+    std::fs::create_dir_all(home)?;
+    let log = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(paths::log(home))?;
+    OPENED.store(true, Ordering::Relaxed);
+    Ok(log)
+}
 
 /// The most the log holds before its lines move to the old one: a few weeks of an ordinary
 /// machine's, and the two together at most twice it.
@@ -32,7 +53,7 @@ pub async fn keep_small(home: PathBuf) {
     loop {
         every.tick().await;
         let log = paths::log(&home);
-        if !is_output(&log) {
+        if !OPENED.load(Ordering::Relaxed) && !is_output(&log) {
             return;
         }
         match rotate(&log, &paths::old_log(&home), CAP) {

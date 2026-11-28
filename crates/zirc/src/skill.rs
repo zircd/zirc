@@ -152,7 +152,7 @@ mod tests {
         let desk = zirc_proto::coworkers::desk_command("<coworker> --session <your session>");
         for quoted in [
             "zirc status",
-            "zirc daemon start",
+            "zirc daemon install",
             "zirc repo add",
             "zirc watch",
             "zirc who",
@@ -180,6 +180,9 @@ mod tests {
             let guide = AGENT_GUIDE.split_whitespace().collect::<Vec<_>>().join(" ");
             assert!(guide.contains(quoted), "the guide doesn't mention {quoted}");
         }
+        // zircd is the person's to start: no agent is told to.
+        assert!(!AGENT_GUIDE.contains("zirc daemon start"));
+        assert!(!skill().contains("zirc daemon start"));
         let query = direct_line(&Direct {
             from: "mattias-mini".into(),
             from_session: Some("cc-2".into()),

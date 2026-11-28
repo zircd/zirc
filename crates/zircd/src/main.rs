@@ -35,12 +35,32 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        // Colours only on a terminal: under launchd or systemd the log is a file.
-        .with_ansi(std::io::stderr().is_terminal())
-        .init();
     let home = cli.home.unwrap_or_else(zirc_core::paths::home);
+    // In a terminal, the terminal shows only what zircd does, a line each
+    // (zircd's `activity`), and its log goes to the file it goes to under launchd.
+    if std::io::stderr().is_terminal() {
+        let log = match zircd::log::open(&home) {
+            Ok(log) => log,
+            Err(err) => {
+                eprintln!("zircd: opening its log in {}: {err}", home.display());
+                return ExitCode::FAILURE;
+            }
+        };
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_ansi(false)
+            .with_writer(std::sync::Mutex::new(log))
+            .init();
+        println!(
+            "zircd {version}: a line here for each thing it does; its log is {}. Ctrl-C stops it.",
+            zirc_core::paths::log(&home).display()
+        );
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_ansi(false)
+            .init();
+    }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

@@ -14,6 +14,8 @@ use zirc_irc::Client;
 use zirc_proto::decision::Decision;
 use zirc_proto::{Event, Message};
 
+use crate::activity;
+
 use super::{
     Daemon, MISSED, MISSED_FOR, WATCHER_SESSION, Watched, answered_concerns, channel_of,
     direct_concerns, lands_under, later, mentions, now, read_saved, routine, wakes,
@@ -89,6 +91,7 @@ impl Daemon {
             .filter(|(watcher, _)| watcher.reachable())
             .filter_map(|(watcher, why)| Some((watcher.session.clone()?, (*why)?)))
             .collect();
+        self.say_told(response, &woken);
         let automatic = wakes::automatic(response);
         let line = wakes::Line::of(response, self.owner.as_deref());
         // Each wake's line where people see it, said once every watcher has heard what woke it.
@@ -845,9 +848,129 @@ fn says_its_own_line(response: &Response) -> bool {
     matches!(response, Response::Direct(direct) if direct.woke.is_some())
 }
 
+impl Daemon {
+    /// Says what `response` was told to whom, the `woken` sessions each with why
+    /// ([`crate::activity`]): an overlap once for all it woke, else for each session a
+    /// message delivered to it or what woke it.
+    fn say_told(&mut self, response: &Response, woken: &[(String, Why)]) {
+        let mut sessions: Vec<(&str, Why)> = Vec::new();
+        for (session, why) in woken {
+            if !sessions.iter().any(|(said, _)| said == session) {
+                sessions.push((session, *why));
+            }
+        }
+        let named = |session: &str| activity::who(session, self.name_of(session).as_deref());
+        let overlapped: Vec<String> = sessions
+            .iter()
+            .filter(|(_, why)| *why == Why::Overlap)
+            .map(|(session, _)| named(session))
+            .collect();
+        let mut lines = Vec::new();
+        if !overlapped.is_empty() {
+            // With the coworker or the one session it's with, where it says, else the machine.
+            let (with, paths) = match response {
+                Response::Overlap(overlap) => {
+                    let with = match (&overlap.desk, overlap.sessions.as_slice()) {
+                        (Some(desk), _) => desk.clone(),
+                        (None, [session]) => named(session),
+                        (None, _) => overlap.nick.clone(),
+                    };
+                    (Some(with), overlap.paths.as_slice())
+                }
+                Response::LocalOverlap(overlap) => (None, overlap.paths.as_slice()),
+                _ => (None, [].as_slice()),
+            };
+            lines.push(activity::overlap(&overlapped, with.as_deref(), paths));
+        }
+        for (session, why) in sessions.iter().filter(|(_, why)| *why != Why::Overlap) {
+            let to = named(session);
+            lines.push(match response {
+                Response::Direct(direct) => {
+                    let what = if direct.query.is_some() {
+                        "a query"
+                    } else if direct.answer.is_some() {
+                        "an answer"
+                    } else if direct.note {
+                        "a note"
+                    } else if direct.colleague {
+                        "a reply"
+                    } else {
+                        "a dm"
+                    };
+                    let from = direct.from_session.as_deref().map_or_else(
+                        || direct.from.clone(),
+                        |session| format!("{}/{session}", direct.from),
+                    );
+                    activity::delivered(what, &from, &to)
+                }
+                Response::Delivery(delivery) => {
+                    activity::woke(&to, *why, Some(&delivery.from), Some(&delivery.channel))
+                }
+                _ => activity::woke(&to, *why, None, None),
+            });
+        }
+        for line in lines {
+            self.activity.say(&line);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn says_in_a_line_each_message_it_delivers_and_who_joined_and_left() {
+        let home = tempfile::tempdir().unwrap();
+        let org = super::super::Org {
+            name: "zirc".into(),
+            first: true,
+            state: home.path().to_owned(),
+            several: false,
+        };
+        let (inputs, _received) = mpsc::unbounded_channel();
+        let mut daemon = Daemon::new(
+            home.path().to_owned(),
+            org,
+            "irc.example".into(),
+            None,
+            inputs,
+        );
+        let (heard, mut hearing) = mpsc::channel(8);
+        daemon.watchers.push(super::super::Watcher {
+            heard,
+            session: Some("cc-1".into()),
+        });
+        daemon.live_tick(1_000);
+        assert_eq!(daemon.activity.said, ["cc-1 joined"]);
+        let said = serde_json::json!({
+            "from": "mattias",
+            "session": "cc-1",
+            "text": "the secret plan",
+        });
+        daemon.tell_watchers(&Response::Direct(serde_json::from_value(said).unwrap()));
+        assert!(hearing.try_recv().is_ok(), "the watch heard it");
+        assert_eq!(
+            daemon.activity.said[1..],
+            ["delivered a dm from mattias to cc-1"]
+        );
+        // Never what was said.
+        assert!(
+            daemon
+                .activity
+                .said
+                .iter()
+                .all(|line| !line.contains("secret"))
+        );
+        drop(hearing);
+        daemon.watchers.clear();
+        // Gone a while, it left.
+        daemon.live_tick(1_000 + zirc_proto::session::LIVE_GRACE_SECS);
+        assert_eq!(
+            daemon.activity.said.last().map(String::as_str),
+            Some("cc-1 left")
+        );
+    }
 
     #[test]
     fn what_woke_a_role_says_its_own_line_and_a_plain_message_doesnt() {

@@ -385,6 +385,14 @@ pub const INSTALL_COMMAND: &str = "curl -fsSL https://zirc.dev/install | sh";
 /// computer in the first time, and watches the repository. Step 3's first command.
 pub const REPO_ADD_COMMAND: &str = "zirc repo add";
 
+/// What runs zircd, the computer's one connection for its agents, in a terminal tab of its
+/// own, where it shows a line for each thing it does: what [`REPO_ADD_COMMAND`] waits for
+/// once it's signed the computer in. `zirc daemon install` runs it at login instead.
+pub const ZIRCD_COMMAND: &str = "zircd";
+
+/// What step 3 says over [`ZIRCD_COMMAND`], under its first commands.
+pub const ZIRCD_ABOUT: &str = "It signs this computer in, then waits for zircd, its connection to your office. Run zircd in a terminal tab of its own, and leave it open to watch what it does for your coworkers:";
+
 /// From when zirc.dev records the seven steps as they're reached, in RFC 3339: one reached
 /// before then is history, which zirc.dev's sweep and the backfill record as filled in, so the
 /// funnel counts only those who went through getting started.
@@ -824,6 +832,8 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const STEPS_RECORDED_FROM = {RECORDED_FROM:?};"),
         format!("const INSTALL_COMMAND = {INSTALL_COMMAND:?};"),
         format!("const REPO_ADD_COMMAND = {REPO_ADD_COMMAND:?};"),
+        format!("const ZIRCD_COMMAND = {ZIRCD_COMMAND:?};"),
+        format!("const ZIRCD_ABOUT = {ZIRCD_ABOUT:?};"),
         format!("const NEXT_PREFIX = {NEXT_PREFIX:?};"),
         format!("const DONE_LABEL = {DONE_LABEL:?};"),
         format!("const NEXT_LABEL = {NEXT_LABEL:?};"),

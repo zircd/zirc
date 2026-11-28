@@ -13,6 +13,7 @@ use zirc_proto::telemetry as usage;
 use zirc_proto::telemetry::Event as Usage;
 use zirc_proto::{Event, Message};
 
+use crate::activity;
 use crate::git;
 use crate::git::{Change, Side};
 
@@ -318,6 +319,10 @@ impl Daemon {
                 let session = watched.signer().to_owned();
                 // What a session did is agents' news, in `#agents`.
                 self.publish(&channel, &session, event.clone());
+                if let Event::Push { branch, .. } = &event {
+                    let who = activity::who(&session, self.name_of(&session).as_deref());
+                    self.activity.say(&activity::pushed(&who, branch, &channel));
+                }
                 if let Some(how) = wakes::acted_by(&event) {
                     self.session_acted(&session, how);
                 }

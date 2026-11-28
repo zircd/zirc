@@ -411,7 +411,7 @@ async fn hear(
             () = &mut limit => return Ok(None),
         };
         let Some(heard) = next else {
-            bail!("zircd stopped: zirc daemon start, then run it again");
+            bail!("zircd stopped: start it again, then run this again");
         };
         if let Some(said) = said(&heard, branch) {
             all.push(said);

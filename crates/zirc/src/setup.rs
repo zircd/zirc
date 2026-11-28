@@ -15,12 +15,16 @@ use zirc_proto::PROGRAM;
 use zirc_proto::login::{Credentials, LoginRequest};
 
 use crate::client::{shown, tail};
-use crate::daemon::{stop, zircd_binary};
+use crate::daemon::{foreground, restart, stop, zircd_binary};
 use crate::repo::RepoCommand;
 use crate::service;
 use crate::skill::install_skill;
 
 #[derive(Debug, Args)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each is a flag of its own on the command line"
+)]
 pub(crate) struct Login {
     /// Zirc's web app, where you log in.
     #[arg(long, env = "ZIRC_WEB", value_name = "URL", default_value = login::WEB)]
@@ -28,8 +32,12 @@ pub(crate) struct Login {
     /// Don't open the browser: open the URL zirc shows yourself.
     #[arg(long)]
     pub(crate) no_browser: bool,
-    /// Only write config.toml and install the skill: leave zircd as it is.
+    /// Run zircd at login too, and keep it running: launchd on macOS, systemd on Linux, as
+    /// `zirc daemon install` does. Without it, you run zircd in a terminal tab to watch it.
     #[arg(long)]
+    pub(crate) background: bool,
+    /// Only write config.toml and install the skill: leave zircd as it is, running or not.
+    #[arg(long, hide = true)]
     pub(crate) no_daemon: bool,
     /// Replace this machine's setup, if it has one, with the login's.
     #[arg(long)]
@@ -53,6 +61,7 @@ impl Login {
         Self {
             web: std::env::var("ZIRC_WEB").unwrap_or_else(|_| login::WEB.to_owned()),
             no_browser: false,
+            background: false,
             no_daemon: false,
             force: false,
             org: None,
@@ -135,8 +144,26 @@ async fn repo_signing_in(
             "This machine isn't signed in to Zirc yet: signing in first."
         )?;
         writeln!(out)?;
+        let wait = !login.no_daemon;
         logged_in_then(home, login, false, out).await?;
         writeln!(out)?;
+        if ipc::request(socket, &Request::Status).await.is_err() {
+            // The person starts zircd in a tab of its own, as login said: then it goes on.
+            if !wait {
+                writeln!(out, "Once it's running, run zirc repo add here again.")?;
+                return Ok(());
+            }
+            writeln!(
+                out,
+                "Waiting here for zircd to start; Ctrl-C stops waiting."
+            )?;
+            out.flush()?;
+            while ipc::request(socket, &Request::Status).await.is_err() {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+            connected_to(home, false, false, out).await?;
+            writeln!(out)?;
+        }
     }
     crate::repo::repo(socket, command, out).await
 }
@@ -201,23 +228,57 @@ async fn logged_in_then(
         "Installed the {PROGRAM} skill for Claude Code: {}",
         shown(&skill)
     )?;
-    if args.no_daemon {
+    let socket = paths::socket(home);
+    // A machine whose zircd runs at login keeps it, with the login's setup.
+    if !args.no_daemon && (args.background || service::installed_for(home)) {
         writeln!(
             out,
-            "zircd isn't started: run it at login with `zirc daemon install`, or until you stop \
-             it with `zirc daemon start`"
+            "Starting zircd at login, and waiting for it to connect…"
         )?;
-        return Ok(());
+        // A zircd started by hand stops first, so the one at login is the only one.
+        let _ = stop(&socket, &mut std::io::sink()).await;
+        service::install(home, &zircd_binary(args.zircd)?, &mut std::io::sink())?;
+        return connected_to(home, true, next, out).await;
     }
+    // One running in a terminal already starts again there, connecting as the login says.
+    if ipc::request(&socket, &Request::Status).await.is_ok() {
+        if args.no_daemon {
+            return Ok(());
+        }
+        writeln!(
+            out,
+            "Restarting the zircd that's running, and waiting for it to connect…"
+        )?;
+        if !restart(home, &mut std::io::sink()).await? {
+            bail!("this zircd can't restart itself: stop it, then start it again");
+        }
+        return connected_to(home, false, next, out).await;
+    }
+    run_it(&foreground(home, &zircd_binary(args.zircd)?), next, out)
+}
+
+/// Says how to run zircd, `command`, in a terminal tab, to watch it work, and, unless `next`
+/// is false, what to do once it runs.
+fn run_it(command: &str, next: bool, out: &mut impl Write) -> Result<()> {
+    writeln!(out)?;
     writeln!(
         out,
-        "Starting zircd at login, and waiting for it to connect…"
+        "Next, run zircd in a terminal tab of its own, and leave it open:"
     )?;
-    // A zircd started by hand stops first, so the one at login is the only one.
-    let socket = paths::socket(home);
-    let _ = stop(&socket, &mut std::io::sink()).await;
-    service::install(home, &zircd_binary(args.zircd)?, &mut std::io::sink())?;
-    connected_to(home, next, out).await
+    writeln!(out)?;
+    writeln!(out, "  {command}")?;
+    writeln!(out)?;
+    writeln!(
+        out,
+        "It holds this machine's connection to your team for your agents, and prints a line \
+         for each thing it does. Ctrl-C stops it. Once you'd rather it ran out of sight, \
+         `zirc daemon install` runs it at login instead."
+    )?;
+    if next {
+        writeln!(out)?;
+        writeln!(out, "Then, in each repository you work in: zirc repo add")?;
+    }
+    Ok(())
 }
 
 /// Starts a login for this machine at `args.web`, says where to confirm it, and waits until
@@ -339,7 +400,12 @@ pub(crate) const CONNECT_WAIT: Duration = Duration::from_secs(20);
 
 /// Waits for the zircd just started to connect, and says how it went: connected and what
 /// to do next (unless `next` is false), or what its log says went wrong.
-pub(crate) async fn connected_to(home: &Path, next: bool, out: &mut impl Write) -> Result<()> {
+pub(crate) async fn connected_to(
+    home: &Path,
+    at_login: bool,
+    next: bool,
+    out: &mut impl Write,
+) -> Result<()> {
     let socket = paths::socket(home);
     let deadline = tokio::time::Instant::now() + CONNECT_WAIT;
     loop {
@@ -349,11 +415,19 @@ pub(crate) async fn connected_to(home: &Path, next: bool, out: &mut impl Write) 
             && status.connected
         {
             let nick = status.nick.unwrap_or_default();
-            writeln!(
-                out,
-                "zircd is running at login, connected to {} as {nick}.",
-                status.server
-            )?;
+            if at_login {
+                writeln!(
+                    out,
+                    "zircd is running at login, connected to {} as {nick}.",
+                    status.server
+                )?;
+            } else {
+                writeln!(
+                    out,
+                    "zircd is running, connected to {} as {nick}.",
+                    status.server
+                )?;
+            }
             if next {
                 writeln!(out)?;
                 writeln!(out, "Next, in each repository you work in: zirc repo add")?;
@@ -362,8 +436,13 @@ pub(crate) async fn connected_to(home: &Path, next: bool, out: &mut impl Write) 
         }
         if tokio::time::Instant::now() > deadline {
             let log = paths::log(home);
+            let how = if at_login {
+                "runs at login"
+            } else {
+                "is running"
+            };
             bail!(
-                "zircd runs at login, but hasn't connected within {CONNECT_WAIT:?}. The end of {}:\n{}",
+                "zircd {how}, but hasn't connected within {CONNECT_WAIT:?}. The end of {}:\n{}",
                 shown(&log),
                 tail(&std::fs::read_to_string(&log).unwrap_or_default())
             );
@@ -443,13 +522,69 @@ mod tests {
                 "{args:?}: {err}"
             );
         }
-        // Set up, but zircd stopped: start it.
+        // Set up, but zircd stopped: start it, in a terminal of its own.
         std::fs::write(paths::config(home.path()), "[server]\nhost = \"x\"\n").unwrap();
         let err = run_in(&["zirc", "status"]).await.unwrap_err().to_string();
-        assert_eq!(
-            err,
-            "zircd isn't running: start it with `zirc daemon start`"
+        assert!(
+            err.starts_with("zircd isn't running: start it in a terminal tab of its own with `"),
+            "{err}"
         );
+        assert!(err.contains(" --home "), "{err}");
+        // An agent's watch hears it's never the agent's to start.
+        let err = run_in(&["zirc", "watch", "--once", "--session", "cc-1"])
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("An agent never starts it: tell your user once"),
+            "{err}"
+        );
+        assert!(err.contains("`zirc daemon install`"), "{err}");
+        assert!(!err.contains("zirc daemon start"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn says_to_run_zircd_in_a_terminal_rather_than_install_it() {
+        let started = r#"{"id":"l1","code":"C","url":"u","interval":1,"expires_in":30}"#;
+        let done = r#"{"status":"done","server":{"host":"zirc.irc.zirc.dev","password":"gate"},"nick":"mattias-mbp","owner":"mattias"}"#;
+        let (web, _served) = fake_web(vec![(201, started.into()), (200, done.into())]);
+        let home = tempfile::tempdir().unwrap();
+        let skills = tempfile::tempdir().unwrap();
+        let cli = Cli::try_parse_from([
+            "zirc",
+            "login",
+            "--web",
+            &web,
+            "--no-browser",
+            "--zircd",
+            "/opt/zirc/zircd",
+            "--skills",
+            skills.path().to_str().unwrap(),
+        ])
+        .unwrap();
+        let cli = Cli {
+            home: Some(home.path().to_owned()),
+            ..cli
+        };
+        let mut out = Vec::new();
+        run(cli, &mut out).await.unwrap();
+        let out = String::from_utf8(out).unwrap();
+        let command = format!("/opt/zirc/zircd --home {}", shown(home.path()));
+        assert!(
+            out.contains(&format!(
+                "Next, run zircd in a terminal tab of its own, and leave it open:\n\n  {command}\n\n"
+            )),
+            "{out}"
+        );
+        assert!(
+            out.contains("`zirc daemon install` runs it at login instead."),
+            "{out}"
+        );
+        assert!(
+            out.ends_with("Then, in each repository you work in: zirc repo add\n"),
+            "{out}"
+        );
+        assert!(!out.contains("Starting zircd at login"), "{out}");
     }
 
     /// zirc.dev's stand-in, answering with `answers` in turn, and the first line and body
@@ -565,10 +700,16 @@ mod tests {
         };
         let socket = home.path().join("no-zircd.sock");
         let mut out = Vec::new();
-        // Signed in, it goes on to add the repository, which this test's missing zircd refuses.
-        let added = repo_signing_in(home.path(), &socket, add, login, &mut out).await;
+        // Signed in, it would go on to add the repository, but this test's zircd isn't
+        // running: it says to run zirc repo add again once it is.
+        repo_signing_in(home.path(), &socket, add, login, &mut out)
+            .await
+            .unwrap();
         let out = String::from_utf8(out).unwrap();
-        assert!(added.is_err(), "{out}");
+        assert!(
+            out.ends_with("Once it's running, run zirc repo add here again.\n"),
+            "{out}"
+        );
         assert!(
             out.starts_with("This machine isn't signed in to Zirc yet: signing in first."),
             "{out}"

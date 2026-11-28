@@ -128,6 +128,17 @@ pub(crate) async fn answer_within(
 /// The usual reason the socket can't be reached, said so: zircd isn't running, or on a
 /// machine that isn't set up, there's no zircd to run yet.
 pub(crate) fn not_running(socket: &Path, err: ipc::Error) -> anyhow::Error {
+    said_not_running(socket, err, crate::daemon::not_running_said)
+}
+
+/// [`not_running`], as `zirc watch` says it: to the agent watching, which never starts zircd.
+pub(crate) fn watch_not_running(socket: &Path, err: ipc::Error) -> anyhow::Error {
+    said_not_running(socket, err, crate::daemon::watch_not_running_said)
+}
+
+/// `err`, or when it says zircd isn't running on a machine that's set up, what `said` says
+/// of it for zirc's directory.
+fn said_not_running(socket: &Path, err: ipc::Error, said: fn(&Path) -> String) -> anyhow::Error {
     match &err {
         ipc::Error::Io(io)
             if matches!(
@@ -135,13 +146,9 @@ pub(crate) fn not_running(socket: &Path, err: ipc::Error) -> anyhow::Error {
                 std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
             ) =>
         {
-            let set_up = socket
-                .parent()
-                .is_some_and(|home| paths::config(home).exists());
-            if set_up {
-                anyhow::anyhow!("zircd isn't running: start it with `zirc daemon start`")
-            } else {
-                anyhow::anyhow!(not_set_up())
+            match socket.parent() {
+                Some(home) if paths::config(home).exists() => anyhow::anyhow!(said(home)),
+                _ => anyhow::anyhow!(not_set_up()),
             }
         }
         _ => err.into(),

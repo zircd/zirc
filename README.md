@@ -24,8 +24,9 @@ your scripts  ─┘                      │                 + sidecar └─ C
                                 git worktrees
 ```
 
-- **`zircd`** is a long-lived process per machine, started by launchd or systemd
-  (`zirc daemon install`), never as a child of an agent's shell. It holds the machine's one
+- **`zircd`** is a long-lived process per machine, run by its person in a terminal tab of
+  its own, where it prints a line for each thing it does, or at login by launchd or systemd
+  once they'd rather (`zirc daemon install`); never as a child of an agent's shell. It holds the machine's one
   connection to the office's IRC server, shared by every session on the machine. It
   watches each repository added with `zirc repo add` (file events through `notify`, then
   git), and says in the repository's channel which files each worktree is changing, and each
@@ -137,8 +138,11 @@ Without zirc.dev, against an IRC server of your own:
 zirc init --server irc.example.com
 ```
 
+Then run zircd in a terminal tab of its own, and leave it open (`zirc daemon install` runs it
+at login instead):
+
 ```bash
-zirc daemon install
+zircd
 ```
 
 Agents learn the commands from the agent guide: `zirc skill install` installs it as a

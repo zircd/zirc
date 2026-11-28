@@ -1,5 +1,5 @@
 //! zirc: the CLI. Every command is a short-lived client of zircd over its Unix socket and
-//! never opens an IRC connection of its own; `zirc daemon start` starts zircd itself.
+//! never opens an IRC connection of its own; zircd runs in a terminal, or at login.
 
 mod args;
 mod catchup;
@@ -66,14 +66,14 @@ use crate::updates::say_update;
 /// The end of `zirc --help`: what to run first.
 const GETTING_STARTED: &str = "\
 Getting started:
-  zirc login       Log in at zirc.dev, and run zircd at login
+  zirc login       Log in at zirc.dev, and set this machine up
+  zircd            Run zircd, in a terminal tab of its own
   zirc repo add    Watch the repository you're in
   zirc watch       Follow what's worth knowing in it
   zirc tui         Chat in the terminal, as yourself
 
 Or, for a server of your own:
-  zirc init --server <host>   Say which server to connect to
-  zirc daemon install         Run zircd at login
+  zirc init --server <host>   Say which server to connect to, then run zircd
 
 zirc's files are in ~/.zirc, or $ZIRC_HOME.";
 
@@ -90,7 +90,7 @@ How your session shows in apps (also $ZIRC_SESSION_NAME, _AVATAR and _TOOL):
 /// where a description says what a command does and an example says how. Each is a whole
 /// command line that runs as written, which a test holds them to, so none goes stale.
 const EXAMPLES: &[(&str, &[&str])] = &[
-    ("login", &["zirc login"]),
+    ("login", &["zirc login", "zirc login --background"]),
     ("repo", &["zirc repo add", "zirc repo list"]),
     (
         "watch",
@@ -461,7 +461,8 @@ enum Command {
     ///
     /// Shows a code and opens the browser, where you sign in and confirm it. zirc then
     /// writes the team's server to ~/.zirc/config.toml, installs the zirc skill for Claude
-    /// Code, and runs zircd at login, restarting it if it's running.
+    /// Code, and says how to run zircd: in a terminal tab of its own, where it shows what it
+    /// does, or at login with --background. A zircd running already restarts with the login.
     #[command(after_long_help = examples("login", ""))]
     Login(Login),
     /// Sign this machine out, of everything or of one organisation.

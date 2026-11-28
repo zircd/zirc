@@ -10,7 +10,7 @@
 #   ZIRC_APP          yes or no: whether to install the zirc app on a Mac without asking.
 #
 # It checks each download against its published SHA-256, replaces older binaries, installs
-# the zirc skill for Claude Code, and restarts zircd if this machine is set up already. It
+# the zirc skill for Claude Code, and restarts zircd if it's running. It
 # leaves .zirc-install.toml beside the binaries, naming where they came from, so they update
 # themselves from there: zircd about once a day, and `zirc update` when asked, which also check
 # each release's signature (crates/zirc-core/src/update.rs). This script doesn't: it comes
@@ -168,17 +168,16 @@ main() {
 
     say ""
     if [ -f "$zirc_home/config.toml" ]; then
-        # Set up already: run the new zircd, at login from now on. A zircd started by hand
-        # stops first, so only one holds the connection.
-        "$zirc" daemon stop >/dev/null 2>&1 || true
-        "$zirc" daemon install
-        say "zircd $version is running. Check it with: zirc status"
+        # Set up already: a zircd that's running, in a terminal or at login, restarts as the
+        # new release; one that isn't says how to start it. Nothing is installed at login
+        # that wasn't (crates/zirc/src/daemon.rs, restart).
+        "$zirc" daemon restart || true
     else
         [ "$on_path" = yes ] || say "Once $(shown "$install_dir") is on your PATH:"
         say "Next, in a repository you work in (it signs you in at zirc.dev the first time):"
         say "  zirc repo add"
         say ""
-        say "For a server of your own instead: zirc init --server <host>, then zirc daemon install"
+        say "For a server of your own instead: zirc init --server <host>, then zircd"
     fi
     say ""
     say "Chat in the terminal, signed in as yourself: zirc tui"

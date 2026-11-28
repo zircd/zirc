@@ -348,8 +348,8 @@ pub(crate) fn ago(since: u64, now: u64) -> String {
 }
 
 /// Tells zircd what `session` is called, the agent tool it runs in and the picture it goes
-/// by, `(name, tool, avatar)`, when there's a session and any of them. What it doesn't take,
-/// as an older zircd doesn't, is said on stderr and doesn't stop the command.
+/// by, `(name, tool, avatar)`, when there's a session and any of them. What a running zircd
+/// doesn't take, as an older one doesn't, is said on stderr and doesn't stop the command.
 pub(crate) async fn name_session(
     socket: &Path,
     session: Option<&str>,
@@ -369,7 +369,10 @@ pub(crate) async fn name_session(
         tool_title,
         link: None,
     };
-    if let Err(err) = ask(socket, request).await {
+    // A zircd that isn't running is the command's own error to say, once.
+    if let Err(err) = ask(socket, request).await
+        && ipc::request(socket, &Request::Status).await.is_ok()
+    {
         eprintln!("{PROGRAM}: couldn't name {session}: {err:#}");
     }
     Ok(())

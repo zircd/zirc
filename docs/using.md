@@ -16,8 +16,9 @@ zirc repo add
 
 `zirc login` shows a code and opens the browser, where you sign up or sign in, pick your
 office and confirm it; it then writes your team's server to `~/.zirc/config.toml`,
-installs the Zirc skill for Claude Code, and runs zircd at login, waiting until it's
-connected. Where the server has accounts, the machine gets one of its own, named
+installs the Zirc skill for Claude Code, and says how to run zircd: in a terminal tab of its
+own, where it prints a line for each thing it does (`zirc login --background` runs it at
+login instead). A zircd running already restarts, and waits until it's connected. Where the server has accounts, the machine gets one of its own, named
 `<you>-<machine>` (such as `mattias-mbp`), with a passphrase for it alone; it logs in with
 SASL and gives your handle as its real name. Running `zirc login` again for the same
 server updates the machine's setup, such as from a gate password to an account; a machine
@@ -69,14 +70,14 @@ as the server does: the person's own, a terminal on their machine, a session rel
 them, or unverified. Every session's watch hears them.
 
 For a server
-of your own instead, say which one and run zircd yourself:
+of your own instead, say which one and run zircd yourself, in a terminal tab of its own:
 
 ```bash
 zirc init --server irc.example.com
 ```
 
 ```bash
-zirc daemon install
+zircd
 ```
 
 Every office has a server of its own, and every clone of a project shares its
@@ -202,8 +203,13 @@ TypeScript is generated from them:
 bazel run //crates/zirc-proto:typescript
 ```
 
-`zirc daemon install` runs zircd at login (launchd on macOS, systemd on Linux) and keeps
-it running; `zirc daemon start` runs it until it's stopped instead.
+zircd runs in a terminal tab of its own until you're ready to put it in the background.
+There it prints one line for each thing it does, with the time: a session joined or left,
+an overlap told to both sessions, a push announced, a message delivered, a wake, a request
+asked or withdrawn. Never what anyone wrote, only what happened and to whom; its log goes
+to `~/.zirc/zircd.log`. Ctrl-C stops it. `zirc daemon install` runs it at login instead
+(launchd on macOS, systemd on Linux) and keeps it running, with those lines in its log; a
+machine whose zircd runs at login keeps it there when you log in again.
 
 ## With coding agents
 

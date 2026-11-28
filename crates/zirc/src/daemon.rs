@@ -25,11 +25,12 @@ pub(crate) const RESTART_WAIT: Duration = Duration::from_secs(90);
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum DaemonCommand {
-    /// Start zircd: by its login service once installed, otherwise in the background.
+    /// Start zircd in the background: by its login service once installed.
     ///
-    /// Once `zirc daemon install` (or `zirc login`) has set zircd up to run at login, launchd
-    /// or systemd starts it, apart from this shell. Otherwise it runs in a process group of
-    /// its own, so stopping this shell doesn't stop it, but with nothing to restart it.
+    /// Once `zirc daemon install` (or `zirc login --background`) has set zircd up to run at
+    /// login, launchd or systemd starts it, apart from this shell. Otherwise it runs in a
+    /// process group of its own, so stopping this shell doesn't stop it, but with nothing to
+    /// restart it. To watch what it does, run `zircd` in a terminal tab instead.
     Start {
         /// The zircd to run. Next to this zirc, or on the PATH, unless set.
         #[arg(long, env = "ZIRC_ZIRCD", hide = true)]
@@ -60,7 +61,7 @@ pub(crate) async fn restart(home: &Path, out: &mut impl Write) -> Result<bool> {
         // zircd may restart before its answer is out.
         Ok(Response::Done) | Err(ipc::Error::Closed) => {}
         Err(ipc::Error::Io(_)) => {
-            writeln!(out, "zircd isn't running: zirc daemon start starts it")?;
+            writeln!(out, "{}", not_running_said(home))?;
             return Ok(true);
         }
         Ok(_) | Err(_) => return Ok(false),
@@ -213,6 +214,69 @@ pub(crate) fn configured(home: &Path) -> Result<()> {
         bail!(not_set_up());
     }
     Ok(())
+}
+
+/// The command that runs zircd for `home` in a terminal, as people run it until they put it
+/// in the background: `zircd`, by its whole path when the PATH's isn't `zircd`'s, and with
+/// `--home` when `home` isn't zirc's usual directory.
+pub(crate) fn foreground(home: &Path, zircd: &Path) -> String {
+    let on_path = std::env::var_os("PATH").is_some_and(|path| {
+        let found = zircd.canonicalize().ok();
+        std::env::split_paths(&path).any(|dir| {
+            dir.join("zircd")
+                .canonicalize()
+                .is_ok_and(|it| found.as_ref() == Some(&it))
+        })
+    });
+    let command = if zircd == Path::new("zircd") || on_path {
+        "zircd".to_owned()
+    } else {
+        shown(zircd)
+    };
+    if home == paths::home() {
+        command
+    } else {
+        format!("{command} --home {}", shown(home))
+    }
+}
+
+/// The command that runs zircd for `home` in a terminal ([`foreground`]), with the zircd
+/// next to this zirc or the PATH's.
+fn foreground_here(home: &Path) -> String {
+    zircd_binary(None).map_or_else(|_| "zircd".to_owned(), |zircd| foreground(home, &zircd))
+}
+
+/// What a command that needs zircd says when it isn't running for `home`: how to start it.
+/// One whose login service was installed starts again that way; otherwise it runs in a
+/// terminal tab of its own.
+pub(crate) fn not_running_said(home: &Path) -> String {
+    if service::installed_for(home) {
+        "zircd isn't running: `zirc daemon start` starts its login service again".to_owned()
+    } else {
+        format!(
+            "zircd isn't running: start it in a terminal tab of its own with `{}`",
+            foreground_here(home)
+        )
+    }
+}
+
+/// What `zirc watch` says when zircd isn't running for `home`, to the agent that runs it,
+/// which never starts zircd: what to tell its person, once, and to carry on without zirc.
+pub(crate) fn watch_not_running_said(home: &Path) -> String {
+    let how = if service::installed_for(home) {
+        "`zirc daemon start` starts its login service again".to_owned()
+    } else {
+        format!(
+            "it runs in a terminal tab of its own with `{}`, or at login once `zirc daemon \
+             install` has set it up",
+            foreground_here(home)
+        )
+    };
+    format!(
+        "zircd isn't running on this machine. An agent never starts it: tell your user once \
+         that {how}, and carry on without zirc until they say it's up; then start your watch \
+         again."
+    )
 }
 
 /// The zircd to run: the one asked for, the one next to this zirc, or the PATH's.

@@ -10,7 +10,7 @@ use zirc_core::filter::Filter;
 use zirc_core::ipc::{self, Delivery, Heard, Request, Response};
 use zirc_proto::{Event, Level, PROGRAM};
 
-use crate::client::{ask, ask_in, not_running, shown};
+use crate::client::{ask, ask_in, shown, watch_not_running};
 use crate::daemon::{SocketId, socket_id};
 use crate::decide::answered_line;
 use crate::hints::{hint_line, watch_hints};
@@ -98,7 +98,7 @@ pub(crate) async fn watch_as(
 ) -> Result<()> {
     let mut watching = ipc::watch(socket, session)
         .await
-        .map_err(|err| not_running(socket, err))?;
+        .map_err(|err| watch_not_running(socket, err))?;
     in_channels(socket, how.channels, session).await?;
     let starting = starting(socket, session).await;
     for line in &starting.lines {

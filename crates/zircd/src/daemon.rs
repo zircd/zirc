@@ -523,6 +523,8 @@ const RESTORE_AT_ONCE: usize = 4;
 
 pub struct Daemon {
     home: PathBuf,
+    /// What it says it does, a line each ([`crate::activity`]).
+    activity: crate::activity::Activity,
     /// `config.toml`, read again when it changes ([`crate::config::File`]).
     config: crate::config::File,
     org: Org,
@@ -763,6 +765,7 @@ impl Daemon {
         Self {
             config,
             home,
+            activity: crate::activity::Activity::new(&org.name, org.several),
             org,
             server,
             owner,
@@ -1003,28 +1006,8 @@ impl Daemon {
             }
             Input::Watch(heard, session) => self.watch(heard, session),
             Input::Revoked => self.stopped(zirc_core::ipc::REVOKED.to_owned()),
-            Input::Connected(client) => {
-                self.problem = None;
-                self.client = Some(client);
-                self.joined.clear();
-                self.drop_ops();
-                self.replay_connected();
-                self.reconcile();
-            }
-            Input::Disconnected => {
-                self.client = None;
-                self.replay_disconnected();
-                self.batches.clear();
-                self.joined.clear();
-                self.drop_ops();
-                self.presence.clear();
-                for asking in self.asking.drain(..) {
-                    let _ = asking.answer.send(Response::Error {
-                        message: "the connection to the server dropped before it answered"
-                            .to_owned(),
-                    });
-                }
-            }
+            Input::Connected(client) => self.came_up(client),
+            Input::Disconnected => self.went_down(),
             Input::Expired(token) => self.expired(token),
             Input::Updated(version) => {
                 tracing::info!("updated to {PROGRAM} {version}: restarting");
@@ -1065,6 +1048,37 @@ impl Daemon {
                     watched.touched = Some((first, now));
                 }
             }
+        }
+    }
+
+    /// The connection to the server is up, as `client`.
+    fn came_up(&mut self, client: Client) {
+        let said = crate::activity::connected(&self.server, client.nick());
+        self.activity.say(&said);
+        self.problem = None;
+        self.client = Some(client);
+        self.joined.clear();
+        self.drop_ops();
+        self.replay_connected();
+        self.reconcile();
+    }
+
+    /// The connection to the server went down: what waited on it hears so.
+    fn went_down(&mut self) {
+        if self.client.is_some() {
+            self.activity
+                .say(&crate::activity::disconnected(&self.server));
+        }
+        self.client = None;
+        self.replay_disconnected();
+        self.batches.clear();
+        self.joined.clear();
+        self.drop_ops();
+        self.presence.clear();
+        for asking in self.asking.drain(..) {
+            let _ = asking.answer.send(Response::Error {
+                message: "the connection to the server dropped before it answered".to_owned(),
+            });
         }
     }
 
