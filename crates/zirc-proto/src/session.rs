@@ -137,6 +137,12 @@ pub struct Live {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[ts(as = "Option<BTreeMap<String, Away>>", optional)]
     pub away: BTreeMap<String, Away>,
+    /// The sessions their person has paused ([`crate::pause`]), each with since when, in
+    /// seconds since the Unix epoch: every app's row says so ([`crate::pause::paused_by`]).
+    /// A machine from before it says none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(as = "Option<BTreeMap<String, u64>>", optional)]
+    pub paused: BTreeMap<String, u64>,
 }
 
 impl Live {
@@ -325,6 +331,7 @@ mod tests {
                     waiting: 1,
                 },
             )]),
+            ..Live::default()
         };
         assert!(live.online("cc-1"));
         // In its grace for older readers, but away.

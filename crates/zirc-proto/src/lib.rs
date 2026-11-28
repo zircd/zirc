@@ -41,6 +41,7 @@ pub mod login;
 pub mod media;
 pub mod names;
 pub mod onboarding;
+pub mod pause;
 pub mod profile;
 pub mod push;
 pub mod receipt;
@@ -381,7 +382,7 @@ pub fn check_kind(kind: &str) -> Option<&'static str> {
 /// Every kind zirc's own custom events go by, as JSON's `.event.kind` says them: what a
 /// filter on zirc's events can name. zircd's own bookkeeping goes by `.event.type` instead
 /// ([`MACHINE_EVENTS`]).
-pub const ZIRC_KINDS: [&str; 21] = [
+pub const ZIRC_KINDS: [&str; 22] = [
     activity::WAKE_KIND,
     activity::WAKE_OUTCOME_KIND,
     activity::PROMPT_KIND,
@@ -395,6 +396,7 @@ pub const ZIRC_KINDS: [&str; 21] = [
     colleagues::KIND,
     decision::KIND,
     lines::KIND,
+    pause::KIND,
     request::KIND,
     session::KIND,
     session::LIVE_KIND,

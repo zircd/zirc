@@ -77,6 +77,8 @@ pub(super) struct Live {
     told: BTreeMap<String, u64>,
     /// The live sessions last said to have joined, in zircd's own lines ([`crate::activity`]).
     joined: BTreeSet<String>,
+    /// The sessions here their owner paused from an app, by session ([`super::pausing`]).
+    pub(super) paused: BTreeMap<String, super::pausing::Paused>,
 }
 
 impl Live {
@@ -219,6 +221,7 @@ impl Daemon {
         let list = session::Live {
             sessions: live,
             away,
+            paused: self.paused_now(),
         };
         // The tenant's recorder hears it too, for zirc.dev's dashboard, which is in no channel
         // ([`zirc_proto::working`]): best effort, as every record to it is.

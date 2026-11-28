@@ -171,6 +171,11 @@ impl Chat {
                 .is_some_and(|from| from.eq_ignore_ascii_case(nick))
     }
 
+    /// What the machine `nick` last said of its sessions, if it has.
+    pub(super) fn live_of(&self, nick: &str) -> Option<&Live> {
+        self.live.get(&fold(nick)).map(|known| &known.live)
+    }
+
     /// The machine `nick` left the server at `at`: its sessions are away from then, as
     /// nothing reaches them, until it says its list again.
     pub(super) fn live_gone(&mut self, nick: &str, at: DateTime<Utc>) {

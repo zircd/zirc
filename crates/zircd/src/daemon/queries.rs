@@ -30,6 +30,9 @@ impl Daemon {
     /// for. Everything else is filtered out too: anyone who can message the machine could
     /// otherwise steer its agents.
     ///
+    /// The owner's pause or resume of a session here ([`zirc_proto::pause`]) comes to it the
+    /// same way ([`Daemon::paused_by_owner`]).
+    ///
     /// Any line will do, with or without the `/agent` older apps start it with. Its first
     /// word may name one of the sessions working here, as `cc-1531f8` or `cc-1531f8:`, for
     /// that session alone; one that names a session not here comes back as that session and
@@ -44,6 +47,9 @@ impl Daemon {
         let standing = agents::standing(sender, Some(owner), self.zirc_dev);
         if standing != Standing::Owner {
             return self.colleague_replied(standing, sender, from, body).map(Ok);
+        }
+        if let Some(asked) = super::pausing::pause_of(body) {
+            return self.paused_by_owner(from, &asked).map(Ok);
         }
         let (text, from_session) = match zirc_proto::decode(body) {
             Ok(Some(message)) => match message.event {
@@ -82,6 +88,7 @@ impl Daemon {
             org: None,
             role: None,
             woke: None,
+            pause: None,
         }))
     }
 
@@ -131,6 +138,7 @@ impl Daemon {
             org: None,
             role: None,
             woke: None,
+            pause: None,
         })
     }
 
@@ -236,6 +244,7 @@ impl Daemon {
             org: None,
             role: None,
             woke: None,
+            pause: None,
         })
     }
 
@@ -290,6 +299,7 @@ impl Daemon {
                     org: None,
                     role: None,
                     woke: None,
+                    pause: None,
                 })
             }
             // Only from the machine asked, by the account the server says sent it: on a server
@@ -319,6 +329,7 @@ impl Daemon {
                     org: None,
                     role: None,
                     woke: None,
+                    pause: None,
                 })
             }
             _ => None,
@@ -508,6 +519,7 @@ impl Daemon {
             org: None,
             role: None,
             woke: None,
+            pause: None,
         });
         Ok(())
     }
@@ -559,6 +571,7 @@ impl Daemon {
             org: None,
             role: None,
             woke: None,
+            pause: None,
         });
         Ok(())
     }
@@ -592,6 +605,7 @@ impl Daemon {
                 org: None,
                 role: None,
                 woke: None,
+                pause: None,
             }));
             return Ok(from);
         }

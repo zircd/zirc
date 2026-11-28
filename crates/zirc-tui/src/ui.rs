@@ -3046,6 +3046,7 @@ mod tests {
                 zirc_proto::session::Away { since, waiting: 1 },
             )]
             .into(),
+            ..Default::default()
         };
         for line in [
             said(

@@ -272,6 +272,7 @@ impl Daemon {
             org: None,
             role: Some(role.to_owned()),
             woke: (!wrote).then(|| wake.woke.clone()),
+            pause: None,
         })
     }
 

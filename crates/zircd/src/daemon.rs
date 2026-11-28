@@ -47,6 +47,7 @@ mod live;
 mod meetings;
 mod moved;
 mod ops_kept;
+mod pausing;
 mod queries;
 mod receipts;
 mod replay;

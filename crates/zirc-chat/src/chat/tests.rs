@@ -14,6 +14,7 @@ mod office;
 mod perf;
 mod scene;
 mod sidebar;
+mod stepping_in;
 mod waiting;
 mod working;
 use scene::Scene;

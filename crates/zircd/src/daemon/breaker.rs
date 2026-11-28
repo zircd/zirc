@@ -332,7 +332,8 @@ fn urgent(response: &Response) -> bool {
 
 impl Daemon {
     /// Holds each wake in `reasons` the breaker won't let through, as a note for that
-    /// session's next wake, and says so if it just opened.
+    /// session's next wake, and says so if it just opened; and a paused session's, until
+    /// its pause ends ([`Daemon::hold_paused`]).
     pub(super) fn gate_wakes(&mut self, response: &Response, reasons: &mut [Option<Why>]) {
         if notice(response) {
             reasons.fill(None);
@@ -370,6 +371,8 @@ impl Daemon {
         for (session, reason) in held {
             self.keep_for_later(&session, response, reason);
         }
+        // A paused session's are held until its pause ends.
+        self.hold_paused(response, reasons);
     }
 
     /// Sends the notices of the breaker's opening, once what tripped it has been told.
@@ -602,6 +605,7 @@ mod tests {
             org: None,
             role: None,
             woke: None,
+            pause: None,
         });
         let mut reasons = [Some(Why::Direct)];
         daemon.gate_wakes(&direct, &mut reasons);
@@ -804,6 +808,7 @@ mod tests {
             org: None,
             role: None,
             woke: None,
+            pause: None,
         })
     }
 

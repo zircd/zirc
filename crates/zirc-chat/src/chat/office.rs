@@ -117,6 +117,8 @@ pub enum DeskState {
     Idle,
     /// Nobody sits there: what comes for it waits.
     Empty,
+    /// A session sits there, paused by its person ([`zirc_proto::pause`]).
+    Paused,
 }
 
 impl DeskState {
@@ -206,6 +208,9 @@ pub struct CoworkerCard {
     pub question: Option<OfficeQuestion>,
     /// What a screen reader says of the card: `John, Fixer, Fixing build 431`.
     pub label: String,
+    /// What its ⋯ says, which opens the menu to step in ([`Chat::desk_menu`]): `Step in
+    /// with John`. `None` for an empty desk, which has no ⋯.
+    pub menu: Option<String>,
 }
 
 /// A session at a hot desk, in the office, drawn as a temporary badge: as a coworker's, but
@@ -236,6 +241,9 @@ pub struct HotDesk {
     pub face: Face,
     /// Whether a watch of its is open: its dot.
     pub online: bool,
+    /// What its ⋯ says, which opens the menu to step in ([`Chat::desk_menu`]): `Step in
+    /// with checkout-form`.
+    pub menu: String,
 }
 
 /// A question an agent asked the person, opened from its asker's row on the Office, as a
@@ -584,6 +592,12 @@ impl Chat {
         ))
     }
 
+    /// What the desk `seat`'s row says while its session is paused: `Paused by you`.
+    fn seat_paused(&self, seat: &Seat) -> Option<String> {
+        let holder = seat.holder.as_ref()?;
+        self.paused_words(&holder.machine, &holder.session.session)
+    }
+
     /// How coworker `nick`'s desk stands at `now`, its state line, and what of `asked` its
     /// session asked the person.
     fn desk_state<'a>(
@@ -599,6 +613,9 @@ impl Chat {
                 zirc_proto::desk::empty(seat.map_or(0, |seat| seat.waiting)),
                 None,
             ),
+            Some(seat) if let Some(paused) = self.seat_paused(seat) => {
+                (DeskState::Paused, paused, None)
+            }
             Some(seat) => match Self::seat_asked(seat, asked) {
                 Some(asked) => (
                     DeskState::Asked,
@@ -658,6 +675,7 @@ impl Chat {
             .collect::<Vec<_>>()
             .join(", ");
         CoworkerCard {
+            menu: (desk != DeskState::Empty).then(|| super::stepping_in::menu_label(&name)),
             nick: fold(nick),
             name,
             job,
@@ -707,6 +725,9 @@ impl Chat {
                 let asking = asked_by(asked, &nick, &session);
                 if let Some(asked) = asking {
                     doing = Some(zirc_proto::request::asked_you(&asked.item.question));
+                }
+                if let Some(paused) = self.paused_words(&nick, &session) {
+                    doing = Some(paused);
                 }
                 let tool = self.session_tools.get(&session);
                 let avatar = super::Avatar::Agent {
@@ -761,6 +782,7 @@ impl Chat {
                     });
                     Some(HotDesk {
                         question,
+                        menu: super::stepping_in::menu_label(&badge.name),
                         face: faces.get(&badge.key)?.clone(),
                         conversation: badge.key,
                         name: badge.name,
@@ -853,7 +875,7 @@ impl Chat {
         let now_words = match card.desk {
             DeskState::Working => Some(card.state.clone()),
             DeskState::Empty => handover.and_then(|h| h.doing.clone()),
-            DeskState::Asked | DeskState::Idle => seat
+            DeskState::Asked | DeskState::Idle | DeskState::Paused => seat
                 .as_ref()
                 .and_then(|seat| self.coworker_doing(seat, now))
                 .or_else(|| handover.and_then(|h| h.doing.clone())),

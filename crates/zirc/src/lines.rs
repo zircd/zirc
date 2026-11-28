@@ -150,7 +150,7 @@ pub(crate) fn describe(worktree: &Worktree) -> String {
 /// A message to this machine's nick, as one readable line: `dm from mattias: hi`, with the
 /// sending session and the session here it's for when there are. A query reads
 /// `query from mattias-mini/cc-2 [q1a2b3c]: …`, an answer `answer from … [q1a2b3c]: …` and a
-/// note `note from mattias-mini/cc-2: …`.
+/// note `note from mattias-mini/cc-2: …`, and the owner's pause `paused by mattias: …`.
 pub(crate) fn direct_line(direct: &Direct) -> String {
     let from = match &direct.from_session {
         Some(session) => format!("{}/{session}", direct.from),
@@ -181,6 +181,15 @@ pub(crate) fn direct_line(direct: &Direct) -> String {
     }
     if direct.note {
         let line = format!("note from {from}: {}", direct.text);
+        return channel_in(&line, direct.org.as_deref());
+    }
+    // The owner's pause or resume, from one of their apps: what to do is its hint's.
+    if let Some(paused) = direct.pause {
+        let line = if paused {
+            zirc_proto::pause::paused_line(&from)
+        } else {
+            zirc_proto::pause::resumed_line(&from)
+        };
         return channel_in(&line, direct.org.as_deref());
     }
     let id = id_of(direct.id.as_deref());
@@ -568,6 +577,7 @@ pub(crate) mod tests {
             org: Some("globex".into()),
             role: None,
             woke: None,
+            pause: None,
         });
         assert_eq!(dm, "globex dm from mattias: rebase please");
         let said = Delivery {
@@ -575,5 +585,37 @@ pub(crate) mod tests {
             ..delivery(Event::Text { body: "hi".into() })
         };
         assert!(line(&said).starts_with("globex #"), "{}", line(&said));
+    }
+
+    #[test]
+    fn the_owners_pause_and_resume_say_what_they_are_never_dm_from() {
+        let paused = Direct {
+            from: "mattias".into(),
+            from_session: None,
+            session: Some("cc-1".into()),
+            text: "Pause cc-1: stop at a safe point and wait".into(),
+            query: None,
+            answer: None,
+            note: false,
+            colleague: false,
+            why: None,
+            id: None,
+            org: None,
+            role: None,
+            woke: None,
+            pause: Some(true),
+        };
+        assert_eq!(
+            direct_line(&paused),
+            "paused by mattias: stop at a safe point and wait"
+        );
+        let resumed = Direct {
+            pause: Some(false),
+            ..paused
+        };
+        assert_eq!(
+            direct_line(&resumed),
+            "resumed by mattias: carry on where you stopped"
+        );
     }
 }

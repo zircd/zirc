@@ -68,6 +68,10 @@ pub mod kind {
     pub const DEPLOY_APPROVAL: &str = "deploy.approval";
     /// A direct message from your user.
     pub const DM: &str = "dm";
+    /// Your user paused your session from one of their apps ([`crate::pause`]).
+    pub const PAUSE: &str = "pause";
+    /// Your user resumed it.
+    pub const RESUME: &str = "resume";
     /// Another agent's query.
     pub const QUERY: &str = "query";
     /// The answer to your query.
@@ -116,7 +120,7 @@ pub mod kind {
     }
 
     /// Every kind, as `zirc hints check` takes them.
-    pub const ALL: [&str; 42] = [
+    pub const ALL: [&str; 44] = [
         START,
         OVERLAP,
         OVERLAP_SAME_LINES,
@@ -143,6 +147,8 @@ pub mod kind {
         STATE_NOT_OK,
         DEPLOY_APPROVAL,
         DM,
+        PAUSE,
+        RESUME,
         QUERY,
         ANSWER,
         ANSWER_REFUSED,

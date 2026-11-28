@@ -523,6 +523,7 @@ mod tests {
                 org: None,
                 role: Some("ada".into()),
                 woke,
+                pause: None,
             };
             let line = Line::of(&Response::Direct(direct), Some("henrik"));
             (line.desk, line.wrote)

@@ -146,6 +146,17 @@ mod tests {
     use crate::{Cli, run};
 
     #[test]
+    fn the_agent_guide_quotes_the_pause_lines() {
+        let guide = AGENT_GUIDE.split_whitespace().collect::<Vec<_>>().join(" ");
+        for line in [
+            zirc_proto::pause::paused_line("<nick>"),
+            zirc_proto::pause::resumed_line("<nick>"),
+        ] {
+            assert!(guide.contains(&line), "the guide doesn't quote {line}");
+        }
+    }
+
+    #[test]
     fn the_agent_guide_matches_what_the_cli_prints() {
         // The guide quotes the CLI's commands and output; keep them in step.
         let sat = zirc_proto::coworkers::tell_a_session("John");
@@ -186,51 +197,29 @@ mod tests {
         let query = direct_line(&Direct {
             from: "mattias-mini".into(),
             from_session: Some("cc-2".into()),
-            session: None,
             text: "which branch?".into(),
             query: Some("q1".into()),
-            answer: None,
-            note: false,
-            colleague: false,
-            why: None,
-            id: None,
-            org: None,
-            role: None,
-            woke: None,
+            ..Direct::default()
         });
         assert_eq!(query, "query from mattias-mini/cc-2 [q1]: which branch?");
         assert!(AGENT_GUIDE.contains("query from <nick>/<session> [<id>]: <text>"));
         let answer = direct_line(&Direct {
-            query: None,
             answer: Some("q1".into()),
-            note: false,
-            colleague: false,
             text: "main".into(),
             from: "mattias-mbp".into(),
             from_session: Some("cc-1".into()),
             session: Some("cc-2".into()),
-            why: None,
-            id: None,
-            org: None,
-            role: None,
-            woke: None,
+            ..Direct::default()
         });
         assert_eq!(answer, "answer from mattias-mbp/cc-1 [q1]: main");
         assert!(AGENT_GUIDE.contains("answer from <nick>/<session> [<id>]: <text>"));
         let note = direct_line(&Direct {
-            query: None,
-            answer: None,
             note: true,
-            colleague: false,
             text: "landed the login page".into(),
             from: "mattias-mbp".into(),
             from_session: Some("cc-1".into()),
             session: Some("cc-2".into()),
-            why: None,
-            id: None,
-            org: None,
-            role: None,
-            woke: None,
+            ..Direct::default()
         });
         assert_eq!(note, "note from mattias-mbp/cc-1: landed the login page");
         assert!(AGENT_GUIDE.contains("note from <nick>/<session>: <text>"));

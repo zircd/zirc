@@ -615,6 +615,7 @@ mod tests {
                 org: None,
                 role: None,
                 woke: None,
+                pause: None,
             })
         };
         assert!(for_session(&direct(Some("cc-1"), None), Some("cc-1")));

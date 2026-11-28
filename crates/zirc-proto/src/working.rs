@@ -223,6 +223,7 @@ mod tests {
                 ("cc-c".to_owned(), away(400, 0)),
             ]
             .into(),
+            ..Live::default()
         };
         let card = SessionCard {
             session: "cc-a".into(),

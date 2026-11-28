@@ -94,6 +94,8 @@ mod sidebar;
 mod speaker;
 mod split;
 mod status;
+mod stepping_in;
+pub use stepping_in::{DeskAction, DeskMenu, DeskMenuItem};
 mod thread;
 mod titles;
 mod typing;

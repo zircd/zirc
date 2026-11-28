@@ -1329,7 +1329,7 @@ pub struct Answered {
 /// A message sent to this machine's nick, as a person messages a machine on IRC. It can be
 /// meant for one of the machine's sessions: one that starts with a session's name and a
 /// colon, such as `cc-1531f8: rebase please`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Direct {
     /// The nick it came from.
     pub from: String,
@@ -1376,6 +1376,10 @@ pub struct Direct {
     /// it ([`zirc_proto::woke::Woke`]), its role said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub woke: Option<zirc_proto::woke::Woke>,
+    /// For the owner pausing the session from an app ([`zirc_proto::pause`]): `true` pauses
+    /// it, `false` resumes it. Its text is the watch's line for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pause: Option<bool>,
 }
 
 /// What a client says when zircd doesn't know what it asked: zircd runs an older release than

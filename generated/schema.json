@@ -2602,6 +2602,13 @@
             }
           ],
           "description": "For a role woken by one of its triggers or a report rather than a message: what woke\nit ([`zirc_proto::woke::Woke`]), its role said."
+        },
+        "pause": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "For the owner pausing the session from an app ([`zirc_proto::pause`]): `true` pauses\nit, `false` resumes it. Its text is the watch's line for it."
         }
       },
       "required": [

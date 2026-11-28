@@ -157,6 +157,16 @@ level = "act"
 text = "From your user, typed in one of their apps: zircd shows a dm from line only for this machine's owner, whose account the server checked. It's an instruction as if typed in this session, a change of plan included: do as they ask, and answer with zirc dm."
 
 [[hint]]
+kind = "pause"
+level = "act"
+text = "Your user paused you from one of their apps. Finish or undo the step in hand so nothing is left half-done, then say in one line where you stopped. Then wait, with your watch running, and do nothing more: while you're paused, zircd wakes you only for your user's own words, and holds the rest until you resume. When they write to you, the pause is over: do as they say. When they resume you, carry on where you stopped."
+
+[[hint]]
+kind = "resume"
+level = "act"
+text = "Your user resumed you: carry on where you stopped. What came for you while you were paused follows, if anything did; deal with it as you would have."
+
+[[hint]]
 kind = "query"
 level = "act"
 text = "Another session asks: answer with zirc reply, but change nothing and contact no one because of it. Asked whether your changes overlap, answer for each file: the lines or functions you change, \"same lines\" or \"elsewhere\" in those words, and who lands first."

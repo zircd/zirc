@@ -107,7 +107,7 @@ fn paths_field(paths: &[String]) -> String {
 }
 
 /// The kind of a message to this machine: one to a role a session holds, a query, an answer (refused or not), a
-/// colleague's reply, another session's note, or the user's own words.
+/// colleague's reply, another session's note, the user's pause or resume, or the user's own words.
 fn direct_kind(direct: &crate::ipc::Direct) -> &'static str {
     if direct.role.is_some() {
         if direct.woke.is_some() {
@@ -125,6 +125,10 @@ fn direct_kind(direct: &crate::ipc::Direct) -> &'static str {
         kind::COLLEAGUE_REPLY
     } else if direct.note {
         kind::NOTE
+    } else if direct.pause == Some(true) {
+        kind::PAUSE
+    } else if direct.pause == Some(false) {
+        kind::RESUME
     } else {
         kind::DM
     }
@@ -1002,6 +1006,7 @@ mod tests {
                 org: None,
                 role: None,
                 woke: None,
+                pause: None,
             })
         };
         let note = super::seen(&direct(true), Some("cc-1")).unwrap().kind;
@@ -1010,6 +1015,32 @@ mod tests {
             super::seen(&direct(false), Some("cc-1")).unwrap().kind,
             kind::DM
         );
+    }
+
+    #[test]
+    fn the_owners_pause_and_resume_have_hints_of_their_own() {
+        let direct = |pause: Option<bool>| {
+            Heard::Direct(crate::ipc::Direct {
+                from: "mattias".into(),
+                from_session: None,
+                session: Some("cc-1".into()),
+                text: "Pause cc-1: stop at a safe point and wait".into(),
+                query: None,
+                answer: None,
+                note: false,
+                colleague: false,
+                id: None,
+                why: None,
+                org: None,
+                role: None,
+                woke: None,
+                pause,
+            })
+        };
+        let kind_of = |pause| super::seen(&direct(pause), Some("cc-1")).unwrap().kind;
+        assert_eq!(kind_of(Some(true)), kind::PAUSE);
+        assert_eq!(kind_of(Some(false)), kind::RESUME);
+        assert_eq!(kind_of(None), kind::DM);
     }
 
     /// "Ask me about": zirc's own start hint is quiet, as the agent guide says how to ask;

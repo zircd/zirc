@@ -10,12 +10,12 @@ use zirc_proto::woke::Woke;
 
 use super::*;
 
-fn utc() -> chrono::FixedOffset {
+pub(super) fn utc() -> chrono::FixedOffset {
     chrono::FixedOffset::east_opt(0).unwrap()
 }
 
 /// Seconds since the epoch, `minutes` past noon.
-fn past_noon(minutes: i64) -> u64 {
+pub(super) fn past_noon(minutes: i64) -> u64 {
     u64::try_from((noon() + chrono::Duration::minutes(minutes)).timestamp()).unwrap()
 }
 
@@ -58,7 +58,7 @@ fn job(name: &str) -> Job {
 
 /// John the fixer, at his desk on henrik's mbp as cc-1 since 08:02; Noor at triage, her desk
 /// empty with one waiting, its last session gone at 11:30.
-fn standing() -> Standing {
+pub(super) fn standing() -> Standing {
     let john = Holder {
         machine: "henrik-mbp".into(),
         since: past_noon(-238),
@@ -137,6 +137,7 @@ fn live_away(nick: &str, live: &[&str], away: &[(&str, i64)]) -> String {
                         (s.to_owned(), Away { since, waiting: 0 })
                     })
                     .collect(),
+                ..Default::default()
             }
             .event(),
         )
@@ -145,7 +146,7 @@ fn live_away(nick: &str, live: &[&str], away: &[(&str, i64)]) -> String {
 }
 
 /// `#api` with henrik's mbp and ours in it, and the server's standing learnt.
-fn office() -> Scene {
+pub(super) fn office() -> Scene {
     let mut scene = Scene::in_api();
     scene.hears(&[
         ":henrik-mbp!u@machine/henrik JOIN #api",

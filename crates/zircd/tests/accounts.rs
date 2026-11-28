@@ -245,6 +245,7 @@ fn said(from: &str, session: Option<&str>, text: &str) -> Direct {
         org: None,
         role: None,
         woke: None,
+        pause: None,
     }
 }
 
@@ -299,6 +300,7 @@ fn query(from: &str, session: &str, to: Option<&str>, text: &str, id: &str) -> D
         org: None,
         role: None,
         woke: None,
+        pause: None,
     }
 }
 
@@ -401,6 +403,7 @@ async fn the_owners_machines_query_each_others_agents_and_others_dont() {
             org: None,
             role: None,
             woke: None,
+            pause: None,
         }
     );
 
@@ -793,6 +796,7 @@ fn note(from: &str, session: &str, to: &str, text: &str) -> Direct {
         org: None,
         role: None,
         woke: None,
+        pause: None,
     }
 }
 

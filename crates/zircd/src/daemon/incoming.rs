@@ -94,7 +94,11 @@ impl Daemon {
         {
             Some(Ok(mut direct)) => {
                 self.remember_direct(&mut direct, line);
+                let ended = self.note_pause(&direct);
                 self.tell_direct(direct);
+                for (session, held) in ended {
+                    self.tell_held(&session, held);
+                }
             }
             // The owner named a session that isn't here: say so, rather than drop it, as a
             // notice for plain IRC clients that carries a receipt naming the message, so
