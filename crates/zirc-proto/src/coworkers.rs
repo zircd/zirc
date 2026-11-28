@@ -57,7 +57,7 @@ pub const ACCOUNTS_PATH: &str = "/v1/staff";
 pub const DESK_PATH: &str = "/coworkers/{name}/desk";
 
 /// The command that sits a session at a coworker's desk, before the coworker's name: `zirc
-/// desk take`. `zirc role take` is the same command.
+/// desk take`.
 pub const DESK_COMMAND: &str = "zirc desk take";
 
 /// What a person tells a session to sit it at a coworker's desk, `{name}` the name it's shown

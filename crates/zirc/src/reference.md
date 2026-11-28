@@ -298,7 +298,7 @@ decides nothing.
 with a job: what it does and what wakes it (a state changing, words said, a reaction, a
 landing's paths, a schedule). One session at a time sits at its desk, taken from a checkout
 of its repository, and its nick speaks for that session (inside zirc, a coworker's desk is a
-role's seat: the `role:<name>` lease, and `zirc role`, the command's older name):
+role's seat, the `role:<name>` lease):
 
 ```bash
 zirc desk take John --session cc-1a2b3c      # prints its job and what wakes it

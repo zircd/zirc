@@ -45,7 +45,7 @@ pub struct Callout {
     /// which it is, as zirc.dev names it (`first_wake`), which [`Chat::see_note`] marks seen.
     pub action: Option<String>,
     /// A command to run, in a monospace box of its own with a Copy button
-    /// ([`super::COPY`]), after its words: a vacant role's `zirc role take fixer`.
+    /// ([`super::COPY`]), after its words: an empty desk's `zirc desk take fixer`.
     pub command: Option<String>,
     /// Words under [`Callout::command`]'s box, muted: who held the role last.
     pub footer: Option<String>,

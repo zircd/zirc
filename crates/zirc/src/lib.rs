@@ -8,6 +8,7 @@ mod client;
 mod connect;
 mod daemon;
 mod decide;
+mod desk;
 mod file;
 mod gotchas;
 mod hints;
@@ -23,7 +24,6 @@ mod queries;
 mod react;
 mod repo;
 mod report;
-mod roles;
 mod safety;
 mod sealed;
 mod search;
@@ -434,12 +434,10 @@ pub struct Cli {
     )]
     tool: Option<String>,
     /// The picture your session goes by, from `zirc avatars`, such as fixer: apps draw that
-    /// bot. Without it, the one its name tells, else a plain bot. `--role`, its older name,
-    /// still takes one. `zirc watch`, `zirc join` and `zirc
-    /// post` set it for the session.
+    /// bot. Without it, the one its name tells, else a plain bot. `zirc watch`, `zirc join`
+    /// and `zirc post` set it for the session.
     #[arg(
         long = "avatar",
-        alias = "role",
         env = "ZIRC_SESSION_AVATAR",
         global = true,
         value_name = "AVATAR",
@@ -854,11 +852,11 @@ enum Command {
     /// nick is then yours to answer for. What wakes it, a direct message to it among them,
     /// wakes your watch; you stay at the desk while your watch runs. `zirc coworkers` says
     /// who sits where. Other sessions sit at hot desks: they need no command.
-    // `zirc role`, its name before coworkers, still runs it, hidden; inside zirc a coworker's
-    // desk is still a role's seat (RoleCommand, Request::RoleTake, the role:<name> lease).
-    #[command(subcommand, name = "desk", alias = "role")]
+    // Inside zirc a coworker's desk is still a role's seat (Request::RoleTake, the
+    // role:<name> lease).
+    #[command(subcommand)]
     #[command(after_long_help = examples("desk", ""))]
-    Role(roles::RoleCommand),
+    Desk(desk::DeskCommand),
     /// See or say how something shared stands, such as a broken master.
     ///
     /// See or say how something your team shares stands, such as a broken master.
@@ -962,10 +960,8 @@ enum Command {
     #[command(hide = true)]
     AgentGuide,
     /// List your office's coworkers: who sits at each desk, and what wakes it.
-    // `zirc roles`, its name before coworkers, still runs it, hidden.
-    #[command(name = "coworkers", alias = "roles")]
     #[command(after_long_help = examples("coworkers", ""))]
-    Roles,
+    Coworkers,
     /// List the pictures a session can go by, for `--avatar`, each a bot.
     #[command(hide = true)]
     Avatars,
@@ -1054,7 +1050,7 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::WaitFor(args) => sessions::wait_for(&socket, args, out).await,
         Command::Wait { command } => wait::wait(&home, &socket, command, out).await,
         Command::Stack(args) => stack::stack(&socket, args, out).await,
-        Command::Role(command) => roles::role(&socket, command, out).await,
+        Command::Desk(command) => desk::desk(&socket, command, out).await,
         Command::Gotcha(args) => gotchas::gotcha(&socket, args, out).await,
         Command::Gotchas(args) => gotchas::list(&socket, args, out).await,
         Command::Playbook(args) => playbook::playbook(&home, &socket, args, out).await,
@@ -1120,8 +1116,8 @@ pub async fn run(cli: Cli, out: &mut (impl Write + Send)) -> Result<()> {
         Command::Ci(command) => ci::ci(&home, &socket, command, out).await,
         Command::AgentGuide => Ok(write!(out, "{AGENT_GUIDE}")?),
         Command::Reference => Ok(write!(out, "{REFERENCE}")?),
-        Command::Roles => roles::list(&socket, false, out).await,
-        Command::Avatars => roles::list(&socket, true, out).await,
+        Command::Coworkers => desk::list(&socket, false, out).await,
+        Command::Avatars => desk::list(&socket, true, out).await,
         Command::Skill(command) => skill::install_or_remove(command, out),
         Command::Help { all, command } => help(all, &command, out),
     }

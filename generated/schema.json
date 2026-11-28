@@ -3258,7 +3258,7 @@
               "type": "null"
             }
           ],
-          "description": "Who held it before, for \"Last held by\" and `zirc role last`."
+          "description": "Who held it before, for \"Last held by\" and `zirc desk last`."
         },
         "waiting": {
           "type": "integer",

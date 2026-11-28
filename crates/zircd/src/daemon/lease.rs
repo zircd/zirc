@@ -744,7 +744,7 @@ impl Daemon {
             // `zirc lease` said: telling its watch too woke it for nothing.
             let at_once = self.leases.free_when_asked.contains(&turn.want.id)
                 && turn.start <= turn.want.at + leases::SETTLE;
-            // A role's seat: `zirc role take` said so, and one that came second is told apart.
+            // A role's seat: `zirc desk take` said so, and one that came second is told apart.
             let role = zirc_proto::roles::of_lease(&turn.want.name).is_some();
             if turn.start <= now
                 && !role

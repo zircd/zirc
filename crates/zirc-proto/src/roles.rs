@@ -48,8 +48,7 @@ pub const ACCOUNTS_PATH: &str = "/v1/roles";
 pub const INBOUND_PATH: &str = "/in/{role}/{secret}";
 
 /// The command that takes a role, before the role's name: `zirc desk take`, as a role is a
-/// coworker's desk in what people read ([`crate::coworkers::DESK_COMMAND`]); `zirc role take`
-/// still works, hidden.
+/// coworker's desk in what people read ([`crate::coworkers::DESK_COMMAND`]).
 pub const TAKE_COMMAND: &str = crate::coworkers::DESK_COMMAND;
 
 /// The most triggers a role has.
@@ -574,7 +573,7 @@ pub struct Seat {
     /// Who holds it; vacant without.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub holder: Option<Holder>,
-    /// Who held it before, for "Last held by" and `zirc role last`.
+    /// Who held it before, for "Last held by" and `zirc desk last`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last: Option<Holder>,
     /// How many direct messages wait for the next holder.
@@ -1227,7 +1226,7 @@ mod tests {
         assert_eq!(SeatChange::of(&change.event()), Some(change));
     }
 
-    /// The roles as a server answered `zirc roles` on 26 Nov 2026 (GET /api/v1/roles, its
+    /// The roles as a server answered `zirc coworkers` on 26 Nov 2026 (GET /api/v1/roles, its
     /// seats as the Roles tab draws them), which zirc 0.1.67 couldn't read: its holder's card
     /// had no title, which 40d9584 made optional.
     fn answered_today() -> serde_json::Value {

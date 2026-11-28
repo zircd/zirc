@@ -1,7 +1,6 @@
 //! `zirc desk` and `zirc coworkers`: a coworker's desk sat at, left and spoken from, and how
-//! the office's coworkers stand. Inside zirc a coworker's desk is a role's one seat
-//! ([`zirc_proto::roles`], [`zirc_proto::coworkers`]), and `zirc role` and `zirc roles`, the
-//! commands' older names, still run them.
+//! the office's coworkers stand. Inside zirc a coworker's desk is still a role's one seat
+//! ([`zirc_proto::roles`], [`zirc_proto::coworkers`]).
 
 use std::io::Write;
 use std::path::Path;
@@ -15,9 +14,9 @@ use zirc_proto::roles::{Holder, Seat, Standing};
 use crate::args::session_or_user;
 use crate::client::{ask, unexpected};
 
-// `zirc role`'s commands: their doc comments are their --help.
+// `zirc desk`'s commands: their doc comments are their --help.
 #[derive(Debug, Subcommand)]
-pub(crate) enum RoleCommand {
+pub(crate) enum DeskCommand {
     /// Sit at a coworker's desk, by its name, in a checkout of its repository.
     ///
     /// Prints the coworker's job: what it does is your job from now on. You stay while your
@@ -71,10 +70,10 @@ pub(crate) enum RoleCommand {
     },
 }
 
-/// `zirc role`.
-pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Write) -> Result<()> {
+/// `zirc desk`.
+pub(crate) async fn desk(socket: &Path, command: DeskCommand, out: &mut impl Write) -> Result<()> {
     match command {
-        RoleCommand::Take { role, session } => {
+        DeskCommand::Take { role, session } => {
             let (repo, _) = crate::gotchas::here(socket, &[]).await?;
             let request = Request::RoleTake {
                 role,
@@ -104,7 +103,7 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
             }
             Ok(())
         }
-        RoleCommand::Leave { session } => {
+        DeskCommand::Leave { session } => {
             let request = Request::RoleLeave {
                 session: session_or_user(session),
             };
@@ -113,7 +112,7 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
             };
             Ok(writeln!(out, "left the desk")?)
         }
-        RoleCommand::Say {
+        DeskCommand::Say {
             to,
             reply_to,
             about,
@@ -135,7 +134,7 @@ pub(crate) async fn role(socket: &Path, command: RoleCommand, out: &mut impl Wri
             let to = to.as_deref().unwrap_or(zirc_proto::AGENTS_CHANNEL);
             Ok(writeln!(out, "said to {to}")?)
         }
-        RoleCommand::Last { role } => {
+        DeskCommand::Last { role } => {
             let standing = standing(socket).await?;
             let seat = seat_of(&standing, &role)?;
             match &seat.last {
