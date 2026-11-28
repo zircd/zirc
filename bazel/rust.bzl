@@ -26,7 +26,7 @@ ERGO_ENV = {
 # And what says where a Bus error in one of them struck (bus_error.c).
 ERGO_DEPS = ["//bazel:bus_error"]
 
-def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, test_size, test_tags = []):
+def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, test_size, test_tags = [], lean_tests = []):
     """The crate's unit tests, and each file in tests/ as an integration test of its own,
     as Cargo builds them. Those that start Ergo are medium-sized: a server and the daemons
     talking to it, besides the test. A crate whose tests start Ergo may start it in a unit
@@ -35,7 +35,11 @@ def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, tes
     Each says which collection of tests it's in (test-results' collections, by these tags):
     its crate's surface, and its kind. The crate's own tests are unit tests; a file in
     tests/ is an integration test, several pieces in one process, unless its crate's tests
-    start Ergo or are tagged e2e: then it's end to end, against a real server."""
+    start Ergo or are tagged e2e: then it's end to end, against a real server.
+
+    A file named in lean_tests is built on its crate's own dependencies alone, without its
+    dev-dependencies, so that a change to one of those leaves its binary, and its cached
+    result, as they were: even unused, a dependency changes the binary."""
     whole = "kind:end-to-end" if ergo or "e2e" in test_tags else "kind:integration"
     rust_test(
         name = name + "_test",
@@ -51,14 +55,16 @@ def _tests(name, surface, crate, deps, test_deps, ergo, test_data, test_env, tes
         tags = ["surface:" + surface, "kind:unit"],
     )
     for src in native.glob(["tests/*.rs"], allow_empty = True):
+        test = src[len("tests/"):-len(".rs")]
+        lean = test in lean_tests
         rust_test(
-            name = name + "_" + src[len("tests/"):-len(".rs")] + "_test",
+            name = name + "_" + test + "_test",
             srcs = [src] + native.glob(["tests/common/**/*.rs"], allow_empty = True),  # tests/common/mod.rs: what the tests share
             crate_root = src,
-            aliases = aliases(normal = True, normal_dev = True, proc_macro = True, proc_macro_dev = True),
-            deps = [crate] + deps + test_deps + all_crate_deps(normal = True, normal_dev = True),
+            aliases = aliases(normal = True, normal_dev = not lean, proc_macro = True, proc_macro_dev = not lean),
+            deps = [crate] + deps + ([] if lean else test_deps) + all_crate_deps(normal = True, normal_dev = not lean),
             link_deps = ERGO_DEPS if ergo else [],
-            proc_macro_deps = all_crate_deps(proc_macro = True, proc_macro_dev = True),
+            proc_macro_deps = all_crate_deps(proc_macro = True, proc_macro_dev = not lean),
             lint_config = "//bazel:lints",
             data = (ERGO_DATA if ergo else []) + test_data,
             env = (ERGO_ENV if ergo else {}) | test_env,
@@ -131,7 +137,7 @@ def zirc_rust_library(name, surface, ergo = False, wasm = False, wasm_bindgen = 
             visibility = ["//visibility:public"],
         )
 
-def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {}, test_size = None, compile_data = [], **kwargs):
+def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {}, test_size = None, compile_data = [], lean_tests = [], **kwargs):
     """A binary crate and its tests. When it has a src/lib.rs, as Cargo allows, the library
     is `<name>_lib` and the binary is built from src/main.rs on top of it.
 
@@ -148,6 +154,8 @@ def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {},
             within a minute, not the five a medium test gets. Those starting Ergo are medium.
         compile_data: more files it includes with include_str! or include_bytes!, besides
             the Markdown in src.
+        lean_tests: files in tests/, by name without .rs, built without its dev-dependencies,
+            so a change to one of those doesn't rerun them (_tests).
         **kwargs: passed to rust_binary.
     """
     deps, test_deps = ZIRC_DEPS[name]["deps"], ZIRC_DEPS[name]["test_deps"]
@@ -175,7 +183,7 @@ def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {},
             visibility = ["//visibility:public"],
             **(common | kwargs)
         )
-        _tests(name, surface, ":" + name + "_lib", deps, test_deps, ergo, test_data, test_env, test_size)
+        _tests(name, surface, ":" + name + "_lib", deps, test_deps, ergo, test_data, test_env, test_size, lean_tests = lean_tests)
     else:
         rust_binary(
             name = name,
@@ -185,4 +193,4 @@ def zirc_rust_binary(name, surface, ergo = False, test_data = [], test_env = {},
             visibility = ["//visibility:public"],
             **(common | kwargs)
         )
-        _tests(name, surface, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size)
+        _tests(name, surface, ":" + name, deps, test_deps, ergo, test_data, test_env, test_size, lean_tests = lean_tests)
