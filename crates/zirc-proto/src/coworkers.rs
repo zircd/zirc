@@ -372,6 +372,14 @@ pub fn badge_handle(nick: &str, hired: Option<&str>) -> String {
     }
 }
 
+/// What the badge of a coworker with no name of its own offers, opening its page on zirc.dev,
+/// where its name is set ([`Coworker::named`]; the user's choice, 28 Nov 2026).
+pub const GIVE_A_NAME: &str = "Give them a name";
+
+/// Where [`GIVE_A_NAME`] opens, under zirc.dev's address: coworker `{name}`'s page in the
+/// organisation `{org}`, at its form for its name (`#name`).
+pub const COWORKER_NAME_PATH: &str = "/orgs/{org}/coworkers/{name}#name";
+
 /// A named agent with a desk.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[ts(rename = "Coworker")]
@@ -420,6 +428,46 @@ impl Coworker {
     #[must_use]
     pub fn shown(&self) -> &str {
         self.shown_name.as_deref().unwrap_or(&self.name)
+    }
+
+    /// Its first job as people read it: a ready-made job's label (`Fixer`), any other by its
+    /// name. None with none.
+    #[must_use]
+    pub fn job_title(&self) -> Option<String> {
+        let job = self.jobs.first()?;
+        Some(JobKind::of_name(job).map_or_else(|| job.clone(), |kind| kind.label().to_owned()))
+    }
+
+    /// Whether it has a name of its own: not so for one with no shown name, as those that
+    /// were roles came over (nick `fixer`, job Fixer), nor for one shown by its job's title.
+    /// A badge without one says its job once, as [`Coworker::badge_name`] and
+    /// [`Coworker::badge_job`] do, and offers [`GIVE_A_NAME`] (the user's choice, 28 Nov
+    /// 2026). zirc.dev's `coworker-words.ts` (`isNamed`) says the same, as zirc.dev runs
+    /// no Rust: change the two together.
+    #[must_use]
+    pub fn named(&self) -> bool {
+        self.shown_name.as_deref().is_some_and(|shown| {
+            self.job_title()
+                .is_none_or(|title| !same_name(shown, &title))
+        })
+    }
+
+    /// The name its badge shows large: its shown name, or its job's title while it has no
+    /// name of its own ([`Coworker::named`]), or its nick with no job either.
+    #[must_use]
+    pub fn badge_name(&self) -> String {
+        if self.named() {
+            self.shown().to_owned()
+        } else {
+            self.job_title().unwrap_or_else(|| self.shown().to_owned())
+        }
+    }
+
+    /// The job its badge shows under the name: none while the name is the job's
+    /// ([`Coworker::badge_name`]), so the badge says it once.
+    #[must_use]
+    pub fn badge_job(&self) -> Option<String> {
+        self.job_title().filter(|_| self.named())
     }
 
     /// The rules a coworker keeps that need nothing but itself.
@@ -677,6 +725,8 @@ pub fn typescript(config: &ts_rs::Config) -> Vec<String> {
         format!("const WAKES_ON = {WAKES_ON:?};"),
         format!("const BADGE_HOT_DESK = {HOT_DESK:?};"),
         format!("const BADGE_HANDLE = {BADGE_HANDLE:?};"),
+        format!("const GIVE_A_NAME = {GIVE_A_NAME:?};"),
+        format!("const COWORKER_NAME_PATH = {COWORKER_NAME_PATH:?};"),
         format!(
             "const JOB_KINDS: readonly {{ id: JobKind; label: string; line: string; wakes: string; tools: readonly InboundTool[] }}[] = [{}];",
             JobKind::ALL
@@ -892,6 +942,48 @@ mod tests {
             staff.role_of(&staff.coworkers[0]).shown_name.as_deref(),
             Some("John")
         );
+    }
+
+    #[test]
+    fn an_unnamed_coworkers_badge_says_its_job_once() {
+        // One that was a role came over with no shown name, its nick its job's.
+        let fixer = coworker("fixer", Some("fixer"), None);
+        assert!(!fixer.named());
+        assert_eq!(fixer.badge_name(), "Fixer");
+        assert_eq!(fixer.badge_job(), None);
+        // Shown by its job's title, whatever the case, it's as unnamed.
+        let shown_fixer = Coworker {
+            shown_name: Some("FIXER".to_owned()),
+            ..fixer.clone()
+        };
+        assert!(!shown_fixer.named());
+        assert_eq!(shown_fixer.badge_name(), "Fixer");
+        assert_eq!(shown_fixer.badge_job(), None);
+        // A job of the office's own is its title, as it's named.
+        let own = coworker("docs", Some("Docs"), None);
+        assert_eq!(
+            (own.badge_name(), own.badge_job()),
+            ("Docs".to_owned(), None)
+        );
+        // With no job either, its nick.
+        assert_eq!(coworker("ada", None, None).badge_name(), "ada");
+    }
+
+    #[test]
+    fn a_named_coworkers_badge_says_its_name_then_its_job() {
+        let john = Coworker {
+            shown_name: Some("John".to_owned()),
+            ..coworker("fixer", Some("fixer"), None)
+        };
+        assert!(john.named());
+        assert_eq!(john.badge_name(), "John");
+        assert_eq!(john.badge_job().as_deref(), Some("Fixer"));
+        let jobless = Coworker {
+            shown_name: Some("Ada".to_owned()),
+            ..coworker("ada", None, None)
+        };
+        assert!(jobless.named());
+        assert_eq!(jobless.badge_job(), None);
     }
 
     #[test]

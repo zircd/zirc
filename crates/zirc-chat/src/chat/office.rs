@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, FixedOffset, Utc};
 use serde::Serialize;
 use ts_rs::TS;
-use zirc_proto::coworkers::{Coworker, JobKind, Staff};
+use zirc_proto::coworkers::{Coworker, Staff};
 use zirc_proto::desk::{Came, Handover};
 use zirc_proto::roles::{Look, Seat, Standing};
 
@@ -89,6 +89,19 @@ pub fn hire_page(web: &str, org: &str) -> String {
         "{}{}",
         web.trim_end_matches('/'),
         HIRE_PAGE_PATH.replace("{org}", org)
+    )
+}
+
+/// zirc.dev's page at `web` for coworker `nick` of the organisation `org`, at its form for
+/// its name: what [`CoworkerCard::give_a_name`] opens.
+#[must_use]
+pub fn coworker_web_page(web: &str, org: &str, nick: &str) -> String {
+    format!(
+        "{}{}",
+        web.trim_end_matches('/'),
+        zirc_proto::coworkers::COWORKER_NAME_PATH
+            .replace("{org}", org)
+            .replace("{name}", &fold(nick))
     )
 }
 
@@ -170,12 +183,16 @@ pub struct NoCoworkers {
 pub struct CoworkerCard {
     /// Its nick, `john`: what its page and its conversation are found by.
     pub nick: String,
-    /// The name it's shown by: `John`.
+    /// The name it's shown by: `John`, or its job's, `Fixer`, while it has none of its own
+    /// ([`Coworker::badge_name`]).
     pub name: String,
-    /// Its job, as people read it: `Fixer`. `None` with none.
+    /// Its job, as people read it: `Fixer`. `None` with none, or while it's the name.
     pub job: Option<String>,
     /// Under the job, in mono: `@john · hired 27 Nov` ([`zirc_proto::coworkers::badge_handle`]).
     pub handle: String,
+    /// While it has no name of its own, the link that opens its page on zirc.dev
+    /// ([`coworker_web_page`]), where one is set: [`zirc_proto::coworkers::GIVE_A_NAME`].
+    pub give_a_name: Option<String>,
     /// Its character on its colour: the full figure on a card, dimmed while its desk is
     /// empty.
     pub face: Face,
@@ -306,8 +323,10 @@ pub struct CoworkerPage {
     /// Its nick as it's written to and when it was hired, in mono under the name, as its
     /// badge says it: `@john · hired 27 Nov`.
     pub handle: String,
-    /// Its job, in a pill: `Fixer`.
+    /// Its job, in a pill: `Fixer`. `None` with none, or while it's the name.
     pub job: Option<String>,
+    /// As on its badge ([`CoworkerCard::give_a_name`]).
+    pub give_a_name: Option<String>,
     /// Its character on its colour, filling the page's top.
     pub face: Face,
     /// How its desk stands.
@@ -435,8 +454,7 @@ impl Chat {
     /// Coworker `nick`'s job as people read it: `Fixer`, or a job of the office's own by its
     /// name.
     pub(super) fn coworker_job(&self, nick: &str) -> Option<String> {
-        let job = self.coworker_of(nick)?.jobs.first()?;
-        Some(JobKind::of_name(job).map_or_else(|| job.clone(), |kind| kind.label().to_owned()))
+        self.coworker_of(nick)?.job_title()
     }
 
     /// What coworker `nick`'s job does and what wakes it, on its page.
@@ -618,8 +636,12 @@ impl Chat {
         offset: FixedOffset,
         now: DateTime<Utc>,
     ) -> CoworkerCard {
-        let name = self.coworker_name(nick);
-        let job = self.coworker_job(nick);
+        let coworker = self.coworker_of(nick);
+        let name = coworker.map_or_else(|| fold(nick), Coworker::badge_name);
+        let job = coworker.and_then(Coworker::badge_job);
+        let give_a_name = coworker
+            .filter(|c| !c.named())
+            .map(|_| zirc_proto::coworkers::GIVE_A_NAME.to_owned());
         let (desk, state, asked) = self.desk_state(nick, asked, now);
         let question = asked.map(|asked| {
             self.office_question(
@@ -640,6 +662,7 @@ impl Chat {
             name,
             job,
             handle: self.badge_handle(nick, offset, now),
+            give_a_name,
             face: self.role_face(nick),
             state,
             desk,
@@ -870,6 +893,7 @@ impl Chat {
             message: format!("Message {}", card.name),
             name: card.name,
             job: card.job,
+            give_a_name: card.give_a_name,
             face: card.face,
             desk: card.desk,
             pill,

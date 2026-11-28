@@ -473,6 +473,39 @@ fn a_coworkers_card_is_its_office_badge() {
 }
 
 #[test]
+fn an_unnamed_coworkers_badge_says_its_job_once_and_offers_to_name_it() {
+    // John came over from the roles: no shown name, his nick his job's.
+    let mut standing = standing();
+    standing.staff.coworkers[0] = Coworker {
+        name: "fixer".into(),
+        shown_name: None,
+        ..standing.staff.coworkers[0].clone()
+    };
+    standing.seats[0].role = "fixer".into();
+    let mut scene = office();
+    scene.learn_standing(standing);
+    let office = scene.office(utc());
+    let fixer = &office.coworkers[0];
+    assert_eq!((fixer.name.as_str(), fixer.job.as_deref()), ("Fixer", None));
+    assert_eq!(fixer.give_a_name.as_deref(), Some("Give them a name"));
+    assert!(fixer.label.starts_with("Fixer, "), "{}", fixer.label);
+    // Named, the badge says the name and the job, and offers nothing.
+    let noor = &office.coworkers[1];
+    assert_eq!(
+        (noor.name.as_str(), noor.job.as_deref()),
+        ("Noor", Some("Triage"))
+    );
+    assert_eq!(noor.give_a_name, None);
+    let page = scene.coworker_page("fixer", utc()).unwrap();
+    assert_eq!((page.name.as_str(), page.job.as_deref()), ("Fixer", None));
+    assert_eq!(page.give_a_name.as_deref(), Some("Give them a name"));
+    assert_eq!(
+        coworker_web_page("https://zirc.dev/", "acme", "Fixer"),
+        "https://zirc.dev/orgs/acme/coworkers/fixer#name"
+    );
+}
+
+#[test]
 fn a_hot_desks_badge_says_whose_it_is_its_tool_and_what_its_doing() {
     let mut scene = office();
     let taking = Message {
