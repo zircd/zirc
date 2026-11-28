@@ -1,9 +1,11 @@
 //! The office: the organisation's coworkers at their desks and everyone's sessions at hot
 //! desks, as every app's Office tab draws it (the user's choices, 27 Nov 2026: a fifth tab,
 //! first; a card per coworker with its character, job and one state line; everyone's
-//! hot-desk sessions under them, each with whose it is; Waiting for you atop it, and no
-//! longer atop Messages). A coworker's own page and the sheet of an empty desk are here
-//! too. Every word and rule is here; apps only draw.
+//! hot-desk sessions under them, each with whose it is). A question an agent asked the
+//! person shows on its asker's row, and a tap opens it ([`OfficeQuestion`]); nothing waits
+//! pinned atop the Office (the user's choices, 28 Nov 2026: zirc leans on watching what
+//! agents do and stepping in, not on answering them). A coworker's own page and the sheet
+//! of an empty desk are here too. Every word and rule is here; apps only draw.
 //!
 //! What the server keeps of its coworkers, their shown names, jobs and who hired them,
 //! comes from its content API ([`zirc_proto::roles::PATH`]), which an app reads and hands
@@ -21,7 +23,7 @@ use zirc_proto::desk::{Came, Handover};
 use zirc_proto::roles::{Look, Seat, Standing};
 
 use super::face::Face;
-use super::waiting::WaitingCard;
+use super::waiting::{Asked, MORE_ANSWERS, WaitingAction, WaitingItem};
 use super::{Chat, conversation::fold, profile};
 
 /// The Office tab's name, in the tab bar.
@@ -39,6 +41,9 @@ pub const AT_DESK_IDLE: &str = "At desk, idle";
 
 /// A coworker's state while one of its questions waits for the person.
 pub const ASKED_YOU: &str = zirc_proto::home::ASKED_YOU;
+
+/// What opens the asking session's conversation, on an opened question.
+pub const OPEN: &str = "Open";
 
 /// A coworker's pill on its page while it's on something.
 pub const WORKING: &str = "Working";
@@ -123,8 +128,6 @@ pub struct Office {
     pub staff: String,
     /// What a hot desk's badge says it is: [`zirc_proto::coworkers::HOT_DESK`].
     pub hot_desk: String,
-    /// What waits for the person's answer, as Messages had it: `None` while nothing does.
-    pub waiting: Option<WaitingCard>,
     /// What heads the cards: [`COWORKERS`].
     pub coworkers_heading: String,
     /// Beside it: `3 of 4 at a desk`. `None` with no coworkers.
@@ -176,11 +179,14 @@ pub struct CoworkerCard {
     /// Its character on its colour: the full figure on a card, dimmed while its desk is
     /// empty.
     pub face: Face,
-    /// Its one state line: `Fixing build 431`, `Asked you`, `At desk, idle`, `Desk empty · 1
-    /// waiting`.
+    /// Its one state line: `Fixing build 431`, `Asked you · Land John's checkout fix?`,
+    /// `At desk, idle`, `Desk empty · 1 waiting`.
     pub state: String,
     /// How its desk stands.
     pub desk: DeskState,
+    /// What its session asked the person, which a tap on the card opens in place of its
+    /// page: `None` while nothing waits ([`DeskState::Asked`] while something does).
+    pub question: Option<OfficeQuestion>,
     /// What a screen reader says of the card: `John, Fixer, Fixing build 431`.
     pub label: String,
 }
@@ -198,9 +204,13 @@ pub struct HotDesk {
     pub name: String,
     /// Whose it is and its tool: `Henrik's · Claude Code`, `Yours · Codex`.
     pub whose: String,
-    /// What it's doing, in the badge's strip: `Changing the payment form`. `None` while
+    /// What it's doing, in the badge's strip: `Changing the payment form`, or `Asked you ·
+    /// Revoke last month's TLS certificate?` while [`HotDesk::question`] waits. `None` while
     /// nothing's said.
     pub doing: Option<String>,
+    /// What it asked the person, which a tap opens in place of its conversation, its strip
+    /// drawn in the warning colour: `None` while nothing waits.
+    pub question: Option<OfficeQuestion>,
     /// What a screen reader says of the badge: `checkout-form, a session at a hot desk,
     /// Henrik's · Claude Code, Changing the payment form`.
     pub label: String,
@@ -209,6 +219,40 @@ pub struct HotDesk {
     pub face: Face,
     /// Whether a watch of its is open: its dot.
     pub online: bool,
+}
+
+/// A question an agent asked the person, opened from its asker's row on the Office, as a
+/// sheet (the user's choices, 28 Nov 2026): the asker, when it asked, the question, what yes
+/// and no do and its note, a note when the session has kept working since, then its answers,
+/// its ⋯ menu and Open. The Office's rows have no answers of their own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub struct OfficeQuestion {
+    /// What waits, as Waiting for you has it: its key answers it ([`Chat::answer_waiting`]);
+    /// its face, question, what each answer does, its note, its buttons and its ⋯ menu are
+    /// drawn as they are. A question put directly has no buttons here: [`OfficeQuestion::open`]
+    /// opens its conversation to answer in.
+    pub item: WaitingItem,
+    /// The asker, as its row names it: `Sam`, `tls-rotation`.
+    pub name: String,
+    /// Whether [`OfficeQuestion::name`] is set in mono, as a hot desk's is.
+    pub mono: bool,
+    /// Beside the name, muted: the coworker's job, `Reviewer`, or whose the session is and
+    /// its tool, `Yours · Claude Code`.
+    pub under: String,
+    /// Under the name, in the warning colour: `Asked you 25 min ago`.
+    pub asked: String,
+    /// Over the answers, while the session has kept working since it asked (pushed, said a
+    /// new task): `It has kept working since asking: 2 pushes, now on Rotate the staging
+    /// certificates. If you answered in the session, it'll take this back.`
+    pub kept_working: Option<String>,
+    /// What the ⋯ button is called: [`MORE_ANSWERS`].
+    pub more: String,
+    /// The button that opens the asking session's conversation: [`OPEN`].
+    pub open: String,
+    /// That conversation, `henrik-mbp/cc-1`.
+    pub opens: String,
 }
 
 /// A row of a coworker's page's About part: [`JOB`], [`DESK`] or [`HIRED_BY`] and what it
@@ -420,7 +464,13 @@ impl Chat {
     /// what it's taking on, else what the desk last handed over while it's seated.
     fn coworker_doing(&self, seat: &Seat, now: DateTime<Utc>) -> Option<String> {
         let holder = seat.holder.as_ref()?;
-        let doing = self.doing_now(&holder.machine, &holder.session.session, now);
+        self.doing_words(&holder.machine, &holder.session.session, now)
+    }
+
+    /// What session `session` on `machine` is on, in words: its live intent's task or
+    /// summary, or what it's taking on. `None` with nothing in progress.
+    fn doing_words(&self, machine: &str, session: &str, now: DateTime<Utc>) -> Option<String> {
+        let doing = self.doing_now(machine, session, now);
         if doing.active {
             return Some(doing.task.unwrap_or_else(|| {
                 doing
@@ -432,28 +482,115 @@ impl Chat {
         None
     }
 
-    /// Whether a question or request of the session at the desk `seat` waits for us.
-    fn coworker_asked(&self, seat: &Seat) -> bool {
-        let Some(holder) = &seat.holder else {
-            return false;
-        };
-        self.asking().iter().any(|(machine, session)| {
-            machine.eq_ignore_ascii_case(&holder.machine) && *session == holder.session.session
-        })
+    /// What of `asked` the session at the desk `seat` asked, the longest waiting first.
+    fn seat_asked<'a>(seat: &Seat, asked: &'a [Asked]) -> Option<&'a Asked> {
+        let holder = seat.holder.as_ref()?;
+        asked_by(asked, &holder.machine, &holder.session.session)
     }
 
-    /// How coworker `nick`'s desk stands at `now`, and its state line.
-    fn desk_state(&self, nick: &str, now: DateTime<Utc>) -> (DeskState, String) {
+    /// What the opened question of `asked` says at `now`, its asker named `name` (in mono
+    /// with `mono`), `under` beside it.
+    fn office_question(
+        &self,
+        asked: &Asked,
+        name: String,
+        mono: bool,
+        under: String,
+        now: DateTime<Utc>,
+    ) -> OfficeQuestion {
+        let mut item = asked.item.clone();
+        // Open does what Reply did: there's one way to the conversation.
+        item.buttons.retain(|b| b.action != WaitingAction::Reply);
+        let ago = u64::try_from((now - asked.at).num_seconds()).unwrap_or_default();
+        OfficeQuestion {
+            item,
+            name,
+            mono,
+            under,
+            asked: zirc_proto::request::asked_you_ago(ago),
+            kept_working: self.kept_working(&asked.machine, &asked.session, asked.at, now),
+            more: MORE_ANSWERS.to_owned(),
+            open: OPEN.to_owned(),
+            opens: super::agent_channel(&asked.machine, &asked.session),
+        }
+    }
+
+    /// Whether session `session` on `machine` has kept working since it asked at `since`,
+    /// and in what words ([`zirc_proto::request::kept_working`]): it pushed since, or said a
+    /// task it hadn't before (an intent unlike its last, or `taking:`). `None` while it
+    /// hasn't, as a session waiting on its answer doesn't.
+    fn kept_working(
+        &self,
+        machine: &str,
+        session: &str,
+        since: DateTime<Utc>,
+        now: DateTime<Utc>,
+    ) -> Option<String> {
+        let mut pushes = std::collections::HashSet::new();
+        let mut intent_before: Option<(DateTime<Utc>, &str)> = None;
+        let mut intents_after: Vec<&str> = Vec::new();
+        for entry in self.conversations.iter().flat_map(|c| &c.entries) {
+            let super::conversation::EntryKind::Zirc(message) = &entry.kind else {
+                continue;
+            };
+            if message.session != session || !entry.from.eq_ignore_ascii_case(machine) {
+                continue;
+            }
+            match &message.event {
+                zirc_proto::Event::Push { head, branch, .. } if entry.time >= since => {
+                    // Said in more than one channel, it's one push.
+                    pushes.insert((branch.as_str(), head.as_str()));
+                }
+                zirc_proto::Event::Intent { summary, .. } if entry.time < since => {
+                    if intent_before.is_none_or(|(at, _)| at <= entry.time) {
+                        intent_before = Some((entry.time, summary.as_str()));
+                    }
+                }
+                zirc_proto::Event::Intent { summary, .. } => intents_after.push(summary.as_str()),
+                _ => {}
+            }
+        }
+        let before = intent_before.map(|(_, summary)| summary);
+        let new_intent = intents_after.iter().any(|summary| Some(*summary) != before);
+        // A claim is known to the second.
+        let new_claim = self
+            .claim(machine, session)
+            .is_some_and(|(_, at)| at.timestamp() >= since.timestamp());
+        if pushes.is_empty() && !new_intent && !new_claim {
+            return None;
+        }
+        let now_on = self.doing_words(machine, session, now);
+        Some(zirc_proto::request::kept_working(
+            pushes.len(),
+            now_on.as_deref(),
+        ))
+    }
+
+    /// How coworker `nick`'s desk stands at `now`, its state line, and what of `asked` its
+    /// session asked the person.
+    fn desk_state<'a>(
+        &self,
+        nick: &str,
+        asked: &'a [Asked],
+        now: DateTime<Utc>,
+    ) -> (DeskState, String, Option<&'a Asked>) {
         let seat = self.role_seat(nick);
         match seat.as_ref().filter(|seat| seat.holder.is_some()) {
             None => (
                 DeskState::Empty,
                 zirc_proto::desk::empty(seat.map_or(0, |seat| seat.waiting)),
+                None,
             ),
-            Some(seat) if self.coworker_asked(seat) => (DeskState::Asked, ASKED_YOU.to_owned()),
-            Some(seat) => match self.coworker_doing(seat, now) {
-                Some(doing) => (DeskState::Working, doing),
-                None => (DeskState::Idle, AT_DESK_IDLE.to_owned()),
+            Some(seat) => match Self::seat_asked(seat, asked) {
+                Some(asked) => (
+                    DeskState::Asked,
+                    zirc_proto::request::asked_you(&asked.item.question),
+                    Some(asked),
+                ),
+                None => match self.coworker_doing(seat, now) {
+                    Some(doing) => (DeskState::Working, doing, None),
+                    None => (DeskState::Idle, AT_DESK_IDLE.to_owned(), None),
+                },
             },
         }
     }
@@ -474,10 +611,25 @@ impl Chat {
         zirc_proto::coworkers::badge_handle(&fold(nick), hired.as_deref())
     }
 
-    fn coworker_card(&self, nick: &str, offset: FixedOffset, now: DateTime<Utc>) -> CoworkerCard {
+    fn coworker_card(
+        &self,
+        nick: &str,
+        asked: &[Asked],
+        offset: FixedOffset,
+        now: DateTime<Utc>,
+    ) -> CoworkerCard {
         let name = self.coworker_name(nick);
         let job = self.coworker_job(nick);
-        let (desk, state) = self.desk_state(nick, now);
+        let (desk, state, asked) = self.desk_state(nick, asked, now);
+        let question = asked.map(|asked| {
+            self.office_question(
+                asked,
+                name.clone(),
+                false,
+                job.clone().unwrap_or_default(),
+                now,
+            )
+        });
         let label = [Some(name.clone()), job.clone(), Some(state.clone())]
             .into_iter()
             .flatten()
@@ -491,18 +643,30 @@ impl Chat {
             face: self.role_face(nick),
             state,
             desk,
+            question,
             label,
         }
     }
 
-    /// Everyone's agent sessions their machines name, online or away, that sit at no
-    /// coworker's desk, split as [`zirc_proto::hot_desks::hot_desks`] decides: those in the
+    /// Everyone's agent sessions their machines name, online or away, and any other asking
+    /// the person, that sit at no coworker's desk, split as [`zirc_proto::hot_desks::hot_desks`] decides: those in the
     /// office, online first, then by name; the line the rest fold under; and the rest.
-    fn hot_desks(&self) -> (Vec<HotDesk>, Option<String>, Vec<HotDesk>) {
+    fn hot_desks(&self, asked: &[Asked]) -> (Vec<HotDesk>, Option<String>, Vec<HotDesk>) {
         let now = (self.clock)();
         let mut faces = HashMap::new();
-        let seen: Vec<zirc_proto::hot_desks::Seen> = self
-            .named_sessions()
+        let mut questions: HashMap<String, (&Asked, String)> = HashMap::new();
+        // Every session its machine names, and any other asking the person: its question
+        // is on its row, so it has one.
+        let mut sessions = self.named_sessions();
+        for asked in asked {
+            let named = sessions.iter().any(|(nick, session)| {
+                nick.eq_ignore_ascii_case(&asked.machine) && *session == asked.session
+            });
+            if !named && !asked.machine.is_empty() {
+                sessions.push((asked.machine.clone(), asked.session.clone()));
+            }
+        }
+        let seen: Vec<zirc_proto::hot_desks::Seen> = sessions
             .into_iter()
             .filter(|(nick, session)| self.desk_of(nick, session).is_none())
             .map(|(nick, session)| {
@@ -516,7 +680,11 @@ impl Chat {
                 let owner = self.whose(&nick).map(|(owner, _)| self.owner_name(&owner));
                 let mine = owner.as_deref() == Some(super::speaker::YOU);
                 let title = self.agent_title(&nick, &session);
-                let doing = self.agent_handle(&session, &title).map(|_| title);
+                let mut doing = self.agent_handle(&session, &title).map(|_| title);
+                let asking = asked_by(asked, &nick, &session);
+                if let Some(asked) = asking {
+                    doing = Some(zirc_proto::request::asked_you(&asked.item.question));
+                }
                 let tool = self.session_tools.get(&session);
                 let avatar = super::Avatar::Agent {
                     tool: tool.cloned(),
@@ -538,6 +706,9 @@ impl Chat {
                     *owner_photo = None;
                 }
                 faces.insert(key.clone(), face);
+                if let Some(asked) = asking {
+                    questions.insert(key.clone(), (asked, self.session_label(&session)));
+                }
                 zirc_proto::hot_desks::Seen {
                     key,
                     session: session.clone(),
@@ -548,6 +719,7 @@ impl Chat {
                     doing,
                     online,
                     away_since,
+                    asking: asking.is_some(),
                 }
             })
             .collect();
@@ -561,7 +733,11 @@ impl Chat {
             badges
                 .into_iter()
                 .filter_map(|badge| {
+                    let question = questions.get(&badge.key).map(|(asked, name)| {
+                        self.office_question(asked, name.clone(), true, badge.whose.clone(), now)
+                    });
                     Some(HotDesk {
+                        question,
                         face: faces.get(&badge.key)?.clone(),
                         conversation: badge.key,
                         name: badge.name,
@@ -588,12 +764,13 @@ impl Chat {
     #[must_use]
     pub fn office(&self, offset: FixedOffset) -> Office {
         let now = (self.clock)();
+        let asked = self.waiting_asked(offset);
         let coworkers: Vec<CoworkerCard> = self
             .coworker_nicks()
             .iter()
-            .map(|nick| self.coworker_card(nick, offset, now))
+            .map(|nick| self.coworker_card(nick, &asked, offset, now))
             .collect();
-        let (hot_desks, hot_desks_away, hot_desks_folded) = self.hot_desks();
+        let (hot_desks, hot_desks_away, hot_desks_folded) = self.hot_desks(&asked);
         let seated = coworkers
             .iter()
             .filter(|c| c.desk != DeskState::Empty)
@@ -602,7 +779,6 @@ impl Chat {
             name: self.office_name(),
             staff: zirc_proto::coworkers::STAFF.to_owned(),
             hot_desk: zirc_proto::coworkers::HOT_DESK.to_owned(),
-            waiting: self.waiting_card(None, offset),
             coworkers_heading: COWORKERS.to_owned(),
             count: (!coworkers.is_empty())
                 .then(|| format!("{seated} of {} at a desk", coworkers.len())),
@@ -643,11 +819,12 @@ impl Chat {
             return None;
         }
         let now = (self.clock)();
-        let card = self.coworker_card(nick, offset, now);
+        let card = self.coworker_card(nick, &self.waiting_asked(offset), offset, now);
         let seat = self.role_seat(nick);
         let handover = self.office.handovers.get(&fold(nick));
         let pill = match card.desk {
             DeskState::Working => WORKING.to_owned(),
+            DeskState::Asked => ASKED_YOU.to_owned(),
             _ => card.state.clone(),
         };
         let now_words = match card.desk {
@@ -845,4 +1022,11 @@ fn capitalised(words: &str) -> String {
     chars.next().map_or_else(String::new, |first| {
         first.to_uppercase().chain(chars).collect()
     })
+}
+
+/// What of `asked` session `session` on `machine` asked, the longest waiting first.
+fn asked_by<'a>(asked: &'a [Asked], machine: &str, session: &str) -> Option<&'a Asked> {
+    asked
+        .iter()
+        .find(|asked| asked.machine.eq_ignore_ascii_case(machine) && asked.session == session)
 }

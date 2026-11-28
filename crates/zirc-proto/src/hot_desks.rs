@@ -72,6 +72,11 @@ pub struct Seen {
     /// When its last watch closed, in seconds since the epoch, while it's away.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub away_since: Option<u64>,
+    /// Whether one of its questions waits for the person: then it's shown however long it's
+    /// been away, as its row is where the question is (the user's choice, 28 Nov 2026).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub asking: bool,
 }
 
 /// What [`hot_desks`] is given: by zirc-chat, and by zirc.dev through zirc-media's wasm.
@@ -116,7 +121,8 @@ pub struct Badge {
 pub struct HotDesks {
     /// What heads them: [`HEADING`].
     pub heading: String,
-    /// Those in the office ([`in_office`]), online first, then by name.
+    /// Those in the office ([`in_office`]) or asking the person ([`Seen::asking`]), online
+    /// first, then by name.
     pub shown: Vec<Badge>,
     /// The line the rest fold under, `29 away` ([`away`]); None while none are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -169,7 +175,7 @@ pub fn hot_desks(facts: &Facts) -> HotDesks {
     let (mut shown, mut folded): (Vec<&Seen>, Vec<&Seen>) = facts
         .seen
         .iter()
-        .partition(|s| in_office(s.online, s.away_since, facts.now));
+        .partition(|s| s.asking || in_office(s.online, s.away_since, facts.now));
     shown.sort_by(|a, b| b.online.cmp(&a.online).then_with(|| a.name.cmp(&b.name)));
     folded.sort_by(|a, b| a.name.cmp(&b.name));
     HotDesks {
@@ -242,6 +248,16 @@ mod tests {
             now,
         };
         assert_eq!(hot_desks(&one).away, None);
+        // One asking the person stays, however long it's been away.
+        let asking = Facts {
+            seen: vec![Seen {
+                asking: true,
+                ..seen("tls", false, Some(now - 3600))
+            }],
+            taken: Vec::new(),
+            now,
+        };
+        assert_eq!(names(&hot_desks(&asking).shown), ["tls"]);
     }
 
     #[test]

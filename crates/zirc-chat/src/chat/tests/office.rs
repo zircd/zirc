@@ -3,6 +3,7 @@
 
 use zirc_proto::coworkers::{Coworker, Job, Staff};
 use zirc_proto::desk::{Came, Handover};
+use zirc_proto::request::Request;
 use zirc_proto::roles::{Holder, Listing, Seat, Standing};
 use zirc_proto::session::{Away, Live, SessionCard};
 use zirc_proto::woke::Woke;
@@ -550,4 +551,209 @@ fn a_line_said_at_a_coworkers_desk_is_headed_by_its_name_and_job_with_no_tag() {
         line.speaker.unwrap().detail.as_deref(),
         Some("henrik's Codex")
     );
+}
+
+/// `message` said by machine `nick` at `hh:mm` on the test's day, to `#api`, or to
+/// `#decisions` for a request, which is longer than a line.
+fn said_at(time: &str, nick: &str, message: &Message) -> String {
+    let request = matches!(
+        &message.event,
+        Event::Custom { kind, .. } if kind == zirc_proto::request::KIND
+    );
+    let line = if request {
+        format!(
+            ":{} PRIVMSG {} :{}",
+            source(nick),
+            zirc_proto::request::CHANNEL,
+            zirc_proto::encode_up_to(message, 4096).unwrap()
+        )
+    } else {
+        zirc(nick, message)
+    };
+    format!("@time=2026-10-30T{time}:00.000Z;msgid=at-{time} {line}")
+}
+
+/// cc-9's push of `head` to its branch.
+fn pushed(head: &str) -> Message {
+    Message::new(
+        "cc-9",
+        Event::Push {
+            branch: "tls".into(),
+            head: head.into(),
+            forced: false,
+            subjects: Vec::new(),
+            paths: Vec::new(),
+            base: None,
+            lines: std::collections::BTreeMap::new(),
+            repo: None,
+            on: None,
+        },
+    )
+}
+
+fn intent(summary: &str) -> Message {
+    Message::new(
+        "cc-9",
+        Event::Intent {
+            summary: summary.into(),
+            paths: Vec::new(),
+            expires: None,
+            lasts: None,
+        },
+    )
+}
+
+/// Our cc-9 at a hot desk, rotating the TLS certificates since 11:30, which asked us at 11:35
+/// whether to revoke last month's.
+fn tls_asks() -> Scene {
+    let mut scene = office();
+    scene.hears(&[
+        ":me!u@h JOIN #decisions",
+        ":me-mbp!u@machine/me JOIN #decisions",
+        &live("me-mbp", &["cc-9"], &[]),
+    ]);
+    let mut revoke = Request::open(
+        "me-mbp/1",
+        "cc-9",
+        "me",
+        "Revoke last month's TLS certificate now?",
+        "It's revoked",
+        "It stays valid",
+    );
+    revoke.irreversible = true;
+    scene.hears(&[
+        &said_at("11:30", "me-mbp", &intent("Rotating the TLS certificates")),
+        &said_at("11:35", "me-mbp", &Message::new("cc-9", revoke.event())),
+    ]);
+    scene
+}
+
+#[test]
+fn a_question_shows_on_its_askers_row_and_opens_there_not_atop_the_office() {
+    let scene = tls_asks();
+    let office = scene.office(utc());
+    let desk = office
+        .hot_desks
+        .iter()
+        .find(|d| d.conversation == "me-mbp/cc-9")
+        .unwrap();
+    assert_eq!(
+        desk.doing.as_deref(),
+        Some("Asked you · Revoke last month's TLS certificate now?")
+    );
+    let question = desk.question.as_ref().unwrap();
+    assert_eq!(question.asked, "Asked you 25 min ago");
+    assert_eq!((question.name.as_str(), question.mono), ("cc-9", true));
+    assert_eq!(question.under, "Yours");
+    assert_eq!(
+        (
+            question.opens.as_str(),
+            question.open.as_str(),
+            question.more.as_str()
+        ),
+        ("me-mbp/cc-9", "Open", "More answers")
+    );
+    assert_eq!(
+        question
+            .item
+            .buttons
+            .iter()
+            .map(|b| b.label.as_str())
+            .collect::<Vec<_>>(),
+        ["Yes", "No"]
+    );
+    // It's waited on its answer since: nothing to say.
+    assert_eq!(question.kept_working, None);
+    // Other rows ask nothing.
+    assert!(
+        office
+            .hot_desks
+            .iter()
+            .filter(|d| d.conversation != "me-mbp/cc-9")
+            .all(|d| d.question.is_none())
+    );
+    assert!(office.coworkers.iter().all(|c| c.question.is_none()));
+}
+
+#[test]
+fn an_asking_session_away_long_stays_on_its_row() {
+    let mut scene = tls_asks();
+    scene.hears(&[&live_away("me-mbp", &[], &[("cc-9", -60)])]);
+    let office = scene.office(utc());
+    assert!(
+        office
+            .hot_desks
+            .iter()
+            .any(|d| d.conversation == "me-mbp/cc-9")
+    );
+    assert!(office.hot_desks_folded.is_empty());
+}
+
+#[test]
+fn an_opened_question_says_when_its_session_has_kept_working_since() {
+    let mut scene = tls_asks();
+    // Its intent said again, unchanged: still waiting on us.
+    scene.hears(&[&said_at(
+        "11:40",
+        "me-mbp",
+        &intent("Rotating the TLS certificates"),
+    )]);
+    let kept = |scene: &Scene| {
+        scene
+            .office(utc())
+            .hot_desks
+            .into_iter()
+            .find(|d| d.conversation == "me-mbp/cc-9")
+            .and_then(|d| d.question)
+            .and_then(|q| q.kept_working)
+    };
+    assert_eq!(kept(&scene), None);
+    // A new task: it's moved on, maybe answered in its own tool.
+    scene.hears(&[&said_at(
+        "11:45",
+        "me-mbp",
+        &intent("Rotate the staging certificates"),
+    )]);
+    assert_eq!(
+        kept(&scene).as_deref(),
+        Some(
+            "It has kept working since asking: now on Rotate the staging certificates. If you \
+             answered in the session, it'll take this back."
+        )
+    );
+    // And two pushes, the second said in two channels.
+    scene.hears(&[
+        &said_at("11:50", "me-mbp", &pushed("a1")),
+        &said_at("11:52", "me-mbp", &pushed("b2")),
+        &said_at("11:52", "me-mbp", &pushed("b2")).replace("msgid=at-11:52", "msgid=again"),
+    ]);
+    assert_eq!(
+        kept(&scene).as_deref(),
+        Some(
+            "It has kept working since asking: 2 pushes, now on Rotate the staging \
+             certificates. If you answered in the session, it'll take this back."
+        )
+    );
+}
+
+#[test]
+fn a_session_its_machine_never_named_gets_a_row_for_its_question() {
+    let mut scene = office();
+    scene.hears(&[
+        ":me!u@h JOIN #decisions",
+        ":me-mbp!u@machine/me JOIN #decisions",
+    ]);
+    let revoke = Request::open("me-mbp/1", "cc-4", "me", "Revoke it?", "y", "n");
+    scene.hears(&[&said_at(
+        "11:35",
+        "me-mbp",
+        &Message::new("cc-4", revoke.event()),
+    )]);
+    let office = scene.office(utc());
+    let desk = office
+        .hot_desks
+        .iter()
+        .find(|d| d.conversation == "me-mbp/cc-4")
+        .expect("a row for the question");
+    assert_eq!(desk.doing.as_deref(), Some("Asked you · Revoke it?"));
 }

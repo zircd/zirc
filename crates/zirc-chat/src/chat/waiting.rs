@@ -17,7 +17,7 @@
 //! the answer was sent, until the requesting machine posts the request's card again as
 //! answered. So nothing here reads as decided that a machine never heard.
 
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use zirc_proto::request::{self, Answer, Posted, Request, State};
@@ -178,6 +178,18 @@ impl WaitingButton {
     }
 }
 
+/// A waiting item with the session that asked it and when ([`Chat::waiting_asked`]).
+pub(super) struct Asked {
+    /// The asking session's machine, by its nick.
+    pub(super) machine: String,
+    /// The asking session's id.
+    pub(super) session: String,
+    /// When it asked.
+    pub(super) at: DateTime<Utc>,
+    /// The item, as Waiting for you draws it.
+    pub(super) item: WaitingItem,
+}
+
 impl Chat {
     /// The card over the list while `tab` shows Messages, or both halves, its times on a
     /// clock `offset` from UTC, as [`Chat::lines`] has them: `None` while nothing waits, and
@@ -220,30 +232,31 @@ impl Chat {
     /// `offset` from UTC.
     #[must_use]
     pub fn waiting(&self, offset: FixedOffset) -> Vec<WaitingItem> {
-        let mut items: Vec<WaitingItem> = request::waiting(self.requests_heard(), &self.me)
-            .iter()
-            .map(|waiting| self.request_item(waiting, offset))
-            .collect();
-        items.extend(self.questions());
-        items
+        self.waiting_asked(offset)
+            .into_iter()
+            .map(|asked| asked.item)
+            .collect()
     }
 
-    /// The agent sessions whose requests or questions wait for the person, as `(machine,
-    /// session)`: a coworker at whose desk one sits has asked them ([`Chat::office`]).
-    pub(super) fn asking(&self) -> Vec<(String, String)> {
-        let requests = request::waiting(self.requests_heard(), &self.me);
-        let mut asking: Vec<(String, String)> = requests
+    /// [`Chat::waiting`], each with the session that asked and when: what the Office puts on
+    /// the asking session's row ([`Chat::office`]).
+    pub(super) fn waiting_asked(&self, offset: FixedOffset) -> Vec<Asked> {
+        let mut asked: Vec<Asked> = request::waiting(self.requests_heard(), &self.me)
             .iter()
             .map(|waiting| {
-                let machine = self.asker(&waiting.msgid).unwrap_or_default().to_owned();
-                (machine, waiting.request.session.clone())
+                let entry = self
+                    .conversation(request::CHANNEL)
+                    .and_then(|c| c.entry(&waiting.msgid));
+                Asked {
+                    machine: entry.map(|e| e.from.clone()).unwrap_or_default(),
+                    session: waiting.request.session.clone(),
+                    at: entry.map_or_else(|| (self.clock)(), |e| e.time),
+                    item: self.request_item(waiting, offset),
+                }
             })
             .collect();
-        asking.extend(self.questions().iter().filter_map(|item| {
-            let (nick, session) = agent(&item.key)?;
-            Some((nick.to_owned(), session.to_owned()))
-        }));
-        asking
+        asked.extend(self.questions());
+        asked
     }
 
     /// The requests heard in `#decisions` from the person's own machines, oldest first: only
@@ -381,8 +394,8 @@ impl Chat {
     /// each conversation with one of their agent sessions, still known to its machine, whose
     /// newest line is the agent's own words ending in a question mark. The longest waiting
     /// first.
-    fn questions(&self) -> Vec<WaitingItem> {
-        let mut asked: Vec<(&Entry, WaitingItem)> = self
+    fn questions(&self) -> Vec<Asked> {
+        let mut asked: Vec<Asked> = self
             .conversations()
             .iter()
             .filter_map(|conversation| {
@@ -413,11 +426,16 @@ impl Chat {
                     opens: conversation.name.clone(),
                     at: entry.id.clone(),
                 };
-                Some((entry, item))
+                Some(Asked {
+                    machine: nick.to_owned(),
+                    session: session.to_owned(),
+                    at: entry.time,
+                    item,
+                })
             })
             .collect();
-        asked.sort_by_key(|(entry, _)| entry.time);
-        asked.into_iter().map(|(_, item)| item).collect()
+        asked.sort_by_key(|asked| asked.at);
+        asked
     }
 
     /// The lines that give the waiting item `key` the answer `action`: the answer's reaction

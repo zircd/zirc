@@ -68,7 +68,7 @@ mod notify;
 mod office;
 pub use office::{
     AboutRow, CameRow, CoworkerCard, CoworkerPage, DeskState, EmptyDesk, HotDesk, NoCoworkers,
-    Office, OfficeSpan, hire_page,
+    Office, OfficeQuestion, OfficeSpan, hire_page,
 };
 mod incident;
 mod org;

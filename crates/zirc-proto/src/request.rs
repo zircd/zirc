@@ -542,8 +542,72 @@ fn clock(at: &str, seconds: bool) -> String {
     }
 }
 
+/// What a row of the Office says of a session while one of its questions or requests waits
+/// for the person (the user's choice, 28 Nov 2026: the question shows on its asker's row, not
+/// pinned atop the Office): `Asked you · Land John's checkout fix?`.
+#[must_use]
+pub fn asked_you(question: &str) -> String {
+    format!("{} · {question}", crate::home::ASKED_YOU)
+}
+
+/// When a question was asked, `seconds` ago, atop the opened question: `Asked you 25 min ago`.
+#[must_use]
+pub fn asked_you_ago(seconds: u64) -> String {
+    format!("{} {}", crate::home::ASKED_YOU, crate::desk::ago(seconds))
+}
+
+/// What the opened question says when its session has kept working since asking: pushed
+/// `pushes` times, or said a new task, `now_on` what it says it's on. An answer typed in the
+/// agent's own tool never reaches zirc, so the person may have answered already; the session
+/// withdraws the question once it has its answer (the user's choice, 28 Nov 2026).
+///
+/// `It has kept working since asking: 2 pushes, now on Rotate the staging certificates. If
+/// you answered in the session, it'll take this back.`
+#[must_use]
+pub fn kept_working(pushes: usize, now_on: Option<&str>) -> String {
+    let counted = match pushes {
+        0 => None,
+        1 => Some("1 push".to_owned()),
+        n => Some(format!("{n} pushes")),
+    };
+    let parts: Vec<String> = [counted, now_on.map(|task| format!("now on {task}"))]
+        .into_iter()
+        .flatten()
+        .collect();
+    let since = if parts.is_empty() {
+        "It has kept working since asking.".to_owned()
+    } else {
+        format!("It has kept working since asking: {}.", parts.join(", "))
+    };
+    format!("{since} If you answered in the session, it'll take this back.")
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_office_says_what_was_asked_when_and_whether_it_kept_working() {
+        assert_eq!(
+            super::asked_you("Land John's checkout fix?"),
+            "Asked you · Land John's checkout fix?"
+        );
+        assert_eq!(super::asked_you_ago(25 * 60), "Asked you 25 min ago");
+        assert_eq!(
+            super::kept_working(2, Some("Rotate the staging certificates")),
+            "It has kept working since asking: 2 pushes, now on Rotate the staging \
+             certificates. If you answered in the session, it'll take this back."
+        );
+        assert_eq!(
+            super::kept_working(1, None),
+            "It has kept working since asking: 1 push. If you answered in the session, it'll \
+             take this back."
+        );
+        assert_eq!(
+            super::kept_working(0, None),
+            "It has kept working since asking. If you answered in the session, it'll take \
+             this back."
+        );
+    }
+
     use super::*;
 
     fn request() -> Request {

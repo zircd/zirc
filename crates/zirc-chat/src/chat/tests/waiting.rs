@@ -469,9 +469,19 @@ fn a_coworker_whose_session_asks_us_says_so_on_its_office_card() {
     let john = &office.coworkers[0];
     assert_eq!(
         (john.state.as_str(), john.desk),
-        ("Asked you", DeskState::Asked)
+        (
+            "Asked you · Revoke last month's certificate now?",
+            DeskState::Asked
+        )
     );
-    // The office's Waiting for you is the card Messages had.
-    assert_eq!(office.waiting, scene.waiting_card(None, utc()));
-    assert!(office.waiting.is_some());
+    // The item a tap on the card opens is the one Messages' card has.
+    let card = scene.waiting_card(None, utc()).unwrap();
+    let question = john.question.as_ref().unwrap();
+    assert_eq!(question.item.key, card.items[0].key);
+    assert_eq!(question.item.question, card.items[0].question);
+    // His page's pill says so, without the question.
+    assert_eq!(
+        scene.coworker_page("john", utc()).unwrap().pill,
+        "Asked you"
+    );
 }
