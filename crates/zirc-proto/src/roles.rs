@@ -61,21 +61,51 @@ pub const MAX_ROLES: usize = 32;
 /// What the lease of a role's seat is named before the role's name ([`lease`]).
 const LEASE_PREFIX: &str = "role:";
 
-/// The custom event kind a role's holder is woken with, from the role's nick to the
-/// holder's machine ([`Wake`]).
-pub const WAKE_KIND: &str = "x-zirc/role-wake";
+/// The custom event kind a coworker's desk wakes whoever sits at it with, from the coworker's
+/// nick to that session's machine ([`Wake`]).
+pub const WAKE_KIND: &str = "x-zirc/desk-wake";
 
-/// The custom event kind a holder says something as the role with, to the role's nick
-/// ([`Say`]).
-pub const SAY_KIND: &str = "x-zirc/role-say";
+/// The custom event kind a session at a coworker's desk says something as the coworker with,
+/// to the coworker's nick ([`Say`]).
+pub const SAY_KIND: &str = "x-zirc/desk-say";
 
-/// The custom event kind a vacant role answers a direct message with, to its sender alone
+/// The custom event kind an empty desk answers a direct message with, to its sender alone
 /// ([`Vacant`]).
-pub const VACANT_KIND: &str = "x-zirc/role-vacant";
+pub const VACANT_KIND: &str = "x-zirc/desk-vacant";
 
-/// The custom event kind a role's nick says a seat was taken or left with, in the agents'
+/// The custom event kind a coworker's nick says its desk was taken or left with, in the agents'
 /// room and to whoever wrote to it ([`SeatChange`]).
-pub const SEAT_KIND: &str = "x-zirc/role-seat";
+pub const SEAT_KIND: &str = "x-zirc/desk-seat";
+
+/// What these four kinds were called while coworkers were roles (until 28 Nov 2026), read as
+/// theirs for good: Ergo's history keeps lines of them, and a zircd or an app from before
+/// reads only these. So a wake, an empty desk's answer and a seat change are still sent as
+/// the old kind, which every zircd and app reads, until the releases that read the new ones
+/// are everyone's; what a session says as its coworker goes as the new one, as the sidecar,
+/// which reads it, is deployed with this.
+pub const ROLE_ERA_KINDS: [(&str, &str); 4] = [
+    (WAKE_KIND, "x-zirc/role-wake"),
+    (SAY_KIND, "x-zirc/role-say"),
+    (VACANT_KIND, "x-zirc/role-vacant"),
+    (SEAT_KIND, "x-zirc/role-seat"),
+];
+
+/// Whether `kind` is `current`, or what it was called while coworkers were roles.
+fn kind_is(kind: &str, current: &str) -> bool {
+    kind == current
+        || ROLE_ERA_KINDS
+            .iter()
+            .any(|(now, was)| *now == current && *was == kind)
+}
+
+/// The kind an event of `current` goes out as, while zircds and apps from before read only
+/// the old ([`ROLE_ERA_KINDS`]).
+fn sent_as(current: &str) -> &'static str {
+    ROLE_ERA_KINDS
+        .iter()
+        .find(|(now, _)| *now == current)
+        .map_or("", |(_, was)| was)
+}
 
 /// A role as an organisation's admins define it on zirc.dev.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
@@ -639,7 +669,7 @@ impl Wake {
     #[must_use]
     pub fn event(&self, text: &str) -> crate::Event {
         crate::Event::Custom {
-            kind: WAKE_KIND.to_owned(),
+            kind: sent_as(WAKE_KIND).to_owned(),
             data: serde_json::to_value(self).expect("a wake serialises"),
             text: text.to_owned(),
         }
@@ -649,7 +679,7 @@ impl Wake {
     #[must_use]
     pub fn of(event: &crate::Event) -> Option<(Self, &str)> {
         match event {
-            crate::Event::Custom { kind, data, text } if kind == WAKE_KIND => {
+            crate::Event::Custom { kind, data, text } if kind_is(kind, WAKE_KIND) => {
                 Some((serde_json::from_value(data.clone()).ok()?, text.as_str()))
             }
             _ => None,
@@ -696,7 +726,7 @@ impl Say {
     #[must_use]
     pub fn of(event: &crate::Event) -> Option<(Self, &str)> {
         match event {
-            crate::Event::Custom { kind, data, text } if kind == SAY_KIND => {
+            crate::Event::Custom { kind, data, text } if kind_is(kind, SAY_KIND) => {
                 Some((serde_json::from_value(data.clone()).ok()?, text.as_str()))
             }
             _ => None,
@@ -761,7 +791,7 @@ impl Vacant {
     #[must_use]
     pub fn event(&self) -> crate::Event {
         crate::Event::Custom {
-            kind: VACANT_KIND.to_owned(),
+            kind: sent_as(VACANT_KIND).to_owned(),
             data: serde_json::to_value(self).expect("a vacant answer serialises"),
             text: format!("{}. {} {}", self.title(), self.body(), self.command()),
         }
@@ -771,7 +801,7 @@ impl Vacant {
     #[must_use]
     pub fn of(event: &crate::Event) -> Option<Self> {
         match event {
-            crate::Event::Custom { kind, data, .. } if kind == VACANT_KIND => {
+            crate::Event::Custom { kind, data, .. } if kind_is(kind, VACANT_KIND) => {
                 serde_json::from_value(data.clone()).ok()
             }
             _ => None,
@@ -862,7 +892,7 @@ impl SeatChange {
     #[must_use]
     pub fn event(&self) -> crate::Event {
         crate::Event::Custom {
-            kind: SEAT_KIND.to_owned(),
+            kind: sent_as(SEAT_KIND).to_owned(),
             data: serde_json::to_value(self).expect("a seat change serialises"),
             text: self.words(),
         }
@@ -872,7 +902,7 @@ impl SeatChange {
     #[must_use]
     pub fn of(event: &crate::Event) -> Option<Self> {
         match event {
-            crate::Event::Custom { kind, data, .. } if kind == SEAT_KIND => {
+            crate::Event::Custom { kind, data, .. } if kind_is(kind, SEAT_KIND) => {
                 serde_json::from_value(data.clone()).ok()
             }
             _ => None,
@@ -883,7 +913,9 @@ impl SeatChange {
 /// Whether `kind` is one of roles' own: none wakes a watch as a post would.
 #[must_use]
 pub fn is_kind(kind: &str) -> bool {
-    [WAKE_KIND, SAY_KIND, VACANT_KIND, SEAT_KIND].contains(&kind)
+    [WAKE_KIND, SAY_KIND, VACANT_KIND, SEAT_KIND]
+        .iter()
+        .any(|current| kind_is(kind, current))
 }
 
 /// The TypeScript the web app reads roles as.
@@ -1097,6 +1129,36 @@ mod tests {
         let mut role = fixer();
         role.seats = 2;
         assert!(role.check().is_err());
+    }
+
+    #[test]
+    fn a_desk_event_reads_under_its_role_era_kind_too_and_goes_out_as_zircds_from_before_read() {
+        let say = Say {
+            role: "fixer".into(),
+            to: None,
+            reply_to: None,
+            about: None,
+            done: false,
+        };
+        assert_eq!(
+            say.event("hi"),
+            crate::Event::Custom {
+                kind: SAY_KIND.into(),
+                data: serde_json::to_value(&say).unwrap(),
+                text: "hi".into()
+            }
+        );
+        let crate::Event::Custom { data, .. } = say.event("hi") else {
+            unreachable!()
+        };
+        let old = crate::Event::Custom {
+            kind: "x-zirc/role-say".into(),
+            data,
+            text: "hi".into(),
+        };
+        assert_eq!(Say::of(&old), Some((say, "hi")));
+        assert_eq!(sent_as(WAKE_KIND), "x-zirc/role-wake");
+        assert!(is_kind("x-zirc/role-seat") && is_kind(SEAT_KIND) && !is_kind("x-zirc/role-other"));
     }
 
     #[test]

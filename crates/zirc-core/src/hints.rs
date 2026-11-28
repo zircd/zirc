@@ -111,9 +111,9 @@ fn paths_field(paths: &[String]) -> String {
 fn direct_kind(direct: &crate::ipc::Direct) -> &'static str {
     if direct.role.is_some() {
         if direct.woke.is_some() {
-            kind::ROLE_WOKE
+            kind::DESK_WOKE
         } else {
-            kind::ROLE_MESSAGE
+            kind::DESK_MESSAGE
         }
     } else if direct.query.is_some() {
         kind::QUERY

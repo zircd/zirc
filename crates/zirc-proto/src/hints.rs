@@ -82,10 +82,15 @@ pub mod kind {
     pub const COLLEAGUE_REPLY: &str = "dm.colleague";
     /// A note another agent session left for you (`zirc note`): never your user's word.
     pub const NOTE: &str = "note";
-    /// Someone wrote to the role you hold ([`crate::roles`]): a person, not your user.
-    pub const ROLE_MESSAGE: &str = "role.message";
-    /// What the role you hold wakes on happened ([`crate::roles`]).
-    pub const ROLE_WOKE: &str = "role.woke";
+    /// Someone wrote to the coworker whose desk you sit at ([`crate::roles`]): a person, not
+    /// your user.
+    pub const DESK_MESSAGE: &str = "desk.message";
+    /// What the coworker whose desk you sit at wakes on happened ([`crate::roles`]).
+    pub const DESK_WOKE: &str = "desk.woke";
+    /// What [`DESK_MESSAGE`] and [`DESK_WOKE`] were called while coworkers were roles (until 28
+    /// Nov 2026), read as them in a layer's file, where a team's hints may still say them.
+    pub const ROLE_ERA: [(&str, &str); 2] =
+        [("role.message", DESK_MESSAGE), ("role.woke", DESK_WOKE)];
     /// A decision that concerns you.
     pub const DECISION: &str = "decision";
     /// A decision that isn't surely its decider's own word: relayed by an agent, or from an
@@ -154,8 +159,8 @@ pub mod kind {
         ANSWER_REFUSED,
         COLLEAGUE_REPLY,
         NOTE,
-        ROLE_MESSAGE,
-        ROLE_WOKE,
+        DESK_MESSAGE,
+        DESK_WOKE,
         DECISION,
         DECISION_CLAIMED,
         REQUEST_ANSWERED,
@@ -326,7 +331,9 @@ impl When {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 pub struct Hint {
-    /// The kind of event it's for ([`kind`]).
+    /// The kind of event it's for ([`kind`]); a role-era kind reads as its desk one.
+    #[serde(with = "kind_now")]
+    #[ts(as = "String")]
     pub kind: String,
     /// When it applies, beyond its kind.
     #[serde(default, skip_serializing_if = "When::is_empty")]
@@ -340,6 +347,24 @@ pub struct Hint {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(as = "Option<bool>", optional)]
     pub required: bool,
+}
+
+/// A hint's kind as it's called now: [`kind::ROLE_ERA`]'s old names read as their new ones.
+/// With `#[serde(with)]`, which ts-rs reads (it warns of `deserialize_with`).
+mod kind_now {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(kind: &str, to: S) -> Result<S::Ok, S::Error> {
+        to.serialize_str(kind)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(from: D) -> Result<String, D::Error> {
+        let kind = String::deserialize(from)?;
+        Ok(super::kind::ROLE_ERA
+            .iter()
+            .find(|(was, _)| *was == kind)
+            .map_or(kind, |(_, now)| (*now).to_owned()))
+    }
 }
 
 impl Hint {
@@ -681,6 +706,14 @@ mod tests {
             text: text.into(),
             required: false,
         }
+    }
+
+    #[test]
+    fn a_role_era_kind_reads_as_its_desk_one() {
+        let read: Hint =
+            serde_json::from_str(r#"{"kind": "role.woke", "level": "act", "text": "Do the job."}"#)
+                .unwrap();
+        assert_eq!(read.kind, kind::DESK_WOKE);
     }
 
     #[test]
